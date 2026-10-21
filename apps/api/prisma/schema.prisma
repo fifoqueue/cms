@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/infra/prisma/generated"
+  runtime  = "bun"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum ContentType {
+  post
+  page
+}
+
+enum ContentStatus {
+  draft
+  published
+}
+
+enum PluginDataScope {
+  settings
+  kv
+}
+
+model User {
+  id           String    @id @db.Char(36)
+  email        String    @unique @db.VarChar(191)
+  name         String    @db.VarChar(191)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  sessions     Session[]
+  contents     Content[]
+  identity     UserIdentity?
+  ssoRequests  SsoTransaction[]
+
+  @@map("users")
+}
+
+/// OpenID Connect identity explicitly linked to a local user. Never matched by email.
+/// Issuer and subject are stored as UTF-8 bytes: binary comparison is exact (no case folding,
+/// no trailing-space padding), unlike the text collations.
+model UserIdentity {
+  /// Immutable; sessions issued through this identity reference it and die with it.
+  id        String    @id @db.Char(36)
+  issuer    Bytes     @db.VarBinary(255)
+  subject   Bytes     @db.VarBinary(255)
+  userId    String    @unique @map("user_id") @db.Char(36)
+  createdAt DateTime  @map("created_at") @db.DateTime(3)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions  Session[]
+
+  @@unique([issuer, subject])
+  @@map("user_identities")
+}
+
+/// Pending single sign-on request. Single use, expires after a few minutes.
+model SsoTransaction {
+  handleHash   String   @id @map("handle_hash") @db.Char(64)
+  state        String   @db.VarChar(255)
+  nonce        String   @db.VarChar(255)
+  codeVerifier String   @map("code_verifier") @db.VarChar(255)
+  /// Set when the request links an identity to this signed-in user.
+  userId       String?  @map("user_id") @db.Char(36)
+  /// Digest of the requesting client, for per-client admission limits.
+  clientKey    String   @map("client_key") @db.Char(64)
+  expiresAt    DateTime @map("expires_at") @db.DateTime(3)
+  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([clientKey])
+  @@index([expiresAt])
+  @@map("sso_transactions")
+}
+
+model Session {
+  tokenHash  String        @id @map("token_hash") @db.Char(64)
+  userId     String        @map("user_id") @db.Char(36)
+  /// Set when issued through a linked identity; unlinking or replacing it deletes the session.
+  identityId String?       @map("identity_id") @db.Char(36)
+  expiresAt  DateTime      @map("expires_at") @db.DateTime(3)
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  identity   UserIdentity? @relation(fields: [identityId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([identityId])
+  @@map("sessions")
+}
+
+model Content {
+  id          String        @id @db.Char(36)
+  type        ContentType
+  slug        String        @unique @db.VarChar(191)
+  title       String        @db.VarChar(255)
+  excerpt     String        @db.Text
+  /// Tiptap JSON, serialized.
+  document    String        @db.LongText
+  html        String        @db.LongText
+  status      ContentStatus
+  publishedAt DateTime?     @map("published_at") @db.DateTime(3)
+  createdAt   DateTime      @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime      @map("updated_at") @db.DateTime(3)
+  authorId    String        @map("author_id") @db.Char(36)
+  author      User          @relation(fields: [authorId], references: [id])
+
+  @@index([status, type, publishedAt])
+  @@map("contents")
+}
+
+/// Core key/value settings. Values are JSON.
+model Setting {
+  key   String @id @db.VarChar(191)
+  value String @db.LongText
+
+  @@map("settings")
+}
+
+/// Installed plugin bundles. Core knows plugins only through these rows.
+model Plugin {
+  id          String       @id @db.VarChar(64)
+  /// File name of the active bundle inside the plugin's directory.
+  entry       String       @db.VarChar(255)
+  enabled     Boolean      @default(false)
+  installedAt DateTime     @default(now()) @map("installed_at") @db.DateTime(3)
+  data        PluginData[]
+
+  @@map("plugins")
+}
+
+/// Plugin-owned values. Removed with the plugin.
+model PluginData {
+  pluginId String          @map("plugin_id") @db.VarChar(64)
+  scope    PluginDataScope
+  key      String          @db.VarChar(191)
+  /// JSON.
+  value    String          @db.LongText
+  plugin   Plugin          @relation(fields: [pluginId], references: [id], onDelete: Cascade)
+
+  @@id([pluginId, scope, key])
+  @@map("plugin_data")
+}

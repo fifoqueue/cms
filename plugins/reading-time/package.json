@@ -1,0 +1,13 @@
+{
+  "name": "@cms-plugin/reading-time",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/index.ts --target=bun --format=esm --outfile=dist/reading-time.js",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "@cms/sdk": "workspace:*"
+  }
+}

@@ -1,0 +1,16 @@
+services:
+  mariadb:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: cms
+      MARIADB_USER: cms
+      MARIADB_PASSWORD: cms
+    ports:
+      - '3306:3306'
+    volumes:
+      - mariadb:/var/lib/mysql
+
+volumes:
+  mariadb:

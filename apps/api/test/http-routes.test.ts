@@ -1,0 +1,260 @@
+import { describe, expect, test } from 'bun:test';
+import type { AuthService } from '../src/domain/auth/auth-service';
+import type { SsoService } from '../src/domain/auth/sso-service';
+import type { ContentService } from '../src/domain/content/content-service';
+import type { PublicContentService } from '../src/domain/content/public-content';
+import type { SiteService } from '../src/domain/site/site-service';
+import { createApiApp } from '../src/http/app';
+import type { PluginGateway } from '../src/http/plugin-gateway';
+import { SsoClientResolver } from '../src/http/sso-client';
+import type { PluginHost } from '../src/plugin-runtime/plugin-host';
+import type { SlotService } from '../src/plugin-runtime/slot-service';
+import { conflict } from '../src/shared/errors';
+
+const TOKEN = 'admin-token';
+const user = { id: 'u1', email: 'a@example.com', name: 'Admin' };
+
+const auth = {
+  authenticate: async (token: string) => (token === TOKEN ? user : null),
+  status: async () => ({ setupRequired: false }),
+  login: async (input: unknown) => ({ token: TOKEN, input }),
+  logout: async () => {},
+} as unknown as AuthService;
+
+const calls: unknown[][] = [];
+
+const record =
+  (name: string, result: unknown = { ok: true }) =>
+  async (...args: unknown[]) => {
+    calls.push([name, ...args]);
+
+    return result;
+  };
+
+const errors: unknown[][] = [];
+
+const app = await createApiApp({
+  services: {
+    auth,
+    sso: {
+      info: () => ({ enabled: false }),
+      unlink: record('sso.unlink'),
+    } as unknown as SsoService,
+    ssoClients: new SsoClientResolver(undefined),
+    site: { get: record('site.get') } as unknown as SiteService,
+    publicContent: {
+      list: record('public.list'),
+      getBySlug: async (slug: string) => {
+        if (slug === 'taken') throw conflict('slug taken');
+
+        if (slug === 'boom') throw new Error('secret failure');
+
+        return { slug };
+      },
+    } as unknown as PublicContentService,
+    slots: { render: record('slots') } as unknown as SlotService,
+    adminContent: {
+      list: record('admin.list'),
+      create: record('admin.create'),
+      get: record('admin.get'),
+      update: record('admin.update'),
+      remove: record('admin.remove'),
+    } as unknown as ContentService,
+    plugins: {
+      list: record('plugins.list', []),
+      install: record('plugins.install'),
+      enable: record('plugins.enable'),
+    } as unknown as PluginHost,
+    pluginGateway: {
+      handle: async (id: string) => Response.json({ gateway: id }),
+    } as unknown as PluginGateway,
+  },
+  logger: {
+    info: () => {},
+    warn: () => {},
+    error: (...args: unknown[]) => errors.push(args),
+  },
+});
+const call = (
+  method: string,
+  path: string,
+  init: { token?: string; body?: string; type?: string } = {},
+) =>
+  app.fetch(
+    new Request(`http://localhost${path}`, {
+      method,
+      body: init.body,
+      headers: {
+        ...(init.token ? { authorization: `Bearer ${init.token}` } : {}),
+        ...(init.type ? { 'content-type': init.type } : {}),
+      },
+    }),
+  );
+
+describe('API route compatibility', () => {
+  test('static, dynamic and query routes keep their paths and inputs', async () => {
+    expect(await (await call('GET', '/api/health')).json()).toEqual({
+      status: 'ok',
+    });
+    expect(await (await call('GET', '/api/v1/content/hello')).json()).toEqual({
+      slug: 'hello',
+    });
+    expect(
+      await (await call('GET', '/api/v1/content/caf%C3%A9')).json(),
+    ).toEqual({ slug: 'café' });
+    calls.length = 0;
+    await call('GET', '/api/v1/content?type=post&page=2');
+    await call('GET', '/api/v1/slots?path=%2Fa&contentId=7');
+    expect(calls).toEqual([
+      ['public.list', { type: 'post', page: '2' }],
+      ['slots', { path: '/a', contentId: '7' }],
+    ]);
+  });
+
+  test('unknown paths and methods return the API error body', async () => {
+    for (const [method, path] of [
+      ['GET', '/nope'],
+      ['POST', '/api/health'],
+      ['GET', '/api/v1/content/a/b'],
+    ] as const) {
+      const response = await call(method, path);
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({
+        error: { code: 'not_found', message: 'Route not found' },
+      });
+    }
+  });
+
+  test('domain errors map to statuses and unexpected errors stay hidden', async () => {
+    const conflicted = await call('GET', '/api/v1/content/taken');
+    expect(conflicted.status).toBe(409);
+    expect(await conflicted.json()).toMatchObject({
+      error: { code: 'conflict' },
+    });
+
+    const crashed = await call('GET', '/api/v1/content/boom');
+    expect(crashed.status).toBe(500);
+    const text = await crashed.text();
+    expect(text).toContain('internal');
+    expect(text).not.toContain('secret failure');
+    expect(errors).toHaveLength(1);
+  });
+
+  test('a session guard covers only the routes after it', async () => {
+    expect((await call('GET', '/api/v1/auth/status')).status).toBe(200);
+    expect((await call('GET', '/api/v1/auth/me')).status).toBe(401);
+    expect(
+      (await call('GET', '/api/v1/auth/me', { token: 'bad' })).status,
+    ).toBe(401);
+    expect(
+      await (await call('GET', '/api/v1/auth/me', { token: TOKEN })).json(),
+    ).toEqual(user);
+    expect((await call('GET', '/api/v1/content')).status).toBe(200);
+  });
+
+  test('admin routes require a session and read the JSON body themselves', async () => {
+    for (const [method, path] of [
+      ['GET', '/api/v1/admin/content'],
+      ['POST', '/api/v1/admin/content'],
+      ['GET', '/api/v1/admin/content/1'],
+      ['PUT', '/api/v1/admin/content/1'],
+      ['DELETE', '/api/v1/admin/content/1'],
+      ['GET', '/api/v1/admin/plugins'],
+      ['POST', '/api/v1/admin/plugins/x/enable'],
+    ] as const)
+      expect((await call(method, path)).status).toBe(401);
+
+    calls.length = 0;
+    const created = await call('POST', '/api/v1/admin/content', {
+      token: TOKEN,
+      type: 'application/json',
+      body: JSON.stringify({ title: 'Hi' }),
+    });
+    expect(created.status).toBe(201);
+    await call('PUT', '/api/v1/admin/content/abc', {
+      token: TOKEN,
+      type: 'application/json',
+      body: JSON.stringify({ title: 'Yo' }),
+    });
+    expect(
+      (await call('DELETE', '/api/v1/admin/content/abc', { token: TOKEN }))
+        .status,
+    ).toBe(204);
+    await call('GET', '/api/v1/admin/content?page=3', { token: TOKEN });
+    await call('POST', '/api/v1/admin/plugins/p-1/enable', { token: TOKEN });
+    expect(calls).toEqual([
+      ['admin.create', { title: 'Hi' }, 'u1'],
+      ['admin.update', 'abc', { title: 'Yo' }],
+      ['admin.remove', 'abc'],
+      ['admin.list', { page: '3' }],
+      ['plugins.enable', 'p-1'],
+    ]);
+  });
+
+  test('malformed JSON is invalid input and bundle uploads arrive as raw text', async () => {
+    const malformed = await call('POST', '/api/v1/auth/login', {
+      body: '{',
+      type: 'application/json',
+    });
+    expect(malformed.status).toBe(400);
+    expect(await malformed.json()).toMatchObject({
+      error: { code: 'invalid_input' },
+    });
+
+    calls.length = 0;
+    const source = 'export const plugin = {};\n';
+    for (const type of ['text/javascript', 'application/json'])
+      expect(
+        (
+          await call('POST', '/api/v1/admin/plugins', {
+            token: TOKEN,
+            type,
+            body: source,
+          })
+        ).status,
+      ).toBe(201);
+    expect(calls).toEqual([
+      ['plugins.install', source],
+      ['plugins.install', source],
+    ]);
+    const empty = await call('POST', '/api/v1/admin/plugins', {
+      token: TOKEN,
+      body: '  ',
+    });
+    expect(empty.status).toBe(400);
+  });
+
+  test('bundle upload limits count UTF-8 bytes rather than characters', async () => {
+    calls.length = 0;
+
+    const response = await call('POST', '/api/v1/admin/plugins', {
+      token: TOKEN,
+      type: 'text/javascript',
+      body: '가'.repeat(2 * 1024 * 1024),
+    });
+
+    expect(response.status).toBe(400);
+    expect(calls).toEqual([]);
+  });
+});
+
+describe('file-based routes', () => {
+  test('route files map to their URLs, including SSO and the plugin gateway', async () => {
+    expect(await (await call('GET', '/api/v1/auth/sso')).json()).toEqual({
+      enabled: false,
+    });
+    expect((await call('DELETE', '/api/v1/auth/sso/identity')).status).toBe(
+      401,
+    );
+    expect(
+      (await call('DELETE', '/api/v1/auth/sso/identity', { token: TOKEN }))
+        .status,
+    ).toBe(204);
+    expect(await (await call('GET', '/api/plugins/demo')).json()).toEqual({
+      gateway: 'demo',
+    });
+    expect(
+      await (await call('POST', '/api/plugins/demo/a/b', { body: 'x' })).json(),
+    ).toEqual({ gateway: 'demo' });
+  });
+});

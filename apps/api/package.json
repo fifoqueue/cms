@@ -1,0 +1,28 @@
+{
+  "name": "@cms/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/main.ts",
+    "start": "bun src/main.ts",
+    "build": "prisma generate",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@cms/content": "workspace:*",
+    "@cms/sdk": "workspace:*",
+    "@prisma/adapter-mariadb": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "elysia": "^1.4.30",
+    "elysia-autoload": "1.7.0",
+    "openid-client": "^6.8.8",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "prisma": "^7.10.1"
+  }
+}

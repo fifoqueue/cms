@@ -1,0 +1,12 @@
+node_modules
+dist
+build
+.svelte-kit
+data
+.env
+.env.*
+!.env.example
+apps/api/src/infra/prisma/generated
+*.timestamp-*
+.DS_Store
+Thumbs.db

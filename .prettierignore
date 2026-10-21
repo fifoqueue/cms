@@ -1,0 +1,8 @@
+node_modules
+bun.lock
+build
+dist
+.svelte-kit
+data
+apps/api/src/infra/prisma/generated
+apps/api/prisma/migrations
