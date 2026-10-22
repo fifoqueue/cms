@@ -1,18 +1,30 @@
 import { describe, expect, test } from 'bun:test';
 import type { PublicContent, SiteSettings } from '@cms/sdk';
-import { HookBus } from '../src/plugin-runtime/hook-bus';
-import { recordingLogger } from './support/memory';
+import { toPublicEntrySeo } from '@cms/sdk';
+import { HookBus } from '#api/plugin-runtime/hook-bus';
+import { recordingLogger } from '#test/support/memory';
 
 const site: SiteSettings = { title: 'Site', description: '', locale: 'en' };
 const content: PublicContent = {
   id: '1',
   type: 'post',
   slug: 's',
+  path: '/s',
+  seo: toPublicEntrySeo({}),
   title: 'T',
   excerpt: '',
   html: '',
   publishedAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
+  categories: [],
+  tags: [],
+  extraTerms: [],
+  author: null,
+  sticky: false,
+  commentCount: 0,
+  protected: false,
+  featuredImage: null,
+  fields: {},
   meta: {},
 };
 
@@ -37,6 +49,10 @@ describe('HookBus', () => {
       excerpt: '',
       document: { type: 'doc' as const },
       status: 'draft' as const,
+      categoryIds: [],
+      tagIds: [],
+      sticky: false,
+      allowComments: true,
     };
     const result = await bus.applyFilter(
       'content.beforeSave',

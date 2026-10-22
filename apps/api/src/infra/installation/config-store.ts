@@ -4,7 +4,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { databaseUrlSchema } from '../../config';
+import { databaseUrlSchema } from '#api/config';
+import { Errors } from '#api/shared/errors';
 
 export const API_DIRECTORY = fileURLToPath(
   new URL('../../../', import.meta.url),
@@ -21,15 +22,12 @@ export const readInstallationConfig = (path = INSTALLATION_CONFIG) => {
     source = readFileSync(path, 'utf8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-    throw new Error(
-      '설정 파일을 읽을 수 없습니다. 파일 접근 권한을 확인해 주세요.',
-      { cause: error },
-    );
+    throw new Error(Errors.InstallConfigUnreadable, { cause: error });
   }
   try {
     return storedSchema.parse(JSON.parse(source));
   } catch {
-    throw new Error('설정 파일이 손상되었습니다. 기존 설정을 복구해 주세요.');
+    throw new Error(Errors.InstallConfigCorrupt);
   }
 };
 

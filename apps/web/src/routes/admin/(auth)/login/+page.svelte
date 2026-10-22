@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
+  import { resolve } from '$app/paths';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
@@ -11,45 +11,57 @@
   import { Input } from '#lib/components/ui/input/index.js';
   import { Label } from '#lib/components/ui/label/index.js';
   import { Separator } from '#lib/components/ui/separator/index.js';
+  import { useI18n } from '#lib/i18n/index.js';
+  import Captcha from '#lib/security/Captcha.svelte';
   import type { PageProps } from './$types';
 
   let { data, form }: PageProps = $props();
+
+  const i18n = useI18n();
+  const m = $derived(i18n.m);
+  const showCaptcha = $derived(
+    data.captcha.provider !== 'none' &&
+      (data.captcha.always.includes('login') ||
+        (!!form && 'captcha' in form && form.captcha === true)),
+  );
 </script>
 
-<svelte:head><title>Sign in</title></svelte:head>
+<svelte:head><title>{m.signInTitle}</title></svelte:head>
 
 <Card>
-  <CardHeader><CardTitle>Sign in</CardTitle></CardHeader>
+  <CardHeader><CardTitle>{m.signInTitle}</CardTitle></CardHeader>
   <CardContent class="space-y-4">
     <FormMessage {form} />
 
-    {#if data.sso.enabled}
+    {#if data.sso.enabled && data.sso.name}
       <form method="POST" action="?/sso">
         <Button type="submit" variant="outline" class="w-full">
-          Sign in with {data.sso.name}
+          {m.signInWith(data.sso.name)}
         </Button>
       </form>
 
       <div class="flex items-center gap-3 text-xs text-muted-foreground">
         <Separator class="flex-1" />
-        or
+        {m.or}
         <Separator class="flex-1" />
       </div>
     {/if}
 
-    <form method="POST" action="?/login" use:enhance class="space-y-4">
+    <!-- Not enhanced: a captcha widget must render fresh after each attempt. -->
+    <form method="POST" action="?/login" class="space-y-4">
       <div class="grid gap-2">
-        <Label for="email">Email</Label>
+        <Label for="email">{m.email}</Label>
         <Input
           id="email"
           name="email"
           type="email"
           autocomplete="username"
           required
+          value={form && 'email' in form ? form.email : ''}
         />
       </div>
       <div class="grid gap-2">
-        <Label for="password">Password</Label>
+        <Label for="password">{m.password}</Label>
         <Input
           id="password"
           name="password"
@@ -58,7 +70,21 @@
           required
         />
       </div>
-      <Button type="submit" class="w-full">Sign in</Button>
+      {#if showCaptcha}
+        <Captcha captcha={data.captcha} />
+      {/if}
+      <Button type="submit" class="w-full">{m.signIn}</Button>
     </form>
+    <p class="text-center text-sm">
+      <a
+        href={resolve('/admin/(auth)/forgot-password')}
+        class="text-muted-foreground hover:underline">{m.forgotPassword}</a
+      >
+    </p>
   </CardContent>
 </Card>
+
+{#if data.membership.enabled}<a
+    href={resolve('/admin/(auth)/register')}
+    class="block text-center underline">{m.registerTitle}</a
+  >{/if}

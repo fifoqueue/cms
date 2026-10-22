@@ -1,4 +1,5 @@
 import type { Awaitable } from '@cms/sdk';
+import { Errors } from '#api/shared/errors';
 
 export type Isolated<T> = { ok: true; value: T } | { ok: false; error: Error };
 
@@ -13,7 +14,7 @@ export const isolate = async <T>(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(
-      () => reject(new Error(`Timed out after ${timeoutMs}ms`)),
+      () => reject(new Error(Errors.PluginTimedOut(timeoutMs))),
       timeoutMs,
     );
   });

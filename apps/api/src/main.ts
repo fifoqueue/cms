@@ -1,9 +1,10 @@
-import { createBootstrap } from './container';
+import { createBootstrap } from '#api/container';
 
 // `app` is an Elysia instance; `stop` releases what the container owns (plugins, database).
-const { app, stop, port, logger } = await createBootstrap();
+const { app, stop, port, hostname, logger, maxRequestBodySize } =
+  await createBootstrap();
 
-app.listen({ port, maxRequestBodySize: 10 * 1024 * 1024 });
+app.listen({ port, hostname, maxRequestBodySize });
 logger.info(`API listening on ${app.server?.url}`);
 
 const shutdown = async () => {

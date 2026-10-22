@@ -18,9 +18,14 @@
   } from '#lib/components/ui/card/index.js';
   import { Input } from '#lib/components/ui/input/index.js';
   import { Separator } from '#lib/components/ui/separator/index.js';
+  import { useI18n } from '#lib/i18n/index.js';
   import type { PageProps } from './$types';
 
   let { data, form }: PageProps = $props();
+
+  const i18n = useI18n();
+  const m = $derived(i18n.m);
+  const update = $derived(form && 'update' in form ? form.update : null);
 
   const STATUS: Record<PluginStatus, BadgeVariant> = {
     active: 'default',
@@ -29,22 +34,20 @@
   };
 
   const confirmRemove: SubmitFunction = ({ cancel }) => {
-    if (!confirm('Remove this plugin and delete its settings and data?'))
-      cancel();
+    if (!confirm(m.pluginRemoveConfirm)) cancel();
   };
 </script>
 
-<svelte:head><title>Plugins</title></svelte:head>
+<svelte:head><title>{m.navPlugins}</title></svelte:head>
 
-<h1 class="text-2xl font-semibold">Plugins</h1>
+<h1 class="text-2xl font-semibold">{m.navPlugins}</h1>
 <FormMessage {form} />
 
 <Card>
   <CardHeader>
-    <CardTitle>Install or upgrade</CardTitle>
+    <CardTitle>{m.pluginsInstall}</CardTitle>
     <CardDescription>
-      Upload a plugin bundle (a single ES module). Uploading a plugin with an
-      existing id upgrades it in place.
+      {m.pluginsInstallHelp}
     </CardDescription>
   </CardHeader>
   <CardContent>
@@ -62,7 +65,7 @@
         required
         class="max-w-sm"
       />
-      <Button type="submit"><Upload class="size-4" /> Upload</Button>
+      <Button type="submit"><Upload class="size-4" /> {m.mediaUpload}</Button>
     </form>
   </CardContent>
 </Card>
@@ -79,6 +82,14 @@
       </CardTitle>
       <CardDescription>{plugin.description || plugin.id}</CardDescription>
       <CardAction class="flex gap-2">
+        {#if plugin.updatable}
+          <form method="POST" action="?/update" use:enhance>
+            <input type="hidden" name="id" value={plugin.id} />
+            <Button type="submit" variant="ghost" size="sm"
+              >{m.pluginCheckUpdate}</Button
+            >
+          </form>
+        {/if}
         <form
           method="POST"
           action={plugin.enabled ? '?/disable' : '?/enable'}
@@ -86,15 +97,33 @@
         >
           <input type="hidden" name="id" value={plugin.id} />
           <Button type="submit" variant="outline" size="sm"
-            >{plugin.enabled ? 'Disable' : 'Enable'}</Button
+            >{plugin.enabled ? m.pluginDisable : m.pluginEnable}</Button
           >
         </form>
         <form method="POST" action="?/remove" use:enhance={confirmRemove}>
           <input type="hidden" name="id" value={plugin.id} />
-          <Button type="submit" variant="destructive" size="sm">Remove</Button>
+          <Button type="submit" variant="destructive" size="sm"
+            >{m.remove}</Button
+          >
         </form>
       </CardAction>
     </CardHeader>
+    {#if update?.id === plugin.id}
+      <CardContent class="text-sm">
+        {#if update.newer}
+          {m.pluginUpdateAvailable(update.latest)}
+          {#if update.download}
+            <!-- eslint-disable svelte/no-navigation-without-resolve -- the plugin's own download address -->
+            <a href={update.download} rel="noopener" class="underline"
+              >{m.pluginDownload}</a
+            >
+            <!-- eslint-enable svelte/no-navigation-without-resolve -->
+          {/if}
+        {:else}
+          {m.pluginUpToDate}
+        {/if}
+      </CardContent>
+    {/if}
     {#if plugin.error || plugin.settings.length}
       <CardContent class="space-y-4">
         {#if plugin.error}<p class="text-sm text-destructive">
@@ -108,5 +137,5 @@
     {/if}
   </Card>
 {:else}
-  <p class="text-muted-foreground">No plugins installed.</p>
+  <p class="text-muted-foreground">{m.pluginsEmpty}</p>
 {/each}

@@ -1,10 +1,11 @@
 import { fileURLToPath } from 'node:url';
 import { Elysia } from 'elysia';
 import { autoload } from 'elysia-autoload';
-import type { Logger } from '../shared/logger';
-import { errorResponse, toErrorResponse } from './respond';
-import { withApiServices, withInstallerServices } from './services';
-import type { ApiServices, InstallerServices } from './services';
+import type { Logger } from '#api/shared/logger';
+import { errorResponse, toErrorResponse } from '#api/http/respond';
+import { withApiServices, withInstallerServices } from '#api/http/services';
+import type { ApiServices, InstallerServices } from '#api/http/services';
+import { Errors } from '#api/shared/errors';
 
 const routesDirectory = (name: string) =>
   fileURLToPath(new URL(`./routes/${name}`, import.meta.url));
@@ -20,7 +21,7 @@ const loadRoutes = (directory: string, prefix: string) =>
 export const apiErrors = (logger: Logger) =>
   new Elysia().onError({ as: 'global' }, ({ code, error }) => {
     if (code === 'NOT_FOUND')
-      return errorResponse(404, 'not_found', 'Route not found');
+      return errorResponse(404, 'not_found', Errors.RouteNotFound);
     if (code === 'PARSE' || code === 'VALIDATION')
       return errorResponse(400, 'invalid_input', error.message);
     return toErrorResponse(error, logger);

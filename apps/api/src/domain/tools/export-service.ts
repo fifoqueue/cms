@@ -1,0 +1,158 @@
+import type { ContentStatus } from '@cms/sdk';
+import type { Actor } from '#api/domain/auth/authorization';
+import { authorize } from '#api/domain/auth/authorization';
+import type {
+  CommentRecord,
+  CommentRepository,
+} from '#api/domain/comments/ports';
+import type {
+  ContentRecord,
+  ContentRepository,
+} from '#api/domain/content/content-repository';
+import type { TaxonomyRepository } from '#api/domain/taxonomy/taxonomy-repository';
+import {
+  wxrComment,
+  wxrFooter,
+  wxrHeader,
+  wxrItemEnd,
+  wxrItemStart,
+  wxrTermNames,
+} from '#api/domain/tools/wxr';
+import type { WxrComment, WxrItem, WxrTerm } from '#api/domain/tools/wxr';
+import type { UserDirectory } from '#api/domain/users/user-directory';
+
+const STATUSES: Record<ContentStatus, string> = {
+  published: 'publish',
+  draft: 'draft',
+  pending: 'pending',
+  scheduled: 'future',
+  private: 'private',
+};
+
+const APPROVED = { approved: '1', pending: '0', spam: 'spam', trash: 'trash' };
+const PAGE = 100;
+
+const toItem = (record: ContentRecord): WxrItem => ({
+  id: record.id,
+  type: record.type,
+  title: record.title,
+  slug: record.slug,
+  html: record.html,
+  excerpt: record.excerpt,
+  status: STATUSES[record.status],
+  publishedAt: record.publishedAt,
+  author: record.authorSlug,
+  password: '',
+  sticky: record.sticky,
+  commentsOpen: record.allowComments,
+  categories: record.categories.map((term) => term.slug),
+  tags: record.tags.map((term) => term.slug),
+  comments: [],
+});
+
+const toComment = (comment: CommentRecord): WxrComment => ({
+  id: comment.id,
+  parentId: comment.parentId,
+  authorName: comment.authorName,
+  authorEmail: comment.authorEmail,
+  authorUrl: comment.authorUrl,
+  body: comment.body,
+  approved: APPROVED[comment.status],
+  type: 'comment',
+  createdAt: comment.createdAt,
+});
+
+const readable = (parts: AsyncGenerator<string>) => {
+  const encoder = new TextEncoder();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const part = await parts.next();
+        if (part.done) controller.close();
+        else controller.enqueue(encoder.encode(part.value));
+      } catch (error) {
+        controller.error(error);
+      }
+    },
+    async cancel() {
+      await parts.return(undefined);
+    },
+  });
+};
+
+/** Streams every non-trashed entry and its comments as WordPress WXR 1.2. */
+export class ExportService {
+  constructor(
+    private readonly deps: {
+      content: Pick<ContentRepository, 'exportPage'>;
+      terms: Pick<TaxonomyRepository, 'list'>;
+      comments: Pick<CommentRepository, 'exportPage'>;
+      users: Pick<UserDirectory, 'list'>;
+      site: () => Promise<{ title: string; siteUrl: string }>;
+    },
+  ) {}
+
+  async streamWxr(actor: Actor): Promise<ReadableStream<Uint8Array>> {
+    authorize(actor, 'tools.manage');
+    const [site, users, categories, tags] = await Promise.all([
+      this.deps.site(),
+      this.deps.users.list(),
+      this.deps.terms.list('category', 'all'),
+      this.deps.terms.list('tag', 'all'),
+    ]);
+    const slugOf = new Map(categories.map((term) => [term.id, term.slug]));
+    const term = (record: (typeof categories)[number]): WxrTerm => ({
+      slug: record.slug,
+      name: record.name,
+      description: record.description,
+      parent: record.parentId ? (slugOf.get(record.parentId) ?? null) : null,
+    });
+    const header = {
+      title: site.title,
+      link: site.siteUrl,
+      authors: users.map((user) => ({
+        login: user.slug,
+        email: user.email,
+        displayName: user.name,
+      })),
+      categories: categories.map(term),
+      tags: tags.map(term),
+    };
+    return readable(this.parts(header));
+  }
+
+  /** Small callers and round-trip tests may still collect the stream as text. */
+  async exportWxr(actor: Actor): Promise<string> {
+    return new Response(await this.streamWxr(actor)).text();
+  }
+
+  private async *parts(
+    header: Parameters<typeof wxrHeader>[0],
+  ): AsyncGenerator<string> {
+    const names = wxrTermNames(header);
+    yield wxrHeader(header);
+
+    let afterContent: string | null = null;
+    for (;;) {
+      const records = await this.deps.content.exportPage(afterContent, PAGE);
+      if (!records.length) break;
+      for (const record of records) {
+        yield wxrItemStart(toItem(record), header, names);
+        let afterComment: string | null = null;
+        for (;;) {
+          const comments = await this.deps.comments.exportPage(
+            record.id,
+            afterComment,
+            PAGE,
+          );
+          for (const comment of comments) yield wxrComment(toComment(comment));
+          if (comments.length < PAGE) break;
+          afterComment = comments.at(-1)!.id;
+        }
+        yield wxrItemEnd;
+      }
+      afterContent = records.at(-1)!.id;
+    }
+    yield wxrFooter;
+  }
+}

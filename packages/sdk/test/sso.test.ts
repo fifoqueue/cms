@@ -1,6 +1,19 @@
 import { expect, test } from 'bun:test';
-import { ssoCallbackSchema, ssoStartSchema } from '../src/auth';
-import { createSsoClient } from '../src/client';
+import { ssoCallbackSchema, ssoStartSchema } from '#sdk/auth';
+import { createSsoClient } from '#sdk/client';
+
+const ssoResponse = (input: RequestInfo | URL) => {
+  const path = new URL(String(input)).pathname;
+  if (path.endsWith('/start'))
+    return {
+      authorizationUrl: 'https://identity.example/authorize',
+      transaction: 'transaction',
+      expiresAt: '2026-01-01T00:00:00.000Z',
+    };
+  if (path.endsWith('/callback')) return { kind: 'linked' };
+  if (path.endsWith('/identity')) return { identity: null, assigned: false };
+  return { enabled: false, name: null };
+};
 
 test('SSO client uses the shared HTTP contract and sends the session only when given', async () => {
   const calls: {
@@ -18,7 +31,7 @@ test('SSO client uses the shared HTTP contract and sends the session only when g
     });
     return init?.method === 'DELETE'
       ? new Response(null, { status: 204 })
-      : Response.json({});
+      : Response.json(ssoResponse(input));
   }) as typeof fetch;
 
   const anonymous = createSsoClient({ baseUrl: 'http://cms', fetch: fetcher });
@@ -75,13 +88,13 @@ test('SSO client uses the shared HTTP contract and sends the session only when g
 
   calls.length = 0;
   const proofs: [string | null, string | null][] = [];
-  const recording = (async (_input, init) => {
+  const recording = (async (input, init) => {
     const headers = new Headers(init?.headers);
     proofs.push([
       headers.get('x-cms-client-address'),
       headers.get('x-cms-frontend-secret'),
     ]);
-    return Response.json({});
+    return Response.json(ssoResponse(input));
   }) as typeof fetch;
   const frontend = createSsoClient({ baseUrl: 'http://cms', fetch: recording });
   await frontend.start({}, { address: '203.0.113.5', secret: 'shared' });

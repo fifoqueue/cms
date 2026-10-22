@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { escapeHtml, readingMinutes } from './index';
+import { escapeHtml, readingMinutes } from '#plugin/index';
 
 test('estimates at least one minute from visible words', () => {
   expect(readingMinutes('<p>hello <strong>world</strong></p>', 200)).toBe(1);

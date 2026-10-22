@@ -1,0 +1,43 @@
+<script lang="ts">
+  import { resolve } from '$app/paths';
+  import { page } from '$app/state';
+  import { useI18n } from '#lib/i18n/index.js';
+  import type { Messages } from '#lib/i18n/index.js';
+  import type { LayoutProps } from './$types';
+
+  let { children }: LayoutProps = $props();
+
+  const i18n = useI18n();
+
+  const tabs = [
+    {
+      route: '/admin/(app)/appearance',
+      label: (m: Messages) => m.appearanceThemes,
+    },
+    {
+      route: '/admin/(app)/appearance/editor',
+      label: (m: Messages) => m.navEditor,
+    },
+    {
+      route: '/admin/(app)/appearance/menus',
+      label: (m: Messages) => m.appearanceMenus,
+    },
+    {
+      route: '/admin/(app)/appearance/widgets',
+      label: (m: Messages) => m.appearanceWidgets,
+    },
+  ] as const;
+</script>
+
+<nav aria-label={i18n.m.navAppearance} class="flex flex-wrap gap-1 border-b">
+  {#each tabs as tab (tab.route)}
+    <a
+      href={resolve(tab.route)}
+      aria-current={page.route.id === tab.route ? 'page' : undefined}
+      class="-mb-px border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground aria-[current=page]:border-foreground aria-[current=page]:text-foreground"
+      >{tab.label(i18n.m)}</a
+    >
+  {/each}
+</nav>
+
+{@render children()}

@@ -1,25 +1,29 @@
-import type { PluginInfo, PluginStatus } from '@cms/sdk';
+import { pluginUpdateManifestSchema } from '@cms/sdk';
+import type { PluginInfo, PluginStatus, PluginUpdate } from '@cms/sdk';
 import {
   DomainError,
   conflict,
   invalidInput,
   messageOf,
   notFound,
-} from '../shared/errors';
-import { isolate } from '../shared/isolate';
-import type { Logger } from '../shared/logger';
-import type { PluginContextFactory } from './plugin-context-factory';
-import { validatePlugin } from './plugin-definition';
-import type { ValidPlugin } from './plugin-definition';
-import { PluginScope } from './plugin-scope';
-import type { PluginSettings } from './plugin-settings';
+  Errors,
+} from '#api/shared/errors';
+import { isolate } from '#api/shared/isolate';
+import type { Logger } from '#api/shared/logger';
+import type { PluginContextFactory } from '#api/plugin-runtime/plugin-context-factory';
+import { validatePlugin } from '#api/plugin-runtime/plugin-definition';
+import type { ValidPlugin } from '#api/plugin-runtime/plugin-definition';
+import { PluginScope } from '#api/plugin-runtime/plugin-scope';
+import type { PluginSettings } from '#api/plugin-runtime/plugin-settings';
 import type {
   CommittedBundle,
   PluginModuleLoader,
   PluginPackageStore,
   PluginStateRepository,
   StagedBundle,
-} from './ports';
+  UpdateFeed,
+  VersionPolicy,
+} from '#api/plugin-runtime/ports';
 
 export interface PluginHostDeps {
   state: PluginStateRepository;
@@ -27,12 +31,16 @@ export interface PluginHostDeps {
   loader: PluginModuleLoader;
   contexts: PluginContextFactory;
   settings: PluginSettings;
+  versions: VersionPolicy;
+  updates: UpdateFeed;
   logger: Logger;
   timeoutMs: number;
 }
 
 interface InstalledPlugin {
   id: string;
+  /** The bundle in use, as stored in the plugin state. */
+  entry: string;
   enabled: boolean;
   /** `null` when the bundle could not be loaded. */
   plugin: ValidPlugin | null;
@@ -70,8 +78,93 @@ export class PluginHost {
           );
         } catch (error) {
           this.fail(installed, error);
+        }
+      }
+      // Required plugins activate before the plugins that need them.
+      const order: InstalledPlugin[] = [];
+      const visit = (installed: InstalledPlugin, path: Set<string>) => {
+        if (order.includes(installed) || path.has(installed.id)) return;
+        path.add(installed.id);
+        for (const id of Object.keys(
+          installed.plugin?.manifest.requires.plugins ?? {},
+        )) {
+          const required = this.plugins.get(id);
+          if (required?.enabled) visit(required, path);
+        }
+        order.push(installed);
+      };
+      for (const installed of this.plugins.values())
+        if (installed.enabled) visit(installed, new Set());
+      for (const installed of order) await this.activate(installed);
+    });
+  }
+
+  /** Asks the plugin's update address for the latest version. Installs nothing. */
+  async checkUpdate(id: string): Promise<PluginUpdate> {
+    const manifest = this.require(id).plugin?.manifest;
+    if (!manifest?.updateUrl) throw invalidInput(Errors.PluginNoUpdateUrl);
+    const answer = pluginUpdateManifestSchema.safeParse(
+      await this.deps.updates.read(manifest.updateUrl).catch(() => null),
+    );
+    if (!answer.success) throw invalidInput(Errors.PluginUpdateUnavailable);
+    const { version, download } = answer.data;
+    let newer: boolean;
+    try {
+      newer = this.deps.versions.compare(version, manifest.version) > 0;
+    } catch {
+      // Not semver: any other version counts as an update.
+      newer = version !== manifest.version;
+    }
+    return {
+      current: manifest.version,
+      latest: version,
+      newer,
+      download: download ?? null,
+    };
+  }
+
+  /**
+   * Brings this process in line with the shared plugin state after another API instance
+   * installed, upgraded, enabled, disabled or removed a plugin. Bundles must be on storage every
+   * instance reads (`PLUGINS_DIR`). A bundle that fails to load stays failed until it changes.
+   */
+  reconcile(): Promise<void> {
+    return this.exclusive(async () => {
+      const records = new Map(
+        (await this.deps.state.list()).map((record) => [record.id, record]),
+      );
+      for (const [id, installed] of this.plugins)
+        if (!records.has(id)) {
+          await this.deactivate(installed);
+          this.plugins.delete(id);
+          this.deps.logger.info(`Plugin "${id}" was removed elsewhere`);
+        }
+      for (const record of records.values()) {
+        const current = this.plugins.get(record.id);
+        if (current && current.entry === record.entry) {
+          if (current.enabled === record.enabled) continue;
+          current.enabled = record.enabled;
+          if (record.enabled) await this.activate(current);
+          else await this.deactivate(current);
           continue;
         }
+        // Installed or upgraded elsewhere: load the new bundle, then swap.
+        const installed: InstalledPlugin = {
+          ...record,
+          plugin: null,
+          scope: null,
+          status: 'inactive',
+          error: null,
+        };
+        try {
+          installed.plugin = await this.load(
+            this.deps.packages.locate(record.id, record.entry),
+          );
+        } catch (error) {
+          this.fail(installed, error);
+        }
+        if (current) await this.deactivate(current);
+        this.plugins.set(record.id, installed);
         if (record.enabled) await this.activate(installed);
       }
     });
@@ -103,7 +196,7 @@ export class PluginHost {
         await staged.discard();
         throw error instanceof DomainError
           ? error
-          : invalidInput(`Invalid plugin bundle: ${messageOf(error)}`);
+          : invalidInput(Errors.PluginBundleInvalid(messageOf(error)));
       }
 
       const { id } = plugin.manifest;
@@ -121,6 +214,7 @@ export class PluginHost {
 
       const installed: InstalledPlugin = {
         id,
+        entry: committed.entry,
         enabled,
         plugin,
         scope: null,
@@ -139,8 +233,7 @@ export class PluginHost {
   enable(id: string): Promise<PluginInfo> {
     return this.exclusive(async () => {
       const installed = this.require(id);
-      if (!installed.plugin)
-        throw conflict('Plugin bundle could not be loaded; install it again');
+      if (!installed.plugin) throw conflict(Errors.PluginBundleUnloadable);
       await this.deps.state.setEnabled(id, true);
       installed.enabled = true;
       await this.activate(installed);
@@ -172,8 +265,7 @@ export class PluginHost {
 
   async updateSettings(id: string, values: unknown): Promise<PluginInfo> {
     const installed = this.require(id);
-    if (!installed.plugin)
-      throw conflict('Plugin bundle could not be loaded; install it again');
+    if (!installed.plugin) throw conflict(Errors.PluginBundleUnloadable);
     await this.deps.settings.update(installed.plugin.manifest, values);
     return this.describe(installed);
   }
@@ -222,16 +314,25 @@ export class PluginHost {
       () => this.deps.loader.load(path),
       this.deps.timeoutMs,
     );
-    if (!result.ok)
-      throw invalidInput(
+    if (!result.ok) {
+      this.deps.logger.error(
         `Could not import plugin bundle: ${result.error.message}`,
       );
+      throw invalidInput(Errors.PluginBundleImport);
+    }
     return validatePlugin(result.value);
   }
 
   private async activate(installed: InstalledPlugin): Promise<void> {
     if (installed.scope || !installed.plugin) return;
     const { definition, manifest } = installed.plugin;
+    const unmet = this.unmet(manifest);
+    if (unmet) {
+      // The reason is the CMS's own wording, so administrators see it as is.
+      Object.assign(installed, { status: 'failed', error: unmet });
+      this.deps.logger.warn(`Plugin "${installed.id}" not activated: ${unmet}`);
+      return;
+    }
     const scope = new PluginScope();
     const context = this.deps.contexts.create(manifest, scope);
     const result = await isolate(
@@ -268,15 +369,38 @@ export class PluginHost {
   }
 
   private fail(installed: InstalledPlugin, error: unknown): void {
-    Object.assign(installed, { status: 'failed', error: messageOf(error) });
+    Object.assign(installed, {
+      status: 'failed',
+      error: 'Plugin failed. Check server logs for details.',
+    });
     this.deps.logger.error(
       `Plugin "${installed.id}" failed: ${messageOf(error)}`,
     );
   }
 
+  /** Why the plugin cannot run here, or `null` when its requirements are met. */
+  private unmet({ requires }: ValidPlugin['manifest']): string | null {
+    const { versions } = this.deps;
+    const fits = (version: string, range: string) => {
+      try {
+        return versions.satisfies(version, range);
+      } catch {
+        return false;
+      }
+    };
+    if (requires.cms && !fits(versions.core, requires.cms))
+      return Errors.PluginRequiresCms(requires.cms, versions.core);
+    for (const [id, range] of Object.entries(requires.plugins)) {
+      const required = this.plugins.get(id);
+      if (!required?.scope || !fits(required.plugin!.manifest.version, range))
+        return Errors.PluginRequiresPlugin(id, range);
+    }
+    return null;
+  }
+
   private require(id: string): InstalledPlugin {
     const installed = this.plugins.get(id);
-    if (!installed) throw notFound('Plugin');
+    if (!installed) throw notFound(Errors.PluginNotFound);
     return installed;
   }
 
@@ -290,6 +414,7 @@ export class PluginHost {
       enabled: installed.enabled,
       status: installed.status,
       error: installed.error,
+      updatable: !!manifest?.updateUrl,
       settings: manifest?.settings ?? [],
       values: manifest ? await this.deps.settings.values(manifest) : {},
     };

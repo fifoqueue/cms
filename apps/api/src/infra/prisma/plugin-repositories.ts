@@ -4,8 +4,8 @@ import type {
   PluginDataScope,
   PluginStateRecord,
   PluginStateRepository,
-} from '../../plugin-runtime/ports';
-import type { Database } from './client';
+} from '#api/plugin-runtime/ports';
+import type { Database } from '#api/infra/prisma/client';
 
 export class PrismaPluginStateRepository implements PluginStateRepository {
   constructor(private readonly db: Database) {}

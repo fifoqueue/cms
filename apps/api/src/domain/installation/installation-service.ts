@@ -5,8 +5,8 @@ import type {
   InstallCompleteInput,
   SessionGrant,
 } from '@cms/sdk';
-import { conflict, unauthorized } from '../../shared/errors';
-import { parseInput } from '../../shared/validation';
+import { conflict, unauthorized, Errors } from '#api/shared/errors';
+import { parseInput } from '#api/shared/validation';
 
 /** Configuration is durable before configure resolves; complete is atomic. */
 export interface InstallationBackend {
@@ -37,7 +37,7 @@ export class InstallationService {
     const { token, ...database } = parseInput(installDatabaseSchema, input);
     return this.exclusive(token, async () => {
       if (this.backend.configured())
-        throw conflict('데이터베이스 연결은 이미 설정되었습니다.');
+        throw conflict(Errors.InstallDatabaseConfigured);
       await this.backend.configure(database);
       return this.status();
     });
@@ -47,9 +47,9 @@ export class InstallationService {
     const values = parseInput(installCompleteSchema, input);
     return this.exclusive(values.token, async () => {
       if (!this.backend.configured())
-        throw conflict('먼저 데이터베이스를 연결해 주세요.');
+        throw conflict(Errors.InstallDatabaseRequired);
       if (!(await this.backend.setupRequired()))
-        throw conflict('설치가 이미 완료되었습니다.');
+        throw conflict(Errors.InstallCompleted);
       return this.backend.complete(values);
     });
   }
@@ -58,10 +58,8 @@ export class InstallationService {
     token: string,
     task: () => Promise<T>,
   ): Promise<T> {
-    if (!this.validToken(token))
-      throw unauthorized('서버 콘솔의 설치 키를 확인해 주세요.');
-    if (this.busy)
-      throw conflict('설치가 진행 중입니다. 잠시 후 다시 시도해 주세요.');
+    if (!this.validToken(token)) throw unauthorized(Errors.InstallKeyInvalid);
+    if (this.busy) throw conflict(Errors.InstallBusy);
     this.busy = true;
     try {
       return await task();

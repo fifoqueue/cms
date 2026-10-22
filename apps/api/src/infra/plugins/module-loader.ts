@@ -1,5 +1,5 @@
 import { pathToFileURL } from 'node:url';
-import type { PluginModuleLoader } from '../../plugin-runtime/ports';
+import type { PluginModuleLoader } from '#api/plugin-runtime/ports';
 
 export const dynamicImportLoader: PluginModuleLoader = {
   async load(path) {

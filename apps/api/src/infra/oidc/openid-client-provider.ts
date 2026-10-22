@@ -18,9 +18,9 @@ import type {
   OidcChecks,
   OidcProvider,
   VerifiedIdentity,
-} from '../../domain/auth/sso-ports';
-import { messageOf, unauthorized } from '../../shared/errors';
-import type { Logger } from '../../shared/logger';
+} from '#api/domain/auth/sso-ports';
+import { messageOf, unauthorized, Errors } from '#api/shared/errors';
+import type { Logger } from '#api/shared/logger';
 
 export type OidcClientAuthMethod =
   'client_secret_basic' | 'client_secret_post' | 'none';
@@ -103,7 +103,7 @@ export class OpenIdClientProvider implements OidcProvider {
           : '';
 
       this.logger.warn(`Single sign-on rejected: ${messageOf(error)}${cause}`);
-      throw unauthorized('Single sign-on failed. Please try again.');
+      throw unauthorized(Errors.SsoFailed);
     }
   }
 

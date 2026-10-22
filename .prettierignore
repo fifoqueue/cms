@@ -6,3 +6,4 @@ dist
 data
 apps/api/src/infra/prisma/generated
 apps/api/prisma/migrations
+.web-releases

@@ -1,9 +1,9 @@
-import { readJson } from '../../../../request';
-import { json } from '../../../../respond';
-import type { ApiApp } from '../../../../services';
-import { session } from '../../../../session';
+import { readJson } from '#api/http/request';
+import { json } from '#api/http/respond';
+import type { ApiApp } from '#api/http/services';
+import { session } from '#api/http/session';
 
 export const routes = (app: ApiApp) =>
-  session(app).put('', async ({ site, request }) =>
+  session(app, 'settings.manage').put('', async ({ site, request }) =>
     json(await site.update(await readJson(request))),
   );

@@ -1,19 +1,42 @@
 import { describe, expect, test } from 'bun:test';
 import type { PublicContent } from '@cms/sdk';
+import { DEFAULT_SITE_SETTINGS, toPublicEntrySeo } from '@cms/sdk';
 import { definePlugin } from '@cms/sdk/plugin';
 import type { PluginDefinition } from '@cms/sdk/plugin';
-import { DomainError } from '../src/shared/errors';
-import { createRuntime } from './support/runtime';
+import { PublishedContentReader } from '#api/domain/content/public-content';
+import { SiteService } from '#api/domain/site/site-service';
+import { WidgetService } from '#api/domain/appearance/widget-service';
+import { SlotService } from '#api/plugin-runtime/slot-service';
+import { DomainError } from '#api/shared/errors';
+import {
+  ADMIN,
+  MemoryContentRepository,
+  MemorySettings,
+} from '#test/support/memory';
+import { MemoryPublishedContentRepository } from '#test/support/memory-published';
+import { MemorySeoSettingsRepository } from '#test/support/memory-seo';
+import { createRuntime } from '#test/support/runtime';
 
 const content: PublicContent = {
   id: '1',
   type: 'post',
   slug: 'hello',
+  path: '/hello',
+  seo: toPublicEntrySeo({}),
   title: 'Hello',
   excerpt: '',
   html: '<p>Hi</p>',
   publishedAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
+  categories: [],
+  tags: [],
+  extraTerms: [],
+  author: null,
+  sticky: false,
+  commentCount: 0,
+  protected: false,
+  featuredImage: null,
+  fields: {},
   meta: {},
 };
 const accept = () => true;
@@ -67,7 +90,7 @@ describe('PluginHost lifecycle', () => {
           title: 'hijacked',
         }));
         slots.provide('head', () => '<meta name="x">');
-        throw new Error('boom');
+        throw new Error('private-api-key-sentinel');
       },
     });
     await runtime.host.install(runtime.bundles.register('b', broken));
@@ -75,8 +98,12 @@ describe('PluginHost lifecycle', () => {
     expect(await runtime.host.enable('broken')).toMatchObject({
       enabled: true,
       status: 'failed',
-      error: 'boom',
+      error: 'Plugin failed. Check server logs for details.',
     });
+    expect(JSON.stringify(await runtime.host.list())).not.toContain(
+      'private-api-key-sentinel',
+    );
+    expect(runtime.lines.join('\n')).toContain('private-api-key-sentinel');
     expect((await publicView(runtime)).title).toBe('Hello');
     expect(
       (
@@ -98,7 +125,22 @@ describe('PluginHost lifecycle', () => {
     await runtime.host.install(runtime.bundles.register('h', hanging));
     const info = await runtime.host.enable('hanging');
     expect(info.status).toBe('failed');
-    expect(info.error).toContain('Timed out');
+    expect(info.error).toBe('Plugin failed. Check server logs for details.');
+    expect(runtime.lines.join('\n')).toContain('Timed out');
+  });
+
+  test('import diagnostics stay in server logs rather than API errors', async () => {
+    const runtime = createRuntime();
+    const source = runtime.bundles.register('secret-import', titlePlugin());
+    runtime.bundles.load = async () => {
+      throw new Error('private-import-sentinel');
+    };
+    await expect(runtime.host.install(source)).rejects.toMatchObject({
+      code: 'invalid_input',
+      message: 'Could not import plugin bundle',
+    });
+    expect(runtime.lines.join('\n')).toContain('private-import-sentinel');
+    expect(await runtime.host.list()).toEqual([]);
   });
 
   test('rejects bundles that do not follow the plugin contract', async () => {
@@ -249,6 +291,161 @@ describe('PluginHost lifecycle', () => {
     expect(statuses).toEqual({ good: 'active', gone: 'failed' });
     expect((await publicView(restarted)).title).toBe('Hello!');
   });
+
+  test('requirements block activation with a reason, and required plugins boot first', async () => {
+    const runtime = createRuntime();
+    const needing = (id: string, requires: object) =>
+      definePlugin({
+        manifest: { id, name: id, version: '1.0.0', requires },
+        activate({ hooks }) {
+          hooks.filter('content.public', (value) => ({
+            ...value,
+            title: `${value.title}+${id}`,
+          }));
+        },
+      });
+    // Installed before the plugin it needs, so boot must reorder them.
+    await runtime.host.install(
+      runtime.bundles.register(
+        'a',
+        needing('addon', { plugins: { base: '^1' } }),
+      ),
+    );
+    await runtime.host.install(
+      runtime.bundles.register('b', needing('base', { cms: '>=1.0.0' })),
+    );
+    await runtime.host.install(
+      runtime.bundles.register('c', needing('future', { cms: '>=9' })),
+    );
+    expect(await runtime.host.enable('addon')).toMatchObject({
+      status: 'failed',
+      error: 'Needs the plugin "base" ^1, active',
+    });
+    expect(await runtime.host.enable('future')).toMatchObject({
+      status: 'failed',
+      error: 'Needs CMS >=9; this site runs 1.0.0',
+    });
+    await runtime.host.enable('base');
+    await runtime.host.stop();
+
+    const restarted = createRuntime({ storage: runtime.storage });
+    await restarted.host.boot();
+    const statuses = Object.fromEntries(
+      (await restarted.host.list()).map((plugin) => [plugin.id, plugin.status]),
+    );
+    expect(statuses).toEqual({
+      addon: 'active',
+      base: 'active',
+      future: 'failed',
+    });
+    expect((await publicView(restarted)).title).toBe('Hello+base+addon');
+  });
+
+  test("update checks read the plugin's update address only", async () => {
+    const runtime = createRuntime();
+    const url = 'https://plugins.example/updatable.json';
+    await runtime.host.install(
+      runtime.bundles.register(
+        'u',
+        definePlugin({
+          manifest: {
+            id: 'updatable',
+            name: 'U',
+            version: '1.2.0',
+            updateUrl: url,
+          },
+          activate() {},
+        }),
+      ),
+    );
+    runtime.feeds.set(url, {
+      version: '1.10.0',
+      download: 'https://plugins.example/u.js',
+    });
+    expect(await runtime.host.checkUpdate('updatable')).toEqual({
+      current: '1.2.0',
+      latest: '1.10.0',
+      newer: true,
+      download: 'https://plugins.example/u.js',
+    });
+    runtime.feeds.set(url, { nope: true });
+    expect(
+      await runtime.host
+        .checkUpdate('updatable')
+        .catch((error: DomainError) => error.code),
+    ).toBe('invalid_input');
+  });
+
+  test('slots always cover every name, and read site and content only while a renderer is registered', async () => {
+    const runtime = createRuntime();
+    const settings = new MemorySeoSettingsRepository();
+    const repository = new MemoryContentRepository();
+    const reads: string[] = [];
+    let onRead = async () => {};
+    const get = settings.get.bind(settings);
+    settings.get = async (key) => {
+      reads.push(key);
+      await onRead();
+      return get(key);
+    };
+    const findById = repository.findById.bind(repository);
+    repository.findById = (id) => {
+      reads.push(id);
+      return findById(id);
+    };
+    const service = new SlotService({
+      registry: runtime.slots,
+      site: new SiteService(settings, runtime.hooks),
+      content: new PublishedContentReader(
+        new MemoryPublishedContentRepository(repository),
+      ),
+      paths: repository.permalinks,
+    });
+    const render = () => service.render({ path: '/hello', contentId: '1' });
+    const none = {
+      head: [],
+      'site.header': [],
+      'site.footer': [],
+      'content.before': [],
+      'content.after': [],
+      'comments.before': [],
+      'comments.after': [],
+    };
+
+    await runtime.host.install(
+      runtime.bundles.register(
+        'f',
+        definePlugin({
+          manifest: { id: 'footer', name: 'Footer', version: '1.0.0' },
+          activate({ slots }) {
+            slots.provide('site.footer', ({ site }) => `<p>${site.title}</p>`);
+            slots.provide('content.after', () => {
+              throw new Error('render failed');
+            });
+          },
+        }),
+      ),
+    );
+    expect(await render()).toEqual(none);
+    expect(reads).toEqual([]);
+
+    await runtime.host.enable('footer');
+    expect(await render()).toEqual({
+      ...none,
+      'site.footer': [`<p>${DEFAULT_SITE_SETTINGS.title}</p>`],
+    });
+    expect(reads).toEqual(['site', '1']);
+    expect(runtime.lines.join('\n')).toContain(
+      'failed to render slot "content.after"',
+    );
+
+    // Disabled while the request reads its context: the released renderers never run.
+    onRead = () => runtime.host.disable('footer').then(() => {});
+    expect(await render()).toEqual(none);
+    reads.length = 0;
+    expect(await render()).toEqual(none);
+    expect(reads).toEqual([]);
+  });
 });
 
 /**
@@ -276,6 +473,167 @@ const failState = (
     state.list = list;
   };
 };
+
+test('plugin widgets, embeds and tasks work while active; failing or disabled ones leave core intact', async () => {
+  const runtime = createRuntime();
+  const content = new MemoryContentRepository();
+  const widgets = new WidgetService({
+    settings: new MemorySettings(),
+    published: new MemoryPublishedContentRepository(content),
+    terms: { list: async () => [] },
+    menus: { publicItems: async () => null },
+    comments: { recent: async () => [] },
+    plugins: runtime.widgets,
+  });
+  await runtime.host.install(
+    runtime.bundles.register(
+      'w',
+      definePlugin({
+        manifest: { id: 'greeter', name: 'Greeter', version: '1.0.0' },
+        activate({ widgets: registrar, embeds, tasks }) {
+          embeds.register({ name: 'maps', render: () => '<iframe></iframe>' });
+          tasks.every('cleanup', 1000, () => undefined);
+          registrar.provide('hello', {
+            name: 'Hello',
+            render: () => '<p>hi</p>',
+          });
+          registrar.provide('broken', {
+            name: 'Broken',
+            render: () => {
+              throw new Error('boom');
+            },
+          });
+        },
+      }),
+    ),
+  );
+  await runtime.host.enable('greeter');
+  expect(widgets.types(ADMIN).plugins.map((type) => type.type)).toEqual([
+    'plugin:greeter:hello',
+    'plugin:greeter:broken',
+  ]);
+  await widgets.update(
+    {
+      sidebar: [
+        { id: 'a', type: 'search' },
+        { id: 'b', type: 'plugin:greeter:hello' },
+        { id: 'c', type: 'plugin:greeter:broken' },
+      ],
+    },
+    ADMIN,
+  );
+  expect((await widgets.getPublic()).sidebar.map((w) => w.kind)).toEqual([
+    'search',
+    'html',
+  ]);
+
+  expect(runtime.embeds.providers().map((provider) => provider.name)).toEqual([
+    'greeter:maps',
+  ]);
+  // Plugin tasks run at most once a minute.
+  expect(runtime.tasks.get('plugin:greeter:cleanup')?.intervalMs).toBe(60_000);
+
+  await runtime.host.disable('greeter');
+  expect(runtime.embeds.providers()).toEqual([]);
+  expect(runtime.tasks.size).toBe(0);
+  expect(widgets.types(ADMIN).plugins).toEqual([]);
+  expect((await widgets.getPublic()).sidebar.map((w) => w.kind)).toEqual([
+    'search',
+  ]);
+});
+
+test('plugin admin pages are data, checked, authorized and released with the plugin', async () => {
+  const runtime = createRuntime();
+  const saved: unknown[] = [];
+  await runtime.host.install(
+    runtime.bundles.register(
+      'p',
+      definePlugin({
+        manifest: { id: 'stats', name: 'Stats', version: '1.0.0' },
+        activate({ admin }) {
+          admin.page('overview', {
+            title: 'Overview',
+            render: () => [
+              { kind: 'stats', items: [{ label: 'Views', value: '42' }] },
+              {
+                kind: 'form',
+                action: 'reset',
+                submit: 'Reset',
+                fields: [{ key: 'days', label: 'Days', type: 'number' }],
+              },
+            ],
+            actions: {
+              reset: (values) => {
+                saved.push(values);
+                return { notice: 'Done' };
+              },
+            },
+          });
+          admin.page('broken', {
+            title: 'Broken',
+            render: () => [{ kind: 'html', html: '<script>' }] as never,
+          });
+        },
+      }),
+    ),
+  );
+  await runtime.host.enable('stats');
+  const editor = { id: 'e', role: 'editor' };
+  expect(runtime.pages.list(editor)).toEqual([]);
+  expect(runtime.pages.list(ADMIN).map((page) => page.key)).toEqual([
+    'overview',
+    'broken',
+  ]);
+  expect(
+    await runtime.pages
+      .render('stats', 'overview', editor)
+      .catch((error: DomainError) => error.code),
+  ).toBe('forbidden');
+  expect(
+    (await runtime.pages.render('stats', 'overview', ADMIN))?.blocks,
+  ).toHaveLength(2);
+  // Anything outside the block schema (markup included) never reaches the admin area.
+  expect(await runtime.pages.render('stats', 'broken', ADMIN)).toBeNull();
+  expect(
+    await runtime.pages
+      .run('stats', 'overview', 'reset', { days: 'many' }, ADMIN)
+      .catch((error: DomainError) => error.code),
+  ).toBe('invalid_input');
+  expect(
+    await runtime.pages.run('stats', 'overview', 'reset', { days: 7 }, ADMIN),
+  ).toEqual({ notice: 'Done' });
+  expect(saved).toEqual([{ days: 7 }]);
+
+  await runtime.host.disable('stats');
+  expect(runtime.pages.list(ADMIN)).toEqual([]);
+});
+
+test('another instance follows installs, upgrades, toggles and removals', async () => {
+  const first = createRuntime();
+  const second = createRuntime({ storage: first.storage });
+  await second.host.boot();
+
+  await first.host.install(
+    first.bundles.register('v1', titlePlugin('shared', '!')),
+  );
+  await first.host.enable('shared');
+  await second.host.reconcile();
+  expect((await publicView(second)).title).toBe('Hello!');
+
+  await first.host.install(
+    first.bundles.register('v2', titlePlugin('shared', '?')),
+  );
+  await second.host.reconcile();
+  expect((await publicView(second)).title).toBe('Hello?');
+
+  await first.host.disable('shared');
+  await second.host.reconcile();
+  expect((await publicView(second)).title).toBe('Hello');
+
+  await first.host.remove('shared');
+  await second.host.reconcile();
+  expect(await second.host.list()).toEqual([]);
+});
 
 describe('PluginHost install atomicity', () => {
   test('an unsaved upgrade keeps the previous version running and both bundles until a later upgrade succeeds', async () => {

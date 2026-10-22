@@ -5,15 +5,15 @@ import type {
   SessionRepository,
   UserRecord,
   UserRepository,
-} from '../../src/domain/auth/ports';
+} from '#api/domain/auth/ports';
 import type {
   AdmissionLimits,
   ExternalIdentityRecord,
   ExternalIdentityRepository,
   SsoTransactionRecord,
   SsoTransactionRepository,
-} from '../../src/domain/auth/sso-ports';
-import { conflict, unauthorized } from '../../src/shared/errors';
+} from '#api/domain/auth/sso-ports';
+import { conflict, unauthorized } from '#api/shared/errors';
 
 export class MemoryUsers implements UserRepository {
   readonly rows = new Map<string, UserRecord>();
@@ -37,6 +37,19 @@ export class MemoryUsers implements UserRepository {
       throw conflict('Email is already registered');
     this.rows.set(user.id, structuredClone(user));
   }
+
+  async setPassword(id: string, passwordHash: string) {
+    const row = this.rows.get(id);
+    if (row) row.passwordHash = passwordHash;
+  }
+
+  async takenSlugs(slugs: readonly string[]) {
+    return new Set(
+      [...this.rows.values()]
+        .map((row) => row.slug)
+        .filter((slug) => slugs.includes(slug)),
+    );
+  }
 }
 
 /** Sessions with the identity foreign key of the DB: bound sessions need a live identity. */
@@ -45,6 +58,7 @@ export class MemorySessions implements SessionRepository {
 
   constructor(
     private readonly identityExists: (id: string) => boolean = () => false,
+    private readonly users: MemoryUsers = new MemoryUsers(),
   ) {}
 
   async insert(session: SessionRecord) {
@@ -56,11 +70,23 @@ export class MemorySessions implements SessionRepository {
   }
 
   async find(tokenHash: string) {
-    return structuredClone(this.rows.get(tokenHash) ?? null);
+    const session = this.rows.get(tokenHash);
+    const user = session && this.users.rows.get(session.userId);
+    return user ? structuredClone({ ...session, user }) : null;
   }
 
   async delete(tokenHash: string) {
     this.rows.delete(tokenHash);
+  }
+
+  async deleteForUser(userId: string, keep?: string) {
+    for (const [key, row] of this.rows)
+      if (row.userId === userId && key !== keep) this.rows.delete(key);
+  }
+
+  async deleteExpired(now: Date) {
+    for (const [key, row] of this.rows)
+      if (row.expiresAt <= now) this.rows.delete(key);
   }
 
   /** `ON DELETE CASCADE` from the identity. */
@@ -110,9 +136,10 @@ export class MemoryIdentities implements ExternalIdentityRepository {
 }
 
 /** Sessions and identities wired like the DB tables they stand for. */
-export const createMemoryAuthStore = () => {
-  const sessions: MemorySessions = new MemorySessions((id) =>
-    identities.has(id),
+export const createMemoryAuthStore = (users = new MemoryUsers()) => {
+  const sessions: MemorySessions = new MemorySessions(
+    (id) => identities.has(id),
+    users,
   );
   const identities = new MemoryIdentities(sessions);
 

@@ -8,6 +8,11 @@ export const siteSettingsSchema = z.object({
 
 export type SiteSettings = z.output<typeof siteSettingsSchema>;
 
+/** Public display settings only; credentials and operational settings never belong here. */
+export const publicSiteSchema = siteSettingsSchema;
+export type PublicSiteDto = z.output<typeof publicSiteSchema>;
+export type AdminSiteDto = SiteSettings;
+
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   title: 'My Site',
   description: '',

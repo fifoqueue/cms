@@ -1,5 +1,5 @@
 import type { SettingField, SettingValues } from '@cms/sdk';
-import { text } from './errors';
+import { text } from '#lib/server/errors.js';
 
 /** Reads `PluginSettingsForm.svelte` fields according to the plugin's own field definitions. */
 export const readPluginSettings = (

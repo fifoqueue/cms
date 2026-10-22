@@ -1,8 +1,9 @@
 import { SLOT_NAMES } from '@cms/sdk';
 import type { SlotMap, SlotName } from '@cms/sdk';
 import type { SlotContext, SlotRegistrar, SlotRenderer } from '@cms/sdk/plugin';
-import { isolate } from '../shared/isolate';
-import type { Logger } from '../shared/logger';
+import { isolate } from '#api/shared/isolate';
+import type { Logger } from '#api/shared/logger';
+import { Errors } from '#api/shared/errors';
 
 interface Contribution {
   owner: string;
@@ -15,6 +16,12 @@ export interface SlotRegistryOptions {
   logger: Logger;
 }
 
+/** Every slot, each without fragments. */
+export const emptySlots = (): SlotMap =>
+  Object.fromEntries(
+    SLOT_NAMES.map((name) => [name, [] as string[]]),
+  ) as SlotMap;
+
 /** Collects HTML fragments for the frontend slots. A failing renderer contributes nothing. */
 export class SlotRegistry {
   private contributions: Contribution[] = [];
@@ -25,7 +32,7 @@ export class SlotRegistry {
     return {
       provide: (slot, renderer) => {
         if (!SLOT_NAMES.includes(slot))
-          throw new Error(`Unknown slot "${slot}"`);
+          throw new Error(Errors.PluginSlotUnknown(slot));
         const contribution = { owner, slot, renderer };
         this.contributions = [...this.contributions, contribution];
         return () => {
@@ -37,10 +44,13 @@ export class SlotRegistry {
     };
   }
 
+  /** True while no renderer is registered for any slot. */
+  get empty(): boolean {
+    return this.contributions.length === 0;
+  }
+
   async render(context: Omit<SlotContext, 'slot'>): Promise<SlotMap> {
-    const slots = Object.fromEntries(
-      SLOT_NAMES.map((name) => [name, [] as string[]]),
-    ) as SlotMap;
+    const slots = emptySlots();
     const results = await Promise.all(
       this.contributions.map(async ({ owner, slot, renderer }) => ({
         owner,

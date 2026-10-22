@@ -1,16 +1,17 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { fileURLToPath } from 'node:url';
-import type { SsoTransactionRecord } from '../src/domain/auth/sso-ports';
+import type { SsoTransactionRecord } from '#api/domain/auth/sso-ports';
 import {
   PrismaSessionRepository,
   PrismaUserRepository,
-} from '../src/infra/prisma/auth-repositories';
-import { createDatabase } from '../src/infra/prisma/client';
-import type { Database } from '../src/infra/prisma/client';
+} from '#api/infra/prisma/auth-repositories';
+import { createDatabase } from '#api/infra/prisma/client';
+import { userRecord } from '#test/support/memory';
+import type { Database } from '#api/infra/prisma/client';
 import {
   PrismaIdentityRepository,
   PrismaSsoTransactionRepository,
-} from '../src/infra/prisma/sso-repositories';
+} from '#api/infra/prisma/sso-repositories';
 
 /**
  * The SSO Prisma adapters on a real MariaDB. Opt in with `CMS_TEST_DATABASE_URL`, a server
@@ -95,13 +96,7 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
   const users = async (...ids: string[]) => {
     const repository = new PrismaUserRepository(db);
     for (const id of ids)
-      await repository.insert({
-        id,
-        email: `${id}@example.com`,
-        name: id,
-        passwordHash: 'x',
-        createdAt: new Date(),
-      });
+      await repository.insert(userRecord({ id, createdAt: new Date() }));
   };
 
   test(

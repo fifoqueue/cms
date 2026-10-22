@@ -1,17 +1,30 @@
 import { loginSchema, setupSchema } from '@cms/sdk';
-import type { SessionGrant, SetupStatus, UserProfile } from '@cms/sdk';
-import { conflict, unauthorized } from '../../shared/errors';
-import { parseInput } from '../../shared/validation';
-import type { Clock, IdGenerator } from '../ports';
+import type {
+  Capability,
+  SessionGrant,
+  SetupStatus,
+  UserProfile,
+} from '@cms/sdk';
+import { conflict, unauthorized, Errors } from '#api/shared/errors';
+import { parseInput } from '#api/shared/validation';
+import { toProfile } from '#api/domain/users/user-mapper';
+import { slugify } from '#api/domain/content/slug';
+import type { Clock, IdGenerator } from '#api/domain/ports';
+import type { ApiTokenService } from '#api/domain/auth/api-tokens';
+import type {
+  Attempt,
+  ProtectionService,
+} from '#api/domain/security/protection-service';
 import type {
   PasswordHasher,
   SessionRepository,
   TokenIssuer,
   UserRecord,
   UserRepository,
-} from './ports';
+} from '#api/domain/auth/ports';
 
 export interface AuthServiceDeps {
+  roles?: { capabilities(role: string): Promise<Capability[]> };
   users: UserRepository;
   sessions: SessionRepository;
   hasher: PasswordHasher;
@@ -19,13 +32,11 @@ export interface AuthServiceDeps {
   ids: IdGenerator;
   clock: Clock;
   sessionTtlMs: number;
+  /** Rate limits and captcha for sign-in; absent during installation. */
+  protection?: ProtectionService;
+  /** Application passwords accepted as bearer tokens besides sessions. */
+  apiTokens?: Pick<ApiTokenService, 'authenticate'>;
 }
-
-const toProfile = ({ id, email, name }: UserRecord): UserProfile => ({
-  id,
-  email,
-  name,
-});
 
 export class AuthService {
   private dummyHash: Promise<string> | undefined;
@@ -40,27 +51,52 @@ export class AuthService {
   async setup(input: unknown): Promise<SessionGrant> {
     const { name, email, password } = parseInput(setupSchema, input);
     if ((await this.deps.users.count()) > 0)
-      throw conflict('Setup has already been completed');
+      throw conflict(Errors.SetupCompleted);
+    const id = this.deps.ids.next();
     const user: UserRecord = {
-      id: this.deps.ids.next(),
+      id,
       email: email.toLowerCase(),
       name,
       passwordHash: await this.deps.hasher.hash(password),
+      // The installing user runs the site.
+      role: 'administrator',
+      slug: slugify(name) || `user-${id.slice(-12)}`,
+      bio: '',
+      locale: '',
       createdAt: this.deps.clock.now(),
     };
     await this.deps.users.insert(user);
     return this.startSession(user);
   }
 
-  async login(input: unknown): Promise<SessionGrant> {
+  /**
+   * Signs in with email and password. `client` identifies the visitor for rate limits; only
+   * attempts count atomically before password work, so parallel guesses cannot bypass limits.
+   */
+  async login(
+    input: unknown,
+    client: Omit<Attempt, 'action' | 'account'> = {
+      client: null,
+      address: null,
+      captchaToken: null,
+    },
+  ): Promise<SessionGrant> {
     const { email, password } = parseInput(loginSchema, input);
+    const attempt: Attempt = {
+      ...client,
+      action: 'login',
+      account: email.toLowerCase(),
+    };
+    await this.deps.protection?.check(attempt);
     const user = await this.deps.users.findByEmail(email.toLowerCase());
     // Verify against a dummy hash for unknown emails so response time does not reveal accounts.
     const hash =
       user?.passwordHash ??
       (await (this.dummyHash ??= this.deps.hasher.hash('dummy-password')));
     const valid = await this.deps.hasher.verify(password, hash);
-    if (!user || !valid) throw unauthorized('Invalid email or password');
+    if (!user || !valid) {
+      throw unauthorized(Errors.InvalidCredentials);
+    }
     return this.startSession(user);
   }
 
@@ -68,7 +104,10 @@ export class AuthService {
     await this.deps.sessions.delete(this.deps.tokens.digest(token));
   }
 
+  /** The user of a session token or, when enabled, an application password. */
   async authenticate(token: string): Promise<UserProfile | null> {
+    const apiUser = await this.deps.apiTokens?.authenticate(token);
+    if (apiUser) return this.profile(apiUser);
     const tokenHash = this.deps.tokens.digest(token);
     const session = await this.deps.sessions.find(tokenHash);
     if (!session) return null;
@@ -76,8 +115,14 @@ export class AuthService {
       await this.deps.sessions.delete(tokenHash);
       return null;
     }
-    const user = await this.deps.users.findById(session.userId);
-    return user ? toProfile(user) : null;
+    return this.profile(session.user);
+  }
+
+  private async profile(user: UserRecord): Promise<UserProfile> {
+    const profile = toProfile(user);
+    if (this.deps.roles)
+      profile.capabilities = await this.deps.roles.capabilities(user.role);
+    return profile;
   }
 
   /**
@@ -89,15 +134,18 @@ export class AuthService {
     identityId: string | null = null,
   ): Promise<SessionGrant> {
     const token = this.deps.tokens.issue();
-    const expiresAt = new Date(
-      this.deps.clock.now().getTime() + this.deps.sessionTtlMs,
-    );
+    const now = this.deps.clock.now();
+    const expiresAt = new Date(now.getTime() + this.deps.sessionTtlMs);
     await this.deps.sessions.insert({
       tokenHash: this.deps.tokens.digest(token),
       userId: user.id,
       identityId,
       expiresAt,
     });
-    return { token, expiresAt: expiresAt.toISOString(), user: toProfile(user) };
+    return {
+      token,
+      expiresAt: expiresAt.toISOString(),
+      user: await this.profile(user),
+    };
   }
 }

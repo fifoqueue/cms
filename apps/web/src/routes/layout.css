@@ -42,6 +42,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -117,6 +118,27 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Public site: article typography follows the active theme's tokens (set on `.cms-site`). */
+.cms-site .prose {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-lead: var(--muted-foreground);
+  --tw-prose-links: var(--primary);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: var(--muted-foreground);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--foreground);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-kbd: var(--foreground);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-pre-code: var(--foreground);
+  --tw-prose-pre-bg: var(--card);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -126,5 +148,9 @@
   }
   html {
     @apply font-sans;
+  }
+  /* Admin: native checkboxes and radios line up with the text and icons beside them. */
+  .cms-admin :is(input[type='checkbox'], input[type='radio']) {
+    @apply size-4 shrink-0 accent-primary;
   }
 }

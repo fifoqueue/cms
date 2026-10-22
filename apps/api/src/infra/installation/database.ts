@@ -1,9 +1,9 @@
 import { spawn } from 'bun';
 import { fileURLToPath } from 'node:url';
 import type { DatabaseSetupInput } from '@cms/sdk';
-import { createDatabase } from '../prisma/client';
-import { invalidInput } from '../../shared/errors';
-import { API_DIRECTORY } from './config-store';
+import { createDatabase } from '#api/infra/prisma/client';
+import { invalidInput, Errors } from '#api/shared/errors';
+import { API_DIRECTORY } from '#api/infra/installation/config-store';
 
 export const databaseUrl = (input: DatabaseSetupInput) => {
   const host =
@@ -19,9 +19,7 @@ export const prepareDatabase = async (url: string) => {
   try {
     await db.$queryRaw`SELECT 1`;
   } catch {
-    throw invalidInput(
-      '데이터베이스에 연결할 수 없습니다. 주소·계정·데이터베이스 이름과 접근 권한을 확인해 주세요.',
-    );
+    throw invalidInput(Errors.InstallDatabaseUnreachable);
   } finally {
     await db.$disconnect();
   }
@@ -39,7 +37,5 @@ export const prepareDatabase = async (url: string) => {
     timeout: 120_000,
   });
   if ((await migration.exited) !== 0)
-    throw invalidInput(
-      '테이블 준비에 실패했습니다. DB 계정의 테이블 생성 권한과 마이그레이션 상태를 확인해 주세요. 기존 데이터는 초기화하지 않습니다.',
-    );
+    throw invalidInput(Errors.InstallMigrationFailed);
 };

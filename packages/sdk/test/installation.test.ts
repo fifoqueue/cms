@@ -1,9 +1,6 @@
 import { expect, test } from 'bun:test';
-import { createInstallationClient } from '../src/client';
-import {
-  databaseSetupSchema,
-  installCompleteSchema,
-} from '../src/installation';
+import { createInstallationClient } from '#sdk/client';
+import { databaseSetupSchema, installCompleteSchema } from '#sdk/installation';
 
 test('installation client uses the shared HTTP contract', async () => {
   const calls: { url: string; method?: string; body: unknown }[] = [];
@@ -15,7 +12,23 @@ test('installation client uses the shared HTTP contract', async () => {
         method: init?.method,
         body: init?.body ? JSON.parse(String(init.body)) : undefined,
       });
-      return Response.json({ databaseConfigured: false, setupRequired: true });
+      return Response.json(
+        String(input).endsWith('/complete')
+          ? {
+              token: 'session',
+              expiresAt: '2026-01-01T00:00:00.000Z',
+              user: {
+                id: '1',
+                email: 'admin@example.com',
+                name: '관리자',
+                role: 'administrator',
+                slug: 'admin',
+                bio: '',
+                locale: '',
+              },
+            }
+          : { databaseConfigured: false, setupRequired: true },
+      );
     }) as typeof fetch,
   });
   const database = {

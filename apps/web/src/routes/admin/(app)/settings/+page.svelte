@@ -11,18 +11,22 @@
   import { Input } from '#lib/components/ui/input/index.js';
   import { Label } from '#lib/components/ui/label/index.js';
   import { Textarea } from '#lib/components/ui/textarea/index.js';
+  import { useI18n } from '#lib/i18n/index.js';
   import type { PageProps } from './$types';
 
   let { data, form }: PageProps = $props();
+
+  const i18n = useI18n();
+  const m = $derived(i18n.m);
 </script>
 
-<svelte:head><title>Settings</title></svelte:head>
+<svelte:head><title>{m.navSettings}</title></svelte:head>
 
-<h1 class="text-2xl font-semibold">Settings</h1>
+<h1 class="text-2xl font-semibold">{m.navSettings}</h1>
 <FormMessage {form} />
 
 <Card>
-  <CardHeader><CardTitle>Site</CardTitle></CardHeader>
+  <CardHeader><CardTitle>{m.settingsSite}</CardTitle></CardHeader>
   <CardContent>
     <form
       method="POST"
@@ -32,7 +36,7 @@
       class="space-y-4"
     >
       <div class="grid gap-2">
-        <Label for="title">Title</Label>
+        <Label for="title">{m.siteTitle}</Label>
         <Input
           id="title"
           name="title"
@@ -42,7 +46,7 @@
         />
       </div>
       <div class="grid gap-2">
-        <Label for="description">Description</Label>
+        <Label for="description">{m.siteDescription}</Label>
         <Textarea
           id="description"
           name="description"
@@ -51,7 +55,7 @@
         />
       </div>
       <div class="grid gap-2">
-        <Label for="locale">Locale</Label>
+        <Label for="locale">{m.siteLocale}</Label>
         <Input
           id="locale"
           name="locale"
@@ -61,7 +65,7 @@
           value={data.site.locale}
         />
       </div>
-      <Button type="submit">Save</Button>
+      <Button type="submit">{m.save}</Button>
     </form>
   </CardContent>
 </Card>

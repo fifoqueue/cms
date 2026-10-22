@@ -10,3 +10,5 @@ apps/api/src/infra/prisma/generated
 *.timestamp-*
 .DS_Store
 Thumbs.db
+apps/web/.web-releases/
+apps/web/.active-web-release

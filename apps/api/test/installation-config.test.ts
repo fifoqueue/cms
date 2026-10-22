@@ -2,16 +2,16 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadConfig } from '../src/config';
+import { loadConfig } from '#api/config';
 import {
   readInstallationConfig,
   saveInstallationConfig,
-} from '../src/infra/installation/config-store';
-import { databaseUrl } from '../src/infra/installation/database';
+} from '#api/infra/installation/config-store';
+import { databaseUrl } from '#api/infra/installation/database';
 
 describe('Installation configuration', () => {
   test('starts without DATABASE_URL but does not silently accept broken explicit configuration', () => {
-    expect(loadConfig({})).toMatchObject({ PORT: 4000 });
+    expect(loadConfig({})).toMatchObject({ API_PORT: 4000 });
     expect(loadConfig({}).DATABASE_URL).toBeUndefined();
     expect(() => loadConfig({ DATABASE_URL: '' })).toThrow(
       'Invalid configuration',

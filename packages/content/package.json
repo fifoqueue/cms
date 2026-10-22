@@ -3,9 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "imports": {
+    "#content/*": "./src/*.ts"
+  },
   "exports": {
     ".": "./src/extensions.ts",
-    "./render": "./src/render.ts"
+    "./render": "./src/render.ts",
+    "./urls": "./src/urls.ts",
+    "./parse": "./src/parse.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p ."
@@ -13,8 +18,12 @@
   "dependencies": {
     "@cms/sdk": "workspace:*",
     "@tiptap/core": "^3.32.0",
+    "@tiptap/extension-image": "^3.32.0",
+    "@tiptap/extension-table": "^3.32.0",
+    "@tiptap/html": "3.32.0",
     "@tiptap/pm": "^3.32.0",
     "@tiptap/starter-kit": "^3.32.0",
-    "@tiptap/static-renderer": "^3.32.0"
+    "@tiptap/static-renderer": "^3.32.0",
+    "happy-dom": "^20.14.6"
   }
 }

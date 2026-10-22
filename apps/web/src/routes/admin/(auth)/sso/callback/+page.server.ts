@@ -1,6 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { resolve } from '$app/paths';
 import { CmsApiError } from '@cms/sdk/client';
+import { Errors } from '#lib/server/errors.js';
 import { startSession } from '#lib/server/session.js';
 import { ssoApi, takeSsoTransaction } from '#lib/server/sso.js';
 import type { PageServerLoad } from './$types';
@@ -14,7 +15,7 @@ export const load: PageServerLoad = async ({ url, cookies, fetch, locals }) => {
   if (!transaction)
     return {
       back,
-      message: 'The sign-in request has expired. Please try again.',
+      message: Errors.SsoRequestExpired,
     };
 
   let result;

@@ -1,17 +1,23 @@
-import { PublishedContentReader } from '../../src/domain/content/public-content';
-import { HookBus } from '../../src/plugin-runtime/hook-bus';
-import { PluginContextFactory } from '../../src/plugin-runtime/plugin-context-factory';
-import { PluginHost } from '../../src/plugin-runtime/plugin-host';
-import { PluginSettings } from '../../src/plugin-runtime/plugin-settings';
-import { PluginRouteRegistry } from '../../src/plugin-runtime/route-registry';
-import { SlotRegistry } from '../../src/plugin-runtime/slot-registry';
+import { PublishedContentReader } from '#api/domain/content/public-content';
+import { HookBus } from '#api/plugin-runtime/hook-bus';
+import { PluginContextFactory } from '#api/plugin-runtime/plugin-context-factory';
+import { PluginHost } from '#api/plugin-runtime/plugin-host';
+import { PluginSettings } from '#api/plugin-runtime/plugin-settings';
+import { PluginRouteRegistry } from '#api/plugin-runtime/route-registry';
+import { SlotRegistry } from '#api/plugin-runtime/slot-registry';
+import { WidgetRegistry } from '#api/plugin-runtime/widget-registry';
+import { EmbedRegistry } from '#api/plugin-runtime/embed-registry';
+import { AdminPageRegistry } from '#api/plugin-runtime/admin-page-registry';
+import type { TaskScheduler } from '#api/plugin-runtime/ports';
+import { semverPolicy } from '#api/infra/system';
 import {
   MemoryBundles,
   MemoryContentRepository,
   MemoryPluginData,
   MemoryPluginState,
   recordingLogger,
-} from './memory';
+} from '#test/support/memory';
+import { MemoryPublishedContentRepository } from '#test/support/memory-published';
 
 export interface RuntimeStorage {
   data: MemoryPluginData;
@@ -37,18 +43,39 @@ export const createRuntime = ({
   const { data, state, bundles } = storage;
   const hooks = new HookBus({ timeoutMs, logger });
   const slots = new SlotRegistry({ timeoutMs, logger });
+  const widgets = new WidgetRegistry({ timeoutMs, logger });
+  const embeds = new EmbedRegistry({ timeoutMs, logger });
+  const pages = new AdminPageRegistry({ timeoutMs, logger });
+  /** Registered plugin tasks by name; tests run them directly. */
+  const tasks = new Map<string, Parameters<TaskScheduler['add']>[0]>();
+  const scheduler: TaskScheduler = {
+    add: (task) => {
+      tasks.set(task.name, task);
+      return () => void tasks.delete(task.name);
+    },
+  };
   const routes = new PluginRouteRegistry();
   const settings = new PluginSettings(data);
   const contexts = new PluginContextFactory({
     hooks,
     slots,
+    widgets,
+    embeds,
+    scheduler,
+    pages,
     routes,
     data,
     settings,
-    content: new PublishedContentReader(new MemoryContentRepository()),
+    content: new PublishedContentReader(
+      new MemoryPublishedContentRepository(new MemoryContentRepository()),
+    ),
     logger: () => logger,
   });
+  /** Answers of plugin update addresses, by URL. */
+  const feeds = new Map<string, unknown>();
   const host = new PluginHost({
+    versions: semverPolicy('1.0.0'),
+    updates: { read: async (url) => feeds.get(url) },
     state,
     packages: bundles,
     loader: bundles,
@@ -57,5 +84,20 @@ export const createRuntime = ({
     logger,
     timeoutMs,
   });
-  return { host, hooks, slots, routes, data, state, bundles, storage, lines };
+  return {
+    host,
+    hooks,
+    slots,
+    widgets,
+    embeds,
+    pages,
+    tasks,
+    feeds,
+    routes,
+    data,
+    state,
+    bundles,
+    storage,
+    lines,
+  };
 };

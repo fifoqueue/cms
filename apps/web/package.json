@@ -5,18 +5,18 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "vite build && bun scripts/release.js",
     "preview": "vite preview",
-    "start": "bun build/index.js",
+    "start": "bun --no-env-file server.js",
     "prepare": "svelte-kit sync || echo ''",
     "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "@cms/content": "workspace:*",
     "@cms/sdk": "workspace:*",
-    "@swc/html": "^1.16.18",
     "@tiptap/core": "^3.32.0",
-    "@tiptap/pm": "^3.32.0"
+    "@tiptap/pm": "^3.32.0",
+    "parse5": "^8.0.1"
   },
   "devDependencies": {
     "@fontsource-variable/inter": "^5.3.0",
@@ -30,7 +30,6 @@
     "@types/node": "^26.6.5",
     "bits-ui": "^2.20.0",
     "cn": "^0.5.0",
-    "parse5": "^8.0.1",
     "shadcn-svelte": "^1.7.0",
     "svelte": "^5.57.2",
     "svelte-check": "^4.7.7",
@@ -41,6 +40,10 @@
     "vite": "^8.3.5"
   },
   "imports": {
+    "#web-env": "./env-filter.js",
+    "#web-release": "./scripts/release.js",
+    "#web-test/*": "./test/*",
+    "#web/*": "./src/*",
     "#lib": "./src/lib/index.js",
     "#lib/*": "./src/lib/*"
   }

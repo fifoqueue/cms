@@ -14,3 +14,22 @@ export const idParams = params('id');
 export const slugParams = params('slug');
 
 export const pluginParams = params('pluginId');
+
+export const tokenParams = params('token');
+
+export const revisionParams = {
+  params: t.Object({ id: t.String(), revisionId: t.String() }),
+};
+
+/** Routes ending in `[...].ts`: the rest of the path. */
+export const restParams = params('*');
+
+export const keyParams = params('key');
+
+export const themeTemplateParams = {
+  params: t.Object({ id: t.String(), name: t.String() }),
+};
+
+export const themePartParams = {
+  params: t.Object({ id: t.String(), slug: t.String() }),
+};

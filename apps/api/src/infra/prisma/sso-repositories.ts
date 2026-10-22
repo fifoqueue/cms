@@ -4,9 +4,10 @@ import type {
   ExternalIdentityRepository,
   SsoTransactionRecord,
   SsoTransactionRepository,
-} from '../../domain/auth/sso-ports';
-import { guardUnique } from './client';
-import type { Database } from './client';
+} from '#api/domain/auth/sso-ports';
+import { guardUnique } from '#api/infra/prisma/client';
+import { Errors } from '#api/shared/errors';
+import type { Database } from '#api/infra/prisma/client';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -72,7 +73,7 @@ export class PrismaIdentityRepository implements ExternalIdentityRepository {
             },
           }),
         ]),
-      'This single sign-on account is already linked to another administrator.',
+      Errors.SsoAccountLinkedElsewhere,
     );
   }
 

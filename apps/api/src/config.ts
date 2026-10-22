@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Errors } from '#api/shared/errors';
 
 export const databaseUrlSchema = z.url({ protocol: /^(mysql|mariadb)$/ });
 
@@ -11,7 +12,7 @@ const subjectAllowlistSchema = z
     } catch {
       ctx.issues.push({
         code: 'custom',
-        message: 'must be a JSON object',
+        message: Errors.ConfigNotJsonObject,
         input: value,
       });
       return z.NEVER;
@@ -38,10 +39,29 @@ const urlWithoutQuery = (protocol: RegExp) =>
 const configSchema = z
   .object({
     DATABASE_URL: databaseUrlSchema.optional(),
-    PORT: z.coerce.number().int().min(1).max(65535).default(4000),
+    API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
+    /** Only the web server talks to the API, so it listens on this machine unless told otherwise. */
+    API_HOST: z.string().trim().min(1).default('127.0.0.1'),
     PLUGINS_DIR: z.string().min(1).default('data/plugins'),
     SESSION_TTL_HOURS: z.coerce.number().int().min(1).default(336),
     PLUGIN_TIMEOUT_MS: z.coerce.number().int().min(10).default(3000),
+    /** Uploaded media files. Share it between API instances. */
+    MEDIA_DIR: z.string().min(1).default('data/media'),
+    /** Largest media upload in megabytes. The web server's BODY_SIZE_LIMIT must allow it too. */
+    MEDIA_MAX_MB: z.coerce.number().int().min(1).max(64).default(20),
+    /** How often each API process checks for due recurring tasks and jobs. */
+    SCHEDULER_INTERVAL_MS: z.coerce.number().int().min(250).default(5000),
+    /**
+     * Optional: the web server fetches a secret derived from the secret key once an administrator
+     * signs in. Set it on both servers to skip that. Only requests carrying it may state which
+     * browser address they act for, so rate limits count visitors separately.
+     */
+    CMS_FRONTEND_SECRET: z.string().min(32).optional(),
+    /**
+     * Key for secrets stored in the database (captcha, mail, search). Defaults to a key file
+     * created in `data/` on first use; keep it with your database backups.
+     */
+    CMS_SECRET_KEY: z.string().min(32).optional(),
 
     // OpenID Connect single sign-on. Off unless issuer, client id and redirect URI are all set.
     OIDC_ISSUER: urlWithoutQuery(/^https$/)
@@ -91,10 +111,7 @@ const configSchema = z
       .min(1)
       .max(100_000)
       .default(10),
-    /**
-     * Shared with the web app (same variable). Only requests carrying it may state which browser
-     * address they act for; required while single sign-on is on.
-     */
+    /** Older name of `CMS_FRONTEND_SECRET`. */
     OIDC_FRONTEND_SECRET: z.string().min(32).optional(),
     OIDC_ALLOWED_SUBJECTS: subjectAllowlistSchema.default({}),
   })
@@ -112,21 +129,14 @@ const configSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['OIDC_ISSUER'],
-        message: `${required.join(', ')} must be set together`,
-      });
-
-    if (config.OIDC_ISSUER && !config.OIDC_FRONTEND_SECRET)
-      ctx.addIssue({
-        code: 'custom',
-        path: ['OIDC_FRONTEND_SECRET'],
-        message: 'required while single sign-on is on',
+        message: Errors.ConfigSetTogether(required),
       });
 
     if (config.OIDC_MAX_PENDING_PER_CLIENT > config.OIDC_MAX_PENDING_REQUESTS)
       ctx.addIssue({
         code: 'custom',
         path: ['OIDC_MAX_PENDING_PER_CLIENT'],
-        message: 'must not exceed OIDC_MAX_PENDING_REQUESTS',
+        message: Errors.ConfigPendingLimitTooHigh,
       });
 
     if (
@@ -135,7 +145,7 @@ const configSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['OIDC_STARTS_PER_MINUTE_PER_CLIENT'],
-        message: 'must not exceed OIDC_STARTS_PER_MINUTE',
+        message: Errors.ConfigStartLimitTooHigh,
       });
 
     if (
@@ -146,7 +156,9 @@ const configSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['OIDC_CLIENT_SECRET'],
-        message: `required for ${config.OIDC_CLIENT_AUTH_METHOD}`,
+        message: Errors.ConfigClientSecretRequired(
+          config.OIDC_CLIENT_AUTH_METHOD,
+        ),
       });
   });
 
@@ -160,5 +172,5 @@ export const loadConfig = (
   const problems = result.error.issues.map(
     ({ path, message }) => `${path.join('.')}: ${message}`,
   );
-  throw new Error(`Invalid configuration:\n  ${problems.join('\n  ')}`);
+  throw new Error(Errors.ConfigInvalid(problems));
 };

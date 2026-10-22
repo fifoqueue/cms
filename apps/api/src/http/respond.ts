@@ -1,14 +1,18 @@
 import type { ApiErrorBody } from '@cms/sdk';
-import { DomainError } from '../shared/errors';
-import type { ErrorCode } from '../shared/errors';
-import type { Logger } from '../shared/logger';
+import { DomainError } from '#api/shared/errors';
+import type { ErrorCode } from '#api/shared/errors';
+import type { Logger } from '#api/shared/logger';
+import { Errors } from '#api/shared/errors';
 
 const STATUS: Record<ErrorCode, number> = {
   invalid_input: 400,
   unauthorized: 401,
+  forbidden: 403,
   not_found: 404,
   conflict: 409,
   rate_limited: 429,
+  payload_too_large: 413,
+  captcha_required: 403,
 };
 
 export const json = (data: unknown, status = 200) =>
@@ -35,5 +39,5 @@ export const toErrorResponse = (error: unknown, logger: Logger) => {
       error.issues,
     );
   logger.error('Unhandled error', error);
-  return errorResponse(500, 'internal', 'Internal server error');
+  return errorResponse(500, 'internal', Errors.Internal);
 };

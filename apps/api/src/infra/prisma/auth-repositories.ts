@@ -3,11 +3,11 @@ import type {
   SessionRepository,
   UserRecord,
   UserRepository,
-} from '../../domain/auth/ports';
-import { unauthorized } from '../../shared/errors';
-import { guardUnique } from './client';
-import type { Database } from './client';
-import { Prisma } from './generated/client';
+} from '#api/domain/auth/ports';
+import { unauthorized, Errors } from '#api/shared/errors';
+import { guardUnique } from '#api/infra/prisma/client';
+import type { Database } from '#api/infra/prisma/client';
+import { Prisma } from '#api/infra/prisma/generated/client';
 
 export class PrismaUserRepository implements UserRepository {
   constructor(private readonly db: Pick<Database, 'user'>) {}
@@ -27,8 +27,20 @@ export class PrismaUserRepository implements UserRepository {
   async insert(user: UserRecord) {
     await guardUnique(
       () => this.db.user.create({ data: user }),
-      'Email is already registered',
+      Errors.EmailRegistered,
     );
+  }
+
+  async setPassword(id: string, passwordHash: string) {
+    await this.db.user.update({ where: { id }, data: { passwordHash } });
+  }
+
+  async takenSlugs(slugs: readonly string[]) {
+    const rows = await this.db.user.findMany({
+      where: { slug: { in: [...slugs] } },
+      select: { slug: true },
+    });
+    return new Set(rows.map((row) => row.slug));
   }
 }
 
@@ -46,18 +58,29 @@ export class PrismaSessionRepository implements SessionRepository {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2003'
       )
-        throw unauthorized(
-          'This single sign-on account is no longer linked. Please try again.',
-        );
+        throw unauthorized(Errors.SsoAccountUnlinked);
       throw error;
     }
   }
 
   find(tokenHash: string) {
-    return this.db.session.findUnique({ where: { tokenHash } });
+    return this.db.session.findUnique({
+      where: { tokenHash },
+      include: { user: true },
+    });
   }
 
   async delete(tokenHash: string) {
     await this.db.session.deleteMany({ where: { tokenHash } });
+  }
+
+  async deleteForUser(userId: string, keep?: string) {
+    await this.db.session.deleteMany({
+      where: { userId, ...(keep ? { tokenHash: { not: keep } } : {}) },
+    });
+  }
+
+  async deleteExpired(now: Date) {
+    await this.db.session.deleteMany({ where: { expiresAt: { lte: now } } });
   }
 }

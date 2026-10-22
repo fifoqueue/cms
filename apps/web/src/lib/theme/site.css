@@ -1,0 +1,45 @@
+/* Public site base styles; theme values arrive as custom properties on `.cms-site` (style.ts). */
+.cms-site {
+  font-family: var(--cms-font);
+  font-size: var(--cms-font-size);
+  line-height: var(--cms-line-height);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.cms-site .cms-heading,
+.cms-site .cms-prose :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--cms-heading-font);
+}
+
+.cms-site .cms-prose {
+  font-size: 1.0625em;
+}
+
+.cms-site .cms-prose img {
+  border-radius: var(--radius);
+}
+
+.cms-site a {
+  text-underline-offset: 0.2em;
+}
+
+/* A constrained group inside another one is already within the page gutter. */
+.cms-site .cms-constrained .cms-constrained > .cms-inner {
+  padding-inline: 0;
+}
+
+.cms-site .cms-sticky {
+  position: sticky;
+  top: var(--cms-admin-bar, 0px);
+  z-index: 30;
+}
+
+.cms-site ::selection {
+  background: color-mix(in srgb, var(--primary) 25%, transparent);
+}
+
+/* The template's main region takes the free height, so the footer sits at the bottom. */
+.cms-site > main {
+  flex: 1 0 auto;
+}

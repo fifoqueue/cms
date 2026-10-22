@@ -1,27 +1,33 @@
-import { idParams } from '../../../../../params';
-import { readJson } from '../../../../../request';
-import { json, noContent } from '../../../../../respond';
-import type { ApiApp } from '../../../../../services';
-import { session } from '../../../../../session';
+import { idParams } from '#api/http/params';
+import { CONTENT_BODY_BYTES, readJson } from '#api/http/request';
+import { json, noContent } from '#api/http/respond';
+import type { ApiApp } from '#api/http/services';
+import { session } from '#api/http/session';
 
 export const routes = (app: ApiApp) =>
   session(app)
     .get(
       '',
-      async ({ adminContent, params }) =>
-        json(await adminContent.get(params.id)),
+      async ({ adminContent, params, user }) =>
+        json(await adminContent.get(params.id, user)),
       idParams,
     )
     .put(
       '',
-      async ({ adminContent, params, request }) =>
-        json(await adminContent.update(params.id, await readJson(request))),
+      async ({ adminContent, params, request, user }) =>
+        json(
+          await adminContent.update(
+            params.id,
+            await readJson(request, CONTENT_BODY_BYTES),
+            user,
+          ),
+        ),
       idParams,
     )
     .delete(
       '',
-      async ({ adminContent, params }) => {
-        await adminContent.remove(params.id);
+      async ({ adminContent, params, user }) => {
+        await adminContent.remove(params.id, user);
 
         return noContent();
       },

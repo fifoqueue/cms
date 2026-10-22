@@ -1,0 +1,90 @@
+<script lang="ts">
+  import { resolve } from '$app/paths';
+  import { enhance } from '$app/forms';
+  import FormMessage from '#lib/admin/FormMessage.svelte';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import {
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
+  } from '#lib/components/ui/card/index.js';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { useI18n } from '#lib/i18n/index.js';
+  import type { PageProps } from './$types';
+
+  let { form }: PageProps = $props();
+
+  const i18n = useI18n();
+  const m = $derived(i18n.m);
+  const result = $derived(form && 'result' in form ? form.result : null);
+  let busy = $state(false);
+</script>
+
+<svelte:head><title>{m.toolsTransfer}</title></svelte:head>
+
+<FormMessage {form} />
+
+<Card>
+  <CardHeader><CardTitle>{m.exportTitle}</CardTitle></CardHeader>
+  <CardContent class="grid gap-3 text-sm">
+    <p>{m.exportHelp}</p>
+    <div>
+      <Button href={resolve('/admin/(app)/tools/export')} data-sveltekit-reload
+        >{m.exportDownload}</Button
+      >
+    </div>
+  </CardContent>
+</Card>
+
+<Card>
+  <CardHeader><CardTitle>{m.importTitle}</CardTitle></CardHeader>
+  <CardContent class="grid gap-3 text-sm">
+    <p>{m.importHelp}</p>
+    <form
+      method="POST"
+      action="?/import"
+      enctype="multipart/form-data"
+      use:enhance={() => {
+        busy = true;
+        return async ({ update }) => {
+          busy = false;
+          await update();
+        };
+      }}
+      class="flex flex-wrap items-center gap-2"
+    >
+      <Input
+        type="file"
+        name="file"
+        accept=".xml,application/xml,text/xml"
+        required
+        class="w-auto max-w-sm"
+      />
+      <Button type="submit" disabled={busy}
+        >{busy ? m.importRunning : m.importStart}</Button
+      >
+    </form>
+    {#if result}
+      <p>
+        {m.importSummary(
+          result.content,
+          result.categories + result.tags,
+          result.comments,
+        )}
+      </p>
+      {#if result.skipped.length}
+        <details>
+          <summary class="cursor-pointer">
+            {m.importSkipped(result.skipped.length)}
+          </summary>
+          <ul class="mt-2 list-disc pl-5">
+            {#each result.skipped as item, index (index)}
+              <li>{item.title} — {item.reason}</li>
+            {/each}
+          </ul>
+        </details>
+      {/if}
+    {/if}
+  </CardContent>
+</Card>

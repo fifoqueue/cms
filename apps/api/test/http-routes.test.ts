@@ -1,18 +1,30 @@
 import { describe, expect, test } from 'bun:test';
-import type { AuthService } from '../src/domain/auth/auth-service';
-import type { SsoService } from '../src/domain/auth/sso-service';
-import type { ContentService } from '../src/domain/content/content-service';
-import type { PublicContentService } from '../src/domain/content/public-content';
-import type { SiteService } from '../src/domain/site/site-service';
-import { createApiApp } from '../src/http/app';
-import type { PluginGateway } from '../src/http/plugin-gateway';
-import { SsoClientResolver } from '../src/http/sso-client';
-import type { PluginHost } from '../src/plugin-runtime/plugin-host';
-import type { SlotService } from '../src/plugin-runtime/slot-service';
-import { conflict } from '../src/shared/errors';
+import type { AuthService } from '#api/domain/auth/auth-service';
+import type { SsoService } from '#api/domain/auth/sso-service';
+import type { ContentService } from '#api/domain/content/content-service';
+import type { PublicContentService } from '#api/domain/content/public-content';
+import type { SiteService } from '#api/domain/site/site-service';
+import type { SeoSettingsService } from '#api/domain/seo/seo-settings-service';
+import type { SeoDiscoveryService } from '#api/domain/seo/seo-discovery-service';
+import type { PermalinkService } from '#api/domain/permalinks/permalink-service';
+import type { PermalinkResolver } from '#api/domain/permalinks/permalink-resolver';
+import type {
+  PublicTaxonomyService,
+  TaxonomyService,
+} from '#api/domain/taxonomy/taxonomy-service';
+import type { ThemeService } from '#api/domain/theme/theme-service';
+import { createApiApp } from '#api/http/app';
+import type { ApiServices } from '#api/http/services';
+import type { PluginGateway } from '#api/http/plugin-gateway';
+import { ClientResolver } from '#api/http/client-identity';
+import type { PluginHost } from '#api/plugin-runtime/plugin-host';
+import type { SlotService } from '#api/plugin-runtime/slot-service';
+import { conflict } from '#api/shared/errors';
+import type { UserService } from '#api/domain/users/user-service';
+import { profile } from '#test/support/memory';
 
 const TOKEN = 'admin-token';
-const user = { id: 'u1', email: 'a@example.com', name: 'Admin' };
+const user = profile({ id: 'u1', email: 'a@example.com', name: 'Admin' });
 
 const auth = {
   authenticate: async (token: string) => (token === TOKEN ? user : null),
@@ -40,8 +52,47 @@ const app = await createApiApp({
       info: () => ({ enabled: false }),
       unlink: record('sso.unlink'),
     } as unknown as SsoService,
-    ssoClients: new SsoClientResolver(undefined),
+    clients: new ClientResolver(undefined),
     site: { get: record('site.get') } as unknown as SiteService,
+    seo: {
+      getPublic: record('seo.public'),
+      getAdmin: record('seo.admin'),
+      update: record('seo.update'),
+    } as unknown as SeoSettingsService,
+    seoDiscovery: {
+      list: record('seo.discovery'),
+    } as unknown as SeoDiscoveryService,
+    permalinks: {
+      get: record('permalinks.get'),
+      update: record('permalinks.update'),
+    } as unknown as PermalinkService,
+    permalinkResolver: {
+      resolve: record('permalinks.resolve'),
+    } as unknown as PermalinkResolver,
+    publicTaxonomy: {
+      list: record('taxonomy.public.list', []),
+      getBySlug: record('taxonomy.public.get'),
+    } as unknown as PublicTaxonomyService,
+    adminTaxonomy: {
+      list: record('taxonomy.admin.list', []),
+      create: record('taxonomy.admin.create'),
+      update: record('taxonomy.admin.update'),
+      remove: record('taxonomy.admin.remove'),
+    } as unknown as TaxonomyService,
+    themes: {
+      getPublic: record('themes.public'),
+      list: record('themes.list', []),
+      install: record('themes.install'),
+      activate: record('themes.activate'),
+      remove: record('themes.remove'),
+      editor: record('themes.editor'),
+      saveTemplate: record('themes.saveTemplate'),
+      resetTemplate: record('themes.resetTemplate'),
+      savePart: record('themes.savePart'),
+      resetPart: record('themes.resetPart'),
+      saveStyles: record('themes.saveStyles'),
+      resetStyles: record('themes.resetStyles'),
+    } as unknown as ThemeService,
     publicContent: {
       list: record('public.list'),
       getBySlug: async (slug: string) => {
@@ -60,6 +111,34 @@ const app = await createApiApp({
       update: record('admin.update'),
       remove: record('admin.remove'),
     } as unknown as ContentService,
+    users: {
+      list: record('users.list', []),
+    } as unknown as UserService,
+    roles: {} as ApiServices['roles'],
+    archivePaths: {} as ApiServices['archivePaths'],
+    taxonomyTypes: {} as ApiServices['taxonomyTypes'],
+    passwords: {} as ApiServices['passwords'],
+    contentRevisions: {} as ApiServices['contentRevisions'],
+    previews: {} as ApiServices['previews'],
+    media: {} as ApiServices['media'],
+    reading: {} as ApiServices['reading'],
+    menus: {} as ApiServices['menus'],
+    widgets: {} as ApiServices['widgets'],
+    comments: {} as ApiServices['comments'],
+    search: {} as ApiServices['search'],
+    pluginPages: {} as ApiServices['pluginPages'],
+    webhooks: {} as ApiServices['webhooks'],
+    siteHealth: {} as ApiServices['siteHealth'],
+    ssoSettings: {} as ApiServices['ssoSettings'],
+    frontendSecret: 'test-frontend-secret',
+    themePreviews: {} as ApiServices['themePreviews'],
+    importer: {} as ApiServices['importer'],
+    exporter: {} as ApiServices['exporter'],
+    contentTypes: {} as ApiServices['contentTypes'],
+    fields: {} as ApiServices['fields'],
+    apiTokens: {} as ApiServices['apiTokens'],
+    security: {} as ApiServices['security'],
+    email: {} as ApiServices['email'],
     plugins: {
       list: record('plugins.list', []),
       install: record('plugins.install'),
@@ -161,6 +240,22 @@ describe('API route compatibility', () => {
       ['DELETE', '/api/v1/admin/content/1'],
       ['GET', '/api/v1/admin/plugins'],
       ['POST', '/api/v1/admin/plugins/x/enable'],
+      ['GET', '/api/v1/admin/taxonomies/category'],
+      ['POST', '/api/v1/admin/taxonomies/tag'],
+      ['PUT', '/api/v1/admin/taxonomies/category/1'],
+      ['DELETE', '/api/v1/admin/taxonomies/tag/1'],
+      ['GET', '/api/v1/admin/themes'],
+      ['GET', '/api/v1/admin/seo'],
+      ['PUT', '/api/v1/admin/seo'],
+      ['GET', '/api/v1/admin/permalinks'],
+      ['PUT', '/api/v1/admin/permalinks'],
+      ['POST', '/api/v1/admin/themes'],
+      ['POST', '/api/v1/admin/themes/editorial/activate'],
+      ['DELETE', '/api/v1/admin/themes/custom'],
+      ['GET', '/api/v1/admin/themes/custom/editor'],
+      ['PUT', '/api/v1/admin/themes/custom/templates/index'],
+      ['DELETE', '/api/v1/admin/themes/custom/parts/header'],
+      ['PUT', '/api/v1/admin/themes/custom/styles'],
     ] as const)
       expect((await call(method, path)).status).toBe(401);
 
@@ -183,10 +278,10 @@ describe('API route compatibility', () => {
     await call('GET', '/api/v1/admin/content?page=3', { token: TOKEN });
     await call('POST', '/api/v1/admin/plugins/p-1/enable', { token: TOKEN });
     expect(calls).toEqual([
-      ['admin.create', { title: 'Hi' }, 'u1'],
-      ['admin.update', 'abc', { title: 'Yo' }],
-      ['admin.remove', 'abc'],
-      ['admin.list', { page: '3' }],
+      ['admin.create', { title: 'Hi' }, user],
+      ['admin.update', 'abc', { title: 'Yo' }, user],
+      ['admin.remove', 'abc', user],
+      ['admin.list', { page: '3' }, user],
       ['plugins.enable', 'p-1'],
     ]);
   });
@@ -200,7 +295,6 @@ describe('API route compatibility', () => {
     expect(await malformed.json()).toMatchObject({
       error: { code: 'invalid_input' },
     });
-
     calls.length = 0;
     const source = 'export const plugin = {};\n';
     for (const type of ['text/javascript', 'application/json'])
@@ -224,7 +318,19 @@ describe('API route compatibility', () => {
     expect(empty.status).toBe(400);
   });
 
-  test('bundle upload limits count UTF-8 bytes rather than characters', async () => {
+  test('small public endpoints stop oversized bodies before JSON parsing', async () => {
+    const response = await call('POST', '/api/v1/auth/login', {
+      body: JSON.stringify({ padding: 'x'.repeat(33 * 1024) }),
+      type: 'application/json',
+    });
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({
+      error: { message: 'Request body is too large' },
+    });
+  });
+
+  test('extension upload limits count UTF-8 bytes rather than characters', async () => {
     calls.length = 0;
 
     const response = await call('POST', '/api/v1/admin/plugins', {
@@ -233,7 +339,16 @@ describe('API route compatibility', () => {
       body: '가'.repeat(2 * 1024 * 1024),
     });
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(413);
+    expect(
+      (
+        await call('POST', '/api/v1/admin/themes', {
+          token: TOKEN,
+          type: 'application/zip',
+          body: '가'.repeat(700_000),
+        })
+      ).status,
+    ).toBe(400);
     expect(calls).toEqual([]);
   });
 });

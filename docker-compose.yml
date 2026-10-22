@@ -8,7 +8,7 @@ services:
       MARIADB_USER: cms
       MARIADB_PASSWORD: cms
     ports:
-      - '3306:3306'
+      - '127.0.0.1:${MARIADB_PORT:-3306}:3306'
     volumes:
       - mariadb:/var/lib/mysql
 

@@ -8,14 +8,12 @@ datasource db {
   provider = "mysql"
 }
 
-enum ContentType {
-  post
-  page
-}
-
 enum ContentStatus {
   draft
+  pending
+  scheduled
   published
+  private
 }
 
 enum PluginDataScope {
@@ -24,16 +22,29 @@ enum PluginDataScope {
 }
 
 model User {
-  id           String    @id @db.Char(36)
-  email        String    @unique @db.VarChar(191)
-  name         String    @db.VarChar(191)
-  passwordHash String    @map("password_hash") @db.VarChar(255)
-  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
-  sessions     Session[]
-  contents     Content[]
-  identity     UserIdentity?
-  ssoRequests  SsoTransaction[]
+  id             String            @id @db.Char(36)
+  email          String            @unique @db.VarChar(191)
+  name           String            @db.VarChar(191)
+  passwordHash   String            @map("password_hash") @db.VarChar(255)
+  /// `administrator`, `editor`, `author` or `contributor` (see `ROLE_CAPABILITIES`).
+  role           String            @default("administrator") @db.VarChar(32)
+  /// Public author archive segment.
+  slug           String            @unique @db.VarChar(191)
+  bio            String            @default("") @db.Text
+  /// Administration language; empty follows the site locale.
+  locale         String            @default("") @db.VarChar(16)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.DateTime(3)
+  sessions       Session[]
+  contents       Content[]
+  revisions      ContentRevision[]
+  media          Media[]
+  identity       UserIdentity?
+  ssoRequests    SsoTransaction[]
+  passwordTokens PasswordToken[]
+  apiTokens      ApiToken[]
+  comments       Comment[]
 
+  @@index([role])
   @@map("users")
 }
 
@@ -84,27 +95,135 @@ model Session {
 
   @@index([userId])
   @@index([identityId])
+  @@index([expiresAt])
   @@map("sessions")
 }
 
 model Content {
-  id          String        @id @db.Char(36)
-  type        ContentType
-  slug        String        @unique @db.VarChar(191)
-  title       String        @db.VarChar(255)
-  excerpt     String        @db.Text
+  parentId             String?           @map("parent_id") @db.Char(36)
+  parent               Content?          @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: SetNull, onUpdate: Restrict)
+  children             Content[]         @relation("PageHierarchy")
+  id                   String            @id @db.Char(36)
+  type                 String            @db.VarChar(32)
+  slug                 String            @unique @db.VarChar(191)
+  title                String            @db.VarChar(255)
+  excerpt              String            @db.Text
   /// Tiptap JSON, serialized.
-  document    String        @db.LongText
-  html        String        @db.LongText
-  status      ContentStatus
-  publishedAt DateTime?     @map("published_at") @db.DateTime(3)
-  createdAt   DateTime      @map("created_at") @db.DateTime(3)
-  updatedAt   DateTime      @map("updated_at") @db.DateTime(3)
-  authorId    String        @map("author_id") @db.Char(36)
-  author      User          @relation(fields: [authorId], references: [id])
+  document             String            @db.LongText
+  html                 String            @db.LongText
+  status               ContentStatus
+  publishedAt          DateTime?         @map("published_at") @db.DateTime(3)
+  createdAt            DateTime          @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime          @map("updated_at") @db.DateTime(3)
+  authorId             String            @map("author_id") @db.Char(36)
+  /// Plain text of the document (no markup), searched together with the title and excerpt.
+  searchText           String            @map("search_text") @db.LongText
+  /// Generated from the body; shown when `excerpt` is empty.
+  summary              String            @default("") @db.Text
+  /// Set while in the trash; trashed entries are never public.
+  trashedAt            DateTime?         @map("trashed_at") @db.DateTime(3)
+  sticky               Boolean           @default(false)
+  allowComments        Boolean           @default(true) @map("allow_comments")
+  /// Approved comments, kept in step with `comments` by every status change.
+  commentCount         Int               @default(0) @map("comment_count")
+  comments             Comment[]
+  /// Hash of the password visitors enter to read the body; null when unprotected.
+  passwordHash         String?           @map("password_hash") @db.VarChar(255)
+  revisions            ContentRevision[]
+  /// Custom field values by key (JSON); see the `contentFields` setting for definitions.
+  fields               String            @default("{}") @db.LongText
+  featuredMediaId      String?           @map("featured_media_id") @db.Char(36)
+  featuredMedia        Media?            @relation("FeaturedMedia", fields: [featuredMediaId], references: [id], onDelete: SetNull)
+  media                ContentMedia[]
+  author               User              @relation(fields: [authorId], references: [id])
+  terms                ContentTerm[]
+  paths                ContentPath[]     @relation("ContentPaths")
+  currentPath          ContentPath?      @relation("CurrentContentPath")
+  seoTitle             String            @default("") @map("seo_title") @db.Text
+  seoDescription       String            @default("") @map("seo_description") @db.Text
+  seoCanonicalUrl      String            @default("") @map("seo_canonical_url") @db.Text
+  seoNoIndex           Boolean           @default(false) @map("seo_no_index")
+  seoNoFollow          Boolean           @default(false) @map("seo_no_follow")
+  seoImageUrl          String            @default("") @map("seo_image_url") @db.Text
+  seoImageAlt          String            @default("") @map("seo_image_alt") @db.Text
+  seoSocialTitle       String            @default("") @map("seo_social_title") @db.Text
+  seoSocialDescription String            @default("") @map("seo_social_description") @db.Text
+  seoSchemaType        String            @default("auto") @map("seo_schema_type") @db.VarChar(32)
+  seoAuthorName        String            @default("") @map("seo_author_name") @db.Text
+  seoAuthorUrl         String            @default("") @map("seo_author_url") @db.Text
+  seoFocusKeyword      String            @default("") @map("seo_focus_keyword") @db.Text
 
-  @@index([status, type, publishedAt])
+  @@index([status, type, trashedAt, publishedAt])
+  /// Published lists without a type filter (search, archives) and due scheduled entries.
+  @@index([status, trashedAt, publishedAt])
+  @@index([trashedAt])
+  /// Admin list order.
+  @@index([updatedAt])
+  @@index([status, seoNoIndex, slug])
+  @@fulltext([title, excerpt, searchText])
+  @@index([parentId])
   @@map("contents")
+}
+
+/// Exact canonical routes and permanent redirects; currentFor is unique per content item.
+model ContentPath {
+  pathHash   Bytes    @id @map("path_hash") @db.Binary(32)
+  path       Bytes    @db.VarBinary(4096)
+  contentId  String   @map("content_id") @db.Char(36)
+  currentFor String?  @unique @map("current_for") @db.Char(36)
+  /// `ON UPDATE RESTRICT` (ids never change): MariaDB rejects CHECK constraints on columns with
+  /// cascading foreign-key updates, and the migration checks `current_for = content_id`.
+  content    Content  @relation("ContentPaths", fields: [contentId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  current    Content? @relation("CurrentContentPath", fields: [currentFor], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@index([contentId])
+  @@map("content_paths")
+}
+
+/// Category (hierarchical) or tag (flat). The taxonomy never changes after creation.
+model TaxonomyTerm {
+  id                   String         @id @db.Char(36)
+  taxonomy             String         @db.VarChar(32)
+  name                 String         @db.VarChar(191)
+  slug                 String         @db.VarChar(191)
+  description          String         @db.Text
+  /// Same taxonomy, never a descendant; always null for tags (enforced by the repository).
+  parentId             String?        @map("parent_id") @db.Char(36)
+  createdAt            DateTime       @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime       @map("updated_at") @db.DateTime(3)
+  parent               TaxonomyTerm?  @relation("TermHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children             TaxonomyTerm[] @relation("TermHierarchy")
+  contents             ContentTerm[]
+  seoTitle             String         @default("") @map("seo_title") @db.Text
+  seoDescription       String         @default("") @map("seo_description") @db.Text
+  seoCanonicalUrl      String         @default("") @map("seo_canonical_url") @db.Text
+  seoNoIndex           Boolean        @default(false) @map("seo_no_index")
+  seoNoFollow          Boolean        @default(false) @map("seo_no_follow")
+  seoImageUrl          String         @default("") @map("seo_image_url") @db.Text
+  seoImageAlt          String         @default("") @map("seo_image_alt") @db.Text
+  seoSocialTitle       String         @default("") @map("seo_social_title") @db.Text
+  seoSocialDescription String         @default("") @map("seo_social_description") @db.Text
+  seoSchemaType        String         @default("auto") @map("seo_schema_type") @db.VarChar(32)
+  seoAuthorName        String         @default("") @map("seo_author_name") @db.Text
+  seoAuthorUrl         String         @default("") @map("seo_author_url") @db.Text
+  seoFocusKeyword      String         @default("") @map("seo_focus_keyword") @db.Text
+
+  @@unique([taxonomy, slug])
+  @@index([taxonomy, seoNoIndex, slug])
+  @@index([parentId])
+  @@map("taxonomy_terms")
+}
+
+/// Assignment of a term to content. Removed with either side.
+model ContentTerm {
+  contentId String       @map("content_id") @db.Char(36)
+  termId    String       @map("term_id") @db.Char(36)
+  content   Content      @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  term      TaxonomyTerm @relation(fields: [termId], references: [id], onDelete: Cascade)
+
+  @@id([contentId, termId])
+  @@index([termId])
+  @@map("content_terms")
 }
 
 /// Core key/value settings. Values are JSON.
@@ -138,4 +257,179 @@ model PluginData {
 
   @@id([pluginId, scope, key])
   @@map("plugin_data")
+}
+
+/// Recurring tasks leased by one API process at a time.
+model ScheduledTask {
+  name        String    @id @db.VarChar(191)
+  nextRunAt   DateTime  @map("next_run_at") @db.DateTime(3)
+  lockedUntil DateTime? @map("locked_until") @db.DateTime(3)
+  lockedBy    String?   @map("locked_by") @db.VarChar(64)
+  lastRunAt   DateTime? @map("last_run_at") @db.DateTime(3)
+  lastError   String?   @map("last_error") @db.Text
+
+  @@map("scheduled_tasks")
+}
+
+/// Durable one-off work with retries. A job whose `failedAt` is set gave up.
+model Job {
+  id          String    @id @db.Char(36)
+  kind        String    @db.VarChar(64)
+  /// JSON.
+  payload     String    @db.LongText
+  runAt       DateTime  @map("run_at") @db.DateTime(3)
+  attempts    Int       @default(0)
+  lockedUntil DateTime? @map("locked_until") @db.DateTime(3)
+  lockedBy    String?   @map("locked_by") @db.VarChar(64)
+  lastError   String?   @map("last_error") @db.Text
+  failedAt    DateTime? @map("failed_at") @db.DateTime(3)
+  createdAt   DateTime  @map("created_at") @db.DateTime(3)
+
+  @@index([failedAt, runAt])
+  @@map("jobs")
+}
+
+/// Fixed-window attempt counters shared by every API process. Keys are hashed.
+model RateLimitBucket {
+  keyHash      String    @id @map("key_hash") @db.Char(64)
+  windowStart  DateTime  @map("window_start") @db.DateTime(3)
+  hits         Int
+  blockedUntil DateTime? @map("blocked_until") @db.DateTime(3)
+  /// After this the row is irrelevant and may be purged.
+  expiresAt    DateTime  @map("expires_at") @db.DateTime(3)
+
+  @@index([expiresAt])
+  @@map("rate_limit_buckets")
+}
+
+/// Single-use links to set a password: invitations and resets. Only digests are stored.
+model PasswordToken {
+  tokenHash String   @id @map("token_hash") @db.Char(64)
+  userId    String   @map("user_id") @db.Char(36)
+  /// `invite` or `reset`.
+  purpose   String   @db.VarChar(16)
+  expiresAt DateTime @map("expires_at") @db.DateTime(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_tokens")
+}
+
+/// Application passwords: bearer tokens for integrations, acting as their user.
+model ApiToken {
+  id         String    @id @db.Char(36)
+  userId     String    @map("user_id") @db.Char(36)
+  name       String    @db.VarChar(100)
+  tokenHash  String    @unique @map("token_hash") @db.Char(64)
+  createdAt  DateTime  @map("created_at") @db.DateTime(3)
+  lastUsedAt DateTime? @map("last_used_at") @db.DateTime(3)
+  expiresAt  DateTime? @map("expires_at") @db.DateTime(3)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("api_tokens")
+}
+
+/// Earlier versions of an entry's text, and per-user autosaves of unsaved edits.
+model ContentRevision {
+  id        String   @id @db.Char(36)
+  contentId String   @map("content_id") @db.Char(36)
+  /// Whoever saved it; kept as null when the user is deleted.
+  authorId  String?  @map("author_id") @db.Char(36)
+  /// `revision` or `autosave` (one per user and entry).
+  kind      String   @db.VarChar(16)
+  title     String   @db.VarChar(255)
+  excerpt   String   @db.Text
+  /// Tiptap JSON, serialized.
+  document  String   @db.LongText
+  createdAt DateTime @map("created_at") @db.DateTime(3)
+  content   Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  author    User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([contentId, kind, createdAt])
+  @@index([authorId])
+  @@map("content_revisions")
+}
+
+/// Uploaded files. Images get resized `variants` (JSON: name -> { key, width, height }).
+model Media {
+  id         String         @id @db.Char(36)
+  uploaderId String?        @map("uploader_id") @db.Char(36)
+  filename   String         @db.VarChar(255)
+  mime       String         @db.VarChar(100)
+  size       Int
+  width      Int?
+  height     Int?
+  alt        String         @default("") @db.Text
+  caption    String         @default("") @db.Text
+  /// Path of the original in media storage, unique per upload.
+  storageKey String         @unique @map("storage_key") @db.VarChar(255)
+  variants   String         @default("{}") @db.Text
+  createdAt  DateTime       @map("created_at") @db.DateTime(3)
+  uploader   User?          @relation(fields: [uploaderId], references: [id], onDelete: SetNull)
+  featuredIn Content[]      @relation("FeaturedMedia")
+  usages     ContentMedia[]
+
+  @@index([createdAt])
+  @@index([uploaderId])
+  @@index([mime])
+  @@map("media")
+}
+
+/// Media an entry shows, in its body or as its featured image. Rebuilt on every save.
+model ContentMedia {
+  contentId String  @map("content_id") @db.Char(36)
+  mediaId   String  @map("media_id") @db.Char(36)
+  content   Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  media     Media   @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@id([contentId, mediaId])
+  @@index([mediaId])
+  @@map("content_media")
+}
+
+enum CommentStatus {
+  pending
+  approved
+  spam
+  trash
+}
+
+/// Visitor comments on entries. Bodies are plain text; emails are never public.
+model Comment {
+  id          String        @id @db.Char(36)
+  contentId   String        @map("content_id") @db.Char(36)
+  content     Content       @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  /// Replies keep their place when a parent is deleted: the service moves them up first.
+  parentId    String?       @map("parent_id") @db.Char(36)
+  parent      Comment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: SetNull)
+  replies     Comment[]     @relation("CommentReplies")
+  /// Set for comments written by signed-in users (replies from the admin area).
+  userId      String?       @map("user_id") @db.Char(36)
+  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  authorName  String        @map("author_name") @db.VarChar(100)
+  authorEmail String        @map("author_email") @db.VarChar(191)
+  authorUrl   String        @default("") @map("author_url") @db.VarChar(255)
+  body        String        @db.Text
+  status      CommentStatus
+  createdAt   DateTime      @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime      @map("updated_at") @db.DateTime(3)
+
+  /// Public threads of an entry, oldest first.
+  @@index([contentId, status, parentId, createdAt])
+  /// Moderation lists, recent comments and purging spam and trash.
+  @@index([status, createdAt])
+  @@index([authorEmail, status])
+  @@map("comments")
+}
+
+/// Content changes not yet applied to the search index, written in the same transaction as the
+/// change. A null `contentId` asks for a full rebuild (term or bulk changes).
+model SearchOutbox {
+  id        BigInt   @id @default(autoincrement())
+  contentId String?  @map("content_id") @db.Char(36)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@map("search_outbox")
 }

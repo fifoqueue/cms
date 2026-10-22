@@ -1,12 +1,9 @@
 import { redirect } from '@sveltejs/kit';
-import { authApi } from '#lib/server/api.js';
+import { authApi, contentApi } from '#lib/server/api.js';
 import { failFrom, text } from '#lib/server/errors.js';
 import { startSession } from '#lib/server/session.js';
-import {
-  rememberSsoTransaction,
-  ssoApi,
-  ssoClientProof,
-} from '#lib/server/sso.js';
+import { rememberSsoTransaction, ssoApi } from '#lib/server/sso.js';
+import { clientProof, visitorOf } from '#lib/server/visitor.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ fetch, locals }) => {
@@ -14,7 +11,11 @@ export const load: PageServerLoad = async ({ fetch, locals }) => {
     redirect(303, '/admin/setup');
   if (locals.user) redirect(303, '/admin');
 
-  return { sso: await ssoApi(fetch).info() };
+  const [sso, captcha] = await Promise.all([
+    ssoApi(fetch).info(),
+    contentApi(fetch).captcha(),
+  ]);
+  return { sso, captcha, membership: await authApi(fetch).membership() };
 };
 
 export const actions: Actions = {
@@ -25,7 +26,7 @@ export const actions: Actions = {
     try {
       start = await ssoApi(fetch).start(
         { intent: 'login' },
-        ssoClientProof(getClientAddress()),
+        clientProof(getClientAddress()),
       );
     } catch (caught) {
       return failFrom(caught);
@@ -35,18 +36,19 @@ export const actions: Actions = {
     redirect(303, start.authorizationUrl);
   },
 
-  login: async ({ request, fetch, cookies }) => {
-    const form = await request.formData();
+  login: async (event) => {
+    const form = await event.request.formData();
+    const email = text(form, 'email');
     try {
       startSession(
-        cookies,
-        await authApi(fetch).login({
-          email: text(form, 'email'),
-          password: text(form, 'password'),
-        }),
+        event.cookies,
+        await authApi(event.fetch).login(
+          { email, password: text(form, 'password') },
+          visitorOf(event, form),
+        ),
       );
     } catch (caught) {
-      return failFrom(caught);
+      return failFrom(caught, { email });
     }
     redirect(303, '/admin');
   },

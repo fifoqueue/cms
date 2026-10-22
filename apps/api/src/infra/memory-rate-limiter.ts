@@ -1,4 +1,4 @@
-import type { Clock, RateLimiter } from '../domain/ports';
+import type { Clock, RateLimiter } from '#api/domain/ports';
 
 export interface MemoryRateLimiterOptions {
   clock: Clock;

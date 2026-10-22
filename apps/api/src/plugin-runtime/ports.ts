@@ -58,6 +58,29 @@ export interface PluginPackageStore {
   remove(pluginId: string): Promise<void>;
 }
 
+/** Semantic version checks; the runtime knows no versioning scheme itself. */
+export interface VersionPolicy {
+  /** The running CMS version. */
+  core: string;
+  satisfies(version: string, range: string): boolean;
+  /** Negative, zero or positive, like a sort comparator. */
+  compare(a: string, b: string): number;
+}
+
+/** Reads a small JSON document from an https address. */
+export interface UpdateFeed {
+  read(url: string): Promise<unknown>;
+}
+
+/** Runs recurring work in one instance at a time (the core scheduler). */
+export interface TaskScheduler {
+  add(task: {
+    name: string;
+    intervalMs: number;
+    run(): Promise<void>;
+  }): () => void;
+}
+
 export interface PluginModuleLoader {
   /** Imports a bundle and returns its `plugin` export, unvalidated. */
   load(path: string): Promise<unknown>;

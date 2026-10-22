@@ -1,13 +1,15 @@
+import { can } from '@cms/sdk';
 import type { PluginRoute } from '@cms/sdk/plugin';
 import { Elysia } from 'elysia';
 import type { AnyElysia } from 'elysia';
-import type { PluginRouteRegistry } from '../plugin-runtime/route-registry';
-import { isolate } from '../shared/isolate';
-import type { Logger } from '../shared/logger';
-import { apiErrors } from './app';
-import type { Authenticator } from './request';
-import { currentUser } from './request';
-import { errorResponse } from './respond';
+import type { PluginRouteRegistry } from '#api/plugin-runtime/route-registry';
+import { isolate } from '#api/shared/isolate';
+import type { Logger } from '#api/shared/logger';
+import { apiErrors } from '#api/http/app';
+import type { Authenticator } from '#api/http/request';
+import { currentUser } from '#api/http/request';
+import { errorResponse } from '#api/http/respond';
+import { Errors } from '#api/shared/errors';
 
 export interface PluginGatewayDeps {
   auth: Authenticator;
@@ -33,7 +35,7 @@ export class PluginGateway {
     const declared = this.deps.routes.list(pluginId);
 
     if (declared.length === 0)
-      return errorResponse(404, 'not_found', 'Route not found');
+      return errorResponse(404, 'not_found', Errors.RouteNotFound);
 
     return this.compile(pluginId, declared).handle(request);
   }
@@ -78,7 +80,10 @@ export class PluginGateway {
     const user = await currentUser(auth, request);
 
     if (route.access === 'admin' && !user)
-      return errorResponse(401, 'unauthorized', 'Authentication required');
+      return errorResponse(401, 'unauthorized', Errors.AuthenticationRequired);
+
+    if (route.access === 'admin' && user && !can(user, 'plugins.manage'))
+      return errorResponse(403, 'forbidden', Errors.Forbidden);
 
     const result = await isolate(
       () => route.handler({ request, url: new URL(request.url), params, user }),
@@ -91,10 +96,6 @@ export class PluginGateway {
       `Plugin "${pluginId}" route failed: ${result.ok ? 'handler did not return a Response' : result.error.message}`,
     );
 
-    return errorResponse(
-      502,
-      'plugin_error',
-      'The plugin failed to handle this request',
-    );
+    return errorResponse(502, 'plugin_error', Errors.PluginRouteFailed);
   }
 }

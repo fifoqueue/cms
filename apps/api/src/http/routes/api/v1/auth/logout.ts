@@ -1,6 +1,6 @@
-import { bearerToken } from '../../../../request';
-import { noContent } from '../../../../respond';
-import type { ApiApp } from '../../../../services';
+import { bearerToken } from '#api/http/request';
+import { noContent } from '#api/http/respond';
+import type { ApiApp } from '#api/http/services';
 
 export const routes = (app: ApiApp) =>
   app.post('', async ({ auth, request }) => {

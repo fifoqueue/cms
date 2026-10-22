@@ -1,6 +1,6 @@
-import { json, noContent } from '../../../../../respond';
-import type { ApiApp } from '../../../../../services';
-import { session } from '../../../../../session';
+import { json, noContent } from '#api/http/respond';
+import type { ApiApp } from '#api/http/services';
+import { session } from '#api/http/session';
 
 export const routes = (app: ApiApp) =>
   session(app)

@@ -1,4 +1,21 @@
 import { z } from 'zod';
+import { CAPABILITIES } from '#sdk/capabilities';
+import { ADMIN_LOCALES } from '#sdk/locales';
+import { KEBAB_CASE } from '#sdk/common';
+
+export const roleSchema = z.string().min(1).max(32).regex(KEBAB_CASE);
+
+/** An administration language; empty follows the site locale. */
+export const adminLocaleSchema = z.enum(ADMIN_LOCALES).or(z.literal(''));
+
+/** Public author address segment: kebab-case like content slugs. */
+export const userSlugSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(1)
+  .max(191)
+  .regex(KEBAB_CASE);
 
 export const loginSchema = z.object({
   email: z.email().max(191),
@@ -14,11 +31,20 @@ export const setupSchema = z.object({
 export type LoginInput = z.input<typeof loginSchema>;
 export type SetupInput = z.input<typeof setupSchema>;
 
-export interface UserProfile {
-  id: string;
-  email: string;
-  name: string;
-}
+/** Authenticated profile only. Never include this DTO in public page data. */
+export const adminUserSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string(),
+  role: roleSchema,
+  capabilities: z.array(z.enum(CAPABILITIES)).optional(),
+  slug: z.string(),
+  bio: z.string(),
+  locale: adminLocaleSchema,
+});
+
+export type AdminUserDto = z.output<typeof adminUserSchema>;
+export type UserProfile = AdminUserDto;
 
 export interface SessionGrant {
   token: string;
@@ -72,3 +98,35 @@ export interface SsoIdentityStatus {
   /** Whether the site operator assigned a provider account to this user. */
   assigned: boolean;
 }
+
+/** Session grants belong to server-side authentication flows, not page data. */
+export const sessionGrantSchema = z.object({
+  token: z.string(),
+  expiresAt: z.string(),
+  user: adminUserSchema,
+});
+
+export const setupStatusSchema = z.object({ setupRequired: z.boolean() });
+export const ssoInfoSchema = z.object({
+  enabled: z.boolean(),
+  name: z.string().nullable(),
+});
+export const ssoStartResultSchema = z.object({
+  authorizationUrl: z.string(),
+  transaction: z.string(),
+  expiresAt: z.string(),
+});
+export const ssoCallbackResultSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('session'), session: sessionGrantSchema }),
+  z.object({ kind: z.literal('linked') }),
+]);
+export const ssoIdentityStatusSchema = z.object({
+  identity: z
+    .object({
+      issuer: z.string(),
+      subject: z.string(),
+      linkedAt: z.string(),
+    })
+    .nullable(),
+  assigned: z.boolean(),
+});

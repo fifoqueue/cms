@@ -8,16 +8,28 @@ import type {
   PluginContext,
   PluginLogger,
 } from '@cms/sdk/plugin';
-import type { HookBus } from './hook-bus';
-import type { PluginScope } from './plugin-scope';
-import type { PluginSettings } from './plugin-settings';
-import type { PluginDataRepository } from './ports';
-import type { PluginRouteRegistry } from './route-registry';
-import type { SlotRegistry } from './slot-registry';
+import type { HookBus } from '#api/plugin-runtime/hook-bus';
+import type { PluginScope } from '#api/plugin-runtime/plugin-scope';
+import type { PluginSettings } from '#api/plugin-runtime/plugin-settings';
+import type { EmbedRegistry } from '#api/plugin-runtime/embed-registry';
+import type { AdminPageRegistry } from '#api/plugin-runtime/admin-page-registry';
+import type {
+  PluginDataRepository,
+  TaskScheduler,
+} from '#api/plugin-runtime/ports';
+import { isolate } from '#api/shared/isolate';
+import type { PluginRouteRegistry } from '#api/plugin-runtime/route-registry';
+import type { SlotRegistry } from '#api/plugin-runtime/slot-registry';
+import type { WidgetRegistry } from '#api/plugin-runtime/widget-registry';
+import { Errors } from '#api/shared/errors';
 
 export interface PluginContextServices {
   hooks: HookBus;
   slots: SlotRegistry;
+  widgets: WidgetRegistry;
+  embeds: EmbedRegistry;
+  scheduler: TaskScheduler;
+  pages: AdminPageRegistry;
   routes: PluginRouteRegistry;
   data: PluginDataRepository;
   settings: PluginSettings;
@@ -26,9 +38,15 @@ export interface PluginContextServices {
 }
 
 const STORAGE_KEY = /^[\w.:-]{1,191}$/;
+const TASK_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** Plugin tasks run at most this often. */
+const MIN_TASK_INTERVAL_MS = 60_000;
+/** A plugin task is abandoned (and logged) after this long. */
+const TASK_TIMEOUT_MS = 60_000;
 
 const checkKey = (key: string) => {
-  if (!STORAGE_KEY.test(key)) throw new Error(`Invalid storage key "${key}"`);
+  if (!STORAGE_KEY.test(key))
+    throw new Error(Errors.PluginStorageKeyInvalid(key));
   return key;
 };
 
@@ -37,11 +55,26 @@ export class PluginContextFactory {
   constructor(private readonly services: PluginContextServices) {}
 
   create(manifest: ResolvedManifest, scope: PluginScope): PluginContext {
-    const { hooks, slots, routes, data, settings, content, logger } =
-      this.services;
+    const {
+      hooks,
+      slots,
+      widgets,
+      embeds,
+      scheduler,
+      pages,
+      routes,
+      data,
+      settings,
+      content,
+      logger,
+    } = this.services;
     const id = manifest.id;
     const hookRegistrar = hooks.registrar(id);
     const slotRegistrar = slots.registrar(id);
+    const widgetRegistrar = widgets.registrar(id);
+    const embedRegistrar = embeds.registrar(id);
+    const pageRegistrar = pages.registrar(id);
+    const log = logger(id);
     const routeRegistrar = routes.registrar(id);
 
     return Object.freeze({
@@ -59,6 +92,33 @@ export class PluginContextFactory {
         provide: (slot, renderer) =>
           scope.track(slotRegistrar.provide(slot, renderer)),
       },
+      widgets: {
+        provide: (key, widget) =>
+          scope.track(widgetRegistrar.provide(key, widget)),
+      },
+      embeds: {
+        register: (provider) => scope.track(embedRegistrar.register(provider)),
+      },
+      tasks: {
+        every: (name, intervalMs, task) => {
+          if (!TASK_NAME.test(name) || name.length > 64)
+            throw new Error(Errors.PluginTaskNameInvalid(name));
+          return scope.track(
+            scheduler.add({
+              name: `plugin:${id}:${name}`,
+              intervalMs: Math.max(MIN_TASK_INTERVAL_MS, intervalMs),
+              run: async () => {
+                const result = await isolate(task, TASK_TIMEOUT_MS);
+                if (!result.ok)
+                  log.warn(`task "${name}" failed: ${result.error.message}`);
+              },
+            }),
+          );
+        },
+      },
+      admin: {
+        page: (key, page) => scope.track(pageRegistrar.page(key, page)),
+      },
       routes: { add: (route) => scope.track(routeRegistrar.add(route)) },
       settings: {
         get: (key) => settings.value(manifest, key),
@@ -72,7 +132,7 @@ export class PluginContextFactory {
         keys: async () => Object.keys(await data.entries(id, 'kv')),
       },
       content,
-      logger: logger(id),
+      logger: log,
     } satisfies PluginContext);
   }
 }

@@ -1,10 +1,12 @@
 import { DEFAULT_SITE_SETTINGS, siteSettingsSchema } from '@cms/sdk';
 import type { SiteSettings } from '@cms/sdk';
-import { parseInput } from '../../shared/validation';
-import type { HookDispatcher } from '../ports';
+import { parseInput } from '#api/shared/validation';
+import type { HookDispatcher } from '#api/domain/ports';
 
 /** Core settings, stored as JSON values. */
 export interface SettingsRepository {
+  /** JSON values whose keys start with prefix. */
+  list(prefix: string): Promise<Record<string, unknown>>;
   get(key: string): Promise<unknown>;
   set(key: string, value: unknown): Promise<void>;
 }

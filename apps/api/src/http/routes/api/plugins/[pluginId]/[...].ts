@@ -1,5 +1,5 @@
-import { pluginParams } from '../../../../params';
-import type { ApiApp } from '../../../../services';
+import { pluginParams } from '#api/http/params';
+import type { ApiApp } from '#api/http/services';
 
 export const routes = (app: ApiApp) =>
   app.all(

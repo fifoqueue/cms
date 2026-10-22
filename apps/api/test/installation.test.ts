@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import type { InstallCompleteInput, SessionGrant } from '@cms/sdk';
-import { InstallationService } from '../src/domain/installation/installation-service';
-import type { InstallationBackend } from '../src/domain/installation/installation-service';
-import { createInstallerApp } from '../src/http/app';
-import { recordingLogger } from './support/memory';
+import { InstallationService } from '#api/domain/installation/installation-service';
+import type { InstallationBackend } from '#api/domain/installation/installation-service';
+import { createInstallerApp } from '#api/http/app';
+import { recordingLogger } from '#test/support/memory';
 
 const key = 'installation-test-key';
 const database = {
@@ -26,7 +26,15 @@ const completion: InstallCompleteInput = {
 const grant: SessionGrant = {
   token: 'session-token',
   expiresAt: '2030-01-01T00:00:00.000Z',
-  user: { id: 'admin', name: '관리자', email: 'admin@example.com' },
+  user: {
+    id: 'admin',
+    name: '관리자',
+    email: 'admin@example.com',
+    role: 'administrator',
+    slug: 'admin',
+    bio: '',
+    locale: '',
+  },
 };
 
 /** Same durable-configuration / atomic-completion contract as the DB adapter. */

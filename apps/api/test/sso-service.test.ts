@@ -1,24 +1,30 @@
 import { describe, expect, test } from 'bun:test';
-import { AuthService } from '../src/domain/auth/auth-service';
-import { SsoService } from '../src/domain/auth/sso-service';
+import { AuthService } from '#api/domain/auth/auth-service';
+import { SsoService } from '#api/domain/auth/sso-service';
 import type {
   ExternalIdentityRepository,
   OidcChecks,
   OidcProvider,
   VerifiedIdentity,
-} from '../src/domain/auth/sso-ports';
-import { createApiApp } from '../src/http/app';
-import type { ApiServices } from '../src/http/services';
-import { SsoClientResolver } from '../src/http/sso-client';
-import { MemoryRateLimiter } from '../src/infra/memory-rate-limiter';
-import { unauthorized } from '../src/shared/errors';
-import { fixedClock, recordingLogger, sequentialIds } from './support/memory';
+} from '#api/domain/auth/sso-ports';
+import { createApiApp } from '#api/http/app';
+import type { ApiServices } from '#api/http/services';
+import { ClientResolver } from '#api/http/client-identity';
+import { MemoryRateLimiter } from '#api/infra/memory-rate-limiter';
+import { unauthorized } from '#api/shared/errors';
+import {
+  fixedClock,
+  profile,
+  recordingLogger,
+  sequentialIds,
+  userRecord,
+} from '#test/support/memory';
 import {
   MemorySsoTransactions,
   MemoryUsers,
   createMemoryAuthStore,
   plainHasher,
-} from './support/sso-memory';
+} from '#test/support/sso-memory';
 
 const ISSUER = 'https://id.example.com';
 const TTL = 10 * 60 * 1000;
@@ -86,7 +92,7 @@ const fixture = async ({
 } = {}) => {
   const clock = fixedClock();
   const users = new MemoryUsers();
-  const { sessions, identities } = createMemoryAuthStore();
+  const { sessions, identities } = createMemoryAuthStore(users);
   const transactions = new CountingTransactions();
   const startLimiter = new MemoryRateLimiter({
     clock,
@@ -108,9 +114,11 @@ const fixture = async ({
   });
 
   const sso = new SsoService({
-    provider: enabled ? provider : null,
-    name: 'Company SSO',
-    subjects: new Map(Object.entries(subjects)),
+    setup: async () => ({
+      provider: enabled ? provider : null,
+      name: 'Company SSO',
+      subjects: new Map(Object.entries(subjects)),
+    }),
     users,
     identities: wrapIdentities(identities),
     transactions,
@@ -131,8 +139,8 @@ const fixture = async ({
     })
   ).user;
 
-  const other = { id: 'other', email: 'other@example.com', name: 'Other' };
-  await users.insert({ ...other, passwordHash: 'x', createdAt: clock.now() });
+  const other = profile({ id: 'other', name: 'Other' });
+  await users.insert(userRecord({ ...other, createdAt: clock.now() }));
 
   /** Links `subject` to `user` through the real link flow. */
   const link = async (user: { id: string }, subject: string) => {
@@ -185,7 +193,7 @@ const tokenOf = (result: Awaited<ReturnType<SsoService['complete']>>) => {
 describe('SsoService', () => {
   test('reports availability and rejects every flow when not configured', async () => {
     const off = await fixture({ enabled: false });
-    expect(off.sso.info()).toEqual({ enabled: false, name: null });
+    expect(await off.sso.info()).toEqual({ enabled: false, name: null });
     await expect(off.sso.start({}, null, CLIENT)).rejects.toMatchObject({
       code: 'not_found',
     });
@@ -194,7 +202,7 @@ describe('SsoService', () => {
     ).rejects.toMatchObject({ code: 'not_found' });
 
     const on = await fixture();
-    expect(on.sso.info()).toEqual({ enabled: true, name: 'Company SSO' });
+    expect(await on.sso.info()).toEqual({ enabled: true, name: 'Company SSO' });
   });
 
   test('keeps PKCE verifier, state and nonce on the server and passes them to verification', async () => {
@@ -657,7 +665,7 @@ describe('SSO HTTP routes', () => {
       services: {
         auth: context.auth,
         sso: context.sso,
-        ssoClients: new SsoClientResolver(FRONTEND_SECRET),
+        clients: new ClientResolver(FRONTEND_SECRET),
       } as ApiServices,
       logger: recordingLogger().logger,
     });

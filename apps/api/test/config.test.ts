@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { loadConfig } from '../src/config';
+import { loadConfig } from '#api/config';
 
 const sso = {
   OIDC_ISSUER: 'https://id.example.com',
@@ -64,11 +64,6 @@ describe('OIDC configuration', () => {
       'secret authentication without a secret',
       { ...sso, OIDC_CLIENT_AUTH_METHOD: 'client_secret_post' },
       'OIDC_CLIENT_SECRET:',
-    ],
-    [
-      'single sign-on without a frontend secret',
-      { ...sso, OIDC_FRONTEND_SECRET: undefined },
-      'OIDC_FRONTEND_SECRET:',
     ],
     [
       'a short frontend secret',

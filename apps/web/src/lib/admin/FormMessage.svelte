@@ -4,6 +4,7 @@
     AlertDescription,
     AlertTitle,
   } from '#lib/components/ui/alert/index.js';
+  import { useI18n } from '#lib/i18n/index.js';
 
   interface Issue {
     path: string;
@@ -15,9 +16,19 @@
   }: { form?: { message?: string; issues?: unknown; notice?: string } | null } =
     $props();
 
+  const i18n = useI18n();
+
   const issues = $derived(
     Array.isArray(form?.issues) ? (form.issues as Issue[]) : [],
   );
+
+  /** Actions may return a catalog key as their notice; other text is shown as is. */
+  const notice = $derived.by(() => {
+    const value = form?.notice;
+    if (!value) return '';
+    const entry = (i18n.m as Record<string, unknown>)[value];
+    return typeof entry === 'string' ? entry : value;
+  });
 </script>
 
 {#if form?.message}
@@ -33,8 +44,8 @@
       </AlertDescription>
     {/if}
   </Alert>
-{:else if form?.notice}
+{:else if notice}
   <Alert>
-    <AlertTitle>{form.notice}</AlertTitle>
+    <AlertTitle>{notice}</AlertTitle>
   </Alert>
 {/if}

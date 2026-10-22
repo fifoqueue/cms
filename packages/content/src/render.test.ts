@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { InvalidDocumentError } from './extensions';
-import { renderDocument } from './render';
+import { InvalidDocumentError } from '#content/extensions';
+import { renderDocument } from '#content/render';
 
 const paragraph = (text: string, marks?: unknown[]) => ({
   type: 'doc' as const,
@@ -51,5 +51,44 @@ describe('renderDocument', () => {
     expect(() =>
       renderDocument({ type: 'doc', content: [{ type: 'iframe' }] }),
     ).toThrow(InvalidDocumentError);
+  });
+});
+
+describe('media and embeds', () => {
+  const doc = (node: Record<string, unknown>) => ({
+    type: 'doc' as const,
+    content: [node],
+  });
+
+  test('images render only safe sources and keep the media id', () => {
+    const media = renderDocument(
+      doc({
+        type: 'image',
+        attrs: { src: '/media/2026/10/a.webp', alt: 'A', mediaId: 'm1' },
+      }),
+    );
+    expect(media).toContain('src="/media/2026/10/a.webp"');
+    expect(media).toContain('data-media-id="m1"');
+    for (const src of [
+      'javascript:alert(1)',
+      'data:image/png;base64,AAAA',
+      '//evil.example/a.png',
+      '/media/../etc/passwd',
+      'http://example.com/a.png',
+    ])
+      expect(
+        renderDocument(doc({ type: 'image', attrs: { src } })),
+      ).not.toContain('src=');
+  });
+
+  test('embeds become plain https links', () => {
+    expect(
+      renderDocument(
+        doc({ type: 'embed', attrs: { url: 'https://youtu.be/abc' } }),
+      ),
+    ).toContain('data-embed-url="https://youtu.be/abc"');
+    expect(
+      renderDocument(doc({ type: 'embed', attrs: { url: 'javascript:x' } })),
+    ).not.toContain('javascript');
   });
 });

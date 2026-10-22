@@ -11,21 +11,27 @@
   } from '#lib/components/ui/card/index.js';
   import { Input } from '#lib/components/ui/input/index.js';
   import { Label } from '#lib/components/ui/label/index.js';
+  import {
+    NativeSelect,
+    NativeSelectOption,
+  } from '#lib/components/ui/native-select/index.js';
+  import { useI18n } from '#lib/i18n/index.js';
   import type { PageProps } from './$types';
 
   let { data, form }: PageProps = $props();
   let pending = $state(false);
+
+  const i18n = useI18n();
+  const m = $derived(i18n.m);
 </script>
 
-<svelte:head><title>사이트 설치</title></svelte:head>
+<svelte:head><title>{m.setupTitle}</title></svelte:head>
 
 <Card>
   <CardHeader>
-    <CardTitle>새 사이트를 시작하세요</CardTitle>
+    <CardTitle>{m.setupHeading}</CardTitle>
     <CardDescription>
-      {data.databaseConfigured
-        ? '2 / 2 · 사이트와 관리자 설정'
-        : '1 / 2 · 데이터베이스 연결'}
+      {data.databaseConfigured ? m.setupStepSite : m.setupStepDatabase}
     </CardDescription>
   </CardHeader>
   <CardContent>
@@ -48,7 +54,7 @@
       <fieldset disabled={pending} class="space-y-4">
         {#if !data.databaseConfigured || !data.hasKey}
           <div class="grid gap-2">
-            <Label for="token">설치 키</Label>
+            <Label for="token">{m.setupKey}</Label>
             <Input
               id="token"
               name="token"
@@ -57,19 +63,16 @@
               required
             />
             <p class="text-xs text-muted-foreground">
-              API 서버를 실행한 콘솔에 표시된 설치 키를 입력하세요. 서버를
-              재시작하면 키가 바뀝니다.
+              {m.setupKeyHelp}
             </p>
           </div>
         {:else}
           <details class="text-sm">
-            <summary class="cursor-pointer"
-              >서버를 재시작했나요? 새 설치 키 입력</summary
-            >
+            <summary class="cursor-pointer">{m.setupKeyRestarted}</summary>
             <Input
               name="token"
               type="password"
-              aria-label="새 설치 키"
+              aria-label={m.setupNewKey}
               autocomplete="off"
               class="mt-2"
             />
@@ -77,11 +80,11 @@
         {/if}
         {#if !data.databaseConfigured}
           <p class="text-sm text-muted-foreground">
-            사용할 데이터베이스의 접속 정보를 입력하세요.
+            {m.setupDatabaseHelp}
           </p>
           <div class="grid grid-cols-[1fr_6rem] gap-3">
             <div class="grid gap-2">
-              <Label for="host">DB 호스트</Label>
+              <Label for="host">{m.setupHost}</Label>
               <Input
                 id="host"
                 name="host"
@@ -90,7 +93,7 @@
               />
             </div>
             <div class="grid gap-2">
-              <Label for="port">포트</Label>
+              <Label for="port">{m.emailPort}</Label>
               <Input
                 id="port"
                 name="port"
@@ -103,7 +106,7 @@
             </div>
           </div>
           <div class="grid gap-2">
-            <Label for="database">데이터베이스 이름</Label>
+            <Label for="database">{m.setupDatabase}</Label>
             <Input
               id="database"
               name="database"
@@ -112,7 +115,7 @@
             />
           </div>
           <div class="grid gap-2">
-            <Label for="username">DB 사용자</Label>
+            <Label for="username">{m.setupUsername}</Label>
             <Input
               id="username"
               name="username"
@@ -122,7 +125,7 @@
             />
           </div>
           <div class="grid gap-2">
-            <Label for="password">DB 비밀번호</Label>
+            <Label for="password">{m.setupPassword}</Label>
             <Input
               id="password"
               name="password"
@@ -132,11 +135,10 @@
           </div>
         {:else}
           <p class="text-sm text-muted-foreground">
-            데이터베이스가 준비되었습니다. 사이트 정보는 설치 후 관리자 설정에서
-            변경할 수 있습니다.
+            {m.setupReady}
           </p>
           <div class="grid gap-2">
-            <Label for="title">사이트 제목</Label>
+            <Label for="title">{m.setupSiteTitle}</Label>
             <Input
               id="title"
               name="title"
@@ -146,7 +148,7 @@
             />
           </div>
           <div class="grid gap-2">
-            <Label for="description">사이트 설명</Label>
+            <Label for="description">{m.setupSiteDescription}</Label>
             <Input
               id="description"
               name="description"
@@ -155,20 +157,20 @@
             />
           </div>
           <div class="grid gap-2">
-            <Label for="locale">사이트 언어</Label>
-            <select
+            <Label for="locale">{m.setupSiteLanguage}</Label>
+            <NativeSelect
+              class="w-full"
               id="locale"
               name="locale"
-              class="h-9 w-full rounded-md border bg-background px-3 text-sm"
               value={form?.siteValues?.locale ?? 'ko'}
             >
-              <option value="ko">한국어</option>
-              <option value="en">English</option>
-              <option value="ja">日本語</option>
-            </select>
+              <NativeSelectOption value="ko">한국어</NativeSelectOption>
+              <NativeSelectOption value="en">English</NativeSelectOption>
+              <NativeSelectOption value="ja">日本語</NativeSelectOption>
+            </NativeSelect>
           </div>
           <div class="grid gap-2">
-            <Label for="name">관리자 이름</Label>
+            <Label for="name">{m.setupAdminName}</Label>
             <Input
               id="name"
               name="name"
@@ -178,7 +180,7 @@
             />
           </div>
           <div class="grid gap-2">
-            <Label for="email">관리자 이메일</Label>
+            <Label for="email">{m.setupAdminEmail}</Label>
             <Input
               id="email"
               name="email"
@@ -189,7 +191,7 @@
             />
           </div>
           <div class="grid gap-2">
-            <Label for="password">관리자 비밀번호</Label>
+            <Label for="password">{m.setupAdminPassword}</Label>
             <Input
               id="password"
               name="password"
@@ -201,7 +203,7 @@
             />
           </div>
           <div class="grid gap-2">
-            <Label for="confirmation">비밀번호 확인</Label>
+            <Label for="confirmation">{m.setupConfirmPassword}</Label>
             <Input
               id="confirmation"
               name="confirmation"
@@ -215,15 +217,15 @@
         {/if}
         <Button type="submit" class="w-full">
           {pending
-            ? '설정 적용 중…'
+            ? m.setupApplying
             : data.databaseConfigured
-              ? '설치 완료하고 시작하기'
-              : '연결 확인 및 테이블 준비'}
+              ? m.setupComplete
+              : m.setupConnect}
         </Button>
       </fieldset>
       {#if pending}
         <p class="text-xs text-muted-foreground" role="status">
-          설치를 진행하고 있습니다. 잠시 기다려 주세요.
+          {m.setupPending}
         </p>
       {/if}
     </form>

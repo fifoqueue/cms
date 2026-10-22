@@ -1,3 +1,6 @@
+import { z } from 'zod';
+import { Errors } from '#sdk/errors';
+
 export type Awaitable<T> = T | Promise<T>;
 
 export interface Paginated<T> {
@@ -7,6 +10,9 @@ export interface Paginated<T> {
   pageSize: number;
 }
 
+/** Highest accepted offset-pagination page. Larger values are resource-exhaustion input. */
+export const PAGINATION_MAX_PAGE = 10_000;
+
 /** Body of every non-2xx API response. */
 export interface ApiErrorBody {
   error: {
@@ -15,6 +21,19 @@ export interface ApiErrorBody {
     issues?: unknown;
   };
 }
+
+/** Only display-safe validation details may cross the API-to-page-data boundary. */
+export const formIssuesSchema = z.array(
+  z.object({ path: z.string(), message: z.string() }),
+);
+
+export const apiErrorBodySchema = z.object({
+  error: z.object({
+    code: z.string(),
+    message: z.string(),
+    issues: formIssuesSchema.optional().catch(undefined),
+  }),
+});
 
 export type JsonValue =
   null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
@@ -123,7 +142,7 @@ export const isJsonValue = (value: unknown): value is JsonValue =>
 export const stringifyJson = (value: unknown): string => {
   const json = serialize(value);
 
-  if (json === undefined) throw new TypeError('Value is not JSON-serializable');
+  if (json === undefined) throw new TypeError(Errors.NotJsonSerializable);
 
   return json;
 };

@@ -22,6 +22,22 @@ export interface RateLimiter {
   tryAcquire(key: string): boolean;
 }
 
+/**
+ * Encrypts secrets kept in the database (captcha, mail and search credentials). `open` returns
+ * null when the value cannot be decrypted, for example after the key changed.
+ */
+export interface SecretBox {
+  seal(plain: string): string;
+  open(sealed: string): string | null;
+}
+
+/** Signs short values (preview links, unlock proofs) so they cannot be forged. */
+export interface Signer {
+  sign(value: string): string;
+  /** Constant-time comparison. */
+  verify(value: string, signature: string): boolean;
+}
+
 /** How core announces events and lets extensions transform values, without knowing who listens. */
 export interface HookDispatcher {
   /** Runs action handlers. Never rejects, so callers may fire and forget. */

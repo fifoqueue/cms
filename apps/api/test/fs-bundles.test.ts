@@ -2,8 +2,8 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { FsPluginPackageStore } from '../src/infra/plugins/fs-package-store';
-import { dynamicImportLoader } from '../src/infra/plugins/module-loader';
+import { FsPluginPackageStore } from '#api/infra/plugins/fs-package-store';
+import { dynamicImportLoader } from '#api/infra/plugins/module-loader';
 
 const root = await mkdtemp(join(tmpdir(), 'cms-plugins-'));
 afterAll(() => rm(root, { recursive: true, force: true }));

@@ -9,9 +9,9 @@ import type {
   HookRegistrar,
   Unsubscribe,
 } from '@cms/sdk/plugin';
-import type { HookDispatcher } from '../domain/ports';
-import { isolate } from '../shared/isolate';
-import type { Logger } from '../shared/logger';
+import type { HookDispatcher } from '#api/domain/ports';
+import { isolate } from '#api/shared/isolate';
+import type { Logger } from '#api/shared/logger';
 
 type Handler = (value: unknown) => Awaitable<unknown>;
 

@@ -3,11 +3,14 @@
   import type { ChainedCommands } from '@tiptap/core';
   import { contentExtensions } from '@cms/content';
   import type { ContentDocument } from '@cms/sdk';
+  import type { AdminMedia } from '@cms/sdk';
   import {
     Bold,
     Code,
     Heading2,
     Heading3,
+    Image,
+    Music,
     Italic,
     Link,
     List,
@@ -16,8 +19,14 @@
     Redo,
     SquareCode,
     Strikethrough,
+    Table,
     Undo,
+    SquarePlay,
   } from '@lucide/svelte';
+  import MediaPicker from '#lib/admin/MediaPicker.svelte';
+  import { Button } from '#lib/components/ui/button/index.js';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { useI18n } from '#lib/i18n/index.js';
   import type { Component } from 'svelte';
   import { onMount } from 'svelte';
 
@@ -28,6 +37,13 @@
   }
 
   let { name, value = $bindable() }: Props = $props();
+
+  const i18n = useI18n();
+  const m = $derived(i18n.m);
+  let audioPicker: ReturnType<typeof MediaPicker>;
+  let picker: ReturnType<typeof MediaPicker>;
+  let embedDialog: HTMLDialogElement;
+  let embedUrl = $state('');
 
   let element: HTMLDivElement;
   let editor = $state.raw<Editor | null>(null);
@@ -71,6 +87,35 @@
         : chain.extendMarkRange('link').unsetLink(),
     );
   };
+
+  /** Inserts a library image; the media id keeps usage tracking accurate. */
+  const insertImage = (media: AdminMedia) =>
+    run((chain) =>
+      chain.insertContent({
+        type: 'image',
+        attrs: {
+          src:
+            media.variants.find((variant) => variant.name === 'large')?.url ??
+            media.url,
+          alt: media.alt,
+          mediaId: media.id,
+          width: media.width,
+          height: media.height,
+        },
+      }),
+    );
+
+  const insertEmbed = () => {
+    const url = embedUrl.trim();
+    embedDialog.close();
+    embedUrl = '';
+    if (/^https:\/\//.test(url))
+      run((chain) => chain.insertContent({ type: 'embed', attrs: { url } }));
+  };
+
+  const inTable = $derived(
+    revision >= 0 && (editor?.isActive('table') ?? false),
+  );
 
   interface Tool {
     label: string;
@@ -146,6 +191,26 @@
       active: () => isActive('codeBlock'),
       action: () => run((c) => c.toggleCodeBlock()),
     },
+    { label: 'Image', icon: Image, action: () => picker.open() },
+    {
+      get label() {
+        return m.mediaAudio;
+      },
+      icon: Music,
+      action: () => audioPicker.open(),
+    },
+    {
+      label: 'Table',
+      icon: Table,
+      active: () => isActive('table'),
+      action: () =>
+        run((c) => c.insertTable({ rows: 3, cols: 3, withHeaderRow: true })),
+    },
+    {
+      label: 'Embed',
+      icon: SquarePlay,
+      action: () => embedDialog.showModal(),
+    },
     { label: 'Undo', icon: Undo, action: () => run((c) => c.undo()) },
     { label: 'Redo', icon: Redo, action: () => run((c) => c.redo()) },
   ];
@@ -172,6 +237,79 @@
       </button>
     {/each}
   </div>
+  {#if inTable}
+    <div class="flex flex-wrap gap-1 border-b bg-muted/40 p-1 text-xs">
+      <Button
+        size="sm"
+        variant="ghost"
+        onclick={() => run((c) => c.addRowAfter())}>{m.tableAddRow}</Button
+      >
+      <Button
+        size="sm"
+        variant="ghost"
+        onclick={() => run((c) => c.addColumnAfter())}
+        >{m.tableAddColumn}</Button
+      >
+      <Button
+        size="sm"
+        variant="ghost"
+        onclick={() => run((c) => c.deleteRow())}>{m.tableDeleteRow}</Button
+      >
+      <Button
+        size="sm"
+        variant="ghost"
+        onclick={() => run((c) => c.deleteColumn())}
+        >{m.tableDeleteColumn}</Button
+      >
+      <Button
+        size="sm"
+        variant="ghost"
+        onclick={() => run((c) => c.deleteTable())}>{m.tableDelete}</Button
+      >
+    </div>
+  {/if}
   <div bind:this={element}></div>
 </div>
 <input type="hidden" {name} value={JSON.stringify(value)} />
+
+<MediaPicker bind:this={picker} onpick={insertImage} />
+<MediaPicker
+  kind="audio"
+  bind:this={audioPicker}
+  onpick={(media) =>
+    run((chain) =>
+      chain.insertContent({
+        type: 'audio',
+        attrs: { src: media.url, mediaId: media.id },
+      }),
+    )}
+/>
+
+<dialog
+  bind:this={embedDialog}
+  class="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-lg border bg-background p-4 text-foreground shadow-lg backdrop:bg-black/40"
+  aria-label={m.insertEmbed}
+>
+  <!-- Not a <form>: the editor sits inside the content form, and forms cannot nest. -->
+  <div class="space-y-3">
+    <label class="grid gap-2 text-sm">
+      {m.embedUrl}
+      <Input
+        type="url"
+        pattern="https://.*"
+        bind:value={embedUrl}
+        onkeydown={(event) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          insertEmbed();
+        }}
+      />
+    </label>
+    <div class="flex justify-end gap-2">
+      <Button type="button" variant="ghost" onclick={() => embedDialog.close()}
+        >{m.cancel}</Button
+      >
+      <Button type="button" onclick={insertEmbed}>{m.insert}</Button>
+    </div>
+  </div>
+</dialog>

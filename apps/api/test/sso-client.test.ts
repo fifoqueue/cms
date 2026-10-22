@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  SsoClientResolver,
+  ClientResolver,
   UNVERIFIED_CLIENT,
   clientNetwork,
-} from '../src/http/sso-client';
+} from '#api/http/client-identity';
 
 describe('clientNetwork', () => {
   test.each([
@@ -30,7 +30,7 @@ describe('clientNetwork', () => {
   });
 });
 
-describe('SsoClientResolver', () => {
+describe('ClientResolver', () => {
   const secret = 'x'.repeat(40);
   const request = (headers: Record<string, string>) =>
     new Request('http://localhost/api/v1/auth/sso/start', {
@@ -39,7 +39,7 @@ describe('SsoClientResolver', () => {
     });
 
   test('trusts the address only with the frontend secret', () => {
-    const resolver = new SsoClientResolver(secret);
+    const resolver = new ClientResolver(secret);
 
     expect(
       resolver.resolve(
@@ -62,7 +62,7 @@ describe('SsoClientResolver', () => {
 
   test('without a configured secret nobody can claim an address', () => {
     expect(
-      new SsoClientResolver(undefined).resolve(
+      new ClientResolver(undefined).resolve(
         request({
           'x-cms-client-address': '203.0.113.5',
           'x-cms-frontend-secret': '',

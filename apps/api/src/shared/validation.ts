@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import { invalidInput } from './errors';
+import { invalidInput, Errors } from '#api/shared/errors';
 
 /** Validates input crossing a trust boundary. Throws `invalid_input` with per-field issues. */
 export const parseInput = <S extends z.ZodType>(
@@ -12,5 +12,5 @@ export const parseInput = <S extends z.ZodType>(
     path: path.map(String).join('.'),
     message,
   }));
-  throw invalidInput('Invalid input', issues);
+  throw invalidInput(Errors.InvalidInput, issues);
 };

@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { setupSchema } from './auth';
-import { siteSettingsSchema } from './site';
+import { setupSchema } from '#sdk/auth';
+import { siteSettingsSchema } from '#sdk/site';
 
 export const databaseSetupSchema = z.object({
   host: z
@@ -38,3 +38,8 @@ export interface InstallationStatus {
   databaseConfigured: boolean;
   setupRequired: boolean;
 }
+
+export const installationStatusSchema = z.object({
+  databaseConfigured: z.boolean(),
+  setupRequired: z.boolean(),
+});

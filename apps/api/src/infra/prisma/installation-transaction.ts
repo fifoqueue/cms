@@ -1,16 +1,13 @@
 import type { SessionGrant } from '@cms/sdk';
-import type {
-  UserRepository,
-  SessionRepository,
-} from '../../domain/auth/ports';
-import type { SettingsRepository } from '../../domain/site/site-service';
-import { conflict } from '../../shared/errors';
+import type { UserRepository, SessionRepository } from '#api/domain/auth/ports';
+import type { SettingsRepository } from '#api/domain/site/site-service';
+import { conflict, Errors } from '#api/shared/errors';
 import {
   PrismaUserRepository,
   PrismaSessionRepository,
-} from './auth-repositories';
-import { PrismaSettingsRepository } from './settings-repository';
-import type { Database } from './client';
+} from '#api/infra/prisma/auth-repositories';
+import { PrismaSettingsRepository } from '#api/infra/prisma/settings-repository';
+import type { Database } from '#api/infra/prisma/client';
 
 /** The singleton row locks installation across processes, not only requests. */
 export const initializeSite = (
@@ -29,7 +26,7 @@ export const initializeSite = (
         update: { value: 'true' },
       });
       if ((await transaction.user.count()) > 0)
-        throw conflict('설치가 이미 완료되었습니다.');
+        throw conflict(Errors.InstallCompleted);
       return initialize({
         users: new PrismaUserRepository(transaction),
         sessions: new PrismaSessionRepository(transaction),

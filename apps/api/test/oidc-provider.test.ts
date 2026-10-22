@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
 import type { CustomFetch } from 'openid-client';
-import { OpenIdClientProvider } from '../src/infra/oidc/openid-client-provider';
-import type { OidcClientSettings } from '../src/infra/oidc/openid-client-provider';
-import { recordingLogger } from './support/memory';
+import { OpenIdClientProvider } from '#api/infra/oidc/openid-client-provider';
+import type { OidcClientSettings } from '#api/infra/oidc/openid-client-provider';
+import { recordingLogger } from '#test/support/memory';
 
 const ISSUER = 'https://op.test';
 const CLIENT_ID = 'cms';

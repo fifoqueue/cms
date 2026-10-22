@@ -2,7 +2,7 @@ import { SLOT_NAMES } from '@cms/sdk';
 import type { SlotMap, SlotQuery } from '@cms/sdk';
 import type { ContentClient } from '@cms/sdk/client';
 
-const emptySlots = () =>
+export const emptySlots = () =>
   Object.fromEntries(
     SLOT_NAMES.map((name) => [name, []]),
   ) as unknown as SlotMap;

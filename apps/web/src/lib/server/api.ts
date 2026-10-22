@@ -1,22 +1,29 @@
 // The only way this app reaches the CMS: the SDK clients (see AGENTS.md, "Frontend contract").
-import { CMS_API_URL } from '$app/env/private';
+import { API_PORT, CMS_API_URL } from '$app/env/private';
 import {
   createAdminClient,
   createAuthClient,
   createContentClient,
   createInstallationClient,
+  createMediaClient,
 } from '@cms/sdk/client';
 
 type Fetch = typeof fetch;
 
+/** The API listens on this machine by default, so follow its port unless an address is given. */
+export const apiUrl = CMS_API_URL || `http://127.0.0.1:${API_PORT}`;
+
 export const contentApi = (fetch: Fetch) =>
-  createContentClient({ baseUrl: CMS_API_URL, fetch });
+  createContentClient({ baseUrl: apiUrl, fetch });
 
 export const authApi = (fetch: Fetch, token?: string | null) =>
-  createAuthClient({ baseUrl: CMS_API_URL, fetch }, token ?? undefined);
+  createAuthClient({ baseUrl: apiUrl, fetch }, token ?? undefined);
 
 export const adminApi = (fetch: Fetch, token: string) =>
-  createAdminClient({ baseUrl: CMS_API_URL, fetch }, token);
+  createAdminClient({ baseUrl: apiUrl, fetch }, token);
 
 export const installationApi = (fetch: Fetch) =>
-  createInstallationClient({ baseUrl: CMS_API_URL, fetch });
+  createInstallationClient({ baseUrl: apiUrl, fetch });
+
+export const mediaFiles = (fetch: Fetch) =>
+  createMediaClient({ baseUrl: apiUrl, fetch });

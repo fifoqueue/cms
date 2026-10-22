@@ -12,18 +12,23 @@ import {
   notFound,
   rateLimited,
   unauthorized,
-} from '../../shared/errors';
-import { parseInput } from '../../shared/validation';
-import type { Clock, IdGenerator, RateLimiter } from '../ports';
-import type { TokenIssuer, UserRecord, UserRepository } from './ports';
-import { IDENTITY_MAX_BYTES } from './sso-ports';
+  Errors,
+} from '#api/shared/errors';
+import { parseInput } from '#api/shared/validation';
+import type { Clock, IdGenerator, RateLimiter } from '#api/domain/ports';
+import type {
+  TokenIssuer,
+  UserRecord,
+  UserRepository,
+} from '#api/domain/auth/ports';
+import { IDENTITY_MAX_BYTES } from '#api/domain/auth/sso-ports';
 import type {
   AdmissionLimits,
   ExternalIdentityRepository,
   OidcProvider,
   SsoTransactionRepository,
   VerifiedIdentity,
-} from './sso-ports';
+} from '#api/domain/auth/sso-ports';
 
 export interface SessionStarter {
   /** `identityId` binds the session to a linked identity (see `SessionRepository.insert`). */
@@ -41,12 +46,17 @@ const storable = (value: string) =>
   value.isWellFormed() &&
   encoder.encode(value).length <= IDENTITY_MAX_BYTES;
 
-export interface SsoServiceDeps {
+/** The current single sign-on configuration (admin settings, or the environment). */
+export interface SsoSetup {
   /** `null` when single sign-on is not configured. */
   provider: OidcProvider | null;
   name: string;
   /** Operator allowlist: provider subject → email of an existing local user. */
   subjects: ReadonlyMap<string, string>;
+}
+
+export interface SsoServiceDeps {
+  setup: () => Promise<SsoSetup>;
   users: UserRepository;
   identities: ExternalIdentityRepository;
   transactions: SsoTransactionRepository;
@@ -75,10 +85,9 @@ interface SignInTarget {
 export class SsoService {
   constructor(private readonly deps: SsoServiceDeps) {}
 
-  info(): SsoInfo {
-    return this.deps.provider
-      ? { enabled: true, name: this.deps.name }
-      : { enabled: false, name: null };
+  async info(): Promise<SsoInfo> {
+    const { provider, name } = await this.deps.setup();
+    return provider ? { enabled: true, name } : { enabled: false, name: null };
   }
 
   /**
@@ -91,7 +100,7 @@ export class SsoService {
     user: UserProfile | null,
     client: string,
   ): Promise<SsoStart> {
-    const provider = this.provider();
+    const { provider } = await this.enabled();
     const { intent } = parseInput(ssoStartSchema, input);
 
     if (intent === 'link' && !user) throw unauthorized();
@@ -101,9 +110,7 @@ export class SsoService {
 
     // Refused before any provider or database work, so a flood costs nothing downstream.
     if (!this.deps.startLimiter.tryAcquire(clientKey))
-      throw rateLimited(
-        'Too many sign-in attempts. Please wait a minute and try again.',
-      );
+      throw rateLimited(Errors.SsoRateLimited);
 
     const request = await provider.authorize();
     const transaction = this.deps.tokens.issue();
@@ -124,10 +131,7 @@ export class SsoService {
       this.deps.admission,
     );
 
-    if (!admitted)
-      throw conflict(
-        'Too many sign-in requests are in progress. Please try again in a few minutes.',
-      );
+    if (!admitted) throw conflict(Errors.SsoPendingLimit);
 
     return {
       authorizationUrl: request.url,
@@ -141,7 +145,7 @@ export class SsoService {
     input: unknown,
     user: UserProfile | null,
   ): Promise<SsoCallbackResult> {
-    const provider = this.provider();
+    const { provider, subjects } = await this.enabled();
     const { transaction, query } = parseInput(ssoCallbackSchema, input);
 
     const pending = await this.deps.transactions.take(
@@ -150,19 +154,19 @@ export class SsoService {
     const now = this.deps.clock.now();
 
     if (!pending || pending.expiresAt <= now)
-      throw unauthorized('The sign-in request has expired. Please try again.');
+      throw unauthorized(Errors.SsoRequestExpired);
 
     if (pending.userId && user?.id !== pending.userId)
-      throw unauthorized('Sign in again before linking single sign-on.');
+      throw unauthorized(Errors.SsoLinkSignInRequired);
 
     const identity = await provider.verify(query, pending);
 
     if (!storable(identity.issuer) || !storable(identity.subject))
-      throw unauthorized('This single sign-on account cannot be used here.');
+      throw unauthorized(Errors.SsoAccountUnusable);
 
     if (pending.userId) {
-      if (this.deps.subjects.has(identity.subject))
-        throw conflict('This account is assigned by the server configuration.');
+      if (subjects.has(identity.subject))
+        throw conflict(Errors.SsoAccountAssigned);
 
       await this.deps.identities.link({
         id: this.deps.ids.next(),
@@ -175,12 +179,9 @@ export class SsoService {
       return { kind: 'linked' };
     }
 
-    const target = await this.resolve(identity);
+    const target = await this.resolve(identity, subjects);
 
-    if (!target)
-      throw unauthorized(
-        'This single sign-on account is not linked to an administrator.',
-      );
+    if (!target) throw unauthorized(Errors.SsoAccountNotLinked);
 
     // Bound to the identity: if an unlink wins the race, the session is refused or removed.
     return {
@@ -202,7 +203,9 @@ export class SsoService {
         subject: linked.subject,
         linkedAt: linked.createdAt.toISOString(),
       },
-      assigned: [...this.deps.subjects.values()].includes(email),
+      assigned: [...(await this.deps.setup()).subjects.values()].includes(
+        email,
+      ),
     };
   }
 
@@ -214,11 +217,11 @@ export class SsoService {
    * The operator allowlist takes precedence over links made in the admin area. Stored values
    * must equal the verified ones exactly, whatever comparison rules the store applies.
    */
-  private async resolve({
-    issuer,
-    subject,
-  }: VerifiedIdentity): Promise<SignInTarget | null> {
-    const email = this.deps.subjects.get(subject);
+  private async resolve(
+    { issuer, subject }: VerifiedIdentity,
+    subjects: ReadonlyMap<string, string>,
+  ): Promise<SignInTarget | null> {
+    const email = subjects.get(subject);
 
     if (email) {
       const user = await this.deps.users.findByEmail(email);
@@ -234,8 +237,9 @@ export class SsoService {
     return user && { user, identityId: linked.id };
   }
 
-  private provider() {
-    if (!this.deps.provider) throw notFound('Single sign-on');
-    return this.deps.provider;
+  private async enabled() {
+    const setup = await this.deps.setup();
+    if (!setup.provider) throw notFound(Errors.SsoNotFound);
+    return { ...setup, provider: setup.provider };
   }
 }

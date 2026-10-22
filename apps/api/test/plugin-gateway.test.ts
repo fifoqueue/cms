@@ -1,12 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 import { definePlugin } from '@cms/sdk/plugin';
-import { createApiApp } from '../src/http/app';
-import { PluginGateway } from '../src/http/plugin-gateway';
-import type { PluginGatewayDeps } from '../src/http/plugin-gateway';
-import type { ApiServices } from '../src/http/services';
-import { createRuntime } from './support/runtime';
+import { createApiApp } from '#api/http/app';
+import { PluginGateway } from '#api/http/plugin-gateway';
+import type { PluginGatewayDeps } from '#api/http/plugin-gateway';
+import type { ApiServices } from '#api/http/services';
+import { profile } from '#test/support/memory';
+import { createRuntime } from '#test/support/runtime';
 
 const ADMIN_TOKEN = 'admin-token';
+const SUBSCRIBER_TOKEN = 'subscriber-token';
 
 const gatewayApp = (
   auth: PluginGatewayDeps['auth'],
@@ -27,10 +29,17 @@ const gatewayApp = (
 const setup = async () => {
   const runtime = createRuntime({ timeoutMs: 50 });
   const auth = {
-    authenticate: async (token: string) =>
-      token === ADMIN_TOKEN
-        ? { id: 'u', email: 'a@example.com', name: 'Admin' }
-        : null,
+    authenticate: async (token: string) => {
+      if (token === ADMIN_TOKEN)
+        return profile({ id: 'u', email: 'a@example.com', name: 'Admin' });
+      if (token === SUBSCRIBER_TOKEN)
+        return profile({
+          id: 'subscriber',
+          role: 'subscriber',
+          capabilities: [],
+        });
+      return null;
+    },
   };
   const app = await gatewayApp(auth, runtime.routes);
 
@@ -91,6 +100,9 @@ describe('plugin gateway', () => {
     const { runtime, call } = await setup();
     await runtime.host.enable('echo');
     expect((await call('/api/plugins/echo/me')).status).toBe(401);
+    expect((await call('/api/plugins/echo/me', SUBSCRIBER_TOKEN)).status).toBe(
+      403,
+    );
     expect(
       await (await call('/api/plugins/echo/me', ADMIN_TOKEN)).json(),
     ).toMatchObject({ id: 'u' });

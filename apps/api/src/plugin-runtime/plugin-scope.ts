@@ -1,4 +1,5 @@
 import type { Unsubscribe } from '@cms/sdk/plugin';
+import { Errors } from '#api/shared/errors';
 
 /**
  * Everything one activation registered, released in one call.
@@ -15,7 +16,7 @@ export class PluginScope {
   track(release: Unsubscribe): Unsubscribe {
     if (this.disposed) {
       release();
-      throw new Error('Plugin is not active');
+      throw new Error(Errors.PluginInactive);
     }
     this.releases.push(release);
     return () => {

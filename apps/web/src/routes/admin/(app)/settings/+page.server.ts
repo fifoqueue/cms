@@ -19,6 +19,6 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
-    return { notice: 'Settings saved' };
+    return { notice: 'saved' };
   },
 };

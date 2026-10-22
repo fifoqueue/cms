@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { installationApi } from '#lib/server/api.js';
-import { failFrom, text } from '#lib/server/errors.js';
+import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { startSession } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -55,7 +55,7 @@ export const actions: Actions = {
     };
     if (text(form, 'password') !== text(form, 'confirmation'))
       return fail(400, {
-        message: '비밀번호가 일치하지 않습니다.',
+        message: Errors.PasswordMismatch,
         siteValues: values,
       });
     try {

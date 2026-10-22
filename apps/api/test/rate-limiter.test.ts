@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { MemoryRateLimiter } from '../src/infra/memory-rate-limiter';
-import { fixedClock } from './support/memory';
+import { MemoryRateLimiter } from '#api/infra/memory-rate-limiter';
+import { fixedClock } from '#test/support/memory';
 
 const WINDOW = 60_000;
 

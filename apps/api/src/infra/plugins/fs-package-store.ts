@@ -6,7 +6,8 @@ import type {
   CommittedBundle,
   PluginPackageStore,
   StagedBundle,
-} from '../../plugin-runtime/ports';
+} from '#api/plugin-runtime/ports';
+import { Errors } from '#api/shared/errors';
 
 const ENTRY = /^[\w-]+\.js$/;
 
@@ -48,7 +49,8 @@ export class FsPluginPackageStore implements PluginPackageStore {
   }
 
   locate(pluginId: string, entry: string): string {
-    if (!ENTRY.test(entry)) throw new Error(`Invalid bundle name "${entry}"`);
+    if (!ENTRY.test(entry))
+      throw new Error(Errors.PluginBundleNameInvalid(entry));
     return join(this.directory(pluginId), entry);
   }
 
@@ -58,7 +60,7 @@ export class FsPluginPackageStore implements PluginPackageStore {
 
   private directory(pluginId: string): string {
     if (!KEBAB_CASE.test(pluginId))
-      throw new Error(`Invalid plugin id "${pluginId}"`);
+      throw new Error(Errors.PluginIdInvalid(pluginId));
     return join(this.root, pluginId);
   }
 }

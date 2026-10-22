@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "imports": {
+    "#plugin/*": "./src/*.ts"
+  },
   "scripts": {
     "build": "bun build src/index.ts --target=bun --format=esm --outfile=dist/reading-time.js",
     "typecheck": "tsc --noEmit -p ."

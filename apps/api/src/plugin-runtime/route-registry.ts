@@ -1,4 +1,5 @@
 import type { PluginRoute, RouteRegistrar } from '@cms/sdk/plugin';
+import { Errors } from '#api/shared/errors';
 
 const METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const NONE: readonly PluginRoute[] = [];
@@ -14,11 +15,11 @@ export class PluginRouteRegistry {
     return {
       add: ({ method, path, access, handler }) => {
         if (!METHODS.has(method))
-          throw new Error(`Unsupported method "${method}"`);
+          throw new Error(Errors.PluginRouteMethodUnsupported(method));
         if (access !== 'public' && access !== 'admin')
-          throw new Error(`Unknown access "${access}"`);
+          throw new Error(Errors.PluginRouteAccessUnknown(access));
         if (!path.startsWith('/'))
-          throw new Error(`Route path "${path}" must start with "/"`);
+          throw new Error(Errors.PluginRoutePathInvalid(path));
         const route: PluginRoute = { method, path, access, handler };
         this.routes.set(owner, [...this.list(owner), route]);
         return () => {

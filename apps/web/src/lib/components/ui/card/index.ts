@@ -1,10 +1,10 @@
-import Action from './card-action.svelte';
-import Content from './card-content.svelte';
-import Description from './card-description.svelte';
-import Footer from './card-footer.svelte';
-import Header from './card-header.svelte';
-import Title from './card-title.svelte';
-import Root from './card.svelte';
+import Action from '#lib/components/ui/card/card-action.svelte';
+import Content from '#lib/components/ui/card/card-content.svelte';
+import Description from '#lib/components/ui/card/card-description.svelte';
+import Footer from '#lib/components/ui/card/card-footer.svelte';
+import Header from '#lib/components/ui/card/card-header.svelte';
+import Title from '#lib/components/ui/card/card-title.svelte';
+import Root from '#lib/components/ui/card/card.svelte';
 
 export {
   Root,

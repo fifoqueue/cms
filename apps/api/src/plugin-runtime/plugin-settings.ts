@@ -5,8 +5,8 @@ import type {
   SettingValue,
   SettingValues,
 } from '@cms/sdk';
-import { parseInput } from '../shared/validation';
-import type { PluginDataRepository } from './ports';
+import { parseInput } from '#api/shared/validation';
+import type { PluginDataRepository } from '#api/plugin-runtime/ports';
 
 const VALUE_TYPES: Record<SettingField['type'], string> = {
   text: 'string',

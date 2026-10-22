@@ -3,10 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "imports": {
+    "#sdk/*": "./src/*.ts"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./plugin": "./src/plugin.ts",
-    "./client": "./src/client.ts"
+    "./client": "./src/client.ts",
+    "./format": "./src/format.ts",
+    "./tree": "./src/tree.ts",
+    "./capabilities": "./src/capabilities.ts",
+    "./locales": "./src/locales.ts",
+    "./media-paths": "./src/media-paths.ts",
+    "./media-headers": "./src/media-headers.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p ."

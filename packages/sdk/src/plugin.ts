@@ -1,17 +1,53 @@
 // Plugin authoring API. A plugin may depend on this module and on `@cms/sdk` only.
-import type { UserProfile } from './auth';
-import type { Awaitable, Paginated } from './common';
+import type { UserProfile } from '#sdk/auth';
+import type { Awaitable, Paginated } from '#sdk/common';
 import type {
   ContentData,
   ContentEntry,
-  ContentType,
   PublicContent,
-} from './content';
-import type { PluginManifest, SettingValue, SettingValues } from './plugins';
-import type { SiteSettings } from './site';
-import type { SlotName } from './slots';
+  PublicContentListQuery,
+  PublicContentSummary,
+} from '#sdk/content';
+import type { CommentStatus } from '#sdk/comments';
+import type { AdminMedia } from '#sdk/media';
+import type { Capability } from '#sdk/capabilities';
+import type {
+  AdminBlock,
+  PluginManifest,
+  SettingValue,
+  SettingValues,
+} from '#sdk/plugins';
+import type { SiteSettings } from '#sdk/site';
+import type { SlotName } from '#sdk/slots';
 
 export type Unsubscribe = () => void;
+
+/** A stored comment as plugins see it (including the private email address). */
+export interface PluginComment {
+  id: string;
+  contentId: string;
+  parentId: string | null;
+  authorName: string;
+  authorEmail: string;
+  authorUrl: string;
+  body: string;
+  status: CommentStatus;
+  createdAt: string;
+}
+
+/**
+ * A visitor's comment about to be stored. Filters may change `body` and `status` (for example
+ * to mark spam); every other field is kept as the visitor sent it.
+ */
+export interface CommentDraft {
+  contentId: string;
+  parentId: string | null;
+  authorName: string;
+  authorEmail: string;
+  authorUrl: string;
+  body: string;
+  status: Exclude<CommentStatus, 'trash'>;
+}
 
 /** Notifications. Handlers run after the fact and cannot change the outcome. */
 export interface ActionHookMap {
@@ -19,15 +55,26 @@ export interface ActionHookMap {
   'content.updated': ContentEntry;
   'content.published': ContentEntry;
   'content.deleted': ContentEntry;
+  /** Moved to the trash; it is no longer public. */
+  'content.trashed': ContentEntry;
+  'content.restored': ContentEntry;
+  'media.uploaded': AdminMedia;
+  'media.deleted': AdminMedia;
   'site.updated': SiteSettings;
+  'comment.created': PluginComment;
+  'comment.statusChanged': PluginComment & { previousStatus: CommentStatus };
 }
 
 /** Transformations. Each handler receives the previous handler's output. Invalid output is discarded. */
 export interface FilterHookMap {
   /** Validated content right before it is stored. */
   'content.beforeSave': ContentData;
-  /** Published content right before it leaves the public API. */
+  /** Published content (with its body) right before it leaves the public API. */
   'content.public': PublicContent;
+  /** A published content list item (no body) right before it leaves the public API. */
+  'content.publicSummary': PublicContentSummary;
+  /** A visitor's comment right before it is stored. */
+  'comment.beforeSave': CommentDraft;
 }
 
 export type ActionName = keyof ActionHookMap;
@@ -63,6 +110,62 @@ export type SlotRenderer = (context: SlotContext) => Awaitable<string>;
 
 export interface SlotRegistrar {
   provide(slot: SlotName, renderer: SlotRenderer): Unsubscribe;
+}
+
+/** A widget admins can place in a widget area; `render` returns escaped HTML. */
+export interface WidgetDefinition {
+  /** Shown in the Widgets screen. */
+  name: string;
+  /** `settings` are the options saved with the placed widget (untrusted JSON). */
+  render(settings: Record<string, unknown>): Awaitable<string>;
+}
+
+export interface WidgetRegistrar {
+  /** `key` is kebab-case; the widget type becomes `plugin:<plugin id>:<key>`. */
+  provide(key: string, widget: WidgetDefinition): Unsubscribe;
+}
+
+/**
+ * Turns a link pasted into the editor's embed block into a player. Return the player HTML, or
+ * `null` when the address is not yours. Core providers (YouTube, Vimeo) are asked first.
+ */
+export interface EmbedProvider {
+  name: string;
+  render(url: URL): Awaitable<string | null>;
+}
+
+export interface EmbedRegistrar {
+  register(provider: EmbedProvider): Unsubscribe;
+}
+
+export interface TaskRegistrar {
+  /**
+   * Runs `task` every `intervalMs` (at least one minute) in one API instance at a time.
+   * `name` is kebab-case and unique within the plugin.
+   */
+  every(
+    name: string,
+    intervalMs: number,
+    task: () => Awaitable<void>,
+  ): Unsubscribe;
+}
+
+/** A screen of the plugin in the admin area, described as blocks. */
+export interface AdminPageDefinition {
+  title: string;
+  /** Who may open it and run its actions. Default `plugins.manage`. */
+  capability?: Capability;
+  render(): Awaitable<AdminBlock[]>;
+  /** Handlers of the page's `form` blocks, by action name. Values follow the form's fields. */
+  actions?: Record<
+    string,
+    (values: SettingValues) => Awaitable<{ notice?: string } | void>
+  >;
+}
+
+export interface AdminPageRegistrar {
+  /** `key` is kebab-case; the page appears under the plugin's name in the admin menu. */
+  page(key: string, page: AdminPageDefinition): Unsubscribe;
 }
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -103,11 +206,7 @@ export interface KeyValueStore {
 
 /** Read access to published content. Results are not passed through the `content.public` filter. */
 export interface ContentReader {
-  list(query?: {
-    type?: ContentType;
-    page?: number;
-    pageSize?: number;
-  }): Promise<Paginated<PublicContent>>;
+  list(query?: PublicContentListQuery): Promise<Paginated<PublicContent>>;
   getBySlug(slug: string): Promise<PublicContent | null>;
 }
 
@@ -122,6 +221,10 @@ export interface PluginContext {
   readonly pluginId: string;
   readonly hooks: HookRegistrar;
   readonly slots: SlotRegistrar;
+  readonly widgets: WidgetRegistrar;
+  readonly embeds: EmbedRegistrar;
+  readonly tasks: TaskRegistrar;
+  readonly admin: AdminPageRegistrar;
   readonly routes: RouteRegistrar;
   readonly settings: SettingsReader;
   readonly storage: KeyValueStore;

@@ -2,24 +2,33 @@ import { describe, expect, test } from 'bun:test';
 import { isJsonValue, stringifyJson } from '@cms/sdk';
 import type { PublicContent } from '@cms/sdk';
 import { definePlugin } from '@cms/sdk/plugin';
-import { ContentService } from '../src/domain/content/content-service';
+import { ContentService } from '#api/domain/content/content-service';
 import {
   PublicContentService,
   PublishedContentReader,
-} from '../src/domain/content/public-content';
-import type { Database } from '../src/infra/prisma/client';
-import { PrismaPluginDataRepository } from '../src/infra/prisma/plugin-repositories';
-import { tiptapRenderer } from '../src/infra/system';
-import { HookBus } from '../src/plugin-runtime/hook-bus';
-import type { PluginDataRepository } from '../src/plugin-runtime/ports';
+} from '#api/domain/content/public-content';
+import type { Database } from '#api/infra/prisma/client';
+import { PrismaPluginDataRepository } from '#api/infra/prisma/plugin-repositories';
+import { tiptapRenderer } from '#api/infra/system';
+import { HookBus } from '#api/plugin-runtime/hook-bus';
+import type { PluginDataRepository } from '#api/plugin-runtime/ports';
 import {
+  ADMIN,
+  testFields,
+  testTypes,
+  plainHasher,
+  testLocks,
   MemoryContentRepository,
   MemoryPluginData,
   fixedClock,
+  noUsers,
   recordingLogger,
   sequentialIds,
-} from './support/memory';
-import { createRuntime } from './support/runtime';
+} from '#test/support/memory';
+import { MemoryRevisionRepository } from '#test/support/memory-revisions';
+import { Embeds, vimeo, youtube } from '#api/domain/content/embeds';
+import { MemoryPublishedContentRepository } from '#test/support/memory-published';
+import { createRuntime } from '#test/support/runtime';
 
 const cyclic = () => {
   const value: Record<string, unknown> = { a: 1 };
@@ -157,6 +166,11 @@ describe('content.public filter output', () => {
       hooks,
       ids: sequentialIds(),
       clock: fixedClock(),
+      users: noUsers,
+      revisions: new MemoryRevisionRepository(),
+      hasher: plainHasher,
+      types: testTypes(),
+      fields: testFields(),
     });
     await service.create(
       {
@@ -170,12 +184,17 @@ describe('content.public filter output', () => {
           ],
         },
       },
-      'author',
+      ADMIN,
     );
 
+    const published = new MemoryPublishedContentRepository(repository);
     const publicContent = new PublicContentService(
-      new PublishedContentReader(repository),
+      new PublishedContentReader(published),
       hooks,
+      testLocks(published),
+      new Embeds(() => [youtube, vimeo]),
+      testFields(),
+      testTypes(),
     );
 
     return { hooks: hooks.registrar('p'), publicContent, lines };
@@ -183,8 +202,16 @@ describe('content.public filter output', () => {
 
   test('invalid results are discarded, keeping the previous valid content serializable', async () => {
     const { hooks, publicContent, lines } = await setup();
+    // Same handlers for full content and list items.
+    const filter = (
+      handler: (value: PublicContent) => unknown,
+      priority = 10,
+    ) => {
+      hooks.filter('content.public', handler as never, priority);
+      hooks.filter('content.publicSummary', handler as never, priority);
+    };
 
-    hooks.filter('content.public', (value) => ({
+    filter((value) => ({
       ...value,
       meta: { ...value.meta, kept: 1 },
     }));
@@ -208,14 +235,9 @@ describe('content.public filter output', () => {
         ),
     ];
 
-    for (const handler of bad)
-      hooks.filter('content.public', handler as never, 20);
+    for (const handler of bad) filter(handler, 20);
 
-    hooks.filter(
-      'content.public',
-      (value) => ({ ...value, title: `${value.title}!` }),
-      30,
-    );
+    filter((value) => ({ ...value, title: `${value.title}!` }), 30);
 
     const item = await publicContent.getBySlug('hello');
     expect(item.title).toBe('Hello!');
@@ -224,7 +246,10 @@ describe('content.public filter output', () => {
     expect(await Response.json(item).json()).toEqual(item);
 
     const page = await publicContent.list({});
-    expect(page.items).toEqual([item]);
+    // `toEqual` treats the undefined `html` as absent.
+    expect(page.items as unknown[]).toEqual([
+      { ...item, html: undefined, fields: undefined },
+    ]);
     expect(() => Response.json(page)).not.toThrow();
     expect(
       lines.filter((line) => line.includes('invalid value')).length,
@@ -236,12 +261,15 @@ describe('content.public filter output', () => {
     const meta = { deep: nest(100_000) };
 
     hooks.filter('content.public', (value) => ({ ...value, meta }));
+    hooks.filter('content.publicSummary', (value) => ({ ...value, meta }));
 
     const item = await publicContent.getBySlug('hello');
     const page = await publicContent.list({});
 
     expect(item.meta).toEqual({});
-    expect(page.items).toEqual([item]);
+    expect(page.items as unknown[]).toEqual([
+      { ...item, html: undefined, fields: undefined },
+    ]);
     expect(() => Response.json(page)).not.toThrow();
   });
 
