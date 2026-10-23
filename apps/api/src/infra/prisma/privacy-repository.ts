@@ -225,12 +225,13 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
           const jobs = await tx.$queryRaw<
             {
               id: string;
+              kind: string;
               payload: string;
               lastError: string | null;
               lockedUntil: Date | null;
             }[]
           >(
-            Prisma.sql`SELECT id, payload, last_error AS lastError, locked_until AS lockedUntil FROM jobs WHERE id > ${after} ORDER BY id LIMIT 200 FOR UPDATE`,
+            Prisma.sql`SELECT id, kind, payload, last_error AS lastError, locked_until AS lockedUntil FROM jobs WHERE id > ${after} ORDER BY id LIMIT 200 FOR UPDATE`,
           );
           for (const job of jobs) {
             let raw: unknown;
@@ -249,8 +250,22 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
               throw conflict(Errors.PrivacyJobsUnreadable);
             const serialized =
               `${JSON.stringify(opened)} ${job.lastError ?? ''}`.toLowerCase();
-            if (!needles.some((needle) => serialized.includes(needle)))
+            if (!needles.some((needle) => serialized.includes(needle))) {
+              const message = opened as {
+                subject?: unknown;
+                subjects?: unknown;
+              } | null;
+              // Legacy author notices could omit both the email and comment link; ownership cannot be inferred safely.
+              if (
+                job.kind === 'email.send' &&
+                typeof message?.subject === 'string' &&
+                /\] (New comment:|새 댓글:)/.test(message.subject) &&
+                (!Array.isArray(message.subjects) ||
+                  message.subjects.length === 0)
+              )
+                throw conflict(Errors.PrivacyJobsUnscoped);
               continue;
+            }
             if (job.lockedUntil && job.lockedUntil > now)
               throw conflict(Errors.PrivacyJobsBusy);
             // Delete the snapshot, including failed jobs and any recipient/error metadata.

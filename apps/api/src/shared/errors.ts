@@ -33,6 +33,8 @@ export const Errors = {
   PrivacyNotConfirmed: 'The person must confirm this request first',
   PrivacyJobsBusy:
     'A message involving this person is being sent. Try again after it finishes',
+  PrivacyJobsUnscoped:
+    'Older comment notifications have no subject reference. Let them finish or expire before completing this request',
   PrivacyJobsUnreadable:
     'A queued message cannot be read. Repair or remove it before erasing personal data',
   JobFailed: 'Job delivery failed',

@@ -1068,4 +1068,47 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     },
     SLOW,
   );
+  test(
+    'erasure does not declare completion while an unscoped legacy comment notice remains',
+    async () => {
+      const { privacy } = services();
+      const id = uuidV7.next(),
+        jobId = uuidV7.next(),
+        now = new Date();
+      await db.privacyRequest.create({
+        data: {
+          id,
+          email: `legacy-${id}@example.com`,
+          action: 'erase',
+          status: 'confirmed',
+          createdAt: now,
+          confirmedAt: now,
+          expiresAt: new Date(now.getTime() + 86400000),
+        },
+      });
+      await db.job.create({
+        data: {
+          id: jobId,
+          kind: 'email.send',
+          payload: JSON.stringify({
+            to: 'moderator@example.com',
+            subject: '[Site] New comment: Post',
+            text: 'An old name and comment without a link',
+          }),
+          runAt: now,
+          createdAt: now,
+          failedAt: now,
+        },
+      });
+      await expect(privacy.erase(id, ADMIN)).rejects.toMatchObject({
+        code: 'conflict',
+      });
+      expect(
+        (await db.privacyRequest.findUnique({ where: { id } }))?.status,
+      ).toBe('confirmed');
+      expect(await db.job.count({ where: { id: jobId } })).toBe(1);
+      await db.job.delete({ where: { id: jobId } });
+    },
+    SLOW,
+  );
 });
