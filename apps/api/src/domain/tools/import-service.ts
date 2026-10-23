@@ -35,7 +35,7 @@ import type {
   WxrTerm,
 } from '#api/domain/tools/wxr';
 import type { UserDirectory } from '#api/domain/users/user-directory';
-import { DomainError, Errors } from '#api/shared/errors';
+import { DomainError, invalidInput, Errors } from '#api/shared/errors';
 
 /** Converts imported HTML to an editor document; a body the schema cannot hold throws `invalid_input`. */
 export interface HtmlParser {
@@ -180,16 +180,28 @@ export class ImportService {
       attachments: [],
     };
 
+    const types = new Set(
+      (await this.deps.types.list()).map((type) => type.key),
+    );
+    const referenced = new Set(
+      document.items
+        .filter((item) => types.has(item.type) && !!STATUSES[item.status])
+        .map((item) => item.author.trim().toLowerCase()),
+    );
+    const authors = await this.authors(
+      document.authors.filter((author) =>
+        referenced.has(author.login.trim().toLowerCase()),
+      ),
+      mode,
+      actor,
+      result,
+    );
     const categories = await this.terms(
       'category',
       document.categories,
       result,
     );
     const tags = await this.terms('tag', document.tags, result);
-    const authors = await this.authors(document.authors, mode, actor, result);
-    const types = new Set(
-      (await this.deps.types.list()).map((type) => type.key),
-    );
     const attachments = new Map(
       document.items
         .filter((item) => item.type === 'attachment' && item.attachmentUrl)
@@ -287,7 +299,7 @@ export class ImportService {
           (slug) => categories.get(slug) ?? [],
         ),
         tagIds: item.tags.flatMap((slug) => tags.get(slug) ?? []),
-        authorId: authors.get(item.author) ?? actor.id,
+        authorId: authors.get(item.author.trim().toLowerCase()) ?? actor.id,
         ...(parentId && { parentId }),
         ...(item.publishedAt && {
           publishedAt: item.publishedAt.toISOString(),
@@ -337,16 +349,40 @@ export class ImportService {
   ) {
     const users = await this.deps.users.list();
     const ids = new Map<string, string>();
-    for (const author of authors) {
+    const byEmail = new Map(
+      users.map((user) => [user.email.toLowerCase(), user.id]),
+    );
+    const byLogin = new Map(
+      users.map((user) => [user.slug.toLowerCase(), user.id]),
+    );
+    const unique = [
+      ...new Map(
+        authors.map((author) => [author.login.trim().toLowerCase(), author]),
+      ).values(),
+    ];
+    const missing = new Set(
+      unique
+        .filter((author) => {
+          const email = author.email.trim().toLowerCase();
+          const login = author.login.trim().toLowerCase();
+          return email && !byEmail.has(email) && !byLogin.has(login);
+        })
+        .map((author) => author.email.trim().toLowerCase()),
+    );
+    // Reject the whole request before account creation or any term/content side effects.
+    if (
+      mode !== 'me' &&
+      this.deps.accounts &&
+      this.deps.tokens &&
+      missing.size > 100
+    )
+      throw invalidInput(Errors.ImportAuthorsLimit);
+    for (const author of unique) {
       const email = author.email.trim().toLowerCase();
       const login = author.login.trim().toLowerCase();
-      const user = users.find(
-        (candidate) =>
-          (email && candidate.email.toLowerCase() === email) ||
-          (login && candidate.slug === login),
-      );
-      if (user) {
-        ids.set(author.login, user.id);
+      const id = byEmail.get(email) ?? byLogin.get(login);
+      if (id) {
+        ids.set(login, id);
         continue;
       }
       if (mode === 'me' || !email || !this.deps.accounts || !this.deps.tokens)
@@ -358,13 +394,14 @@ export class ImportService {
             name,
             email,
             role: mode,
-            // Keeps author archives at their WordPress address (`/author/<login>`).
             ...(CONTENT_SLUG.test(login) && { slug: login }),
             password: this.deps.tokens.issue(),
           },
           actor,
         );
-        ids.set(author.login, account.id);
+        ids.set(login, account.id);
+        byEmail.set(email, account.id);
+        byLogin.set(login, account.id);
         result.users += 1;
       } catch (error) {
         if (!(error instanceof DomainError)) throw error;
