@@ -77,6 +77,8 @@ describe('WebhookService', () => {
       title: 'S',
       description: '',
       locale: 'en',
+      iconId: null,
+      logoId: null,
     });
     await hooks.emit('media.deleted', {} as never);
     await Bun.sleep(5);

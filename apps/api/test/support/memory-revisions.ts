@@ -20,10 +20,18 @@ export class MemoryRevisionRepository implements RevisionRepository {
       this.rows.splice(this.rows.indexOf(stale), 1);
   }
 
+  /** The entries' last save times, for dating autosaves after them (set when a test wires it). */
+  saves?: { savedAt(contentId: string): Date | undefined };
+
   async autosave(revision: RevisionWrite) {
     await this.clearAutosave(revision.contentId, revision.authorId!);
+    const saved = this.saves?.savedAt(revision.contentId);
     this.rows.push({
       ...structuredClone(revision),
+      createdAt:
+        saved && revision.createdAt <= saved
+          ? new Date(saved.getTime() + 1)
+          : revision.createdAt,
       authorName: revision.authorId ?? '',
     });
   }

@@ -5,6 +5,7 @@ import type {
   ContentRepository,
   ContentSummaryRecord,
   ContentWrite,
+  ContentWriteGuard,
 } from '#api/domain/content/content-repository';
 import { checkContentParent } from '#api/domain/content/hierarchy';
 import { checkTermKinds } from '#api/domain/content/term-assignment';
@@ -18,8 +19,9 @@ import {
 } from '#api/infra/prisma/content-criteria';
 import type { Database } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
+import { takenSlugs } from '#api/infra/prisma/taken-slugs';
 import type { Content } from '#api/infra/prisma/generated/client';
-import { invalidInput, Errors } from '#api/shared/errors';
+import { conflict, invalidInput, Errors } from '#api/shared/errors';
 import { fromSeoColumns, toSeoColumns } from '#api/infra/prisma/seo-mapper';
 import {
   assignContentPath,
@@ -144,14 +146,16 @@ export class PrismaContentRepository implements ContentRepository {
   }
 
   async takenSlugs(slugs: readonly string[]) {
-    const rows = await this.db.content.findMany({
-      where: { slug: { in: [...slugs] } },
-      select: { slug: true },
-    });
-    return new Set(rows.map((row) => row.slug));
+    return takenSlugs(this.db, 'contents', slugs);
   }
 
-  async list({ page, pageSize, orderBy, ...filters }: ContentCriteria) {
+  async list({
+    page,
+    pageSize,
+    orderBy,
+    order = 'desc',
+    ...filters
+  }: ContentCriteria) {
     // Every filter reaches the query (trash view, author, sticky, dates included).
     const where = await contentWhere(this.db, filters);
     if (!where) return { items: [], total: 0 };
@@ -162,7 +166,7 @@ export class PrismaContentRepository implements ContentRepository {
       where,
       omit: listOmit,
       include: withRelations,
-      orderBy: [{ [orderBy]: 'desc' }, { id: 'desc' }],
+      orderBy: [{ [orderBy]: order }, { id: order }],
       skip,
       take: pageSize,
     });
@@ -191,8 +195,27 @@ export class PrismaContentRepository implements ContentRepository {
     );
   }
 
-  async update(record: ContentWrite) {
-    return this.write(record, async (tx, next) => {
+  async update(record: ContentWrite, guard: ContentWriteGuard = {}) {
+    return this.write(record, async (tx, next, current) => {
+      if (
+        guard.expectedUpdatedAt &&
+        current?.updatedAt.getTime() !== guard.expectedUpdatedAt.getTime()
+      )
+        throw conflict(Errors.ContentChanged);
+      // Autosaves are written under the same lock, so none can appear before this write commits.
+      if (
+        guard.autosaveOf &&
+        current &&
+        (await tx.contentRevision.count({
+          where: {
+            contentId: record.id,
+            authorId: guard.autosaveOf,
+            kind: 'autosave',
+            createdAt: { gt: current.updatedAt },
+          },
+        }))
+      )
+        throw conflict(Errors.ContentAutosavePending);
       const { id, ...data } = toRow(next);
       return tx.content.update({
         where: { id },
@@ -264,7 +287,11 @@ export class PrismaContentRepository implements ContentRepository {
   /** Checks the term kinds and saves in one transaction; a term deleted meanwhile fails the FK. */
   private async write(
     record: ContentWrite,
-    save: (tx: Transaction, next: ContentWrite) => Promise<Row>,
+    save: (
+      tx: Transaction,
+      next: ContentWrite,
+      current: { publishedAt: Date | null; updatedAt: Date } | null,
+    ) => Promise<Row>,
   ): Promise<ContentRecord> {
     try {
       return await guardUnique(
@@ -273,12 +300,8 @@ export class PrismaContentRepository implements ContentRepository {
             await lockPermalinks(tx);
             const current = await tx.content.findUnique({
               where: { id: record.id },
-              select: { publishedAt: true },
+              select: { publishedAt: true, updatedAt: true },
             });
-            const next = {
-              ...record,
-              publishedAt: current?.publishedAt ?? record.publishedAt,
-            };
             if (
               record.type !== 'page' &&
               (await tx.content.count({ where: { parentId: record.id } }))
@@ -325,7 +348,15 @@ export class PrismaContentRepository implements ContentRepository {
               throw invalidInput(Errors.MediaNotFound, [
                 { path: 'featuredMediaId', message: Errors.MediaNotFound },
               ]);
-            const row = await save(tx, next);
+            // The version (`updatedAt`) strictly advances, so equal clocks never share one.
+            const next =
+              current && record.updatedAt <= current.updatedAt
+                ? {
+                    ...record,
+                    updatedAt: new Date(current.updatedAt.getTime() + 1),
+                  }
+                : record;
+            const row = await save(tx, next, current);
             await tx.contentMedia.deleteMany({ where: { contentId: row.id } });
             if (media.size)
               await tx.contentMedia.createMany({

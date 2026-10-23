@@ -1,6 +1,7 @@
 import { getContext, setContext } from 'svelte';
 import type { ArchivePathsState, SlotMap } from '@cms/sdk';
 import type { CommentSection } from '#lib/server/comments.js';
+import type { BlockData } from '#lib/server/theme-queries.js';
 import type {
   MenuItemView,
   PostSummary,
@@ -16,6 +17,14 @@ import type { ThemePage } from '#lib/theme/template.js';
 export interface SiteScope {
   archives?: ArchivePathsState;
   queries?: Record<string, PostList>;
+  terms: BlockData['terms'];
+  months: BlockData['months'];
+  /** Previous and next entry of a single entry page. */
+  adjacent: BlockData['adjacent'];
+  pageTree: BlockData['pageTree'];
+  recentComments: BlockData['recentComments'];
+  postAuthor: BlockData['postAuthor'];
+  calendar: BlockData['calendar'];
   theme: ThemeView;
   site: SiteView;
   reading: ReadingView;
@@ -28,11 +37,23 @@ export interface SiteScope {
   fieldLabels: { key: string; label: string; type: string }[];
   comments: CommentSection | null;
   moderation: boolean;
+  /** Whether the visitor is signed in (the toolbar shows). */
+  signedIn: boolean;
 }
 
 const SCOPE = Symbol('site-scope');
 const POST = Symbol('post');
 const PARTS = Symbol('template-parts');
+const PATH = Symbol('block-path');
+
+/**
+ * Where the blocks being rendered sit in the tree the site editor edits (indexes from the
+ * root); undefined outside the editor and inside template parts, which are edited separately.
+ */
+export const provideBlockPath = (path: number[] | undefined) =>
+  setContext(PATH, path);
+
+export const useBlockPath = () => getContext<number[] | undefined>(PATH);
 
 export const provideScope = (scope: () => SiteScope) =>
   setContext(SCOPE, scope);

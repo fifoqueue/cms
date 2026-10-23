@@ -29,6 +29,7 @@ export const actions: Actions = {
       postsPageId: text(form, 'postsPageId') || null,
       postsPerPage: count(form, 'postsPerPage', 10),
       feedItems: count(form, 'feedItems', 20),
+      feedContent: text(form, 'feedContent') === 'excerpt' ? 'excerpt' : 'full',
       dateFormat: (DATE_FORMATS as readonly string[]).includes(dateFormat)
         ? (dateFormat as ReadingSettingsInput['dateFormat'])
         : 'long',

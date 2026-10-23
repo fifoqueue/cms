@@ -85,6 +85,8 @@
     : PADDING[a.padding]} {layout}"
   class:cms-constrained={a.layout === 'constrained'}
   class:cms-sticky={a.sticky}
+  id={a.tagName === 'main' ? 'main' : undefined}
+  tabindex={a.tagName === 'main' ? -1 : undefined}
   {style}
 >
   {#if a.layout === 'constrained'}

@@ -67,5 +67,13 @@ export const httpsUpdateFeed: UpdateFeed = {
 };
 
 export const tiptapHtmlParser: HtmlParser = {
-  parse: (html) => parseHtml(html),
+  parse(html) {
+    try {
+      return parseHtml(html);
+    } catch (error) {
+      if (error instanceof InvalidDocumentError)
+        throw invalidInput(Errors.InvalidDocument(error.message));
+      throw error;
+    }
+  },
 };

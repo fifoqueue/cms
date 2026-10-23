@@ -2,7 +2,7 @@
   import '#lib/theme/site.css';
   import TemplateView from '#lib/theme/TemplateView.svelte';
   import { themeStyle } from '#lib/theme/style.js';
-  import { queryKey } from '#lib/theme/queries.js';
+  import { queryKey, selectionOf } from '#lib/theme/queries.js';
   import { untrack } from 'svelte';
   import type { Block } from '@cms/sdk';
   import { resolve } from '$app/paths';
@@ -12,6 +12,7 @@
     THEME_FONT_SIZES,
     THEME_LINE_HEIGHTS,
     THEME_RADII,
+    isIndependentQuery,
     walkBlocks,
   } from '@cms/sdk';
   import {
@@ -22,6 +23,7 @@
   } from '@lucide/svelte';
   import BlockTreeEditor from '#lib/admin/BlockTreeEditor.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import { confirmLeave } from '#lib/admin/unsaved.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
@@ -69,15 +71,56 @@
   );
   const parts = $derived(editor.parts.map((part) => part.slug));
   let dirty = $state(false);
+  let stylesDirty = $state(false);
+  confirmLeave(
+    () => dirty || stylesDirty,
+    () => m.unsavedLeave,
+  );
   let canvasBlocks = $state<Block[] | undefined>();
-  let canvasQueries = $state<typeof data.canvas.queries | undefined>();
+  type CanvasData = Pick<
+    typeof data.canvas,
+    | 'queries'
+    | 'terms'
+    | 'months'
+    | 'adjacent'
+    | 'pageTree'
+    | 'recentComments'
+    | 'postAuthor'
+    | 'calendar'
+  >;
+  let canvasData = $state<CanvasData | undefined>();
   let previewError = $state<{ message?: string } | undefined>();
   let mobile = $state(false);
+  /** Path key of the block selected in the editor; only digits and dots. */
+  let selectedBlock = $state<string | null>(null);
 
-  const querySignature = $derived(
+  const DATA_BLOCKS = new Set<string>([
+    'categories',
+    'tag-cloud',
+    'post-navigation',
+    'page-list',
+    'post-author',
+    'calendar',
+  ]);
+  /** Changes whenever the data the edited blocks show changes (lists, terms, months, neighbours). */
+  const dataSignature = $derived(
     JSON.stringify(
       [...walkBlocks(canvasBlocks ?? [])].flatMap((block) =>
-        block.name === 'query' && !block.attrs.inherit ? [queryKey(block)] : [],
+        isIndependentQuery(block)
+          ? [
+              queryKey(
+                selectionOf(
+                  block as Extract<Block, { name: 'query' | 'latest-posts' }>,
+                ),
+              ),
+            ]
+          : block.name === 'archives'
+            ? [`archives:${block.attrs.months}`]
+            : block.name === 'latest-comments'
+              ? [`comments:${block.attrs.comments}`]
+              : DATA_BLOCKS.has(block.name)
+                ? [block.name]
+                : [],
       ),
     ),
   );
@@ -89,13 +132,14 @@
         : selected.kind === 'part'
           ? selected.part.blocks
           : undefined;
-    canvasQueries = data.canvas.queries;
+    canvasData = undefined;
     previewError = undefined;
     dirty = false;
+    stylesDirty = false;
   });
 
   $effect(() => {
-    const signature = querySignature;
+    const signature = dataSignature;
     const theme = editor.id;
     const selection = selected;
     const blocks = untrack(() => canvasBlocks);
@@ -114,6 +158,11 @@
           : selection.part.slug,
       );
       body.set('blocks', JSON.stringify(blocks));
+      // The published sample entry, for its previous and next entries.
+      if (data.previewPage?.kind === 'content') {
+        body.set('contentId', data.previewPage.content.id);
+        body.set('author', data.previewPage.content.author?.slug ?? '');
+      }
 
       try {
         const response = await fetch('?/preview', {
@@ -122,13 +171,12 @@
           signal: controller.signal,
           headers: { 'x-sveltekit-action': 'true' },
         });
-        const result = deserialize<
-          { queries: typeof data.canvas.queries },
-          { message?: string }
-        >(await response.text());
+        const result = deserialize<CanvasData, { message?: string }>(
+          await response.text(),
+        );
         if (!current) return;
         if (result.type === 'success') {
-          canvasQueries = result.data?.queries;
+          canvasData = result.data;
           previewError = undefined;
         } else if (result.type === 'failure') {
           previewError = result.data;
@@ -159,7 +207,13 @@
     'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm hover:bg-muted aria-[current=page]:bg-muted aria-[current=page]:font-medium';
 </script>
 
-<svelte:head><title>{m.navEditor} · {editor.name}</title></svelte:head>
+<svelte:head>
+  <title>{m.navEditor} · {editor.name}</title>
+  {#if selectedBlock}
+    <!-- eslint-disable-next-line svelte/no-at-html-tags -- the key is a block path of digits and dots -->
+    {@html `<style>.cms-editor-canvas [data-block-path="${selectedBlock.replace(/[^\d.]/g, '')}"] > * { outline: 2px solid #3b82f6; outline-offset: 2px; }</style>`}
+  {/if}
+</svelte:head>
 
 <div class="flex flex-wrap items-center justify-between gap-4">
   <div class="space-y-1">
@@ -195,7 +249,7 @@
 </div>
 <FormMessage {form} />
 
-<div class="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
+<div class="grid gap-6 xl:grid-cols-[15rem_minmax(0,1fr)]">
   <nav aria-label={m.navEditor} class="space-y-5">
     <div class="space-y-1">
       <!-- eslint-disable svelte/no-navigation-without-resolve -- query strings on this page -->
@@ -250,7 +304,7 @@
           name="slug"
           placeholder={m.editorTemplateSlug}
           aria-label={m.editorTemplateSlug}
-          pattern="[a-z0-9]+(-[a-z0-9]+)*"
+          pattern={'[\\p{L}\\p{N}][\\p{L}\\p{N}\\p{M}]*(-[\\p{L}\\p{N}][\\p{L}\\p{N}\\p{M}]*)*'}
           class="h-8"
         />
         <Button type="submit" variant="outline" size="sm" class="w-full"
@@ -311,7 +365,13 @@
           <form
             method="POST"
             action="?/saveStyles"
-            use:enhance
+            use:enhance={() =>
+              async ({ result, update }) => {
+                if (result.type === 'success') stylesDirty = false;
+                await update();
+              }}
+            oninput={() => (stylesDirty = true)}
+            onchange={() => (stylesDirty = true)}
             class="space-y-6"
           >
             <input type="hidden" name="theme" value={editor.id} />
@@ -498,38 +558,56 @@
                   dirty = changed;
                   canvasBlocks = tree;
                 }}
-              />
-              <div class="flex items-center justify-between gap-2">
-                <span class="font-medium">{m.editorLivePreview}</span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  aria-pressed={mobile}
-                  onclick={() => (mobile = !mobile)}
-                  >{m.editorMobilePreview}</Button
-                >
-              </div>
-              <div class="overflow-auto rounded border bg-muted p-2">
-                <FormMessage form={previewError} />
-                <div
-                  class="cms-site mx-auto min-h-64 bg-background text-foreground"
-                  style={`${themeStyle(data.canvas.theme)}; width: ${mobile ? '375px' : '100%'}; max-width: 100%`}
-                  inert
-                >
-                  {#if data.previewPage}
-                    <TemplateView
-                      data={{
-                        ...data.canvas,
-                        queries: canvasQueries ?? data.canvas.queries,
+                onselect={(key) => (selectedBlock = key)}
+              >
+                {#snippet canvas(select)}
+                  <div class="mb-2 flex items-center justify-between gap-2">
+                    <span class="text-sm font-medium"
+                      >{m.editorLivePreview}</span
+                    >
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-pressed={mobile}
+                      onclick={() => (mobile = !mobile)}
+                      >{m.editorMobilePreview}</Button
+                    >
+                  </div>
+                  <div class="overflow-auto rounded border bg-muted p-2">
+                    <FormMessage form={previewError} />
+                    <!-- Clicking selects the block under the pointer; List View offers the same by keyboard. -->
+                    <div
+                      class="cms-site cms-editor-canvas mx-auto min-h-64 cursor-default bg-background text-foreground"
+                      style={`${themeStyle(data.canvas.theme)}; width: ${mobile ? '375px' : '100%'}; max-width: 100%`}
+                      onclickcapture={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const target = (event.target as Element).closest(
+                          '[data-block-path]',
+                        );
+                        const key = target?.getAttribute('data-block-path');
+                        if (key) select(key.split('.').map(Number));
                       }}
-                      page={data.previewPage}
-                      previewBlocks={canvasBlocks ?? item.blocks}
-                    />
-                  {:else}
-                    <p class="p-4 text-muted-foreground">{m.noPosts}</p>
-                  {/if}
-                </div>
-              </div>
+                      onsubmitcapture={(event) => event.preventDefault()}
+                    >
+                      {#if data.previewPage}
+                        <TemplateView
+                          data={{
+                            ...data.canvas,
+                            ...canvasData,
+                          }}
+                          page={data.previewPage}
+                          previewBlocks={canvasBlocks ?? item.blocks}
+                          editable
+                        />
+                      {:else}
+                        <p class="p-4 text-muted-foreground">{m.noPosts}</p>
+                      {/if}
+                    </div>
+                  </div>
+                {/snippet}
+              </BlockTreeEditor>
               <div class="flex flex-wrap items-center gap-3 border-t pt-4">
                 <Button type="submit">{m.save}</Button>
                 {#if dirty}

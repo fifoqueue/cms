@@ -9,6 +9,7 @@
 
   const i18n = useI18n();
 
+  /** wp-admin's order first, then this CMS's own screens (the same order as the menu). */
   const tabs = [
     {
       route: '/admin/(app)/settings',
@@ -23,20 +24,24 @@
       label: (m: Messages) => m.settingsDiscussion,
     },
     {
-      route: '/admin/(app)/settings/search',
-      label: (m: Messages) => m.settingsSearch,
+      route: '/admin/(app)/settings/permalinks',
+      label: (m: Messages) => m.permalinksTitle,
     },
     {
-      route: '/admin/(app)/settings/sso',
-      label: (m: Messages) => m.settingsSso,
+      route: '/admin/(app)/settings/email',
+      label: (m: Messages) => m.settingsEmail,
+    },
+    {
+      route: '/admin/(app)/settings/search',
+      label: (m: Messages) => m.settingsSearch,
     },
     {
       route: '/admin/(app)/settings/security',
       label: (m: Messages) => m.settingsSecurity,
     },
     {
-      route: '/admin/(app)/settings/email',
-      label: (m: Messages) => m.settingsEmail,
+      route: '/admin/(app)/settings/sso',
+      label: (m: Messages) => m.settingsSso,
     },
   ] as const;
 </script>

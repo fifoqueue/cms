@@ -26,6 +26,7 @@ export interface CommentTarget {
   path: string;
   publishedAt: Date | null;
   allowComments: boolean;
+  protected: boolean;
   authorId: string;
   /** Approved comments. */
   commentCount: number;
@@ -60,6 +61,8 @@ export type CommentChanges = Partial<
 export interface CommentRepository {
   target(contentId: string): Promise<CommentTarget | null>;
   findById(id: string): Promise<CommentRecord | null>;
+  /** Page containing this top-level comment, ordered by creation time then id. */
+  pageOf(root: CommentRecord, pageSize: number): Promise<number>;
   insert(record: CommentRecord): Promise<void>;
   /**
    * Approved comments of an entry: a page of top-level comments, oldest first, each followed by
@@ -73,7 +76,10 @@ export interface CommentRepository {
   ): Promise<{ items: ThreadRecord[]; total: number; truncated: boolean }>;
   /** Newest first, with the entry's title. */
   list(criteria: CommentCriteria): Promise<{
-    items: (CommentRecord & { contentTitle: string })[];
+    items: (CommentRecord & {
+      contentTitle: string;
+      parentAuthor: string | null;
+    })[];
     total: number;
   }>;
   /** Comments after `afterId`, ordered by id for a streaming WXR export. */

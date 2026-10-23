@@ -82,7 +82,6 @@ export class ContentService {
       ...filters,
       page,
       pageSize,
-      orderBy: 'updatedAt',
     });
     return { items: items.map(toEntrySummary), total, page, pageSize };
   }
@@ -149,18 +148,29 @@ export class ContentService {
     const slug = data.slug ?? current.slug;
     if (slug !== current.slug) await this.assertSlugFree(slug);
     const now = this.deps.clock.now();
-    const record = await this.deps.repository.update({
-      ...(await this.fields(data, current)),
-      ...this.schedule(data, current, now),
-      passwordHash: await this.passwordHash(data, current.passwordHash),
-      seo: data.seo ?? current.seo,
-      id: current.id,
-      slug,
-      createdAt: current.createdAt,
-      updatedAt: now,
-      authorId,
-    });
-    await this.saveRevision(record, actor);
+    const expected = data.expectedUpdatedAt
+      ? new Date(data.expectedUpdatedAt)
+      : undefined;
+    if (expected && expected.getTime() !== current.updatedAt.getTime())
+      throw conflict(Errors.ContentChanged);
+    const record = await this.deps.repository.update(
+      {
+        ...(await this.fields(data, current)),
+        ...this.schedule(data, current, now),
+        passwordHash: await this.passwordHash(data, current.passwordHash),
+        seo: data.seo ?? current.seo,
+        id: current.id,
+        slug,
+        createdAt: current.createdAt,
+        updatedAt: now,
+        authorId,
+      },
+      {
+        expectedUpdatedAt: expected,
+        autosaveOf: data.preserveAutosave ? actor.id : undefined,
+      },
+    );
+    await this.saveRevision(record, actor, !data.preserveAutosave);
 
     const entry = toEntry(record);
     void this.deps.hooks.emit('content.updated', entry);
@@ -288,6 +298,8 @@ export class ContentService {
     current: ContentRecord | null,
     now: Date,
   ): Pick<ContentWrite, 'status' | 'publishedAt'> {
+    const kept = current?.publishedAt ?? null;
+    // Every explicit time is honored; forms resend the stored time exactly when untouched.
     const requested = data.publishedAt ? new Date(data.publishedAt) : null;
     if (data.status === 'scheduled') {
       if (!requested)
@@ -298,7 +310,6 @@ export class ContentService {
         ? { status: 'scheduled', publishedAt: requested }
         : { status: 'published', publishedAt: requested };
     }
-    const kept = current?.publishedAt ?? null;
     return {
       status: data.status,
       publishedAt:
@@ -311,7 +322,12 @@ export class ContentService {
     return data.password ? this.deps.hasher.hash(data.password) : null;
   }
 
-  private async saveRevision(record: ContentRecord, actor: Actor) {
+  /** Records the saved text; a full save also discards the actor's autosave it replaced. */
+  private async saveRevision(
+    record: ContentRecord,
+    actor: Actor,
+    clearAutosave = true,
+  ) {
     await this.deps.revisions.add(
       {
         id: this.deps.ids.next(),
@@ -325,7 +341,8 @@ export class ContentService {
       },
       REVISIONS_KEPT,
     );
-    await this.deps.revisions.clearAutosave(record.id, actor.id);
+    if (clearAutosave)
+      await this.deps.revisions.clearAutosave(record.id, actor.id);
   }
 
   private async prepare(input: unknown): Promise<ContentData> {
@@ -335,7 +352,12 @@ export class ContentService {
       data,
       isContentData,
     );
-    return contentInputSchema.parse(filtered);
+    // The concurrency check is the client's, never a filter's.
+    return {
+      ...contentInputSchema.parse(filtered),
+      expectedUpdatedAt: data.expectedUpdatedAt,
+      preserveAutosave: data.preserveAutosave,
+    };
   }
 
   /**

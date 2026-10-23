@@ -1,3 +1,5 @@
+import { COMMENTER_PROOF_HEADER, COMMENT_PENDING_HEADER } from '@cms/sdk';
+import { currentUser, unlockProofs } from '#api/http/request';
 import { t } from 'elysia';
 import { readJson, SMALL_BODY_BYTES } from '#api/http/request';
 import { json } from '#api/http/respond';
@@ -8,10 +10,18 @@ export const routes = (app: ApiApp) =>
   app
     .get(
       '',
-      async ({ comments, query }) =>
-        json(
-          await comments.publicPage(query.contentId, Number(query.page ?? 1)),
-        ),
+      async ({ comments, query, auth, request, set }) => {
+        set.headers['cache-control'] = 'private, no-store';
+        return json(
+          await comments.publicPage(
+            query.contentId,
+            Number(query.page ?? 1),
+            unlockProofs(request),
+            await currentUser(auth, request),
+            request.headers.get(COMMENT_PENDING_HEADER) ?? '',
+          ),
+        );
+      },
       {
         query: t.Object(
           { contentId: t.String(), page: t.Optional(t.String()) },
@@ -19,11 +29,15 @@ export const routes = (app: ApiApp) =>
         ),
       },
     )
-    .post('', async ({ comments, clients, request }) =>
-      json(
+    .post('', async ({ comments, clients, auth, request, set }) => {
+      set.headers['cache-control'] = 'private, no-store';
+      return json(
         await comments.submit(
           await readJson(request, SMALL_BODY_BYTES),
           clients.attempt(request),
+          unlockProofs(request),
+          await currentUser(auth, request),
+          request.headers.get(COMMENTER_PROOF_HEADER) ?? '',
         ),
-      ),
-    );
+      );
+    });

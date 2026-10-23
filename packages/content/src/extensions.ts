@@ -1,34 +1,26 @@
 // The editor schema. The admin editor and the API renderer must use this exact list,
 // so stored documents always render the way they were written.
 import { Node, getSchema } from '@tiptap/core';
-import { Image } from '@tiptap/extension-image';
 import { TableKit } from '@tiptap/extension-table';
 import { StarterKit } from '@tiptap/starter-kit';
-import { safeHttpsUrl, safeImageSrc } from '#content/urls';
+import { safeHttpsUrl, safeLinkHref } from '#content/urls';
+import { contentDocumentSchema, contentAttributeSchemas } from '@cms/sdk';
+import { Audio, ContentImage, Video, File, Gallery } from '#content/media';
+import {
+  TextAlignment,
+  Columns,
+  Column,
+  Buttons,
+  ButtonLink,
+  Details,
+  DetailsSummary,
+  DetailsContent,
+  Pullquote,
+  Spacer,
+  ContentTable,
+} from '#content/blocks';
 import type { ContentDocument } from '@cms/sdk';
 import { Errors } from '#content/errors';
-
-/** Images from the media library (`mediaId`) or `https:` URLs; unsafe sources render without `src`. */
-const ContentImage = Image.extend({
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      src: {
-        default: null,
-        renderHTML: (attributes) => ({ src: safeImageSrc(attributes.src) }),
-      },
-      height: { default: null },
-      mediaId: {
-        default: null,
-        parseHTML: (element) => element.getAttribute('data-media-id'),
-        renderHTML: (attributes) =>
-          typeof attributes.mediaId === 'string'
-            ? { 'data-media-id': attributes.mediaId }
-            : {},
-      },
-    };
-  },
-}).configure({ inline: false, allowBase64: false });
 
 /**
  * An embedded page (video, post) by URL. Stored and rendered as a plain link inside a marked
@@ -61,46 +53,33 @@ export const Embed = Node.create({
   },
 });
 
-/** Uploaded audio uses the same safe media URL and usage identifier as images. */
-export const Audio = Node.create({
-  name: 'audio',
-  group: 'block',
-  atom: true,
-  addAttributes() {
-    return {
-      src: { default: null },
-      mediaId: {
-        default: null,
-        parseHTML: (element) => element.getAttribute('data-media-id'),
-      },
-    };
-  },
-  parseHTML() {
-    return [{ tag: 'audio[src]' }];
-  },
-  renderHTML({ node }) {
-    return [
-      'audio',
-      {
-        src: safeImageSrc(node.attrs.src),
-        controls: '',
-        preload: 'metadata',
-        ...(typeof node.attrs.mediaId === 'string'
-          ? { 'data-media-id': node.attrs.mediaId }
-          : {}),
-      },
-    ];
-  },
-});
-
 export const contentExtensions = [
   StarterKit.configure({
     heading: { levels: [2, 3, 4] },
-    link: { openOnClick: false, defaultProtocol: 'https' },
+    link: {
+      openOnClick: false,
+      defaultProtocol: 'https',
+      isAllowedUri: (url) => safeLinkHref(url) !== null,
+    },
+    horizontalRule: { HTMLAttributes: { class: 'cms-separator' } },
   }),
   ContentImage,
   Audio,
-  TableKit.configure({ table: { resizable: false } }),
+  Video,
+  File,
+  Gallery,
+  TextAlignment,
+  Columns,
+  Column,
+  Buttons,
+  ButtonLink,
+  Details,
+  DetailsSummary,
+  DetailsContent,
+  Pullquote,
+  Spacer,
+  TableKit.configure({ table: false }),
+  ContentTable,
   Embed,
 ];
 
@@ -113,6 +92,36 @@ export class InvalidDocumentError extends Error {
 /** Throws `InvalidDocumentError` unless the document conforms to the editor schema. */
 export const parseDocument = (document: ContentDocument) => {
   try {
+    if (!contentDocumentSchema.safeParse(document).success)
+      throw new Error(Errors.InvalidDocument);
+    const stack: Record<string, unknown>[] = [document];
+    while (stack.length) {
+      const raw = stack.pop()!;
+      const type = typeof raw.type === 'string' ? raw.type : '';
+      const spec = schema.nodes[type] ?? schema.marks[type];
+      if (!spec) throw new Error(Errors.InvalidDocument);
+      const attrs = raw.attrs ?? {};
+      if (typeof attrs !== 'object' || attrs === null || Array.isArray(attrs))
+        throw new Error(Errors.InvalidDocument);
+      // Unknown attributes are dropped by the schema, as they always were; known ones must be valid.
+      const known = Object.fromEntries(
+        Object.entries(attrs).filter(([key]) =>
+          Object.hasOwn(spec.spec.attrs ?? {}, key),
+        ),
+      );
+      const validator =
+        contentAttributeSchemas[type as keyof typeof contentAttributeSchemas];
+      if (validator && !validator.safeParse(known).success)
+        throw new Error(Errors.InvalidDocument);
+      for (const child of [
+        ...(Array.isArray(raw.content) ? raw.content : []),
+        ...(Array.isArray(raw.marks) ? raw.marks : []),
+      ]) {
+        if (!child || typeof child !== 'object' || Array.isArray(child))
+          throw new Error(Errors.InvalidDocument);
+        stack.push(child as Record<string, unknown>);
+      }
+    }
     const node = schema.nodeFromJSON(document);
     node.check();
     return node;

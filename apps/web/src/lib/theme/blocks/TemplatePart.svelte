@@ -1,7 +1,12 @@
 <script lang="ts">
   import Blocks from '#lib/theme/blocks/Blocks.svelte';
   import SlotOutlet from '#lib/theme/SlotOutlet.svelte';
-  import { provideParts, useParts, useScope } from '#lib/theme/scope.js';
+  import {
+    provideBlockPath,
+    provideParts,
+    useParts,
+    useScope,
+  } from '#lib/theme/scope.js';
 
   let { slug }: { slug: string } = $props();
 
@@ -9,6 +14,8 @@
   const trail = useParts();
   // svelte-ignore state_referenced_locally
   provideParts([...trail, slug]);
+  // A part's blocks belong to the part, not to the template being edited.
+  provideBlockPath(undefined);
 
   /** A part that includes itself (directly or through another part) renders nothing. */
   const part = $derived(

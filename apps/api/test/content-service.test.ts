@@ -7,6 +7,7 @@ import {
 import type { ContentInput } from '@cms/sdk';
 import { ContentService } from '#api/domain/content/content-service';
 import { checkContentParent } from '#api/domain/content/hierarchy';
+import { mediaIdsOf } from '#api/domain/content/plain-text';
 import { MenuService } from '#api/domain/appearance/menu-service';
 import {
   PublicContentService,
@@ -151,11 +152,64 @@ describe('ContentService', () => {
     expect(second.slug).toBe('hello-world-2');
   });
 
-  test('falls back to an id-based slug for titles without ASCII letters', async () => {
-    const { service } = setup();
+  test('Unicode slugs keep their encoded permalink identity', async () => {
+    const { service, publicContent, repository } = setup();
+    const entry = await service.create(
+      input({ title: '안녕하세요', status: 'published' }),
+      ADMIN,
+    );
+    expect(entry.slug).toBe('안녕하세요');
+    expect(entry.path).toBe(`/${encodeURIComponent('안녕하세요')}`);
+    const resolver = new PermalinkResolver(
+      repository.permalinks,
+      publicContent,
+    );
+    expect((await resolver.resolve({ path: entry.path })).content.id).toBe(
+      entry.id,
+    );
+    expect((await service.create(input({ title: '🌧️' }), ADMIN)).slug).toMatch(
+      /^post-[0-9a-f]+$/,
+    );
+    const normalized = await service.create(
+      input({ title: 'Café', slug: 'cafe\u0301' }),
+      ADMIN,
+    );
+    expect(normalized.slug).toBe('café');
+    expect(normalized.path).toBe(`/${encodeURIComponent('café')}`);
+  });
+
+  test('private site reads require resolved capabilities and never expose drafts or admin fields', async () => {
+    const { service, publicContent, repository } = setup();
+    const entry = await service.create(input({ status: 'private' }), ADMIN);
+    const resolver = new PermalinkResolver(
+      repository.permalinks,
+      publicContent,
+    );
+    expect(await codeOf(resolver.resolve({ path: entry.path }))).toBe(
+      'not_found',
+    );
     expect(
-      (await service.create(input({ title: '안녕하세요' }), ADMIN)).slug,
-    ).toMatch(/^post-[0-9a-f]+$/);
+      await codeOf(
+        resolver.resolve({ path: entry.path }, [], {
+          id: 'reader',
+          role: 'subscriber',
+        }),
+      ),
+    ).toBe('not_found');
+    const resolved = await resolver.resolve({ path: entry.path }, [], {
+      id: 'editor',
+      role: 'custom',
+      capabilities: ['content.readPrivate'],
+    });
+    expect(resolved.content.html).toContain('Body');
+    expect(resolved.content.seo.noIndex).toBe(true);
+    for (const key of ['document', 'authorId', 'status', 'passwordHash'])
+      expect(resolved.content).not.toHaveProperty(key);
+    expect((await publicContent.list({})).items).toEqual([]);
+    await service.update(entry.id, input({ status: 'draft' }), ADMIN);
+    expect(
+      await codeOf(resolver.resolve({ path: entry.path }, [], ADMIN)),
+    ).toBe('not_found');
   });
 
   test('rejects taken slugs, invalid input and documents outside the schema', async () => {
@@ -297,14 +351,21 @@ describe('ContentService', () => {
   });
 
   test('a protected body stays hidden, unsearchable and unlockable only with its current password', async () => {
-    const { service, publicContent, protectedActions } = setup();
+    const { service, publicContent, protectedActions, repository } = setup();
     const entry = await service.create(
       input({ status: 'published', password: 'open-sesame' }),
       ADMIN,
     );
+    repository.commentCounts.set(entry.id, 2);
 
     const locked = await publicContent.getBySlug('hello-world');
-    expect(locked).toMatchObject({ protected: true, html: '', excerpt: '' });
+    expect(locked).toMatchObject({
+      protected: true,
+      html: '',
+      excerpt: '',
+      commentCount: 0,
+    });
+    expect((await publicContent.list({})).items[0]!.commentCount).toBe(0);
     expect((await publicContent.list({ search: 'Body' })).total).toBe(0);
     expect(
       await codeOf(publicContent.unlock(entry.id, { password: 'no' })),
@@ -315,9 +376,9 @@ describe('ContentService', () => {
       password: 'open-sesame',
     });
     const proof = `${entry.id}.${token}`;
-    expect(
-      (await publicContent.getBySlug('hello-world', [proof])).html,
-    ).toContain('Body');
+    const unlocked = await publicContent.getBySlug('hello-world', [proof]);
+    expect(unlocked.html).toContain('Body');
+    expect(unlocked.commentCount).toBe(2);
     // Proofs are bound to the entry: another entry's id never matches.
     expect(
       (await publicContent.getBySlug('hello-world', [`other.${token}`])).html,
@@ -399,6 +460,153 @@ describe('ContentService', () => {
     expect(await codeOf(previews.render(token))).toBe('not_found');
   });
 
+  test('a stale expected version changes nothing; an explicit date replaces the stored one', async () => {
+    const { service, clock } = setup();
+    const entry = await service.create(
+      input({ status: 'published', publishedAt: '2026-04-01T00:00:00.000Z' }),
+      ADMIN,
+    );
+    clock.set('2026-06-01T00:00:00.000Z');
+    const body = {
+      type: 'doc' as const,
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'New body' }] },
+      ],
+    };
+    await service.update(
+      entry.id,
+      input({ status: 'published', document: body }),
+      ADMIN,
+    );
+    // A metadata edit read the old version, then someone else saved the new body.
+    expect(
+      await codeOf(
+        service.update(
+          entry.id,
+          input({
+            status: 'published',
+            title: 'Renamed',
+            expectedUpdatedAt: entry.updatedAt,
+          }),
+          ADMIN,
+        ),
+      ),
+    ).toBe('conflict');
+    const current = await service.get(entry.id, ADMIN);
+    expect(current.document).toEqual(body);
+    expect(current.title).toBe('Hello World');
+
+    const redated = await service.update(
+      entry.id,
+      input({
+        status: 'published',
+        document: body,
+        publishedAt: '2026-05-01T00:00:00.000Z',
+        expectedUpdatedAt: current.updatedAt,
+      }),
+      ADMIN,
+    );
+    expect(redated.publishedAt).toBe('2026-05-01T00:00:00.000Z');
+
+    // Seconds are honored too: no form heuristic in the API.
+    const seconds = await service.update(
+      entry.id,
+      input({
+        status: 'published',
+        document: body,
+        publishedAt: '2026-05-01T00:00:45.000Z',
+      }),
+      ADMIN,
+    );
+    expect(seconds.publishedAt).toBe('2026-05-01T00:00:45.000Z');
+
+    // Saves at the same clock value still advance the version.
+    const same = await service.update(
+      entry.id,
+      input({ status: 'published', title: 'Same clock' }),
+      ADMIN,
+    );
+    expect(same.updatedAt).not.toBe(seconds.updatedAt);
+    expect(
+      await codeOf(
+        service.update(
+          entry.id,
+          input({ status: 'published', expectedUpdatedAt: seconds.updatedAt }),
+          ADMIN,
+        ),
+      ),
+    ).toBe('conflict');
+
+    // Two overlapping writes from one version: exactly one wins.
+    const results = await Promise.allSettled(
+      ['Writer A', 'Writer B'].map((title) =>
+        service.update(
+          entry.id,
+          input({
+            status: 'published',
+            title,
+            expectedUpdatedAt: same.updatedAt,
+          }),
+          ADMIN,
+        ),
+      ),
+    );
+    expect(results.map((result) => result.status).sort()).toEqual([
+      'fulfilled',
+      'rejected',
+    ]);
+  });
+
+  test('partial edits keep unsaved editor text: refused while an autosave is pending, never discarding one', async () => {
+    const { service, revisions, repository, clock } = setup();
+    repository.autosaves = revisions;
+    revisions.saves = { savedAt: (id) => repository.rows.get(id)?.updatedAt };
+    const history = new RevisionService({
+      content: service,
+      revisions,
+      renderer: tiptapRenderer,
+      ids: sequentialIds(),
+      clock,
+    });
+    const entry = await service.create(input(), ADMIN);
+    const unsaved = {
+      title: 'Hello World',
+      excerpt: '',
+      document: {
+        type: 'doc' as const,
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'UNSAVED BODY' }],
+          },
+        ],
+      },
+    };
+    clock.set('2026-03-01T00:00:00.000Z');
+    await history.autosave(entry.id, unsaved, ADMIN);
+    const quick = (expectedUpdatedAt: string) =>
+      service.update(
+        entry.id,
+        input({ title: 'Renamed', expectedUpdatedAt, preserveAutosave: true }),
+        ADMIN,
+      );
+    expect(await codeOf(quick(entry.updatedAt))).toBe('conflict');
+    expect((await history.pendingAutosave(entry.id, ADMIN))?.title).toBe(
+      'Hello World',
+    );
+
+    // An autosave that raced a partial save (dated before it, written after) stays pending.
+    await revisions.clearAutosave(entry.id, ADMIN.id);
+    clock.set('2026-03-02T00:00:00.000Z');
+    const renamed = await quick(entry.updatedAt);
+    clock.set('2026-03-01T12:00:00.000Z');
+    await history.autosave(entry.id, unsaved, ADMIN);
+    expect(renamed.title).toBe('Renamed');
+    expect((await history.pendingAutosave(entry.id, ADMIN))?.document).toEqual(
+      unsaved.document,
+    );
+  });
+
   test('the public API serves published content only', async () => {
     const { service, publicContent, repository } = setup();
     const draft = await service.create(input({ title: 'Draft' }), ADMIN);
@@ -436,6 +644,14 @@ describe('ContentService', () => {
     expect(await menus.publicMenu('primary')).toEqual([
       { label: 'Live', url: '/live', newTab: false, children: [] },
     ]);
+    // The menu editor's labels need only `appearance.manage` and name published targets only.
+    expect(
+      await menus.targets({
+        ...ADMIN,
+        role: 'designer',
+        capabilities: ['appearance.manage'],
+      }),
+    ).toEqual([{ id: live.id, title: 'Live', type: 'post' }]);
     expect(await codeOf(publicContent.getBySlug('draft'))).toBe('not_found');
     // Lists never carry bodies or editor documents; single reads do.
     expect(listed[0]).not.toHaveProperty('html');
@@ -458,7 +674,11 @@ describe('ContentService', () => {
       .provide('content.before', ({ content }) => content?.title ?? '');
     const slots = new SlotService({
       registry,
-      site: new SiteService(new MemorySeoSettingsRepository(), hooks),
+      site: new SiteService(
+        new MemorySeoSettingsRepository(),
+        hooks,
+        async () => new Map(),
+      ),
       content: new PublishedContentReader(
         new MemoryPublishedContentRepository(repository),
       ),
@@ -661,15 +881,38 @@ describe('content taxonomy and search', () => {
       ADMIN,
     );
     await service.create(input({ title: 'Needle draft' }), ADMIN);
+    const media = {
+      type: 'doc' as const,
+      content: [
+        {
+          type: 'video',
+          attrs: {
+            mediaId: 'video-1',
+            posterId: 'poster-1',
+            caption: 'Aurora',
+          },
+        },
+        { type: 'file', attrs: { src: '/media/a.pdf', name: 'Accounts' } },
+      ],
+    };
+    await service.create(
+      input({ ...published, title: 'Gamma', document: media }),
+      ADMIN,
+    );
+    // A poster is in use like the video itself, so the library keeps it.
+    expect(mediaIdsOf(media).sort()).toEqual(['poster-1', 'video-1']);
 
     const slugs = async (query: Record<string, unknown>) =>
       (await publicContent.list(query)).items.map((item) => item.slug).sort();
 
     expect(await slugs({ search: 'needle' })).toEqual(['alpha', 'beta']);
     expect(await slugs({ search: 'Intro Needle' })).toEqual(['alpha']);
+    // Captions and file link text are visible, so they are searchable.
+    expect(await slugs({ search: 'aurora' })).toEqual(['gamma']);
+    expect(await slugs({ search: 'accounts' })).toEqual(['gamma']);
     expect(await slugs({ search: 'strong' })).toEqual([]);
     expect(await slugs({ search: '<p>' })).toEqual([]);
-    expect(await slugs({ search: '  ' })).toEqual(['alpha', 'beta']);
+    expect(await slugs({ search: '  ' })).toEqual(['alpha', 'beta', 'gamma']);
   });
 
   test('archives filter by category (with descendants) and tag; totals match the filters', async () => {
@@ -868,6 +1111,7 @@ describe('Prisma published content reads', () => {
       type: 'post',
       slug: 'live',
       path: '/live',
+      parentId: null,
       title: 'Live',
       excerpt: 'Short',
       html: '<p>Body</p>',

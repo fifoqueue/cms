@@ -9,7 +9,7 @@ import {
   themeView,
   widgetsView,
 } from '#lib/server/public-view.js';
-import { loadThemeQueries } from '#lib/server/theme-queries.js';
+import { contextOf, loadThemeData } from '#lib/server/theme-queries.js';
 import type { ThemePage } from '#lib/theme/template.js';
 import { TEMPLATE_NAME } from '@cms/sdk';
 import type { ThemeEditor, ThemeStylesInput } from '@cms/sdk';
@@ -63,7 +63,6 @@ export const load: PageServerLoad = async (event) => {
   const preview = await admin.themes.preview(theme.id);
   const layout = await api.layout(preview.token);
   const posts = listView(await api.list({ pageSize: 6 }));
-  const queries = await loadThemeQueries(api, layout.theme);
   const edit = event.url.searchParams.get('edit') ?? 'template:index';
   const template = edit.startsWith('template:')
     ? edit.slice('template:'.length)
@@ -93,6 +92,12 @@ export const load: PageServerLoad = async (event) => {
       : null;
   }
 
+  const blocks = await loadThemeData(
+    api,
+    layout.theme,
+    previewPage ? contextOf(previewPage) : undefined,
+  );
+
   return {
     themes: themes.map(({ id, name, active }) => ({ id, name, active })),
     editor,
@@ -106,7 +111,7 @@ export const load: PageServerLoad = async (event) => {
       },
       widgets: widgetsView(layout.widgets),
       pages: [],
-      queries,
+      ...blocks,
     },
     posts,
     previewPage,
@@ -143,16 +148,24 @@ export const actions: Actions = {
       )
         return fail(400, { message: Errors.TemplateNameInvalid });
 
-      const queries = await loadThemeQueries(api, {
-        ...theme,
-        templates: { index: read.blocks },
-        parts: theme.parts.map((part) =>
-          kind === 'part' && part.slug === key
-            ? { ...part, blocks: read.blocks }
-            : part,
-        ),
-      });
-      return { queries };
+      // The public neighbour lookup answers for published entries only.
+      const contentId = text(form, 'contentId');
+      const author = text(form, 'author');
+      return await loadThemeData(
+        api,
+        {
+          templates: { index: read.blocks },
+          parts: theme.parts.map((part) =>
+            kind === 'part' && part.slug === key
+              ? { ...part, blocks: read.blocks }
+              : part,
+          ),
+        },
+        {
+          entry: contentId ? { id: contentId, author: author || null } : null,
+          month: null,
+        },
+      );
     } catch (caught) {
       return failFrom(caught);
     }

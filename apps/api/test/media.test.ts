@@ -152,6 +152,11 @@ describe('media library', () => {
     expect(await codeOf(media.update(image.id, { alt: 'A cat' }, editor))).toBe(
       'ok',
     );
+    // An alt-only change (the media picker) keeps a caption written elsewhere.
+    await media.update(image.id, { caption: 'Newer caption' }, author);
+    expect(
+      await media.update(image.id, { alt: 'From the picker' }, author),
+    ).toMatchObject({ alt: 'From the picker', caption: 'Newer caption' });
 
     repository.usages.set(image.id, 2);
     expect(await codeOf(media.remove(image.id, false, author))).toBe(

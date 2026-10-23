@@ -11,6 +11,7 @@ import { contentMarkdown } from '#lib/server/markdown.js';
 import {
   isDiscoverable,
   llmsTxt,
+  loadBodies,
   markdownResponse,
   robotsTxt,
   rssFeed,
@@ -144,6 +145,66 @@ describe('generated documents', () => {
     expect(feed).toContain(`<link>${ORIGIN}/2026/01/hello</link>`);
     expect(feed).toContain('<description>badchar ]]&gt;</description>');
     expect(feed).toContain('<pubDate>Thu, 01 Jan 2026 00:00:00 GMT</pubDate>');
+  });
+
+  test('full-text feeds carry absolute bodies, bylines, terms and audio enclosures', async () => {
+    const html =
+      '<p><a href="/about">About</a></p><img src="/media/a.webp" srcset="/media/a-300.webp 300w" sizes="100vw" alt=""><audio src="/media/talk.mp3" controls=""></audio>';
+    const bodies = await loadBodies(
+      {
+        resolvePath: async () => ({ content: { html }, redirect: false }),
+      } as never,
+      [entry()],
+      async (key) => (key === 'talk.mp3' ? 12345 : null),
+    );
+    const feed = await rssFeed(
+      site,
+      settings(),
+      [
+        entry({
+          author: { name: 'Ann', slug: 'ann' },
+          categories: [{ id: 'c1', name: 'News', slug: 'news' }],
+        } as Partial<PublicContent>),
+      ],
+      {
+        title: 'News',
+        self: '/feed.xml?category=news',
+        bodies,
+      },
+    ).text();
+    expect(feed).toContain('<title>Site &amp; &lt;Co&gt; » News</title>');
+    expect(feed).toContain(`href="${ORIGIN}/feed.xml?category=news"`);
+    expect(feed).toContain('<dc:creator>Ann</dc:creator>');
+    expect(feed).toContain('<category>News</category>');
+    expect(feed).toContain(`href=&quot;${ORIGIN}/about&quot;`);
+    expect(feed).toContain(`src=&quot;${ORIGIN}/media/a.webp&quot;`);
+    expect(feed).not.toContain('srcset');
+    expect(feed).toContain(
+      `<enclosure url="${ORIGIN}/media/talk.mp3" length="12345" type="audio/mpeg"/>`,
+    );
+  });
+
+  test('full-text feeds read a few bodies at a time and never protected ones', async () => {
+    let running = 0;
+    let peak = 0;
+    const read: string[] = [];
+    const api = {
+      resolvePath: async (path: string) => {
+        read.push(path);
+        peak = Math.max(peak, ++running);
+        await Bun.sleep(1);
+        running--;
+        return { content: { html: '<p>Body</p>' }, redirect: false };
+      },
+    } as never;
+    const items = Array.from({ length: 20 }, (_, index) =>
+      entry({ id: `id-${index}`, path: `/p${index}`, protected: index === 0 }),
+    );
+    const bodies = await loadBodies(api, items, async () => null);
+    expect(peak).toBeLessThanOrEqual(4);
+    expect(read).toHaveLength(19);
+    expect(read).not.toContain('/p0');
+    expect(bodies.has('id-0')).toBe(false);
   });
 
   test('llms.txt titles cannot inject links and point at Markdown alternates', async () => {

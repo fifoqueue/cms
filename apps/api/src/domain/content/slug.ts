@@ -1,11 +1,14 @@
-/** ASCII slug from a title. Returns '' when nothing usable remains (e.g. non-Latin titles). */
+/** Unicode slug from a title. Returns '' when no letters or digits remain. */
 export const slugify = (text: string) =>
   text
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
+    .normalize('NFC')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/[^\p{L}\p{N}\p{M}]+/gu, '-')
+    .replace(/(^|-)[\p{M}]+/gu, '$1')
     .slice(0, 180)
+    .replace(/[\uD800-\uDBFF]$/, '')
     .replace(/^-+|-+$/g, '');
 
 /** `base`, else `base-2` … `base-20`, else `base-<fallback>`: the first one not `taken`, checked in one read. */

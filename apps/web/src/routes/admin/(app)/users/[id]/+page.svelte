@@ -75,7 +75,6 @@
           name="slug"
           required
           maxlength={191}
-          pattern="[a-z0-9]+(-[a-z0-9]+)*"
           value={target.slug}
           aria-describedby="slug-help"
         />
@@ -107,7 +106,7 @@
 </Card>
 
 {#if !isSelf}
-  <Card>
+  <Card id="delete">
     <CardHeader
       ><CardTitle>{m.usersDeleteTitle(target.name)}</CardTitle></CardHeader
     >

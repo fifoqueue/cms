@@ -73,18 +73,21 @@ const comment = (node: Node): WxrComment => ({
     new Date(0),
 });
 
+const decodedSlug = (value: unknown) =>
+  decodeURIComponent(str(value)).normalize('NFC');
+
 const item = (node: Node): WxrItem => {
   const terms = list(node.category);
   const slugs = (domain: string) =>
     terms
       .filter((term) => str(term['@_domain']) === domain)
-      .map((term) => str(term['@_nicename']))
+      .map((term) => decodedSlug(term['@_nicename']))
       .filter(Boolean);
   return {
     id: str(node['wp:post_id']),
     type: str(node['wp:post_type']) || 'post',
     title: str(node.title),
-    slug: decodeURIComponent(str(node['wp:post_name'])),
+    slug: decodedSlug(node['wp:post_name']),
     html: str(node['content:encoded']),
     excerpt: str(node['excerpt:encoded']),
     status: str(node['wp:status']),
@@ -102,13 +105,13 @@ const item = (node: Node): WxrItem => {
 const term = (node: Node, kind: 'category' | 'tag'): WxrTerm =>
   kind === 'category'
     ? {
-        slug: decodeURIComponent(str(node['wp:category_nicename'])),
+        slug: decodedSlug(node['wp:category_nicename']),
         name: str(node['wp:cat_name']),
         description: str(node['wp:category_description']),
-        parent: decodeURIComponent(str(node['wp:category_parent'])) || null,
+        parent: decodedSlug(node['wp:category_parent']) || null,
       }
     : {
-        slug: decodeURIComponent(str(node['wp:tag_slug'])),
+        slug: decodedSlug(node['wp:tag_slug']),
         name: str(node['wp:tag_name']),
         description: str(node['wp:tag_description']),
         parent: null,

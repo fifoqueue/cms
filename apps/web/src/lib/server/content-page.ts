@@ -1,33 +1,47 @@
+import type { RequestEvent } from '@sveltejs/kit';
 import type { PublicContent, PublicContentType, SlotMap } from '@cms/sdk';
 import type { ContentClient } from '@cms/sdk/client';
 import { loadComments } from '#lib/server/comments.js';
 import { contentView } from '#lib/server/public-view.js';
+import type { BlockData } from '#lib/server/theme-queries.js';
+import type { ThemePage } from '#lib/theme/template.js';
 
 /**
- * Page data of a single entry with its comments. `path` replaces the permalink when the entry
- * is shown at another address (the static front page lives at `/`, its canonical URL then).
+ * Page data of a single entry with its comments and the data of its template's blocks
+ * (`templateData`). `path` replaces the permalink when the entry is shown at another address
+ * (the static front page lives at `/`, its canonical URL then).
  */
 export const entryPage = async (
   api: ContentClient,
-  url: URL,
+  event: Pick<RequestEvent, 'url' | 'cookies'>,
   content: PublicContent,
   types: Promise<PublicContentType[]>,
   slots: Promise<SlotMap>,
+  templateData: (page: ThemePage) => Promise<BlockData>,
   path = content.path,
 ) => {
+  const view = { ...contentView(content), path };
   const captcha = api.captcha().catch(() => null);
-  const comments = loadComments(api, content.id, url, captcha);
+  const [definitions, comments, unlockCaptcha, blocks, loadedSlots] =
+    await Promise.all([
+      types,
+      content.protected ? null : loadComments(api, content.id, event, captcha),
+      content.protected ? captcha : null,
+      templateData({ kind: 'content', content: view }),
+      slots,
+    ]);
   return {
     kind: 'content' as const,
-    content: { ...contentView(content), path },
+    content: view,
     /** Labels of the entry's public fields, in their defined order. */
     fieldLabels: (
-      (await types).find((type) => type.key === content.type)?.fields ?? []
+      definitions.find((type) => type.key === content.type)?.fields ?? []
     ).map(({ key, label, type }) => ({ key, label, type })),
-    comments: await comments,
-    unlockCaptcha: content.protected ? await captcha : null,
+    comments,
+    unlockCaptcha,
     /** Set after a held comment was sent. */
-    moderation: url.searchParams.has('moderation'),
-    slots: await slots,
+    moderation: event.url.searchParams.has('moderation'),
+    slots: loadedSlots,
+    ...blocks,
   };
 };

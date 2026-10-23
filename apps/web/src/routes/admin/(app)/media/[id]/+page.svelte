@@ -29,6 +29,15 @@
       ? `${Math.ceil(bytes / 1024)} KB`
       : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
+  let copied = $state(false);
+  const copyUrl = async () => {
+    await navigator.clipboard
+      .writeText(new URL(media.url, location.origin).href)
+      .catch(() => null);
+    copied = true;
+    setTimeout(() => (copied = false), 2000);
+  };
+
   const confirmDelete: SubmitFunction = ({ cancel }) => {
     if (!confirm(m.confirmDelete)) cancel();
   };
@@ -67,6 +76,17 @@
         <p>
           <span class="text-muted-foreground">{m.mediaUrl}:</span>
           <code class="break-all select-all">{media.url}</code>
+        </p>
+        <Button variant="outline" size="sm" onclick={copyUrl}
+          >{copied ? m.copied : m.mediaCopyUrl}</Button
+        >
+        <p>
+          <span class="text-muted-foreground">{m.mediaMime}:</span>
+          {media.mime}
+        </p>
+        <p>
+          <span class="text-muted-foreground">{m.mediaUploadedOn}:</span>
+          {new Date(media.createdAt).toLocaleString(i18n.language)}
         </p>
         <p>
           <span class="text-muted-foreground">{m.mediaSize}:</span>

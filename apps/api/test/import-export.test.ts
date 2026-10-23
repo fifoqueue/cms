@@ -75,9 +75,9 @@ const site = async () => {
 
 test('a WXR export imports into another site with terms, entries and threaded comments', async () => {
   const source = await site();
-  const news = await source.taxonomy.create('category', { name: 'News' });
+  const news = await source.taxonomy.create('category', { name: '소식' });
   const local = await source.taxonomy.create('category', {
-    name: 'Local',
+    name: '지역',
     parentId: news.id,
   });
   const tag = await source.taxonomy.create('tag', { name: 'Rain & <Snow>' });
@@ -85,6 +85,7 @@ test('a WXR export imports into another site with terms, entries and threaded co
     {
       type: 'post',
       title: 'Storm ]]> warning',
+      slug: '폭풍-경보',
       status: 'published',
       sticky: true,
       categoryIds: [local.id],
@@ -95,6 +96,17 @@ test('a WXR export imports into another site with terms, entries and threaded co
           {
             type: 'paragraph',
             content: [{ type: 'text', text: 'Heavy rain' }],
+          },
+          {
+            type: 'video',
+            attrs: {
+              src: 'https://example.com/movie.mp4',
+              caption: 'Storm footage',
+            },
+          },
+          {
+            type: 'file',
+            attrs: { src: 'https://example.com/report.pdf', name: 'Report' },
           },
         ],
       },
@@ -124,7 +136,9 @@ test('a WXR export imports into another site with terms, entries and threaded co
     createdAt: new Date('2026-05-02T00:00:00.000Z'),
   });
 
-  const xml = await source.exporter.exportWxr(ADMIN);
+  const xml = (await source.exporter.exportWxr(ADMIN))
+    .replaceAll('지역', encodeURIComponent('지역'))
+    .replaceAll('소식', encodeURIComponent('소식'));
   const target = await site();
   expect(await target.importer.importWxr(xml, ADMIN)).toEqual({
     content: 1,
@@ -141,18 +155,25 @@ test('a WXR export imports into another site with terms, entries and threaded co
     slug: post.slug,
     status: 'published',
     sticky: true,
-    categories: [{ slug: 'local' }],
+    categories: [{ slug: '지역' }],
     tags: [{ name: 'Rain & <Snow>' }],
   });
   expect(entry.html).toContain('Heavy rain');
+  expect(entry.document.content?.map((node) => node.type)).toEqual([
+    'paragraph',
+    'video',
+    'file',
+  ]);
+  expect(entry.html).toContain('Storm footage');
+  expect(entry.html).toContain('https://example.com/report.pdf');
   const [importedLocal] = (await target.taxonomy.list('category')).filter(
-    (term) => term.slug === 'local',
+    (term) => term.slug === '지역',
   );
   expect(
     (await target.taxonomy.list('category')).find(
       (term) => term.id === importedLocal!.parentId,
     )?.slug,
-  ).toBe('news');
+  ).toBe('소식');
   const thread = (await target.comments.thread(entry.id, 1, 10, 3)).items;
   expect(thread.map((comment) => [comment.body, comment.depth])).toEqual([
     ['Stay safe', 0],
@@ -166,14 +187,21 @@ test('WordPress-only items are reported, and files with a DTD are refused', asyn
 <rss xmlns:wp="http://wordpress.org/export/1.2/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/"><channel>
 <wp:wxr_version>1.2</wp:wxr_version>
 <item><title>Logo</title><wp:post_type>attachment</wp:post_type><wp:status>inherit</wp:status></item>
+<item><title>Huge gallery</title><content:encoded><![CDATA[<figure class="wp-block-gallery">${'<img src="https://example.com/a.jpg">'.repeat(101)}</figure>]]></content:encoded><wp:status>draft</wp:status><wp:post_type>post</wp:post_type></item>
 <item><title>Classic</title><dc:creator>someone</dc:creator><content:encoded><![CDATA[First line
 
 Second <script>x()</script>para]]></content:encoded><wp:post_name>classic</wp:post_name><wp:status>draft</wp:status><wp:post_type>post</wp:post_type></item>
+<item><title>Seven columns</title><content:encoded><![CDATA[<figure class="wp-block-gallery columns-7"><img src="https://example.com/a.jpg"></figure>]]></content:encoded><wp:status>draft</wp:status><wp:post_type>post</wp:post_type></item>
 </channel></rss>`;
   const result = await target.importer.importWxr(xml, ADMIN);
-  expect(result).toMatchObject({ content: 1, skipped: [{ title: 'Logo' }] });
-  const [entry] = [...target.content.rows.values()];
+  // An unusable body skips its entry only; out-of-range block settings fall back to defaults.
+  expect(result).toMatchObject({
+    content: 2,
+    skipped: [{ title: 'Logo' }, { title: 'Huge gallery' }],
+  });
+  const [entry, gallery] = [...target.content.rows.values()];
   expect(entry!.html).toBe('<p>First line</p><p>Second para</p>');
+  expect(gallery!.html).toContain('data-columns="3"');
   expect(
     await target.importer
       .importWxr('<!DOCTYPE x [<!ENTITY a "b">]><rss/>', ADMIN)

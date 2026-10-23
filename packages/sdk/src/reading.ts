@@ -26,6 +26,8 @@ export const readingSettingsSchema = z.object({
   postsPageId: z.string().max(36).nullable().default(null),
   postsPerPage: z.number().int().min(1).max(100).default(10),
   feedItems: z.number().int().min(1).max(100).default(20),
+  /** What each feed item carries: the full text (WordPress default) or the excerpt only. */
+  feedContent: z.enum(['full', 'excerpt']).default('full'),
   dateFormat: z.enum(DATE_FORMATS).default('long'),
   /** Dates on the site show in this zone. Permalinks always use UTC. */
   timeZone: timeZoneSchema.default('UTC'),

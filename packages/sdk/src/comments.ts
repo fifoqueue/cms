@@ -2,6 +2,18 @@ import { z } from 'zod';
 import { Errors } from '#sdk/errors';
 import { PAGINATION_MAX_PAGE } from '#sdk/common';
 
+export const COMMENT_PENDING_HEADER = 'x-cms-comment-pending';
+export const COMMENTER_PROOF_HEADER = 'x-cms-commenter-proof';
+export const AVATAR_DEFAULTS = [
+  'mp',
+  'identicon',
+  'monsterid',
+  'wavatar',
+  'retro',
+  'robohash',
+  'blank',
+] as const;
+
 export const COMMENT_STATUSES = [
   'pending',
   'approved',
@@ -22,6 +34,9 @@ const words = z
 export const discussionSettingsSchema = z.object({
   /** Off closes comments everywhere; existing comments stay visible. */
   enabled: z.boolean().default(true),
+  requireLogin: z.boolean().default(false),
+  showAvatars: z.boolean().default(false),
+  avatarDefault: z.enum(AVATAR_DEFAULTS).default('mp'),
   /** `manual`: every comment waits; `known`: authors with an approved comment skip; `auto`: none wait. */
   moderation: z.enum(COMMENT_MODERATION).default('known'),
   /** Close comments on entries older than this many days; 0 never closes them. */
@@ -55,18 +70,33 @@ const authorUrlSchema = z
   )
   .default('');
 
+/** Stored comment author names are shorter than profile names (191). */
+export const COMMENT_AUTHOR_NAME_MAX = 100;
+
 /** A visitor's comment. `website` is a honeypot field that people never see or fill in. */
 export const commentInputSchema = z.object({
   contentId: z.string().min(1).max(36),
   parentId: z.string().max(36).nullable().default(null),
-  authorName: z.string().trim().min(1).max(100),
+  authorName: z.string().trim().min(1).max(COMMENT_AUTHOR_NAME_MAX),
   authorEmail: z.email().trim().toLowerCase().max(191),
   authorUrl: authorUrlSchema,
   body: z.string().trim().min(1).max(5000),
   website: z.string().max(500).optional(),
 });
 
-export type CommentInput = z.input<typeof commentInputSchema>;
+export const commenterSchema = commentInputSchema.pick({
+  authorName: true,
+  authorEmail: true,
+  authorUrl: true,
+});
+
+export type CommentInput = Omit<
+  z.input<typeof commentInputSchema>,
+  'authorName' | 'authorEmail'
+> & {
+  authorName?: string;
+  authorEmail?: string;
+};
 
 /** A published comment. The body is plain text; the email address is never public. */
 export const publicCommentSchema = z.strictObject({
@@ -78,6 +108,8 @@ export const publicCommentSchema = z.strictObject({
   authorUrl: z.string().nullable(),
   /** Written by the entry's author. */
   byAuthor: z.boolean(),
+  avatarUrl: z.url().nullable().default(null),
+  pending: z.boolean().default(false),
   body: z.string(),
   createdAt: z.string(),
 });
@@ -94,6 +126,9 @@ export const publicCommentPageSchema = z.strictObject({
   page: z.number().int(),
   pageSize: z.number().int(),
   open: z.boolean(),
+  requireLogin: z.boolean().default(false),
+  viewer: z.object({ name: z.string() }).nullable().default(null),
+  ownPending: publicCommentSchema.nullable().default(null),
   threadDepth: z.number().int(),
   /** True when the server stopped at its per-page reply safety limit. */
   truncated: z.boolean(),
@@ -105,6 +140,10 @@ export const commentSubmittedSchema = z.strictObject({
   /** `pending` also covers comments that will never appear. */
   status: z.enum(['approved', 'pending']),
   comment: publicCommentSchema.nullable(),
+  page: z.number().int().positive().default(1),
+  pendingProof: z.string().nullable().default(null),
+  /** Signed proof tied to this anonymous comment; it is recognized only after the comment is approved. */
+  commenterProof: z.string().nullable().default(null),
 });
 
 export type CommentSubmitted = z.output<typeof commentSubmittedSchema>;
@@ -113,6 +152,7 @@ export const adminCommentSchema = z.object({
   id: z.string(),
   contentId: z.string(),
   contentTitle: z.string(),
+  parentAuthor: z.string().nullable().default(null),
   parentId: z.string().nullable(),
   userId: z.string().nullable(),
   authorName: z.string(),

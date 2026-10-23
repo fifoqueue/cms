@@ -1,4 +1,4 @@
-import { KEBAB_CASE } from '@cms/sdk';
+import { CONTENT_SLUG } from '@cms/sdk';
 import type {
   ContentDocument,
   ContentInput,
@@ -16,7 +16,7 @@ import type { WxrComment, WxrParser, WxrTerm } from '#api/domain/tools/wxr';
 import type { UserDirectory } from '#api/domain/users/user-directory';
 import { DomainError, Errors } from '#api/shared/errors';
 
-/** Converts imported HTML to an editor document. */
+/** Converts imported HTML to an editor document; a body the schema cannot hold throws `invalid_input`. */
 export interface HtmlParser {
   parse(html: string): ContentDocument;
 }
@@ -118,12 +118,22 @@ export class ImportService {
         status === 'scheduled' &&
         !!item.publishedAt &&
         item.publishedAt > this.deps.clock.now();
+      const title = item.title.trim() || item.slug || 'Untitled';
+      let document: ContentInput['document'];
+      try {
+        document = this.deps.html.parse(item.html);
+      } catch (error) {
+        // A body the schema cannot hold skips that entry only (nothing is written for it).
+        if (!(error instanceof DomainError)) throw error;
+        result.skipped.push({ title, reason: error.message });
+        continue;
+      }
       const input: ContentInput = {
         type: item.type,
-        title: item.title.trim() || item.slug || 'Untitled',
-        ...(KEBAB_CASE.test(item.slug) && { slug: item.slug.slice(0, 191) }),
+        title,
+        ...(CONTENT_SLUG.test(item.slug) && { slug: item.slug.slice(0, 191) }),
         excerpt: item.excerpt.trim().slice(0, 1000),
-        document: this.deps.html.parse(item.html),
+        document,
         status: status === 'scheduled' && !scheduled ? 'published' : status,
         categoryIds: item.categories.flatMap(
           (slug) => categories.get(slug) ?? [],
@@ -164,7 +174,7 @@ export class ImportService {
       ]),
     );
     for (const term of parentsFirst(terms)) {
-      if (ids.has(term.slug) || !KEBAB_CASE.test(term.slug)) continue;
+      if (ids.has(term.slug) || !CONTENT_SLUG.test(term.slug)) continue;
       try {
         const created = await this.deps.taxonomy.create(taxonomy, {
           name: term.name || term.slug,

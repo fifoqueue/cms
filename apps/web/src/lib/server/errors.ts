@@ -21,6 +21,10 @@ export const Errors = {
   BlocksInvalid: 'The blocks could not be read',
   TemplateNameInvalid: 'Use lowercase letters, numbers and dashes for the slug',
   ThemeFileTooLarge: 'Theme archives can be at most 2 MB',
+  BulkItemFailed: 'This item could not be changed. Try again later.',
+  ReassignToDeleted:
+    'Choose someone who is not being deleted to receive the content.',
+  PasswordOrInvite: 'Enter a password or send an invitation.',
 } as const;
 
 export interface FormIssue {

@@ -1,21 +1,28 @@
 import { redirect } from '@sveltejs/kit';
 import { authApi, contentApi } from '#lib/server/api.js';
 import { failFrom, text } from '#lib/server/errors.js';
+import { RETURN_PARAM, returnPath } from '#lib/server/return-path.js';
 import { startSession } from '#lib/server/session-cookie.js';
 import { rememberSsoTransaction, ssoApi } from '#lib/server/sso.js';
 import { clientProof, visitorOf } from '#lib/server/visitor.js';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ fetch, locals }) => {
+export const load: PageServerLoad = async ({ fetch, locals, url }) => {
   if ((await authApi(fetch).status()).setupRequired)
     redirect(303, '/admin/setup');
-  if (locals.user) redirect(303, '/admin');
+  const back = returnPath(url.searchParams.get(RETURN_PARAM));
+  if (locals.user) redirect(303, back);
 
   const [sso, captcha] = await Promise.all([
     ssoApi(fetch).info(),
     contentApi(fetch).captcha(),
   ]);
-  return { sso, captcha, membership: await authApi(fetch).membership() };
+  return {
+    sso,
+    captcha,
+    membership: await authApi(fetch).membership(),
+    back,
+  };
 };
 
 export const actions: Actions = {
@@ -49,8 +56,12 @@ export const actions: Actions = {
         event.url,
       );
     } catch (caught) {
-      return failFrom(caught, { email });
+      // The form posts to `?/login`, dropping the query: echo where to go after the next try.
+      return failFrom(caught, {
+        email,
+        back: returnPath(text(form, RETURN_PARAM)),
+      });
     }
-    redirect(303, '/admin');
+    redirect(303, returnPath(text(form, RETURN_PARAM)));
   },
 };
