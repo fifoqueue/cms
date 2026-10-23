@@ -99,6 +99,7 @@ import {
   PrismaPluginDataRepository,
   PrismaPluginStateRepository,
 } from '#api/infra/prisma/plugin-repositories';
+import { PrismaSettingsTransactions } from '#api/infra/prisma/settings-transactions';
 import { PrismaSettingsRepository } from '#api/infra/prisma/settings-repository';
 import { PrismaSeoDiscoveryRepository } from '#api/infra/prisma/seo-discovery-repository';
 import { PrismaPermalinkRepository } from '#api/infra/prisma/permalink-repository';
@@ -245,6 +246,7 @@ export const createContainer = async (
   const blockRegistry = new BlockRegistry({ timeoutMs, logger });
   const patterns = new PatternService({
     settings: settingsRepository,
+    transactions: new PrismaSettingsTransactions(db),
     catalog: new PrismaPatternCatalog(db),
     renderer: tiptapRenderer,
     ids: uuidV7,

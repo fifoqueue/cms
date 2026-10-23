@@ -18,10 +18,12 @@ import { authorize } from '#api/domain/auth/authorization';
 import type { DocumentRenderer } from '#api/domain/content/content-repository';
 import type { Clock, IdGenerator } from '#api/domain/ports';
 import type { SettingsRepository } from '#api/domain/site/site-service';
+import type { SettingsTransactions } from '#api/domain/site/settings-transactions';
 import { Errors, forbidden, invalidInput, notFound } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 
 const PREFIX = 'pattern.';
+const LOCK = 'patterns.lock';
 const LIMIT = 500;
 /** References one served body may expand, and how deeply patterns may nest. */
 const EXPANSIONS = 50;
@@ -65,7 +67,8 @@ const toAdmin = ({
 export class PatternService {
   constructor(
     private readonly deps: {
-      settings: SettingsRepository;
+      settings: Pick<SettingsRepository, 'get' | 'list'>;
+      transactions: SettingsTransactions;
       catalog: PatternCatalog;
       renderer: DocumentRenderer;
       ids: IdGenerator;
@@ -100,11 +103,6 @@ export class PatternService {
   async create(input: unknown, actor: Actor): Promise<AdminPattern> {
     authorize(actor, 'content.create');
     const data = this.prepare(input, actor);
-    if (
-      (await this.deps.catalog.summaries({ page: 1, pageSize: 1 })).total >=
-      LIMIT
-    )
-      throw invalidInput(Errors.PatternLimit);
     const now = this.deps.clock.now().toISOString();
     const pattern: StoredPattern = {
       id: this.deps.ids.next(),
@@ -112,8 +110,12 @@ export class PatternService {
       authorId: actor.id,
       updatedAt: now,
     };
-    await this.deps.settings.set(`${PREFIX}${pattern.id}`, pattern);
-    return toAdmin(pattern);
+    return this.deps.transactions.run(LOCK, async (settings) => {
+      if ((await settings.count(PREFIX)) >= LIMIT)
+        throw invalidInput(Errors.PatternLimit);
+      await settings.set(`${PREFIX}${pattern.id}`, pattern);
+      return toAdmin(pattern);
+    });
   }
 
   async update(
@@ -121,20 +123,27 @@ export class PatternService {
     input: unknown,
     actor: Actor,
   ): Promise<AdminPattern> {
-    const current = await this.editable(id, actor);
-    const pattern: StoredPattern = {
-      ...current,
-      ...this.prepare(input, actor),
-      updatedAt: this.deps.clock.now().toISOString(),
-    };
-    await this.deps.settings.set(`${PREFIX}${id}`, pattern);
-    return toAdmin(pattern);
+    authorize(actor, 'content.create');
+    const data = this.prepare(input, actor);
+    return this.deps.transactions.run(LOCK, async (settings) => {
+      const current = await this.editable(id, actor, settings);
+      const pattern: StoredPattern = {
+        ...current,
+        ...data,
+        updatedAt: this.deps.clock.now().toISOString(),
+      };
+      await settings.set(`${PREFIX}${id}`, pattern);
+      return toAdmin(pattern);
+    });
   }
 
   /** Entries that still reference it show nothing in its place. */
   async remove(id: string, actor: Actor): Promise<void> {
-    await this.editable(id, actor);
-    await this.deps.settings.set(`${PREFIX}${id}`, null);
+    authorize(actor, 'content.create');
+    await this.deps.transactions.run(LOCK, async (settings) => {
+      await this.editable(id, actor, settings);
+      await settings.set(`${PREFIX}${id}`, null);
+    });
   }
 
   /** Published patterns for the WXR export, oldest first. */
@@ -203,8 +212,12 @@ export class PatternService {
   }
 
   /** The author edits their own patterns; other users' need `content.editOthers`. */
-  private async editable(id: string, actor: Actor) {
-    const pattern = await this.require(id);
+  private async editable(
+    id: string,
+    actor: Actor,
+    settings: Pick<SettingsRepository, 'get'>,
+  ) {
+    const pattern = await this.require(id, settings);
     authorize(actor, 'content.create');
     if (pattern.authorId !== actor.id) authorize(actor, 'content.editOthers');
     else if (pattern.status === 'published')
@@ -212,17 +225,21 @@ export class PatternService {
     return pattern;
   }
 
-  private async require(id: string) {
-    const pattern = await this.find(id);
+  private async require(
+    id: string,
+    settings: Pick<SettingsRepository, 'get'> = this.deps.settings,
+  ) {
+    const pattern = await this.find(id, settings);
     if (!pattern) throw notFound(Errors.PatternNotFound);
     return pattern;
   }
 
-  private async find(id: string): Promise<StoredPattern | null> {
+  private async find(
+    id: string,
+    settings: Pick<SettingsRepository, 'get'> = this.deps.settings,
+  ): Promise<StoredPattern | null> {
     if (!/^[A-Za-z0-9-]{1,36}$/.test(id)) return null;
-    const parsed = storedSchema.safeParse(
-      await this.deps.settings.get(`${PREFIX}${id}`),
-    );
+    const parsed = storedSchema.safeParse(await settings.get(`${PREFIX}${id}`));
     return parsed.success ? parsed.data : null;
   }
 

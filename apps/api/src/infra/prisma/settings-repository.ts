@@ -1,8 +1,8 @@
-import type { SettingsRepository } from '#api/domain/site/site-service';
+import type { SettingsTransaction } from '#api/domain/site/settings-transactions';
 import type { Database } from '#api/infra/prisma/client';
 
-export class PrismaSettingsRepository implements SettingsRepository {
-  constructor(private readonly db: Pick<Database, 'setting'>) {}
+export class PrismaSettingsRepository implements SettingsTransaction {
+  constructor(private readonly db: Pick<Database, 'setting' | '$queryRaw'>) {}
 
   async list(prefix: string): Promise<Record<string, unknown>> {
     const rows = await this.db.setting.findMany({
@@ -11,6 +11,14 @@ export class PrismaSettingsRepository implements SettingsRepository {
     return Object.fromEntries(
       rows.map((row) => [row.key, JSON.parse(row.value) as unknown]),
     );
+  }
+
+  async count(prefix: string): Promise<number> {
+    const pattern = prefix.replace(/[\\%_]/g, '\\$&') + '%';
+    const [row] = await this.db.$queryRaw<{ total: bigint }[]>`
+      SELECT COUNT(*) AS total FROM settings
+      WHERE \`key\` LIKE ${pattern} AND JSON_TYPE(value) = 'OBJECT'`;
+    return Number(row?.total ?? 0);
   }
 
   async get(key: string) {

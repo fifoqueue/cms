@@ -1,5 +1,9 @@
 // In-memory adapters for tests. They honour the same port contracts as the Prisma adapters.
 import { stringifyJson, patternSummarySchema } from '@cms/sdk';
+import type {
+  SettingsTransaction,
+  SettingsTransactions,
+} from '#api/domain/site/settings-transactions';
 import type { PatternCriteria } from '#api/domain/content/pattern-catalog';
 import type { TaxonomyType, UserProfile } from '@cms/sdk';
 import type { UserRecord } from '#api/domain/auth/ports';
@@ -607,7 +611,44 @@ export const testLocks = (
   });
 
 /** Plain settings storage for services that keep definitions in core settings. */
-export class MemorySettings {
+export class MemorySettings
+  implements SettingsTransaction, SettingsTransactions
+{
+  private readonly writing = new Map<string, Promise<unknown>>();
+
+  run<T>(
+    lock: string,
+    task: (settings: SettingsTransaction) => Promise<T>,
+  ): Promise<T> {
+    const work = async () => {
+      const before = new Map(this.values);
+      const transaction = new MemorySettings();
+      for (const [key, value] of before) transaction.values.set(key, value);
+      const result = await task(transaction);
+      // Commit only this transaction's writes; failures leave the original store intact.
+      for (const [key, value] of transaction.values)
+        if (!before.has(key) || before.get(key) !== value)
+          this.values.set(key, value);
+      return result;
+    };
+    const run = (this.writing.get(lock) ?? Promise.resolve()).then(work);
+    this.writing.set(
+      lock,
+      run.catch(() => undefined),
+    );
+    return run;
+  }
+
+  async count(prefix: string) {
+    return [...this.values].filter(
+      ([key, value]) =>
+        key.startsWith(prefix) &&
+        value !== null &&
+        typeof value === 'object' &&
+        !Array.isArray(value),
+    ).length;
+  }
+
   async summaries({ page, pageSize, search, authorId }: PatternCriteria) {
     const rows = [...this.values]
       .flatMap(([key, value]) => {
