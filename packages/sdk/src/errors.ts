@@ -11,6 +11,8 @@ export const Errors = {
   FieldOptionsRequired: 'Add at least one choice',
   FieldValuesInvalid: 'Field values must be plain data',
   CommentUrlInvalid: 'Use a web address starting with https:// or http://',
+  CommentDefaultNameRequired:
+    'Enter a default commenter name when the name field is disabled.',
   SearchHostInvalid: 'Use an address such as http://127.0.0.1:7700',
   SearchPrefixInvalid: 'Use 1–40 lowercase letters, digits or underscores',
   SearchHostRequired: 'Enter the Meilisearch address to turn search on',

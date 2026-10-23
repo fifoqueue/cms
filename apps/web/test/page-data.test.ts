@@ -153,6 +153,19 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   switch (call.url.pathname) {
     case '/api/v1/privacy':
       return json({ policy: null, commentCookies: true });
+    case '/api/v1/comments':
+      if (call.method === 'GET')
+        return json({
+          items: [],
+          total: 0,
+          count: 0,
+          page: Number(call.url.searchParams.get('page') ?? 1),
+          pageSize: 50,
+          open: true,
+          threadDepth: 3,
+          truncated: false,
+        });
+      break;
     case '/api/v1/site':
       return json({ title: 'Site', description: '', locale: 'en' });
     case '/api/v1/layout':
@@ -328,6 +341,7 @@ const adminEvent = (
     fetch: fakeFetch,
     url,
     params,
+    setHeaders: () => undefined,
     request: new Request(url, { method: 'POST', body }),
     locals: {
       token: TOKEN,
@@ -675,8 +689,9 @@ test('failed replies retain their parent and retry redirects to the returned com
     parentName: 'Ann',
     captcha: true,
   });
-  override = ({ url, body }) => {
-    if (url.pathname !== '/api/v1/comments') return undefined;
+  override = ({ url, body, method }) => {
+    if (url.pathname !== '/api/v1/comments' || method === 'GET')
+      return undefined;
     expect(JSON.parse(body).parentId).toBe(failure.parentId);
     return json({
       status: 'approved',
@@ -721,8 +736,8 @@ test('remembered commenters send and rotate only the signed proof cookie', async
       delete: () => undefined,
     },
   } as Parameters<typeof commentAction>[0];
-  override = ({ url }) =>
-    url.pathname === '/api/v1/comments'
+  override = ({ url, method }) =>
+    url.pathname === '/api/v1/comments' && method === 'POST'
       ? json({
           status: 'approved',
           page: 1,
@@ -809,6 +824,89 @@ test('privacy confirmations in different tabs use separate proofs and never seri
   expect(jar.size).toBe(1);
   expect(JSON.parse(jar.get('__Host-cms_privacy_confirmations')!)).toEqual([
     { id: ids[1], token: tokens[1] },
+  ]);
+});
+
+test('enhanced comments refresh only the returned thread and scrub disabled remembered fields', async () => {
+  const cookies = new Map<string, string>();
+  const headers = new Headers();
+  const base = adminEvent('/hello?/comment&page=2&cpage=1', {
+    contentId: 'id-hello',
+    body: 'My draft',
+    parentId: 'parent',
+    parentName: 'Reader',
+    authorName: 'Forged',
+    authorEmail: 'forged@example.com',
+    authorUrl: 'https://forged.test',
+    remember: 'on',
+  });
+  base.request.headers.set('x-sveltekit-action', 'true');
+  const event = {
+    ...base,
+    getClientAddress: () => '203.0.113.1',
+    setHeaders: (values: Record<string, string>) => {
+      for (const [key, value] of Object.entries(values))
+        headers.set(key, value);
+    },
+    cookies: {
+      get: (name: string) => cookies.get(name),
+      getAll: () => [],
+      set: (name: string, value: string) => cookies.set(name, value),
+      delete: (name: string) => cookies.delete(name),
+    },
+  } as Parameters<typeof commentAction>[0];
+  override = ({ url, method }) => {
+    if (url.pathname !== '/api/v1/comments') return undefined;
+    if (method === 'POST')
+      return json({
+        status: 'pending',
+        page: 3,
+        pendingProof: 'signed-pending',
+        commenterProof: null,
+        comment: null,
+      });
+    expect(cookies.get('cms_pending_id-hello')).toBe('signed-pending');
+    return json({
+      items: [],
+      total: 12,
+      count: 15,
+      page: 3,
+      pageSize: 5,
+      open: true,
+      fields: { name: false, email: false, website: false },
+      threadDepth: 3,
+      truncated: false,
+      ownPending: {
+        id: 'mine',
+        parentId: 'parent',
+        depth: 1,
+        authorName: 'Guest',
+        authorUrl: null,
+        byAuthor: false,
+        body: 'My draft',
+        pending: true,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+  };
+  const result = await commentAction(event);
+  expect(headers.get('cache-control')).toBe('private, no-store');
+  expect(result).toMatchObject({
+    commented: true,
+    moderation: true,
+    location: '/hello?page=2&cpage=3&moderation=1#comments',
+    comments: {
+      count: 15,
+      page: 3,
+      ownPending: { body: 'My draft', pending: true },
+    },
+  });
+  expect(cookies.has('cms_commenter')).toBe(false);
+  expect(cookies.has('cms_commenter_proof')).toBe(false);
+  expect(JSON.stringify(result)).not.toContain('forged@example.com');
+  expect(calls.map(({ method, url }) => `${method} ${url.pathname}`)).toEqual([
+    'POST /api/v1/comments',
+    'GET /api/v1/comments',
   ]);
 });
 

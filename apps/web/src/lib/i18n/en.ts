@@ -477,6 +477,12 @@ export const en = {
   commentBody: 'Comment',
   commentEmailPrivate: 'Your email address will not be published.',
   commentSubmit: 'Post comment',
+  commentSubmitting: 'Posting…',
+  commentPosted: 'Your comment has been posted.',
+  commentSubmitFailed:
+    'Your comment could not be sent. Your draft is still here. Try again.',
+  commentRefreshFailed:
+    'Your comment was received. Refresh to see the latest comments.',
   commentsClosed: 'Comments are closed.',
 
   // Comments: moderation and discussion
@@ -1370,6 +1376,13 @@ export const en = {
   commentRemember:
     'Save my name, email, and website in this browser for the next time I comment.',
   discussionRequireLogin: 'Users must be registered and logged in to comment',
+  discussionFields: 'Comment form fields',
+  discussionShowName: 'Ask for a name',
+  discussionShowEmail: 'Ask for an email address',
+  discussionShowWebsite: 'Show the website field',
+  discussionDefaultName: 'Default commenter name',
+  discussionDefaultNameHelp:
+    'Required when the name field is off. Signed-in comments use the profile name.',
   discussionAvatars: 'Show avatars',
   discussionAvatarDefault: 'Default avatar',
   avatarStyle: (style: string) =>

@@ -25,6 +25,10 @@ export const actions: Actions = {
     const input: DiscussionSettingsInput = {
       enabled: form.has('enabled'),
       requireLogin: form.has('requireLogin'),
+      showName: form.has('showName'),
+      showEmail: form.has('showEmail'),
+      showWebsite: form.has('showWebsite'),
+      defaultName: text(form, 'defaultName'),
       showAvatars: form.has('showAvatars'),
       avatarDefault:
         AVATAR_DEFAULTS.find(

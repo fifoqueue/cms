@@ -24,6 +24,7 @@ const FIELDS: Record<string, keyof Messages> = {
   publishedAt: 'fieldPublishAt',
   password: 'fieldPassword',
   authorId: 'fieldAuthor',
+  defaultName: 'discussionDefaultName',
   featuredMediaId: 'featuredImage',
   categoryIds: 'columnCategories',
   tagIds: 'columnTags',

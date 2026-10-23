@@ -24,6 +24,8 @@
   const i18n = useI18n();
   const m = $derived(i18n.m);
   const settings = $derived(data.discussion);
+  // svelte-ignore state_referenced_locally
+  let showName = $state(data.discussion.showName);
   const choices = $derived([
     { value: 'manual', label: m.discussionManual },
     { value: 'known', label: m.discussionKnown },
@@ -66,6 +68,42 @@
         />
         {m.discussionAvatars}
       </label>
+      <fieldset class="grid gap-3">
+        <legend class="mb-2 text-sm font-medium">{m.discussionFields}</legend>
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="showName" bind:checked={showName} />
+          {m.discussionShowName}
+        </label>
+        <div class="grid gap-2">
+          <Label for="defaultName">{m.discussionDefaultName}</Label>
+          <Input
+            id="defaultName"
+            name="defaultName"
+            required={!showName}
+            maxlength={100}
+            value={settings.defaultName}
+          />
+          <p class="text-xs text-muted-foreground">
+            {m.discussionDefaultNameHelp}
+          </p>
+        </div>
+        <label class="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="showEmail"
+            checked={settings.showEmail}
+          />
+          {m.discussionShowEmail}
+        </label>
+        <label class="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="showWebsite"
+            checked={settings.showWebsite}
+          />
+          {m.discussionShowWebsite}
+        </label>
+      </fieldset>
       <div class="grid gap-2">
         <Label for="avatarDefault">{m.discussionAvatarDefault}</Label>
         <NativeSelect

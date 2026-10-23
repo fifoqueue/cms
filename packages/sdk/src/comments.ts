@@ -26,37 +26,56 @@ export type CommentStatus = (typeof COMMENT_STATUSES)[number];
 /** How new comments are held for review (WordPress "Before a comment appears"). */
 export const COMMENT_MODERATION = ['manual', 'known', 'auto'] as const;
 
+/** Stored comment author names are shorter than profile names (191). */
+export const COMMENT_AUTHOR_NAME_MAX = 100;
+
+/** Fields anonymous visitors may supply; authenticated identity always comes from the profile. */
+export const commentFieldsSchema = z.object({
+  name: z.boolean().default(true),
+  email: z.boolean().default(true),
+  website: z.boolean().default(true),
+});
+
 const words = z
   .array(z.string().trim().toLowerCase().min(1).max(100))
   .max(500)
   .default([]);
 
 /** Comment rules for the whole site (Settings → Discussion). */
-export const discussionSettingsSchema = z.object({
-  /** Off closes comments everywhere; existing comments stay visible. */
-  enabled: z.boolean().default(true),
-  requireLogin: z.boolean().default(false),
-  showAvatars: z.boolean().default(false),
-  avatarDefault: z.enum(AVATAR_DEFAULTS).default('mp'),
-  /** `manual`: every comment waits; `known`: authors with an approved comment skip; `auto`: none wait. */
-  moderation: z.enum(COMMENT_MODERATION).default('known'),
-  /** Close comments on entries older than this many days; 0 never closes them. */
-  closeAfterDays: z.number().int().min(0).max(3650).default(0),
-  /** Reply levels shown, the top level included. */
-  threadDepth: z.number().int().min(1).max(5).default(3),
-  /** Top-level comments per page. */
-  pageSize: z.number().int().min(5).max(200).default(50),
-  /** A comment with more links waits for review. */
-  maxLinks: z.number().int().min(0).max(50).default(2),
-  /** A comment containing one of these (in any field) waits for review. */
-  holdWords: words,
-  /** A comment containing one of these is marked as spam. */
-  blockWords: words,
-  /** Email moderators about comments waiting for review. */
-  notifyModerators: z.boolean().default(true),
-  /** Email entry authors about approved comments. */
-  notifyAuthors: z.boolean().default(true),
-});
+export const discussionSettingsSchema = z
+  .object({
+    /** Off closes comments everywhere; existing comments stay visible. */
+    enabled: z.boolean().default(true),
+    requireLogin: z.boolean().default(false),
+    showName: z.boolean().default(true),
+    showEmail: z.boolean().default(true),
+    showWebsite: z.boolean().default(true),
+    defaultName: z.string().trim().max(COMMENT_AUTHOR_NAME_MAX).default(''),
+    showAvatars: z.boolean().default(false),
+    avatarDefault: z.enum(AVATAR_DEFAULTS).default('mp'),
+    /** `manual`: every comment waits; `known`: authors with an approved comment skip; `auto`: none wait. */
+    moderation: z.enum(COMMENT_MODERATION).default('known'),
+    /** Close comments on entries older than this many days; 0 never closes them. */
+    closeAfterDays: z.number().int().min(0).max(3650).default(0),
+    /** Reply levels shown, the top level included. */
+    threadDepth: z.number().int().min(1).max(5).default(3),
+    /** Top-level comments per page. */
+    pageSize: z.number().int().min(5).max(200).default(50),
+    /** A comment with more links waits for review. */
+    maxLinks: z.number().int().min(0).max(50).default(2),
+    /** A comment containing one of these (in any field) waits for review. */
+    holdWords: words,
+    /** A comment containing one of these is marked as spam. */
+    blockWords: words,
+    /** Email moderators about comments waiting for review. */
+    notifyModerators: z.boolean().default(true),
+    /** Email entry authors about approved comments. */
+    notifyAuthors: z.boolean().default(true),
+  })
+  .refine((settings) => settings.showName || settings.defaultName.length > 0, {
+    path: ['defaultName'],
+    message: Errors.CommentDefaultNameRequired,
+  });
 
 export type DiscussionSettings = z.output<typeof discussionSettingsSchema>;
 export type DiscussionSettingsInput = z.input<typeof discussionSettingsSchema>;
@@ -71,25 +90,29 @@ const authorUrlSchema = z
   )
   .default('');
 
-/** Stored comment author names are shorter than profile names (191). */
-export const COMMENT_AUTHOR_NAME_MAX = 100;
-
 /** A visitor's comment. `website` is a honeypot field that people never see or fill in. */
 export const commentInputSchema = z.object({
   contentId: z.string().min(1).max(36),
   parentId: z.string().max(36).nullable().default(null),
   authorName: z.string().trim().min(1).max(COMMENT_AUTHOR_NAME_MAX),
-  authorEmail: z.email().trim().toLowerCase().max(191),
+  // The service requires an email only while its field is enabled.
+  authorEmail: z
+    .union([z.email().trim().toLowerCase().max(191), z.literal('')])
+    .default(''),
   authorUrl: authorUrlSchema,
   body: z.string().trim().min(1).max(5000),
   website: z.string().max(500).optional(),
 });
 
-export const commenterSchema = commentInputSchema.pick({
-  authorName: true,
-  authorEmail: true,
-  authorUrl: true,
-});
+export const commenterSchema = commentInputSchema
+  .pick({
+    authorName: true,
+    authorEmail: true,
+    authorUrl: true,
+  })
+  .extend({
+    authorName: z.string().trim().max(COMMENT_AUTHOR_NAME_MAX).default(''),
+  });
 
 export type CommentInput = Omit<
   z.input<typeof commentInputSchema>,
@@ -128,6 +151,7 @@ export const publicCommentPageSchema = z.strictObject({
   pageSize: z.number().int(),
   open: z.boolean(),
   requireLogin: z.boolean().default(false),
+  fields: commentFieldsSchema.default(() => commentFieldsSchema.parse({})),
   viewer: z.object({ name: z.string() }).nullable().default(null),
   ownPending: publicCommentSchema.nullable().default(null),
   threadDepth: z.number().int(),
@@ -186,7 +210,7 @@ export type CommentListQuery = z.input<typeof commentListQuerySchema>;
 export const commentUpdateSchema = z.object({
   status: z.enum(COMMENT_STATUSES).optional(),
   authorName: z.string().trim().min(1).max(100).optional(),
-  authorEmail: z.email().trim().toLowerCase().max(191).optional(),
+  authorEmail: commentInputSchema.shape.authorEmail.optional(),
   authorUrl: authorUrlSchema.optional(),
   body: z.string().trim().min(1).max(5000).optional(),
 });

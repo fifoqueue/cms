@@ -40,6 +40,7 @@ export const Errors = {
     'A queued message cannot be read. Repair or remove it before erasing personal data',
   JobFailed: 'Job delivery failed',
 
+  CommentEmailRequired: 'Enter an email address.',
   AuthenticationRequired: 'Authentication required',
   Forbidden: 'You do not have permission to do this',
   PatternNotFound: 'Pattern not found',
