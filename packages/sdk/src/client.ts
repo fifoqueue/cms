@@ -4,6 +4,8 @@ import { taxonomyDefinitionSchema } from '#sdk/taxonomy';
 import type { TaxonomyDefinition } from '#sdk/taxonomy';
 import { membershipSchema, roleDefinitionSchema } from '#sdk/roles';
 import type { RoleDefinition } from '#sdk/roles';
+import { dashboardPreferencesSchema } from '#sdk/dashboard';
+import type { DashboardPreferences } from '#sdk/dashboard';
 // HTTP clients for the API. Frontends must talk to the API through these only.
 import { z } from 'zod';
 import { createTransport, pageSchema } from '#sdk/transport';
@@ -351,6 +353,25 @@ export const createAdminClient = (options: ClientOptions, token: string) => {
           'DELETE',
           `/api/v1/admin/roles/${encodeURIComponent(key)}`,
           { query: { reassignTo } },
+        ),
+    },
+    dashboardPreferences: {
+      get: () =>
+        request<DashboardPreferences>(
+          'GET',
+          '/api/v1/admin/dashboard-preferences',
+          {
+            response: dashboardPreferencesSchema,
+          },
+        ),
+      update: (input: DashboardPreferences) =>
+        request<DashboardPreferences>(
+          'PUT',
+          '/api/v1/admin/dashboard-preferences',
+          {
+            json: input,
+            response: dashboardPreferencesSchema,
+          },
         ),
     },
     membership: (enabled: boolean) =>

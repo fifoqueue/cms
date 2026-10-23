@@ -100,7 +100,7 @@
 
 <h1 class="text-2xl font-semibold">{m.dashboard}</h1>
 
-<FormMessage {form} />
+<FormMessage form={form?.dashboardPreferences ? null : form} />
 
 {#snippet glance()}
   <Card>
@@ -325,7 +325,8 @@
 {/snippet}
 <DashboardOptions
   widgets={available.map((id) => ({ id, title: titleOf(id) }))}
-  hidden={data.layout.hidden}
+  preferences={data.layout}
+  form={form?.dashboardPreferences ? form : null}
 />
 
 <div class="grid gap-6 lg:grid-cols-2">

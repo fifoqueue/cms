@@ -14,6 +14,3 @@ export const CONTENT_COLUMNS = [
 
 /** Details of the comments list the viewer may hide. */
 export const COMMENT_COLUMNS = ['email', 'response'] as const;
-
-/** Cookie holding the dashboard's box order and hidden boxes. */
-export const DASHBOARD_COOKIE = 'cms_dashboard';

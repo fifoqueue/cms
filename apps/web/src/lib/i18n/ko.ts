@@ -1545,6 +1545,9 @@ export const ko: Messages = {
   sessionRevoke: '로그아웃',
   sessionRevoked: '세션을 로그아웃했습니다.',
   dashboardBoxes: '표시할 상자와 순서',
+  dashboardOptionsSaved: '대시보드 옵션을 내 계정에 저장했습니다.',
+  dashboardSaveFailed:
+    '저장 여부를 확인할 수 없습니다. 선택한 옵션은 유지됩니다. 다시 시도하세요.',
   moveUpItem: (name: string) => `${name} 위로 이동`,
   moveDownItem: (name: string) => `${name} 아래로 이동`,
   pluginSettingsLink: '설정',

@@ -1593,6 +1593,9 @@ export const en = {
   sessionRevoke: 'Sign out',
   sessionRevoked: 'The session was signed out.',
   dashboardBoxes: 'Boxes to show, in order',
+  dashboardOptionsSaved: 'Dashboard options saved to your account.',
+  dashboardSaveFailed:
+    'Could not confirm the save. Your choices are still here. Try again.',
   moveUpItem: (name: string) => `Move ${name} up`,
   moveDownItem: (name: string) => `Move ${name} down`,
   pluginSettingsLink: 'Settings',
