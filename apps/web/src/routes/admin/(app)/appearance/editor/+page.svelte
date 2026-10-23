@@ -16,12 +16,15 @@
     walkBlocks,
   } from '@cms/sdk';
   import {
+    Redo2,
+    Undo2,
     ExternalLink,
     LayoutTemplate,
     Palette,
     Puzzle,
   } from '@lucide/svelte';
   import BlockTreeEditor from '#lib/admin/BlockTreeEditor.svelte';
+  import { History, historyKey } from '#lib/admin/history.js';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { confirmLeave } from '#lib/admin/unsaved.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
@@ -136,6 +139,99 @@
     previewError = undefined;
     dirty = false;
     stylesDirty = false;
+    stylesDraft = null;
+  });
+
+  // Global Styles: the unsaved form drives the preview below it and its own undo history.
+  let stylesForm = $state<HTMLFormElement>();
+  let stylesDraft = $state<string | null>(null);
+  let stylesHistory: History | null = null;
+  let stylesSteps = $state(0);
+  const readStyles = (form: HTMLFormElement) =>
+    JSON.stringify(
+      Object.fromEntries(
+        [...new FormData(form)].filter(
+          ([, value]) => typeof value === 'string',
+        ),
+      ),
+    );
+  $effect(() => {
+    if (stylesForm) stylesHistory = new History(readStyles(stylesForm));
+  });
+  const styleChanged = () => {
+    if (!stylesForm) return;
+    stylesDirty = true;
+    stylesDraft = readStyles(stylesForm);
+    stylesHistory?.record(stylesDraft);
+    stylesSteps++;
+  };
+  const styleStep = (direction: 'undo' | 'redo') => {
+    const snapshot =
+      direction === 'undo' ? stylesHistory?.undo() : stylesHistory?.redo();
+    if (!snapshot || !stylesForm) return;
+    for (const [name, value] of Object.entries(
+      JSON.parse(snapshot) as Record<string, string>,
+    )) {
+      const control = stylesForm.elements.namedItem(name);
+      if (
+        control instanceof HTMLInputElement ||
+        control instanceof HTMLSelectElement
+      )
+        control.value = value;
+    }
+    stylesDraft = snapshot;
+    stylesDirty = true;
+    stylesSteps++;
+  };
+  const stylesCan = $derived.by(() => {
+    void stylesSteps;
+    return {
+      undo: stylesHistory?.canUndo ?? false,
+      redo: stylesHistory?.canRedo ?? false,
+    };
+  });
+  const HEX = /^#[0-9a-f]{6}$/i;
+  /** The canvas theme with the unsaved colors and styles; values outside the choices are ignored. */
+  const styledTheme = $derived.by(() => {
+    const theme = data.canvas.theme;
+    if (!stylesDraft) return theme;
+    const values = JSON.parse(stylesDraft) as Record<string, string>;
+    const fonts = theme.settings.fontFamilies.map((font) => font.slug);
+    const pick = <T extends string>(
+      options: readonly T[],
+      value: string | undefined,
+      fallback: T,
+    ) => (options.includes(value as T) ? (value as T) : fallback);
+    return {
+      ...theme,
+      settings: {
+        ...theme.settings,
+        palette: theme.settings.palette.map((entry) => {
+          const color = values[`color.${entry.slug}`];
+          return color && HEX.test(color) ? { ...entry, color } : entry;
+        }),
+      },
+      styles: {
+        ...theme.styles,
+        fontFamily: pick(fonts, values.fontFamily, theme.styles.fontFamily),
+        headingFontFamily: pick(
+          ['', ...fonts],
+          values.headingFontFamily,
+          theme.styles.headingFontFamily,
+        ),
+        fontSize: pick(
+          THEME_FONT_SIZES,
+          values.fontSize,
+          theme.styles.fontSize,
+        ),
+        lineHeight: pick(
+          THEME_LINE_HEIGHTS,
+          values.lineHeight,
+          theme.styles.lineHeight,
+        ),
+        radius: pick(THEME_RADII, values.radius, theme.styles.radius),
+      },
+    };
   });
 
   $effect(() => {
@@ -206,6 +302,17 @@
   const navItem =
     'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm hover:bg-muted aria-[current=page]:bg-muted aria-[current=page]:font-medium';
 </script>
+
+<!-- Templates and parts handle the keys in BlockTreeEditor; Global Styles here. -->
+<svelte:window
+  onkeydown={(event) => {
+    if (selected.kind !== 'styles') return;
+    const direction = historyKey(event);
+    if (!direction) return;
+    event.preventDefault();
+    styleStep(direction);
+  }}
+/>
 
 <svelte:head>
   <title>{m.navEditor} · {editor.name}</title>
@@ -370,8 +477,9 @@
                 if (result.type === 'success') stylesDirty = false;
                 await update();
               }}
-            oninput={() => (stylesDirty = true)}
-            onchange={() => (stylesDirty = true)}
+            bind:this={stylesForm}
+            oninput={styleChanged}
+            onchange={styleChanged}
             class="space-y-6"
           >
             <input type="hidden" name="theme" value={editor.id} />
@@ -484,8 +592,43 @@
             </fieldset>
             <div class="flex flex-wrap gap-2">
               <Button type="submit">{m.save}</Button>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={!stylesCan.undo}
+                title="{m.editorUndo} (Ctrl+Z)"
+                onclick={() => styleStep('undo')}
+                ><Undo2 class="size-4" /> {m.editorUndo}</Button
+              >
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={!stylesCan.redo}
+                title="{m.editorRedo} (Ctrl+Shift+Z)"
+                onclick={() => styleStep('redo')}
+                ><Redo2 class="size-4" /> {m.editorRedo}</Button
+              >
             </div>
           </form>
+          <div class="mt-6 space-y-2">
+            <span class="text-sm font-medium">{m.editorLivePreview}</span>
+            <div class="overflow-auto rounded border bg-muted p-2">
+              <div
+                class="cms-site mx-auto min-h-64 bg-background text-foreground"
+                style={themeStyle(styledTheme)}
+                inert
+              >
+                {#if data.previewPage}
+                  <TemplateView
+                    data={{ ...data.canvas, ...canvasData, theme: styledTheme }}
+                    page={data.previewPage}
+                  />
+                {:else}
+                  <p class="p-4 text-muted-foreground">{m.noPosts}</p>
+                {/if}
+              </div>
+            </div>
+          </div>
           {#if editor.styles.customized}
             <form
               method="POST"

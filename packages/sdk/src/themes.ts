@@ -325,6 +325,8 @@ export const adminThemeSchema = z.strictObject({
   active: z.boolean(),
   builtin: z.boolean(),
   customized: z.boolean(),
+  /** Version of the theme's screenshot (`screenshot.png`/`.webp`), null without one. */
+  screenshot: z.string().nullable().default(null),
 });
 export type AdminTheme = z.output<typeof adminThemeSchema>;
 

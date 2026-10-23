@@ -93,7 +93,11 @@
             aria-label={m.themeDetailsOf(theme.name)}
             onclick={() => showDetails(theme)}
           >
-            <ThemePreview palette={theme.palette} name={theme.name} />
+            <ThemePreview
+              palette={theme.palette}
+              name={theme.name}
+              screenshot={theme.screenshot}
+            />
           </button>
         </CardContent>
         <CardFooter class="mt-auto flex flex-wrap gap-2">
@@ -176,7 +180,11 @@
           onclick={() => dialog.close()}><X class="size-4" /></Button
         >
       </div>
-      <ThemePreview palette={details.palette} name={details.name} />
+      <ThemePreview
+        palette={details.palette}
+        name={details.name}
+        screenshot={details.screenshot}
+      />
       <p class="text-sm">{details.description || details.id}</p>
       <div class="flex flex-wrap gap-1">
         {#if details.active}<Badge>{m.themeActive}</Badge>{/if}
