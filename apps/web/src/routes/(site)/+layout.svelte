@@ -1,6 +1,6 @@
 <script lang="ts">
   import '#lib/theme/site.css';
-  import { resolve } from '$app/paths';
+  import { routeLink } from '#lib/route-link.js';
   import { page } from '$app/state';
   import type { SlotMap } from '@cms/sdk';
   import { buildHead, sitePage } from '#lib/seo/head.js';
@@ -83,8 +83,7 @@
     >
       {i18n.m.themePreviewing(data.theme.name)}
       <a
-        href={resolve('/admin/(app)/appearance/preview/exit')}
-        data-sveltekit-reload
+        {...routeLink('/admin/(app)/appearance/preview/exit')}
         class="ml-2 underline">{i18n.m.themePreviewExit}</a
       >
     </p>

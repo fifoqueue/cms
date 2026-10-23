@@ -1,12 +1,15 @@
 <script lang="ts">
   import type { Block } from '@cms/sdk';
   import Blocks from '#lib/theme/blocks/Blocks.svelte';
+  import { linkOptions } from '#lib/route-link.js';
+  import { useScope } from '#lib/theme/scope.js';
 
   /** Image, Cover and Media & Text: media-library images only (`MEDIA_IMAGE`). */
   let {
     block,
   }: { block: Extract<Block, { name: 'image' | 'cover' | 'media-text' }> } =
     $props();
+  const scope = useScope();
 
   const ALIGN = {
     left: 'mr-auto',
@@ -43,7 +46,9 @@
       {/snippet}
       {#if a.link}
         <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- a site path or external address chosen by admins -->
-        <a href={a.link}>{@render image()}</a>
+        <a href={a.link} {...linkOptions(scope().linkRoutes[a.link])}
+          >{@render image()}</a
+        >
       {:else}
         {@render image()}
       {/if}

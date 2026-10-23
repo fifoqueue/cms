@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { RouteId } from '$app/types';
   import { walkBlocks } from '@cms/sdk';
   import type { ArchivePathsState, Block, SlotMap } from '@cms/sdk';
   import type { CommentSection } from '#lib/server/comments.js';
@@ -24,6 +25,7 @@
   interface Props {
     /** Layout data plus the page's own data (`page.data`). */
     data: {
+      linkRoutes?: Record<string, RouteId>;
       privacy?: {
         policy: { title: string; path: string } | null;
         commentCookies: boolean;
@@ -61,6 +63,7 @@
   if (editable) provideBlockPath([]);
 
   provideScope(() => ({
+    linkRoutes: data.linkRoutes ?? {},
     privacy: data.privacy,
     archives: data.archives,
     queries: data.queries,

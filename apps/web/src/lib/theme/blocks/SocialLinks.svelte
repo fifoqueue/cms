@@ -1,11 +1,14 @@
 <script lang="ts">
   import type { Block } from '@cms/sdk';
   import { useI18n } from '#lib/i18n/index.js';
+  import { linkOptions } from '#lib/route-link.js';
+  import { useScope } from '#lib/theme/scope.js';
 
   /** Profile links named by their service; links without an address are left out. */
   let { block }: { block: Extract<Block, { name: 'social-links' }> } = $props();
 
   const i18n = useI18n();
+  const scope = useScope();
   const m = $derived(i18n.m);
   const JUSTIFY = {
     start: 'justify-start',
@@ -45,7 +48,7 @@
         <!-- eslint-disable svelte/no-navigation-without-resolve -- external profile addresses chosen by admins -->
         <a
           href={link.attrs.url}
-          data-sveltekit-reload={link.attrs.service === 'rss'}
+          {...linkOptions(scope().linkRoutes[link.attrs.url])}
           rel="me noopener"
           class="cms-block-social-link inline-flex rounded-full border px-3 py-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
           >{link.attrs.label || name(link.attrs.service)}</a

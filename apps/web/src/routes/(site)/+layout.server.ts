@@ -1,4 +1,5 @@
 import { loadTemplateData } from '#lib/server/theme-queries.js';
+import { themeLinks } from '#lib/server/theme-links.js';
 import { authApi, contentApi } from '#lib/server/api.js';
 import { Errors } from '#lib/server/errors.js';
 import {
@@ -35,7 +36,7 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
   const theme = themeView(layout.theme);
   const { primary, footer } = menus;
   locals.lang = site.locale;
-  const [pages, blocks] = await Promise.all([
+  const [pages, blocks, linkRoutes] = await Promise.all([
     // Without a primary menu, navigation falls back to the published pages.
     primary ? null : api.list({ type: 'page', pageSize: 20 }),
     // Pages load the data of their own template; error pages only have this one.
@@ -48,8 +49,10 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
         message: Errors.NotFound,
       },
     ),
+    themeLinks(layout.theme),
   ]);
   return {
+    linkRoutes,
     privacy: layout.privacy,
     archives: layout.archives,
     ...blocks,
