@@ -1,4 +1,5 @@
 import { getContext, setContext } from 'svelte';
+import type { RouteId } from '$app/types';
 import type { ArchivePathsState, SlotMap } from '@cms/sdk';
 import type { CommentSection } from '#lib/server/comments.js';
 import type { BlockData } from '#lib/server/theme-queries.js';
@@ -15,6 +16,7 @@ import type { ThemePage } from '#lib/theme/template.js';
 
 /** Everything blocks may show: layout data, the page being rendered and its slots. */
 export interface SiteScope {
+  linkRoutes: Record<string, RouteId>;
   privacy?: {
     policy: { title: string; path: string } | null;
     commentCookies: boolean;

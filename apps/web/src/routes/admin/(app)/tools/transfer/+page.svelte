@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { resolve } from '$app/paths';
+  import { routeLink } from '#lib/route-link.js';
   import { enhance } from '$app/forms';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -31,7 +31,7 @@
   <CardContent class="grid gap-3 text-sm">
     <p>{m.exportHelp}</p>
     <div>
-      <Button href={resolve('/admin/(app)/tools/export')} data-sveltekit-reload
+      <Button {...routeLink('/admin/(app)/tools/export')}
         >{m.exportDownload}</Button
       >
     </div>

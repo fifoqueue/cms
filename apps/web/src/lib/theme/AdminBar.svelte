@@ -1,5 +1,6 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import { routeLink } from '#lib/route-link.js';
   import { page } from '$app/state';
   import {
     Eye,
@@ -133,8 +134,7 @@
         >
       </span>
       <a
-        href={resolve('/admin/(app)/appearance/preview/exit')}
-        data-sveltekit-reload
+        {...routeLink('/admin/(app)/appearance/preview/exit')}
         class="{item} underline">{m.themePreviewExit}</a
       >
     {/if}

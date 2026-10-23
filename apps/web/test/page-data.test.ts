@@ -23,7 +23,7 @@ Bun.plugin({
       loader: 'object',
     }));
     build.module('$app/paths', () => ({
-      exports: { resolve: (path: string) => path },
+      exports: { resolve: (path: string) => path, match: async () => null },
       loader: 'object',
     }));
   },

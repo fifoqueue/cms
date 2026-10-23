@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { routeLink } from '#lib/route-link.js';
   import { resolve } from '$app/paths';
   import type { Path } from '$app/types';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
@@ -151,7 +152,7 @@
     </h2>
     <a
       class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-      href={resolve(
+      {...routeLink(
         `/comments/feed.xml?contentId=${encodeURIComponent(contentId)}`,
       )}
       type="application/rss+xml"
