@@ -19,9 +19,15 @@ export const load: PageServerLoad = async (event) => {
   if (!can(user, 'content.create')) redirect(303, '/admin/account');
   const moderates = can(user, 'comments.moderate');
   const model = await admin.contentModel.model();
+  /** By publication time: the next scheduled first, the latest published first. */
   const entries = (status: 'scheduled' | 'published') =>
     admin.content
-      .list({ status, pageSize: 5 })
+      .list({
+        status,
+        orderBy: 'publishedAt',
+        order: status === 'scheduled' ? 'asc' : 'desc',
+        pageSize: 5,
+      })
       .then((page) =>
         page.items.map(({ id, title, publishedAt }) => ({
           id,

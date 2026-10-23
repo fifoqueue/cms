@@ -55,7 +55,11 @@ export const actions: Actions = {
         ),
       );
     } catch (caught) {
-      return failFrom(caught, { email });
+      // The form posts to `?/login`, dropping the query: echo where to go after the next try.
+      return failFrom(caught, {
+        email,
+        back: returnPath(text(form, RETURN_PARAM)),
+      });
     }
     redirect(303, returnPath(text(form, RETURN_PARAM)));
   },

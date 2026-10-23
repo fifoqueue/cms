@@ -108,7 +108,8 @@ export const contentInputSchema = z.object({
   /** Ids of `tag` terms. */
   parentId: z.string().min(1).max(36).nullable().optional(),
   tagIds: termIdsSchema,
-  extraTermIds: termIdsSchema.optional(),
+  /** Ids of custom taxonomy terms. Omitted keeps the stored ones (no default, unlike the others). */
+  extraTermIds: z.array(z.string().trim().min(1).max(36)).max(100).optional(),
   /** Omission preserves existing SEO on update; new entries receive defaults. */
   seo: seoInputSchema.optional(),
   /** Another author than the signed-in user; needs `content.editOthers`. Omitted keeps the current author. */
@@ -128,6 +129,11 @@ export const contentInputSchema = z.object({
   fields: fieldValuesSchema.optional(),
   /** An image from the media library shown with the entry. Omitted keeps it; null removes it. */
   featuredMediaId: z.string().trim().min(1).max(36).nullable().optional(),
+  /**
+   * Updates only: the `updatedAt` the client last read. When the stored entry was saved since,
+   * the update is refused with `conflict` and nothing changes.
+   */
+  expectedUpdatedAt: z.iso.datetime({ offset: true }).optional(),
 });
 
 /** What clients send when creating or replacing content. */
@@ -175,6 +181,9 @@ export const contentListQuerySchema = z
     ...listFilters,
     status: z.enum(CONTENT_STATUSES).optional(),
     view: z.enum(['active', 'trash']).default('active'),
+    /** Sort field, then id in the same direction. */
+    orderBy: z.enum(['updatedAt', 'publishedAt']).default('updatedAt'),
+    order: z.enum(['asc', 'desc']).default('desc'),
   })
   .refine((value) => Boolean(value.taxonomy) === Boolean(value.term), {
     path: ['term'],

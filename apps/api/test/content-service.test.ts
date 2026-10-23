@@ -399,6 +399,55 @@ describe('ContentService', () => {
     expect(await codeOf(previews.render(token))).toBe('not_found');
   });
 
+  test('a stale expected version changes nothing; an explicit date replaces the stored one', async () => {
+    const { service, clock } = setup();
+    const entry = await service.create(
+      input({ status: 'published', publishedAt: '2026-04-01T00:00:00.000Z' }),
+      ADMIN,
+    );
+    clock.set('2026-06-01T00:00:00.000Z');
+    const body = {
+      type: 'doc' as const,
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'New body' }] },
+      ],
+    };
+    await service.update(
+      entry.id,
+      input({ status: 'published', document: body }),
+      ADMIN,
+    );
+    // A metadata edit read the old version, then someone else saved the new body.
+    expect(
+      await codeOf(
+        service.update(
+          entry.id,
+          input({
+            status: 'published',
+            title: 'Renamed',
+            expectedUpdatedAt: entry.updatedAt,
+          }),
+          ADMIN,
+        ),
+      ),
+    ).toBe('conflict');
+    const current = await service.get(entry.id, ADMIN);
+    expect(current.document).toEqual(body);
+    expect(current.title).toBe('Hello World');
+
+    const redated = await service.update(
+      entry.id,
+      input({
+        status: 'published',
+        document: body,
+        publishedAt: '2026-05-01T00:00:00.000Z',
+        expectedUpdatedAt: current.updatedAt,
+      }),
+      ADMIN,
+    );
+    expect(redated.publishedAt).toBe('2026-05-01T00:00:00.000Z');
+  });
+
   test('the public API serves published content only', async () => {
     const { service, publicContent, repository } = setup();
     const draft = await service.create(input({ title: 'Draft' }), ADMIN);

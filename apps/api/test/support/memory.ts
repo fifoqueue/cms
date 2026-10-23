@@ -106,6 +106,7 @@ export class MemoryContentRepository implements ContentRepository {
     page,
     pageSize,
     orderBy,
+    order = 'desc',
   }: ContentCriteria) {
     const needle = search?.toLowerCase();
     const categoryIds = category && this.categoryScope(category);
@@ -142,8 +143,8 @@ export class MemoryContentRepository implements ContentRepository {
       )
       .sort(
         (a, b) =>
-          (b[orderBy]?.getTime() ?? 0) - (a[orderBy]?.getTime() ?? 0) ||
-          (a.id < b.id ? 1 : -1),
+          ((b[orderBy]?.getTime() ?? 0) - (a[orderBy]?.getTime() ?? 0) ||
+            (a.id < b.id ? 1 : -1)) * (order === 'asc' ? -1 : 1),
       );
     return {
       items: matches
@@ -182,7 +183,13 @@ export class MemoryContentRepository implements ContentRepository {
     return this.toRecord(record);
   }
 
-  async update(record: ContentWrite) {
+  async update(record: ContentWrite, expectedUpdatedAt?: Date) {
+    if (
+      expectedUpdatedAt &&
+      this.rows.get(record.id)?.updatedAt.getTime() !==
+        expectedUpdatedAt.getTime()
+    )
+      throw conflict(Errors.ContentChanged);
     if (
       record.type !== 'page' &&
       [...this.rows.values()].some((row) => row.parentId === record.id)
@@ -202,13 +209,9 @@ export class MemoryContentRepository implements ContentRepository {
     if (other && other.id !== record.id)
       throw conflict('Slug is already in use');
     const current = this.rows.get(record.id);
-    const next = {
-      ...record,
-      publishedAt: current?.publishedAt ?? record.publishedAt,
-    };
-    await this.permalinks.assign(next, current?.publishedAt != null);
-    this.rows.set(record.id, structuredClone(next));
-    return this.toRecord(next);
+    await this.permalinks.assign(record, current?.publishedAt != null);
+    this.rows.set(record.id, structuredClone(record));
+    return this.toRecord(record);
   }
 
   async delete(id: string) {

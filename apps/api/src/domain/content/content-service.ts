@@ -82,7 +82,6 @@ export class ContentService {
       ...filters,
       page,
       pageSize,
-      orderBy: 'updatedAt',
     });
     return { items: items.map(toEntrySummary), total, page, pageSize };
   }
@@ -149,17 +148,25 @@ export class ContentService {
     const slug = data.slug ?? current.slug;
     if (slug !== current.slug) await this.assertSlugFree(slug);
     const now = this.deps.clock.now();
-    const record = await this.deps.repository.update({
-      ...(await this.fields(data, current)),
-      ...this.schedule(data, current, now),
-      passwordHash: await this.passwordHash(data, current.passwordHash),
-      seo: data.seo ?? current.seo,
-      id: current.id,
-      slug,
-      createdAt: current.createdAt,
-      updatedAt: now,
-      authorId,
-    });
+    const expected = data.expectedUpdatedAt
+      ? new Date(data.expectedUpdatedAt)
+      : undefined;
+    if (expected && expected.getTime() !== current.updatedAt.getTime())
+      throw conflict(Errors.ContentChanged);
+    const record = await this.deps.repository.update(
+      {
+        ...(await this.fields(data, current)),
+        ...this.schedule(data, current, now),
+        passwordHash: await this.passwordHash(data, current.passwordHash),
+        seo: data.seo ?? current.seo,
+        id: current.id,
+        slug,
+        createdAt: current.createdAt,
+        updatedAt: now,
+        authorId,
+      },
+      expected,
+    );
     await this.saveRevision(record, actor);
 
     const entry = toEntry(record);
@@ -288,7 +295,13 @@ export class ContentService {
     current: ContentRecord | null,
     now: Date,
   ): Pick<ContentWrite, 'status' | 'publishedAt'> {
-    const requested = data.publishedAt ? new Date(data.publishedAt) : null;
+    const kept = current?.publishedAt ?? null;
+    const sent = data.publishedAt ? new Date(data.publishedAt) : null;
+    // Date inputs carry minutes only: the stored time resent from a form keeps its seconds.
+    const requested =
+      sent && kept && Math.floor(+sent / 60_000) === Math.floor(+kept / 60_000)
+        ? kept
+        : sent;
     if (data.status === 'scheduled') {
       if (!requested)
         throw invalidInput(Errors.ScheduleDateRequired, [
@@ -298,7 +311,6 @@ export class ContentService {
         ? { status: 'scheduled', publishedAt: requested }
         : { status: 'published', publishedAt: requested };
     }
-    const kept = current?.publishedAt ?? null;
     return {
       status: data.status,
       publishedAt:
@@ -335,7 +347,11 @@ export class ContentService {
       data,
       isContentData,
     );
-    return contentInputSchema.parse(filtered);
+    // The concurrency check is the client's, never a filter's.
+    return {
+      ...contentInputSchema.parse(filtered),
+      expectedUpdatedAt: data.expectedUpdatedAt,
+    };
   }
 
   /**

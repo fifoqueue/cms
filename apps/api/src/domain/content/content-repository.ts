@@ -100,8 +100,9 @@ export interface ContentCriteria {
   month?: number;
   page: number;
   pageSize: number;
-  /** Newest first by this field. */
+  /** Sort field (then id); newest first unless `order` is `asc`. */
   orderBy: 'publishedAt' | 'updatedAt';
+  order?: 'asc' | 'desc';
 }
 
 /**
@@ -124,8 +125,16 @@ export interface ContentRepository {
    * Content and its current path are saved atomically; path conflicts change neither.
    */
   insert(record: ContentWrite): Promise<ContentRecord>;
-  /** Replaces fields/assignments and moves the path atomically, retaining all previously public URLs. */
-  update(record: ContentWrite): Promise<ContentRecord>;
+  /**
+   * Replaces fields/assignments and moves the path atomically, retaining all previously public URLs.
+   * `record.publishedAt` is written as given (the service resolves an omitted date). With
+   * `expectedUpdatedAt`, throws `conflict` and changes nothing unless the stored entry still has
+   * that `updatedAt`; the check runs under the same lock as the write.
+   */
+  update(
+    record: ContentWrite,
+    expectedUpdatedAt?: Date,
+  ): Promise<ContentRecord>;
   /** Also removes its term assignments, paths and revisions. */
   delete(id: string): Promise<void>;
   /** Moves the entry to the trash (`at`) or back out of it (null). */

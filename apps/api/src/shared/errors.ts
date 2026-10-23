@@ -50,6 +50,8 @@ export const Errors = {
     'Contact an administrator to change your email address.',
 
   ContentNotFound: 'Content not found',
+  ContentChanged:
+    'This entry was changed since you opened it. Reload the page and try again.',
   ContentPathMissing: 'Content has no current path',
   SlugConflict: 'Slug is already in use',
   SlugInUse: (slug: string) => `Slug "${slug}" is already in use`,

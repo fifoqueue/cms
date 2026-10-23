@@ -1,6 +1,7 @@
-import { CONTENT_STATUSES, can } from '@cms/sdk';
+import { CONTENT_STATUSES, can, contentListQuerySchema } from '@cms/sdk';
 import type { ContentStatus } from '@cms/sdk';
-import { failFrom, text } from '#lib/server/errors.js';
+import { fail } from '@sveltejs/kit';
+import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { readQuickEdit } from '#lib/server/quick-edit.js';
 import { adminFor } from '#lib/server/session.js';
 import { loadTaxonomyChoices } from '#lib/server/taxonomy-admin.js';
@@ -58,8 +59,11 @@ export const load: PageServerLoad = async (event) => {
     params.get('author'),
   );
   // `YYYY-MM`, as the month input sends it; entries are dated by publication (UTC).
+  // Anything the API's list query would reject means "no filter", like the other filters.
   const [, year, month] = /^(\d{4})-(\d{2})$/.exec(params.get('m') ?? '') ?? [];
-  const dated = year && Number(month) >= 1 && Number(month) <= 12;
+  const parsed =
+    year && contentListQuerySchema.safeParse({ year, month }).success;
+  const dated = parsed ? { year: Number(year), month: Number(month) } : null;
   const page = Math.max(1, Math.trunc(Number(params.get('page'))) || 1);
   // Status view totals follow the type only, like wp-admin.
   const counts = Promise.all([
@@ -79,8 +83,8 @@ export const load: PageServerLoad = async (event) => {
       taxonomy,
       term,
       author,
-      year: dated ? Number(year) : undefined,
-      month: dated ? Number(month) : undefined,
+      year: dated?.year,
+      month: dated?.month,
       search,
       page,
       pageSize: 20,
@@ -145,10 +149,14 @@ export const actions: Actions = {
     const id = text(form, 'id');
     const admin = adminFor(event);
     try {
-      const { input, failure } = readQuickEdit(
-        await admin.content.get(id),
-        form,
-      );
+      const [entry, autosave] = await Promise.all([
+        admin.content.get(id),
+        admin.content.pendingAutosave(id),
+      ]);
+      // Saving would clear the user's autosave, which Quick Edit never showed.
+      if (autosave)
+        return fail(409, { quickEdit: id, message: Errors.QuickEditAutosave });
+      const { input, failure } = readQuickEdit(entry, form);
       if (failure) return failure;
       await admin.content.update(id, input);
     } catch (caught) {

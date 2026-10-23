@@ -8,7 +8,11 @@ export const load: PageServerLoad = async (event) => {
   const [menus, latest, categories, tags, model] = await Promise.all([
     admin.menus.get(),
     // The most recent entries; older ones are found with the search (`?/find`).
-    admin.content.list({ status: 'published', pageSize: 20 }),
+    admin.content.list({
+      status: 'published',
+      orderBy: 'publishedAt',
+      pageSize: 20,
+    }),
     admin.taxonomy.list('category'),
     admin.taxonomy.list('tag'),
     admin.contentModel.model(),

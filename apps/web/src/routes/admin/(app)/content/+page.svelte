@@ -4,7 +4,9 @@
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
-  import { CONTENT_STATUSES } from '@cms/sdk';
+  import { CONTENT_STATUSES, UNPUBLISHED_STATUSES } from '@cms/sdk';
+  import type { ContentStatus } from '@cms/sdk';
+  import { can } from '@cms/sdk/capabilities';
   import { Plus, Search } from '@lucide/svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import QuickEdit from '#lib/admin/QuickEdit.svelte';
@@ -58,14 +60,23 @@
   };
 
   let selected = $state<string[]>([]);
+  const selectable = $derived(
+    data.content.items.filter((item) => canEdit(item)).map((item) => item.id),
+  );
   const allSelected = $derived(
-    data.content.items.length > 0 &&
-      selected.length === data.content.items.length,
+    selectable.length > 0 && selected.length === selectable.length,
   );
 
   const confirmDelete: SubmitFunction = ({ cancel }) => {
     if (!confirm(m.confirmDelete)) cancel();
   };
+
+  /** The API's edit rule (`assertEditable`), so rows only offer what the user may do. */
+  const canEdit = (item: { authorId: string; status: ContentStatus }) =>
+    item.authorId === data.user.id
+      ? UNPUBLISHED_STATUSES.includes(item.status) ||
+        can(data.user, 'content.publish')
+      : can(data.user, 'content.editOthers');
 
   /** The entry whose Quick Edit row is open. */
   let editing = $state<string | null>(null);
@@ -207,6 +218,7 @@
     <Input
       name="m"
       type="month"
+      min="1970-01"
       value={data.filter.m ?? ''}
       class="w-44"
       aria-label={m.contentMonth}
@@ -294,9 +306,7 @@
             aria-label={m.selectAll}
             checked={allSelected}
             onchange={(event) =>
-              (selected = event.currentTarget.checked
-                ? data.content.items.map((item) => item.id)
-                : [])}
+              (selected = event.currentTarget.checked ? selectable : [])}
           />
         </TableHead>
         <TableHead>{m.columnTitle}</TableHead>
@@ -324,22 +334,29 @@
             </TableCell>
           </TableRow>
         {:else}
+          {@const editable = canEdit(item)}
           <TableRow>
             <TableCell class="align-top">
-              <input
-                type="checkbox"
-                form="bulk"
-                name="ids"
-                value={item.id}
-                aria-label={m.selectItem(item.title)}
-                bind:group={selected}
-              />
+              {#if editable}
+                <input
+                  type="checkbox"
+                  form="bulk"
+                  name="ids"
+                  value={item.id}
+                  aria-label={m.selectItem(item.title)}
+                  bind:group={selected}
+                />
+              {/if}
             </TableCell>
             <TableCell class="whitespace-normal">
-              <a
-                href={resolve('/admin/(app)/content/[id]', { id: item.id })}
-                class="font-medium hover:underline">{item.title}</a
-              >
+              {#if editable}
+                <a
+                  href={resolve('/admin/(app)/content/[id]', { id: item.id })}
+                  class="font-medium hover:underline">{item.title}</a
+                >
+              {:else}
+                <span class="font-medium">{item.title}</span>
+              {/if}
               <span class="ml-1 inline-flex gap-1 align-middle">
                 {#if item.sticky}<Badge variant="outline">{m.sticky}</Badge
                   >{/if}
@@ -353,7 +370,15 @@
               <div
                 class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"
               >
-                {#if item.trashedAt}
+                {#if !editable}
+                  {#if item.status === 'published' && !item.trashedAt}
+                    <a
+                      href={resolve(item.path as Path)}
+                      target="_blank"
+                      class="row-action text-primary">{m.view}</a
+                    >
+                  {/if}
+                {:else if item.trashedAt}
                   <form method="POST" action="?/restore" use:enhance>
                     <input type="hidden" name="id" value={item.id} />
                     <button type="submit" class="row-action text-primary"
