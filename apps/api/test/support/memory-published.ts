@@ -121,6 +121,7 @@ const project = (record: ContentSummaryRecord): PublishedSummaryRecord => ({
   categories: record.categories,
   tags: record.tags,
   author: { name: record.authorName, slug: record.authorSlug },
+  parentId: record.parentId ?? null,
   sticky: record.sticky,
   commentCount: record.commentCount,
   protected: record.passwordHash !== null,

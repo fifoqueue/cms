@@ -37,7 +37,46 @@ export interface BlockData {
   terms: { category: TermItem[] | null; tag: TermItem[] | null };
   months: { year: number; month: number; count: number }[] | null;
   adjacent: { previous: EntryLink | null; next: EntryLink | null } | null;
+  /** Published pages in tree order (`page-list`). */
+  pageTree: (EntryLink & { depth: number })[] | null;
+  /** Newest approved comments (`latest-comments`). */
+  recentComments: { author: string; title: string; path: string }[] | null;
+  /** The single entry's author (`post-author`). */
+  postAuthor: {
+    name: string;
+    slug: string;
+    bio: string;
+    avatarUrl: string | null;
+  } | null;
+  /** Posts per day of one month (`calendar`), UTC like the date archives. */
+  calendar: {
+    year: number;
+    month: number;
+    days: Record<number, number>;
+  } | null;
 }
+
+/** What the page shows, for blocks whose data depends on it. */
+export interface BlockContext {
+  /** The single entry (post navigation, post author). */
+  entry: { id: string; author: string | null } | null;
+  /** The month a calendar shows; the current UTC month by default. */
+  month: { year: number; month: number } | null;
+}
+
+const NO_CONTEXT: BlockContext = { entry: null, month: null };
+
+/** The block context of a page. */
+export const contextOf = (page: ThemePage): BlockContext => ({
+  entry:
+    page.kind === 'content'
+      ? { id: page.content.id, author: page.content.author?.slug ?? null }
+      : null,
+  month:
+    page.kind === 'date' && page.date.month
+      ? { year: page.date.year, month: page.date.month }
+      : null,
+});
 
 /** A template's blocks followed by those of the parts it includes, each part once. */
 export const withParts = (blocks: Block[], parts: ThemeView['parts']) => {
@@ -87,10 +126,42 @@ const termItems = (terms: PublicTaxonomyTerm[], tree: boolean): TermItem[] => {
 const link = (entry: { title: string; path: string } | null) =>
   entry && { title: entry.title, path: entry.path };
 
-/** What the site layout already loaded (for error pages); pages reuse it instead of asking again. */
-export type LayoutBlockData = { theme: ThemeView } & Partial<
-  Pick<BlockData, 'queries' | 'terms' | 'months'>
+/** Block data that does not depend on the page, so a page may reuse what the layout loaded. */
+type Shared = Partial<
+  Pick<
+    BlockData,
+    'queries' | 'terms' | 'months' | 'pageTree' | 'recentComments'
+  >
 >;
+
+/** What the site layout already loaded (for error pages); pages reuse it instead of asking again. */
+export type LayoutBlockData = { theme: ThemeView } & Shared;
+
+/** Pages in tree order by parent, each once (cycles and missing parents end up at the top). */
+const toPageTree = (
+  pages: {
+    id: string;
+    title: string;
+    path: string;
+    parentId?: string | null;
+  }[],
+) => {
+  const ids = new Set(pages.map((page) => page.id));
+  const children = childrenOf(
+    pages.map((page) => ({ ...page, parentId: page.parentId ?? null })),
+  );
+  const items: (EntryLink & { depth: number })[] = [];
+  const seen = new Set<string>();
+  const visit = (page: (typeof pages)[number], depth: number) => {
+    if (seen.has(page.id)) return;
+    seen.add(page.id);
+    items.push({ title: page.title, path: page.path, depth });
+    for (const child of children.get(page.id) ?? []) visit(child, depth + 1);
+  };
+  for (const page of pages)
+    if (!page.parentId || !ids.has(page.parentId)) visit(page, 0);
+  return items;
+};
 
 /** What the data blocks among `blocks` need: list selections, term lists, months, neighbours. */
 export const blockNeeds = (blocks: Block[]) => {
@@ -115,6 +186,15 @@ export const blockNeeds = (blocks: Block[]) => {
       ),
     ),
     adjacent: has('post-navigation'),
+    pages: has('page-list'),
+    comments: Math.max(
+      0,
+      ...all.map((block) =>
+        block.name === 'latest-comments' ? block.attrs.comments : 0,
+      ),
+    ),
+    author: has('post-author'),
+    calendar: has('calendar'),
   };
 };
 
@@ -126,8 +206,8 @@ export const blockNeeds = (blocks: Block[]) => {
 export const loadBlockData = async (
   api: Api,
   blocks: Block[],
-  contentId: string | null,
-  known: Partial<Pick<BlockData, 'queries' | 'terms' | 'months'>> = {},
+  context: BlockContext = NO_CONTEXT,
+  known: Shared = {},
 ): Promise<BlockData> => {
   const needs = blockNeeds(blocks);
   if (needs.queries.size > 32) error(400, Errors.ThemeQueriesLimit);
@@ -138,7 +218,23 @@ export const loadBlockData = async (
       (list) => termItems(list, taxonomy === 'category'),
       () => null,
     );
-  const [lists, category, tag, months, adjacent] = await Promise.all([
+  const { entry } = context;
+  const now = new Date();
+  const month = context.month ?? {
+    year: now.getUTCFullYear(),
+    month: now.getUTCMonth() + 1,
+  };
+  const [
+    lists,
+    category,
+    tag,
+    months,
+    adjacent,
+    pageTree,
+    recentComments,
+    postAuthor,
+    calendar,
+  ] = await Promise.all([
     Promise.all(
       missing.map(
         async ([key, selection]) =>
@@ -167,8 +263,8 @@ export const loadBlockData = async (
               list.map(({ year, month, count }) => ({ year, month, count })),
             () => null,
           ),
-    contentId && needs.adjacent
-      ? api.adjacent(contentId).then(
+    entry && needs.adjacent
+      ? api.adjacent(entry.id).then(
           ({ previous, next }) => ({
             previous: link(previous),
             next: link(next),
@@ -176,12 +272,51 @@ export const loadBlockData = async (
           () => null,
         )
       : null,
+    !needs.pages
+      ? (known.pageTree ?? null)
+      : (known.pageTree ??
+        api.list({ type: 'page', pageSize: 100 }).then(
+          ({ items }) => toPageTree(items),
+          () => null,
+        )),
+    !needs.comments
+      ? (known.recentComments ?? null)
+      : known.recentComments && known.recentComments.length >= needs.comments
+        ? known.recentComments
+        : api.recentComments(needs.comments).then(
+            (list) =>
+              list.map(({ author, title, path }) => ({ author, title, path })),
+            () => null,
+          ),
+    entry?.author && needs.author
+      ? api.author(entry.author).then(
+          ({ name, slug, bio, avatarUrl }) => ({ name, slug, bio, avatarUrl }),
+          () => null,
+        )
+      : null,
+    needs.calendar
+      ? api
+          .list({ type: 'post', ...month, pageSize: 100 })
+          .then(({ items }) => {
+            const days: Record<number, number> = {};
+            for (const { publishedAt } of items) {
+              const day = new Date(publishedAt).getUTCDate();
+              days[day] = (days[day] ?? 0) + 1;
+            }
+            return { ...month, days };
+          })
+          .catch(() => null)
+      : null,
   ]);
   return {
     queries: { ...known.queries, ...Object.fromEntries(lists) },
     terms: { category, tag },
     months,
     adjacent,
+    pageTree,
+    recentComments,
+    postAuthor,
+    calendar,
   };
 };
 
@@ -200,7 +335,7 @@ export const loadTemplateData = (
       ),
       layout.theme.parts,
     ),
-    page.kind === 'content' ? page.content.id : null,
+    contextOf(page),
     layout,
   );
 
@@ -215,13 +350,13 @@ export const withTemplateData = async <P extends ThemePage>(
 });
 
 /**
- * Block data of every template and part, for the site editor's canvas. `contentId` is the
- * published sample entry, for post navigation.
+ * Block data of every template and part, for the site editor's canvas. `context` describes
+ * the published sample entry, for post navigation and its author.
  */
 export const loadThemeData = (
   api: Api,
   theme: Pick<ThemeView, 'templates' | 'parts'>,
-  contentId: string | null = null,
+  context: BlockContext = NO_CONTEXT,
 ) =>
   loadBlockData(
     api,
@@ -229,5 +364,5 @@ export const loadThemeData = (
       ...Object.values(theme.templates).flat(),
       ...theme.parts.flatMap((part) => part.blocks),
     ],
-    contentId,
+    context,
   );

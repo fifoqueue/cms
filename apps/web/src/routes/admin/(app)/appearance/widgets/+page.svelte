@@ -4,6 +4,7 @@
   import type { Widget, WidgetArea } from '@cms/sdk';
   import { ArrowDown, ArrowUp, Trash2 } from '@lucide/svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import { confirmLeave } from '#lib/admin/unsaved.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
@@ -48,6 +49,7 @@
     menu: m.widgetMenu,
     archives: m.widgetArchives,
     recentComments: m.widgetRecentComments,
+    image: m.widgetImage,
     ...Object.fromEntries(
       data.types.plugins.map((option) => [option.type, option.name]),
     ),
@@ -71,6 +73,9 @@
     };
     areas[area].push(widget);
   };
+
+  let picker: ReturnType<typeof MediaPicker>;
+  let picking: Widget | null = null;
 
   const setting = (
     widget: Widget,
@@ -228,8 +233,55 @@
                     rows={4}
                     maxlength={5000}
                     value={String(widget.settings.text ?? '')}
+                    aria-describedby="text-help-{widget.id}"
                     oninput={(event) =>
                       setting(widget, 'text', event.currentTarget.value)}
+                  />
+                  <p
+                    id="text-help-{widget.id}"
+                    class="text-xs text-muted-foreground"
+                  >
+                    {m.widgetTextHelp}
+                  </p>
+                </div>
+              {:else if widget.type === 'image'}
+                <div class="flex flex-wrap items-center gap-3 sm:col-span-2">
+                  {#if widget.settings.src}
+                    <img
+                      src={String(widget.settings.src)}
+                      alt=""
+                      class="size-16 rounded-md border object-cover"
+                    />
+                  {/if}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onclick={() => {
+                      picking = widget;
+                      picker.open();
+                    }}>{m.mediaChoose}</Button
+                  >
+                </div>
+                <div class="grid gap-2">
+                  <Label for="alt-{widget.id}">{m.widgetImageAlt}</Label>
+                  <Input
+                    id="alt-{widget.id}"
+                    maxlength={300}
+                    value={String(widget.settings.alt ?? '')}
+                    oninput={(event) =>
+                      setting(widget, 'alt', event.currentTarget.value)}
+                  />
+                </div>
+                <div class="grid gap-2">
+                  <Label for="link-{widget.id}">{m.widgetImageLink}</Label>
+                  <Input
+                    id="link-{widget.id}"
+                    maxlength={2048}
+                    placeholder="https://"
+                    value={String(widget.settings.link ?? '')}
+                    oninput={(event) =>
+                      setting(widget, 'link', event.currentTarget.value)}
                   />
                 </div>
               {/if}
@@ -244,3 +296,12 @@
 
   <div><Button type="submit">{m.save}</Button></div>
 </form>
+
+<MediaPicker
+  bind:this={picker}
+  onpick={(media) => {
+    if (!picking) return;
+    setting(picking, 'src', media.url);
+    if (!picking.settings.alt) setting(picking, 'alt', media.alt);
+  }}
+/>

@@ -9,6 +9,7 @@ import {
   publicAuthorSchema,
   publicContentSchema,
   publicMonthSchema,
+  publicRecentCommentSchema,
 } from '#sdk/content';
 import type {
   AutosaveInput,
@@ -21,6 +22,7 @@ import type {
   PublicAuthor,
   PublicContent,
   PublicMonth,
+  PublicRecentComment,
 } from '#sdk/content';
 import { adminContentSchema } from '#sdk/content';
 import type { Request } from '#sdk/transport';
@@ -65,6 +67,12 @@ export const publicEntriesClient = (request: Request) => ({
     request<PublicAdjacent>('GET', '/api/v1/adjacent', {
       query: { contentId },
       response: publicAdjacentSchema,
+    }),
+  /** Newest approved comments on public, unprotected entries. */
+  recentComments: (limit = 5) =>
+    request<PublicRecentComment[]>('GET', '/api/v1/comments/recent', {
+      query: { limit },
+      response: z.array(publicRecentCommentSchema),
     }),
   /** Months with published posts, newest first. */
   months: (limit = 12) =>

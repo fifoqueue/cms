@@ -1,4 +1,11 @@
-import { CORE_WIDGETS, WIDGET_AREAS, widgetsSettingsSchema } from '@cms/sdk';
+import {
+  CORE_WIDGETS,
+  LINK,
+  MEDIA_IMAGE,
+  WIDGET_AREAS,
+  widgetsSettingsSchema,
+} from '@cms/sdk';
+import { richText } from '#api/domain/appearance/rich-text';
 import type {
   PublicWidget,
   PublicWidgets,
@@ -185,12 +192,24 @@ export class WidgetService {
       }
       case 'search':
         return { ...base, kind: 'search' };
-      case 'text':
+      case 'text': {
+        const text = typeof settings.text === 'string' ? settings.text : '';
+        return { ...base, kind: 'text', text, paragraphs: richText(text) };
+      }
+      case 'image': {
+        // Only media-library images; an image without one is left out.
+        const src = typeof settings.src === 'string' ? settings.src : '';
+        if (!MEDIA_IMAGE.test(src)) return null;
+        const link = typeof settings.link === 'string' ? settings.link : '';
         return {
           ...base,
-          kind: 'text',
-          text: typeof settings.text === 'string' ? settings.text : '',
+          kind: 'image',
+          src,
+          alt:
+            typeof settings.alt === 'string' ? settings.alt.slice(0, 300) : '',
+          link: LINK.test(link) ? link : null,
         };
+      }
       case 'menu': {
         const items =
           typeof settings.menuId === 'string'

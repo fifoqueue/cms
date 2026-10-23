@@ -48,6 +48,8 @@ export interface UserServiceDeps {
   tokens: Pick<TokenIssuer, 'issue'>;
   ids: IdGenerator;
   clock: Clock;
+  /** Avatar image of an email address (Settings → Discussion), or null. */
+  avatar?: (email: string) => Promise<string | null>;
   /** Invitations by email to choose a password. */
   invitations: {
     /** Whether email delivery can send one now. */
@@ -80,7 +82,12 @@ export class UserService {
   async publicAuthor(slug: string): Promise<PublicAuthor> {
     const author = await this.deps.directory.publicAuthor(slug);
     if (!author) throw notFound(Errors.UserNotFound);
-    return { name: author.name, slug: author.slug, bio: author.bio };
+    return {
+      name: author.name,
+      slug: author.slug,
+      bio: author.bio,
+      avatarUrl: (await this.deps.avatar?.(author.email)) ?? null,
+    };
   }
 
   /** Id, name and public slug of every user who can write, for the author picker and filter. */

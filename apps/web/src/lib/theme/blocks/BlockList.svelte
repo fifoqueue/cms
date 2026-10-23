@@ -11,7 +11,14 @@
   }: {
     block: Extract<
       Block,
-      { name: 'latest-posts' | 'categories' | 'tag-cloud' | 'archives' }
+      {
+        name:
+          | 'latest-posts'
+          | 'categories'
+          | 'tag-cloud'
+          | 'archives'
+          | 'latest-comments';
+      }
     >;
   } = $props();
 
@@ -43,6 +50,12 @@
               kind: block.name === 'categories' ? 'categories' : 'tags',
               terms,
             }
+          : null;
+      }
+      case 'latest-comments': {
+        const comments = scope().recentComments?.slice(0, block.attrs.comments);
+        return comments?.length
+          ? { ...base, kind: 'recentComments', comments }
           : null;
       }
       case 'archives': {

@@ -266,7 +266,27 @@ const widgetView = (widget: PublicWidget) => {
     case 'search':
       return { ...base, kind: widget.kind };
     case 'text':
-      return { ...base, kind: widget.kind, text: widget.text };
+      return {
+        ...base,
+        kind: widget.kind,
+        text: widget.text,
+        paragraphs: widget.paragraphs.map((runs) =>
+          runs.map(({ text, strong, em, href }) => ({
+            text,
+            strong,
+            em,
+            href,
+          })),
+        ),
+      };
+    case 'image':
+      return {
+        ...base,
+        kind: widget.kind,
+        src: widget.src,
+        alt: widget.alt,
+        link: widget.link,
+      };
     case 'menu':
       return { ...base, kind: widget.kind, items: menuView(widget.items) };
     case 'archives':

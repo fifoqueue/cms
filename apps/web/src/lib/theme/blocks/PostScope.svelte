@@ -4,9 +4,13 @@
   import Blocks from '#lib/theme/blocks/Blocks.svelte';
   import { providePost } from '#lib/theme/scope.js';
 
-  let { post, blocks }: { post: PostSummary; blocks: Block[] } = $props();
+  let {
+    post,
+    blocks,
+    within,
+  }: { post: PostSummary; blocks: Block[]; within?: number } = $props();
 
   providePost(() => post);
 </script>
 
-<Blocks {blocks} />
+<Blocks {blocks} {within} />

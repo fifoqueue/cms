@@ -17,9 +17,10 @@ export interface UserDirectory {
   list(): Promise<UserListItem[]>;
   get(id: string): Promise<UserListItem | null>;
   /** A user with at least one public entry, by slug; null otherwise. */
+  /** `email` stays in the domain: it only derives the avatar. */
   publicAuthor(
     slug: string,
-  ): Promise<{ name: string; slug: string; bio: string } | null>;
+  ): Promise<{ name: string; slug: string; bio: string; email: string } | null>;
   /**
    * Replaces the profile and role. Throws `conflict` when the email or slug is taken, or when
    * the change would leave no administrator.

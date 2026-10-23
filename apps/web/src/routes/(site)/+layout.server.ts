@@ -66,6 +66,7 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
     pages: pages?.items.map(pageLink) ?? [],
     toolbar: user && {
       name: user.name,
+      slug: user.slug,
       role: user.role,
       capabilities: user.capabilities,
     },
