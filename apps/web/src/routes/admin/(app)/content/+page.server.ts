@@ -1,8 +1,11 @@
 import { CONTENT_STATUSES, can, contentListQuerySchema } from '@cms/sdk';
 import type { ContentStatus } from '@cms/sdk';
-import { fail } from '@sveltejs/kit';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
+import { eachBounded, formIds } from '#lib/server/bulk.js';
+import { bulkEditInput, readBulkChanges } from '#lib/server/bulk-edit.js';
 import { readQuickEdit } from '#lib/server/quick-edit.js';
+import { readScreenOptions } from '#lib/server/screen-options.js';
+import { CONTENT_COLUMNS } from '#lib/admin/screen-options.js';
 import { adminFor } from '#lib/server/session.js';
 import { loadTaxonomyChoices } from '#lib/server/taxonomy-admin.js';
 import type { Actions, PageServerLoad } from './$types';
@@ -65,6 +68,12 @@ export const load: PageServerLoad = async (event) => {
     year && contentListQuerySchema.safeParse({ year, month }).success;
   const dated = parsed ? { year: Number(year), month: Number(month) } : null;
   const page = Math.max(1, Math.trunc(Number(params.get('page'))) || 1);
+  const screen = readScreenOptions(
+    event.cookies,
+    'content',
+    CONTENT_COLUMNS,
+    20,
+  );
   // Status view totals follow the type only, like wp-admin.
   const counts = Promise.all([
     total(admin.content.list({ type, pageSize: 1 })),
@@ -87,7 +96,7 @@ export const load: PageServerLoad = async (event) => {
       month: dated?.month,
       search,
       page,
-      pageSize: 20,
+      pageSize: screen.perPage,
     }),
     counts,
   ]);
@@ -122,6 +131,7 @@ export const load: PageServerLoad = async (event) => {
     ...terms,
     authors,
     canPublish: can(event.locals.user!, 'content.publish'),
+    screen,
     content,
   };
 };
@@ -149,14 +159,10 @@ export const actions: Actions = {
     const id = text(form, 'id');
     const admin = adminFor(event);
     try {
-      const [entry, autosave] = await Promise.all([
-        admin.content.get(id),
-        admin.content.pendingAutosave(id),
-      ]);
-      // Saving would clear the user's autosave, which Quick Edit never showed.
-      if (autosave)
-        return fail(409, { quickEdit: id, message: Errors.QuickEditAutosave });
-      const { input, failure } = readQuickEdit(entry, form);
+      const { input, failure } = readQuickEdit(
+        await admin.content.get(id),
+        form,
+      );
       if (failure) return failure;
       await admin.content.update(id, input);
     } catch (caught) {
@@ -164,28 +170,42 @@ export const actions: Actions = {
     }
     return { notice: 'saved' };
   },
-  /** Applies one action to every selected entry; stops at the first failure. */
+  /** Applies one action to every selected entry and reports the ones that failed. */
   bulk: async (event) => {
     const form = await event.request.formData();
     const action = pick(BULK, text(form, 'action'));
-    const ids = form.getAll('ids').filter((id) => typeof id === 'string');
+    const ids = formIds(form);
     if (!action || !ids.length) return {};
     const content = adminFor(event).content;
-    try {
-      for (const id of ids)
-        if (action === 'trash') await content.trash(id);
-        else if (action === 'restore') await content.restore(id);
-        else await content.remove(id);
-    } catch (caught) {
-      return failFrom(caught);
-    }
-    return {
-      notice:
-        action === 'trash'
-          ? 'movedToTrash'
-          : action === 'restore'
-            ? 'restored'
-            : 'deleted',
-    };
+    const result = await eachBounded(ids, (id) =>
+      action === 'trash'
+        ? content.trash(id)
+        : action === 'restore'
+          ? content.restore(id)
+          : content.remove(id),
+    );
+    return { bulk: result };
+  },
+  /**
+   * Bulk Edit: adds terms and sets author, status, comments or sticky on every selected entry.
+   * Each entry is read and saved with its own version check; bodies are copied, never changed.
+   */
+  bulkEdit: async (event) => {
+    const form = await event.request.formData();
+    const ids = formIds(form);
+    const changes = readBulkChanges(form);
+    const admin = adminFor(event);
+    const result = await eachBounded(ids, async (id) => {
+      const entry = await admin.content.get(id);
+      // The version the list showed, so a save made since then is not overwritten.
+      const input = bulkEditInput(
+        entry,
+        changes,
+        text(form, `version:${id}`) || entry.updatedAt,
+      );
+      if (!input) return Errors.FormInvalid;
+      await admin.content.update(id, input);
+    });
+    return { bulk: result };
   },
 };

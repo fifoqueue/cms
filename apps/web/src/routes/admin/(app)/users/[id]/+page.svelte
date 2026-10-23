@@ -106,7 +106,7 @@
 </Card>
 
 {#if !isSelf}
-  <Card>
+  <Card id="delete">
     <CardHeader
       ><CardTitle>{m.usersDeleteTitle(target.name)}</CardTitle></CardHeader
     >

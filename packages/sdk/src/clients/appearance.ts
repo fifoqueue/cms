@@ -1,7 +1,12 @@
 import { z } from 'zod';
-import { menusSettingsSchema, publicMenuSchema } from '#sdk/menus';
+import {
+  menuTargetSchema,
+  menusSettingsSchema,
+  publicMenuSchema,
+} from '#sdk/menus';
 import type {
   MenuLocation,
+  MenuTarget,
   MenusSettings,
   MenusSettingsInput,
   PublicMenuItem,
@@ -72,6 +77,11 @@ export const appearanceAdminClient = (request: Request) => ({
       request<MenusSettings>('PUT', '/api/v1/admin/menus', {
         json: input,
         response: menusSettingsSchema,
+      }),
+    /** Titles of the published entries the saved menus link to. */
+    targets: () =>
+      request<MenuTarget[]>('GET', '/api/v1/admin/menus/targets', {
+        response: z.array(menuTargetSchema),
       }),
   },
   widgets: {

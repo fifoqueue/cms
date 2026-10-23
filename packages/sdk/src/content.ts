@@ -134,6 +134,12 @@ export const contentInputSchema = z.object({
    * the update is refused with `conflict` and nothing changes.
    */
   expectedUpdatedAt: z.iso.datetime({ offset: true }).optional(),
+  /**
+   * Updates only, for partial editors that copy the stored body (Quick Edit, Bulk Edit): the
+   * save is refused with `conflict` while the user has a pending autosave of the entry, and
+   * never discards one, so unsaved editor text survives.
+   */
+  preserveAutosave: z.boolean().optional(),
 });
 
 /** What clients send when creating or replacing content. */

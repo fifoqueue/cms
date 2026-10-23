@@ -1,7 +1,9 @@
 import { COMMENT_BULK_ACTIONS, COMMENT_STATUSES } from '@cms/sdk';
 import type { CommentStatus } from '@cms/sdk';
 import { failFrom, text } from '#lib/server/errors.js';
+import { readScreenOptions } from '#lib/server/screen-options.js';
 import { adminFor, requireCapability } from '#lib/server/session.js';
+import { COMMENT_COLUMNS } from '#lib/admin/screen-options.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
@@ -14,13 +16,26 @@ export const load: PageServerLoad = async (event) => {
   const contentId = params.get('contentId')?.slice(0, 36) || undefined;
   const page = Math.max(1, Math.trunc(Number(params.get('page'))) || 1);
   const admin = adminFor(event);
+  const screen = readScreenOptions(
+    event.cookies,
+    'comments',
+    COMMENT_COLUMNS,
+    20,
+  );
   const [comments, counts] = await Promise.all([
-    admin.comments.list({ status, search, contentId, page, pageSize: 20 }),
+    admin.comments.list({
+      status,
+      search,
+      contentId,
+      page,
+      pageSize: screen.perPage,
+    }),
     admin.comments.counts(),
   ]);
   return {
     filter: { status, q: search, contentId },
     counts,
+    screen,
     comments: {
       ...comments,
       items: comments.items.map((item) => ({

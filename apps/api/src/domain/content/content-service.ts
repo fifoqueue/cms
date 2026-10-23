@@ -165,9 +165,12 @@ export class ContentService {
         updatedAt: now,
         authorId,
       },
-      expected,
+      {
+        expectedUpdatedAt: expected,
+        autosaveOf: data.preserveAutosave ? actor.id : undefined,
+      },
     );
-    await this.saveRevision(record, actor);
+    await this.saveRevision(record, actor, !data.preserveAutosave);
 
     const entry = toEntry(record);
     void this.deps.hooks.emit('content.updated', entry);
@@ -296,12 +299,8 @@ export class ContentService {
     now: Date,
   ): Pick<ContentWrite, 'status' | 'publishedAt'> {
     const kept = current?.publishedAt ?? null;
-    const sent = data.publishedAt ? new Date(data.publishedAt) : null;
-    // Date inputs carry minutes only: the stored time resent from a form keeps its seconds.
-    const requested =
-      sent && kept && Math.floor(+sent / 60_000) === Math.floor(+kept / 60_000)
-        ? kept
-        : sent;
+    // Every explicit time is honored; forms resend the stored time exactly when untouched.
+    const requested = data.publishedAt ? new Date(data.publishedAt) : null;
     if (data.status === 'scheduled') {
       if (!requested)
         throw invalidInput(Errors.ScheduleDateRequired, [
@@ -323,7 +322,12 @@ export class ContentService {
     return data.password ? this.deps.hasher.hash(data.password) : null;
   }
 
-  private async saveRevision(record: ContentRecord, actor: Actor) {
+  /** Records the saved text; a full save also discards the actor's autosave it replaced. */
+  private async saveRevision(
+    record: ContentRecord,
+    actor: Actor,
+    clearAutosave = true,
+  ) {
     await this.deps.revisions.add(
       {
         id: this.deps.ids.next(),
@@ -337,7 +341,8 @@ export class ContentService {
       },
       REVISIONS_KEPT,
     );
-    await this.deps.revisions.clearAutosave(record.id, actor.id);
+    if (clearAutosave)
+      await this.deps.revisions.clearAutosave(record.id, actor.id);
   }
 
   private async prepare(input: unknown): Promise<ContentData> {
@@ -351,6 +356,7 @@ export class ContentService {
     return {
       ...contentInputSchema.parse(filtered),
       expectedUpdatedAt: data.expectedUpdatedAt,
+      preserveAutosave: data.preserveAutosave,
     };
   }
 

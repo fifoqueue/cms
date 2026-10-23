@@ -1411,4 +1411,36 @@ export const en = {
         justify: 'Justify',
       }) as Record<string, string>
     )[align] ?? align,
+
+  // admin-screens wave 2
+  screenOptions: 'Screen Options',
+  screenColumns: 'Columns',
+  screenPerPage: 'Items per page',
+  bulkEditTitle: 'Bulk Edit',
+  bulkEditSelected: (count: number) =>
+    count === 1 ? '1 item selected' : `${count} items selected`,
+  bulkEditAddCategories: 'Add categories',
+  bulkEditAddTags: 'Add tags',
+  noChange: '— No change —',
+  bulkCommentsOpen: 'Allow',
+  bulkCommentsClosed: 'Do not allow',
+  bulkSticky: 'Sticky',
+  bulkNotSticky: 'Not sticky',
+  bulkDone: (count: number) =>
+    count === 1 ? '1 item updated' : `${count} items updated`,
+  bulkFailed: (count: number) =>
+    count === 1 ? '1 item failed' : `${count} items failed`,
+  usersBulkDeleteConfirm: 'Delete the selected users?',
+  usersChangeRole: 'Change role',
+  usersChangeRoleTo: 'Change role to…',
+  usersReassignTo: (name: string) => `Give their content to ${name}`,
+  usersSearch: 'Search users',
+  usersSendReset: 'Send password reset',
+  usersResetSent: 'Password reset link sent.',
+  usersInvite: 'Send the new user an invitation to choose their own password',
+  pluginsDropHere: 'or drop a plugin file here',
+  pluginsSearch: 'Search installed plugins',
+  themeDetails: 'Theme details',
+  themeDetailsOf: (name: string) => `Theme details: ${name}`,
+  themeLivePreview: 'Live Preview',
 } as const;
