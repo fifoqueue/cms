@@ -2,6 +2,7 @@
 // serialize to the browser. Sentinel values must never appear in returned data.
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { isActionFailure } from '@sveltejs/kit';
+import { with_request_store } from '@sveltejs/kit/internal/server';
 import {
   DEFAULT_ENTRY_SEO,
   SEO_SETTINGS_DEFAULTS,
@@ -30,6 +31,7 @@ Bun.plugin({
 
 const { load: loadSiteLayout } =
   await import('#web/routes/(site)/+layout.server.js');
+const { handle: handleRequest } = await import('#web/hooks.server.js');
 const { load: loadHome } = await import('#web/routes/(site)/+page.server.js');
 const { load: loadEntry } =
   await import('#web/routes/(site)/[slug]/+page.server.js');
@@ -1116,4 +1118,66 @@ describe('admin form failures', () => {
     expect(calls).toHaveLength(0);
     expect(JSON.stringify(data)).not.toContain(SECRET);
   });
+});
+
+test('removed and unknown admin routes stay private 404s instead of login redirects', async () => {
+  for (const [path, method] of [
+    ['/admin/login', 'POST'],
+    ['/admin/login/__data.json', 'GET'],
+    ['/admin/missing', 'GET'],
+  ]) {
+    const event = Object.assign(publicEvent(path!, {}, '/(site)/[...path]'), {
+      request: new Request(`http://web.test${path}`, { method }),
+      locals: { token: null, user: null },
+    });
+    const response = await with_request_store(
+      { event, state: {} as never },
+      () =>
+        handleRequest({
+          event,
+          resolve: async () => new Response(null, { status: 404 }),
+        }),
+    );
+    expect(response.status).toBe(404);
+    expect(response.headers.get('location')).toBeNull();
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+  }
+});
+
+test('hidden login masks protected admin screens while visible login uses the configured path', async () => {
+  for (const showLogin of [false, true]) {
+    override = ({ url }) => {
+      if (url.pathname === '/api/v1/install/status')
+        return json({ databaseConfigured: true, setupRequired: false });
+      if (url.pathname === '/api/v1/site')
+        return json({
+          title: 'Site',
+          description: '',
+          locale: 'en',
+          loginPath: '/members/sign-in',
+          showLogin,
+        });
+      return undefined;
+    };
+    const event = Object.assign(
+      publicEvent('/admin/content', {}, '/admin/(app)/content'),
+      {
+        request: new Request('http://web.test/admin/content'),
+        locals: { token: null, user: null },
+      },
+    );
+    const response = await with_request_store(
+      { event, state: {} as never },
+      () =>
+        handleRequest({
+          event,
+          resolve: async () => new Response(null, { status: 200 }),
+        }),
+    );
+    expect(response.status).toBe(showLogin ? 303 : 404);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(response.headers.get('location')).toBe(
+      showLogin ? '/members/sign-in?redirect_to=%2Fadmin%2Fcontent' : null,
+    );
+  }
 });

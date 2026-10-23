@@ -1689,5 +1689,7 @@ export const en = {
   siteLoginPath: 'Public login path',
   siteLoginPathHelp:
     'Visitors and signed-out administrators use this address to reach the sign-in screen.',
-  siteShowLogin: 'Show login links and redirect signed-out administrators',
+  siteShowLogin: 'Show login links',
+  siteShowLoginHelp:
+    'When hidden, signed-out visitors see a not-found page when opening administrator screens.',
 } as const;

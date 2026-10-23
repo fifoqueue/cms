@@ -1642,5 +1642,7 @@ export const ko: Messages = {
   siteLoginPath: '공개 로그인 경로',
   siteLoginPathHelp:
     '방문자와 로그아웃한 관리자가 로그인 화면으로 이동할 때 쓰는 주소입니다.',
-  siteShowLogin: '로그인 링크 및 로그아웃한 관리자 리디렉션 표시',
+  siteShowLogin: '로그인 버튼 표시',
+  siteShowLoginHelp:
+    '끄면 로그인하지 않은 사용자에게 관리자 화면 대신 ‘페이지를 찾을 수 없음’을 표시합니다.',
 };

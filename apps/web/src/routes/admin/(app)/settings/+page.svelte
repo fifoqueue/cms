@@ -128,6 +128,7 @@
         <input type="checkbox" name="showLogin" checked={data.site.showLogin} />
         {m.siteShowLogin}
       </label>
+      <p class="text-xs text-muted-foreground">{m.siteShowLoginHelp}</p>
       {#each images as image (image.key)}
         <fieldset class="grid gap-2">
           <legend class="text-sm font-medium">{image.label}</legend>
