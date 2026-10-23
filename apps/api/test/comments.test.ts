@@ -230,7 +230,14 @@ describe('CommentService', () => {
     const { comments, publish, store } = setup();
     const entry = await publish();
     await comments.updateDiscussion(
-      { requireLogin: true, moderation: 'auto' },
+      {
+        requireLogin: true,
+        moderation: 'auto',
+        showName: false,
+        defaultName: 'Guest',
+        showEmail: false,
+        showWebsite: false,
+      },
       ADMIN,
     );
     expect(await codeOf(comments.submit(comment(entry.id), visitor))).toBe(
@@ -240,6 +247,7 @@ describe('CommentService', () => {
       comment(entry.id, {
         authorName: 'Impostor',
         authorEmail: 'other@example.com',
+        authorUrl: 'https://impostor.example.com',
         userId: 'other',
       }),
       visitor,
@@ -250,12 +258,187 @@ describe('CommentService', () => {
       userId: ADMIN.id,
       authorName: 'Profile name',
       authorEmail: 'profile@example.com',
+      authorUrl: '',
     });
     expect(sent.comment).toMatchObject({
       byAuthor: true,
       authorName: 'Profile name',
     });
     expect(JSON.stringify(sent)).not.toContain('profile@example.com');
+  });
+
+  test('disabled identity fields are ignored independently and names require a configured default', async () => {
+    const { comments, publish, store } = setup();
+    const entry = await publish();
+    expect(
+      await codeOf(comments.updateDiscussion({ showName: false }, ADMIN)),
+    ).toBe('invalid_input');
+    expect(
+      await codeOf(
+        comments.updateDiscussion({ showName: false, defaultName: ' ' }, ADMIN),
+      ),
+    ).toBe('invalid_input');
+    expect(
+      await codeOf(
+        comments.updateDiscussion(
+          { showEmail: false },
+          { id: 'writer', role: 'author' },
+        ),
+      ),
+    ).toBe('forbidden');
+    for (const [setting, field, expected] of [
+      ['showName', 'authorName', 'Guest'],
+      ['showEmail', 'authorEmail', ''],
+      ['showWebsite', 'authorUrl', ''],
+    ] as const) {
+      await comments.updateDiscussion(
+        { [setting]: false, defaultName: 'Guest', moderation: 'auto' },
+        ADMIN,
+      );
+      const sent = await comments.submit(
+        comment(entry.id, { [field]: { malicious: true } }),
+        visitor,
+      );
+      expect(store.rows.get(sent.comment!.id)?.[field]).toBe(expected);
+    }
+    await comments.updateDiscussion({}, ADMIN);
+    expect(
+      await codeOf(
+        comments.submit(comment(entry.id, { authorName: '' }), visitor),
+      ),
+    ).toBe('invalid_input');
+    expect(
+      await codeOf(
+        comments.submit(comment(entry.id, { authorEmail: '' }), visitor),
+      ),
+    ).toBe('invalid_input');
+  });
+
+  test('comments without email never share approved identity, commenter proofs or avatars', async () => {
+    const { comments, publish, store } = setup();
+    const entry = await publish();
+    await comments.updateDiscussion(
+      { showEmail: false, moderation: 'auto', showAvatars: true },
+      ADMIN,
+    );
+    const first = await comments.submit(comment(entry.id), visitor);
+    expect(first.commenterProof).toBeNull();
+    expect(first.comment?.avatarUrl).toBeNull();
+    expect(store.rows.get(first.comment!.id)?.authorEmail).toBe('');
+    await comments.updateDiscussion(
+      { showEmail: false, moderation: 'known' },
+      ADMIN,
+    );
+    const second = await comments.submit(
+      comment(entry.id, { authorEmail: 'another@example.com' }),
+      visitor,
+    );
+    expect(second.status).toBe('pending');
+    expect(second.commenterProof).toBeNull();
+    // Moderators can edit an existing email-less comment without inventing an email.
+    await comments.update(
+      first.comment!.id,
+      { body: 'Edited', authorEmail: '' },
+      ADMIN,
+    );
+    expect(store.rows.get(first.comment!.id)?.body).toBe('Edited');
+  });
+
+  test('only authenticated moderators bypass ordinary holds, keeping abuse and entry checks', async () => {
+    const { comments, publish, store } = setup();
+    const entry = await publish();
+    const moderator = {
+      id: ADMIN.id,
+      role: 'custom',
+      capabilities: ['comments.moderate'] as const,
+    };
+    for (const moderation of ['manual', 'known'] as const) {
+      const scoped = setup();
+      const target = await scoped.publish();
+      await scoped.comments.updateDiscussion(
+        {
+          moderation,
+          blockWords: ['casino'],
+          holdWords: ['refund'],
+          maxLinks: 0,
+        },
+        ADMIN,
+      );
+      expect(
+        (
+          await scoped.comments.submit(
+            comment(target.id, {
+              role: 'administrator',
+              capabilities: ['comments.moderate'],
+              userId: ADMIN.id,
+            }),
+            visitor,
+          )
+        ).status,
+      ).toBe('pending');
+      expect(
+        (
+          await scoped.comments.submit(comment(target.id), visitor, [], {
+            ...ADMIN,
+            capabilities: [],
+          })
+        ).status,
+      ).toBe('pending');
+      expect(
+        (
+          await scoped.comments.submit(
+            comment(target.id),
+            visitor,
+            [],
+            moderator,
+          )
+        ).status,
+      ).toBe('approved');
+    }
+    await comments.updateDiscussion(
+      {
+        moderation: 'manual',
+        blockWords: ['casino'],
+        holdWords: ['refund'],
+        maxLinks: 0,
+      },
+      ADMIN,
+    );
+    for (const body of ['casino', 'refund', 'https://example.com'])
+      expect(
+        (
+          await comments.submit(
+            comment(entry.id, { body }),
+            visitor,
+            [],
+            moderator,
+          )
+        ).status,
+      ).toBe('pending');
+    expect([...store.rows.values()].some((row) => row.status === 'spam')).toBe(
+      true,
+    );
+    const before = store.rows.size;
+    await comments.submit(
+      comment(entry.id, { website: 'bot' }),
+      visitor,
+      [],
+      moderator,
+    );
+    expect(store.rows.size).toBe(before);
+    const protectedEntry = await publish({
+      title: 'Protected',
+      password: 'secret',
+    });
+    const closed = await publish({ title: 'Closed', allowComments: false });
+    expect(
+      await codeOf(
+        comments.submit(comment(protectedEntry.id), visitor, [], moderator),
+      ),
+    ).toBe('not_found');
+    expect(
+      await codeOf(comments.submit(comment(closed.id), visitor, [], moderator)),
+    ).toBe('forbidden');
   });
 
   test('pending receipts reveal only their own comment, bound to entry, signature, expiry and status', async () => {

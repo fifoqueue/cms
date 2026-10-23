@@ -169,6 +169,11 @@ export class CommentService {
         this.toPublic(item, target, item.depth, settings),
       ),
       requireLogin: settings.requireLogin,
+      fields: {
+        name: settings.showName,
+        email: settings.showEmail,
+        website: settings.showWebsite,
+      },
       viewer: viewer ? { name: viewer.name } : null,
       ownPending: ownPending
         ? this.toPublic(ownPending, target, 0, settings)
@@ -196,16 +201,36 @@ export class CommentService {
   ): Promise<CommentSubmitted> {
     const user = actor ? await this.deps.users.get(actor.id) : null;
     if (actor && !user) throw notFound(Errors.UserNotFound);
-    const data = user
-      ? parseInput(commentInputSchema, {
-          ...parseInput(
-            commentInputSchema.omit({ authorName: true, authorEmail: true }),
-            input,
-          ),
-          authorName: authorName(user.name),
-          authorEmail: user.email,
-        })
-      : parseInput(commentInputSchema, input);
+    const settings = await this.discussion();
+    const identity =
+      input && typeof input === 'object'
+        ? (input as Record<string, unknown>)
+        : {};
+    const data = parseInput(commentInputSchema, {
+      ...parseInput(
+        commentInputSchema.omit({
+          authorName: true,
+          authorEmail: true,
+          authorUrl: true,
+        }),
+        input,
+      ),
+      authorName: user
+        ? authorName(user.name)
+        : settings.showName
+          ? identity.authorName
+          : settings.defaultName,
+      authorEmail: user
+        ? user.email
+        : settings.showEmail
+          ? identity.authorEmail
+          : '',
+      authorUrl: !user && settings.showWebsite ? identity.authorUrl : '',
+    });
+    if (!user && settings.showEmail && !data.authorEmail)
+      throw invalidInput(Errors.CommentEmailRequired, [
+        { path: 'authorEmail', message: Errors.CommentEmailRequired },
+      ]);
     const protectedAttempt = { ...attempt, action: 'comment' as const };
     await this.deps.protection.check(protectedAttempt);
     if (data.website)
@@ -223,7 +248,6 @@ export class CommentService {
       (target.protected && !(await this.deps.locks.unlocked(target.id, proofs)))
     )
       throw notFound(Errors.ContentNotFound);
-    const settings = await this.discussion();
     if (settings.requireLogin && !user)
       throw forbidden(Errors.CommentLoginRequired);
     if (!(await this.open(target, settings)))
@@ -245,7 +269,12 @@ export class CommentService {
       authorEmail: data.authorEmail,
       authorUrl: data.authorUrl,
       body: data.body,
-      status: this.initialStatus(data, settings, known),
+      status: this.initialStatus(
+        data,
+        settings,
+        known,
+        !!actor && can(actor, 'comments.moderate'),
+      ),
     };
     const filtered = await this.deps.hooks.applyFilter(
       'comment.beforeSave',
@@ -289,11 +318,12 @@ export class CommentService {
         status === 'approved'
           ? null
           : `${record.id}.${expires}.${this.deps.signer.sign(payload)}`,
-      commenterProof: user
-        ? null
-        : recognized && status !== 'approved'
-          ? commenterProof
-          : this.commenterProof(record),
+      commenterProof:
+        user || !record.authorEmail
+          ? null
+          : recognized && status !== 'approved'
+            ? commenterProof
+            : this.commenterProof(record),
     };
   }
 
@@ -463,6 +493,7 @@ export class CommentService {
     },
     settings: DiscussionSettings,
     known: boolean,
+    moderator: boolean,
   ): CommentDraft['status'] {
     const text = [data.authorName, data.authorEmail, data.authorUrl, data.body]
       .join('\n')
@@ -473,6 +504,7 @@ export class CommentService {
       links(data.body) > settings.maxLinks
     )
       return 'pending';
+    if (moderator) return 'approved';
     if (settings.moderation === 'auto') return 'approved';
     if (settings.moderation === 'manual') return 'pending';
     return known ? 'approved' : 'pending';
@@ -491,7 +523,9 @@ export class CommentService {
       authorName: record.authorName,
       authorUrl: record.authorUrl || null,
       byAuthor: record.userId !== null && record.userId === target.authorId,
-      avatarUrl: this.avatarUrl(`comment:${record.id}`, settings),
+      avatarUrl: record.authorEmail
+        ? this.avatarUrl(`comment:${record.id}`, settings)
+        : null,
       pending: record.status === 'pending',
       body: record.body,
       createdAt: record.createdAt.toISOString(),
@@ -500,7 +534,7 @@ export class CommentService {
 
   /** A bearer proof whose referenced comment must still be approved for the same email. */
   private async knownCommenter(proof: string, email: string) {
-    if (proof.length > 512) return false;
+    if (!email || proof.length > 512) return false;
     const [id, expires, signature, extra] = proof.split('.');
     if (
       !id ||

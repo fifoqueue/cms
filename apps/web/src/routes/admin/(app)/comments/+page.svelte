@@ -332,7 +332,6 @@
               name="authorEmail"
               type="email"
               maxlength={191}
-              required
               value={item.authorEmail}
               aria-label={m.commentEmail}
             />

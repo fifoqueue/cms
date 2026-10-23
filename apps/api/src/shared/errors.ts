@@ -26,6 +26,7 @@ export class DomainError extends Error {
  * instead of writing message text at the throw site; ESLint rejects literal messages.
  */
 export const Errors = {
+  CommentEmailRequired: 'Enter an email address.',
   AuthenticationRequired: 'Authentication required',
   Forbidden: 'You do not have permission to do this',
   PatternNotFound: 'Pattern not found',

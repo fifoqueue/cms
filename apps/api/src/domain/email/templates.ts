@@ -43,7 +43,7 @@ const en: Templates = {
   }),
   commentPending: (site, title, comment, link) => ({
     subject: `[${site}] Comment waiting for review: ${title}`,
-    text: `${comment.authorName} <${comment.authorEmail}> commented on "${title}":\n\n${comment.body}${linkLine(link)}`,
+    text: `${comment.authorName}${comment.authorEmail ? ` <${comment.authorEmail}>` : ''} commented on "${title}":\n\n${comment.body}${linkLine(link)}`,
   }),
   commentApproved: (site, title, comment, link) => ({
     subject: `[${site}] New comment: ${title}`,
@@ -66,7 +66,7 @@ const ko: Templates = {
   }),
   commentPending: (site, title, comment, link) => ({
     subject: `[${site}] 검토 대기 댓글: ${title}`,
-    text: `${comment.authorName} <${comment.authorEmail}>님이 "${title}"에 댓글을 남겼습니다:\n\n${comment.body}${linkLine(link)}`,
+    text: `${comment.authorName}${comment.authorEmail ? ` <${comment.authorEmail}>` : ''}님이 "${title}"에 댓글을 남겼습니다:\n\n${comment.body}${linkLine(link)}`,
   }),
   commentApproved: (site, title, comment, link) => ({
     subject: `[${site}] 새 댓글: ${title}`,

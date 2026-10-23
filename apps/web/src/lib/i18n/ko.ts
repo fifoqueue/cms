@@ -457,6 +457,12 @@ export const ko: Messages = {
   commentBody: '댓글',
   commentEmailPrivate: '이메일 주소는 공개되지 않습니다.',
   commentSubmit: '댓글 등록',
+  commentSubmitting: '등록 중…',
+  commentPosted: '댓글을 등록했습니다.',
+  commentSubmitFailed:
+    '댓글을 보내지 못했습니다. 작성한 내용은 유지됩니다. 다시 시도하세요.',
+  commentRefreshFailed:
+    '댓글을 접수했습니다. 최신 댓글을 보려면 새로고침하세요.',
   commentsClosed: '댓글이 닫혀 있습니다.',
 
   // Comments: moderation and discussion
@@ -1333,6 +1339,13 @@ export const ko: Messages = {
   commentSignedIn: (name: string) => `${name}님으로 로그인했습니다.`,
   commentRemember:
     '다음에 댓글을 작성할 때 사용할 이름, 이메일, 웹사이트를 이 브라우저에 저장합니다.',
+  discussionFields: '댓글 입력 항목',
+  discussionShowName: '이름 입력받기',
+  discussionShowEmail: '이메일 주소 입력받기',
+  discussionShowWebsite: '웹사이트 입력란 표시',
+  discussionDefaultName: '기본 댓글 작성자 이름',
+  discussionDefaultNameHelp:
+    '이름 입력란을 끄면 반드시 지정하세요. 로그인한 사용자는 프로필 이름을 사용합니다.',
   discussionRequireLogin:
     '가입하고 로그인한 사용자만 댓글을 작성할 수 있습니다',
   discussionAvatars: '아바타 표시',

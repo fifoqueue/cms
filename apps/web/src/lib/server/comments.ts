@@ -31,6 +31,11 @@ export const commentsView = (page: PublicCommentPage) => ({
   ownPending: page.ownPending ? commentView(page.ownPending) : null,
   viewer: page.viewer ? { name: page.viewer.name } : null,
   requireLogin: page.requireLogin,
+  fields: {
+    name: page.fields.name,
+    email: page.fields.email,
+    website: page.fields.website,
+  },
   total: page.total,
   count: page.count,
   page: page.page,
@@ -83,7 +88,12 @@ export const loadComments = async (
     const saved = commenterSchema.safeParse(
       JSON.parse(event.cookies.get(COMMENTER_COOKIE) ?? 'null'),
     );
-    if (saved.success) remembered = saved.data;
+    if (saved.success)
+      remembered = {
+        authorName: comments.fields.name ? saved.data.authorName : '',
+        authorEmail: comments.fields.email ? saved.data.authorEmail : '',
+        authorUrl: comments.fields.website ? saved.data.authorUrl : '',
+      };
   } catch {
     /* Ignore malformed visitor preferences. */
   }
@@ -106,11 +116,13 @@ export type CommentSection = NonNullable<
 >;
 
 /**
- * Form action for a new comment. Not enhanced, because a captcha widget must render fresh; on
- * success it redirects so reloading never sends the comment twice.
+ * Enhanced submissions return only refreshed comment data; ordinary forms redirect after saving.
  */
 export const commentAction = async (event: RequestEvent) => {
+  event.setHeaders({ 'cache-control': 'private, no-store' });
   const form = await event.request.formData();
+  const contentId = text(form, 'contentId');
+  const api = contentApi(event.fetch, sessionToken(event.cookies, event.url));
   const typed = {
     authorName: text(form, 'authorName'),
     authorEmail: text(form, 'authorEmail'),
@@ -122,13 +134,10 @@ export const commentAction = async (event: RequestEvent) => {
   };
   let result;
   try {
-    result = await contentApi(
-      event.fetch,
-      sessionToken(event.cookies, event.url),
-    ).comments.submit(
+    result = await api.comments.submit(
       {
         ...typed,
-        contentId: text(form, 'contentId'),
+        contentId,
         parentId: text(form, 'parentId') || null,
         website: text(form, 'website'),
       },
@@ -145,8 +154,32 @@ export const commentAction = async (event: RequestEvent) => {
     sameSite: 'lax' as const,
     secure: event.url.protocol === 'https:',
   };
-  if (!sessionToken(event.cookies, event.url) && typed.remember) {
-    const saved = commenterSchema.safeParse(typed);
+  if (result.pendingProof)
+    event.cookies.set(`cms_pending_${contentId}`, result.pendingProof, {
+      ...options,
+      maxAge: 24 * 60 * 60,
+    });
+  else event.cookies.delete(`cms_pending_${contentId}`, { path: '/' });
+  // A read failure must not turn a committed submission into a retryable failure.
+  const comments = await api.comments
+    .list(
+      contentId,
+      result.page,
+      unlockProofs(event.cookies),
+      result.pendingProof ?? event.cookies.get(`cms_pending_${contentId}`),
+    )
+    .catch(() => null);
+  if (
+    !sessionToken(event.cookies, event.url) &&
+    typed.remember &&
+    comments &&
+    (comments.fields.name || comments.fields.email || comments.fields.website)
+  ) {
+    const saved = commenterSchema.safeParse({
+      authorName: comments.fields.name ? typed.authorName : '',
+      authorEmail: comments.fields.email ? typed.authorEmail : '',
+      authorUrl: comments.fields.website ? typed.authorUrl : '',
+    });
     if (saved.success) {
       event.cookies.set(COMMENTER_COOKIE, JSON.stringify(saved.data), {
         ...options,
@@ -157,21 +190,29 @@ export const commentAction = async (event: RequestEvent) => {
           ...options,
           maxAge: 365 * 24 * 60 * 60,
         });
+      else event.cookies.delete(COMMENTER_PROOF_COOKIE, { path: '/' });
     }
   } else {
     event.cookies.delete(COMMENTER_COOKIE, { path: '/' });
     event.cookies.delete(COMMENTER_PROOF_COOKIE, { path: '/' });
   }
-  if (result.pendingProof)
-    event.cookies.set(
-      `cms_pending_${text(form, 'contentId')}`,
-      result.pendingProof,
-      { ...options, maxAge: 24 * 60 * 60 },
-    );
-  const search = new URLSearchParams({ cpage: String(result.page) });
+  const search = new URLSearchParams(event.url.search);
+  search.delete('/comment');
+  search.set('cpage', String(result.page));
   if (!result.comment) search.set('moderation', '1');
-  redirect(
-    303,
-    `${event.url.pathname}?${search}#${result.comment ? `comment-${result.comment.id}` : 'comments'}`,
-  );
+  else search.delete('moderation');
+  const location = `${event.url.pathname}?${search}#${result.comment ? `comment-${result.comment.id}` : 'comments'}`;
+  if (event.request.headers.get('x-sveltekit-action') === 'true')
+    return {
+      commented: true,
+      comments: comments ? commentsView(comments) : null,
+      moderation: result.status === 'pending',
+      location,
+    };
+  redirect(303, location);
 };
+
+export type CommentActionResult = Extract<
+  Awaited<ReturnType<typeof commentAction>>,
+  { commented: boolean }
+>;

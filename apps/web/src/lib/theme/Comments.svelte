@@ -1,7 +1,17 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import type { Path } from '$app/types';
+  import { SvelteURLSearchParams } from 'svelte/reactivity';
+  import { enhance } from '$app/forms';
+  import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import type { CommentSection } from '#lib/server/comments.js';
+  import type { SubmitFunction } from '$app/forms';
+  import type {
+    CommentActionResult,
+    CommentSection,
+    CommentsView,
+  } from '#lib/server/comments.js';
+  import { errorMessage } from '#lib/admin/form-errors.js';
   import Captcha from '#lib/security/Captcha.svelte';
   import { useI18n } from '#lib/i18n/index.js';
   import { useDateFormat } from '#lib/theme/format.js';
@@ -18,6 +28,24 @@
   const i18n = useI18n();
   const m = $derived(i18n.m);
   const formatDate = useDateFormat();
+  let refreshed = $state.raw<{
+    source: CommentSection;
+    value: CommentsView | null;
+    moderation: boolean;
+  } | null>(null);
+  const submitted = $derived(refreshed?.source === comments ? refreshed : null);
+  const visible = $derived(
+    submitted?.value ? { ...comments, ...submitted.value } : comments,
+  );
+  let submitting = $state(false);
+  let submitError = $state('');
+  let captchaReady = $state(false);
+  let captchaWidget = $state<ReturnType<typeof Captcha>>();
+  const action = $derived.by(() => {
+    const search = new SvelteURLSearchParams(page.url.search);
+    search.set('cpage', String(visible.page));
+    return `?/comment&${search}`;
+  });
 
   const failure = $derived(
     page.form && 'authorName' in page.form
@@ -44,24 +72,89 @@
       : selectedReply,
   );
   const shown = $derived(
-    comments.ownPending
-      ? [...comments.items, comments.ownPending]
-      : comments.items,
+    visible.ownPending ? [...visible.items, visible.ownPending] : visible.items,
   );
   const remembered = (key: 'authorName' | 'authorEmail' | 'authorUrl') =>
     failure ? typed(key) : (comments.remembered?.[key] ?? '');
-  const pages = $derived(Math.ceil(comments.total / comments.pageSize));
+  const pages = $derived(Math.ceil(visible.total / visible.pageSize));
+  const commentLink = (number: number) => {
+    const search = new SvelteURLSearchParams(page.url.search);
+    search.set('cpage', String(number));
+    search.delete('moderation');
+    return `?${search}#comments`;
+  };
+  const submit: SubmitFunction<CommentActionResult> = ({
+    cancel,
+    formElement,
+    formData,
+  }) => {
+    if (submitting || (showCaptcha && !captchaReady)) {
+      cancel();
+      return;
+    }
+    submitting = true;
+    submitError = '';
+    return async ({ result, update }) => {
+      try {
+        if (result.type === 'success' && result.data?.commented) {
+          refreshed = {
+            source: comments,
+            value: result.data.comments,
+            moderation: result.data.moderation,
+          };
+          formElement.querySelector<HTMLTextAreaElement>(
+            '[name="body"]',
+          )!.value = '';
+          selectedReply = null;
+          await goto(resolve(result.data.location as Path), {
+            state: page.state,
+            shallow: true,
+            replace: true,
+          });
+        }
+        if (result.type === 'error') submitError = m.commentSubmitFailed;
+        else
+          await update({
+            reset: false,
+            refreshAll: false,
+            navigate: false,
+          });
+        if (result.type === 'success') {
+          // Keep the visitor's fields and consent when clearing an earlier action failure.
+          for (const name of ['authorName', 'authorEmail', 'authorUrl']) {
+            const field = formElement.querySelector<HTMLInputElement>(
+              `[name="${name}"]`,
+            );
+            const value = formData.get(name);
+            if (field && typeof value === 'string') field.value = value;
+          }
+          const remember =
+            formElement.querySelector<HTMLInputElement>('[name="remember"]');
+          if (remember) remember.checked = formData.has('remember');
+        }
+      } finally {
+        captchaWidget?.reset();
+        submitting = false;
+      }
+    };
+  };
 </script>
 
 <section id="comments" class="mx-auto mt-12 max-w-3xl space-y-8 border-t pt-8">
   <h2 class="text-2xl font-semibold tracking-tight">
-    {m.commentCount(comments.count)}
+    {m.commentCount(visible.count)}
   </h2>
 
-  {#if moderation}
+  {#if submitted?.moderation ?? moderation}
     <p class="rounded-md border bg-card p-3 text-sm" role="status">
       {m.commentAwaitingModeration}
     </p>
+  {/if}
+  {#if submitted && !submitted.moderation}
+    <p role="status" class="text-sm">{m.commentPosted}</p>
+  {/if}
+  {#if submitted && !submitted.value}
+    <p role="status" class="text-sm">{m.commentRefreshFailed}</p>
   {/if}
 
   {#if shown.length}
@@ -110,7 +203,7 @@
               {m.commentAwaitingModeration}
             </p>{/if}
           <p class="whitespace-pre-line">{comment.body}</p>
-          {#if !comment.pending && comments.open && (!comments.requireLogin || comments.viewer) && comment.depth + 1 < comments.threadDepth}
+          {#if !comment.pending && visible.open && (!visible.requireLogin || visible.viewer) && comment.depth + 1 < visible.threadDepth}
             <button
               type="button"
               class="text-sm text-primary hover:underline"
@@ -122,7 +215,7 @@
         </li>
       {/each}
     </ol>
-    {#if comments.truncated}
+    {#if visible.truncated}
       <p class="text-sm text-muted-foreground">{m.commentRepliesLimited}</p>
     {/if}
   {/if}
@@ -132,8 +225,8 @@
       {#each Array.from({ length: pages }, (_, index) => index + 1) as number (number)}
         <!-- eslint-disable svelte/no-navigation-without-resolve -- same page, another comment page -->
         <a
-          href="?cpage={number}#comments"
-          aria-current={number === comments.page ? 'page' : undefined}
+          href={commentLink(number)}
+          aria-current={number === visible.page ? 'page' : undefined}
           class="rounded-md border px-3 py-1 aria-[current=page]:bg-muted"
           >{number}</a
         >
@@ -142,114 +235,137 @@
     </nav>
   {/if}
 
-  {#if comments.open && comments.requireLogin && !comments.viewer}
+  {#if visible.open && visible.requireLogin && !visible.viewer}
     <p>
       <a
         href={resolve('/admin/(auth)/login')}
         class="text-primary hover:underline">{m.commentLoginRequired}</a
       >
     </p>
-  {:else if comments.open}
-    <!-- Not enhanced: a captcha widget must render fresh after each attempt. -->
+  {:else if visible.open}
     <form
       method="POST"
-      action="?/comment&cpage={comments.page}"
+      {action}
+      aria-busy={submitting}
+      use:enhance={submit}
       class="space-y-4 rounded-lg border bg-card p-6"
     >
-      <h3 class="font-semibold">
-        {replyTo ? m.commentReplyTo(replyTo.name) : m.commentLeave}
-      </h3>
-      {#if replyTo}
-        <button
-          type="button"
-          class="text-sm text-muted-foreground hover:underline"
-          onclick={() => (selectedReply = null)}>{m.cancel}</button
-        >
-      {/if}
-      <input type="hidden" name="contentId" value={contentId} />
-      <input type="hidden" name="parentId" value={replyTo?.id ?? ''} />
-      <input type="hidden" name="parentName" value={replyTo?.name ?? ''} />
-      <!-- People never see this field; automated senders fill it in. -->
-      <div class="absolute -left-[9999px]" aria-hidden="true">
-        <label
-          >Website <input
-            name="website"
-            tabindex="-1"
-            autocomplete="off"
-          /></label
-        >
-      </div>
-      {#if failure && typeof failure.message === 'string'}
-        <p class="text-sm text-destructive" role="alert">{failure.message}</p>
-      {/if}
-      {#if comments.viewer}
-        <p class="text-sm">{m.commentSignedIn(comments.viewer.name)}</p>
-      {:else}
-        <div class="grid gap-4 sm:grid-cols-2">
-          <label class="grid gap-1 text-sm"
-            >{m.commentName}
-            <input
-              name="authorName"
-              required
-              maxlength={100}
-              autocomplete="name"
-              value={remembered('authorName')}
-              class="h-9 rounded-md border bg-background px-3"
-            />
-          </label>
-          <label class="grid gap-1 text-sm"
-            >{m.commentEmail}
-            <input
-              name="authorEmail"
-              type="email"
-              required
-              maxlength={191}
-              autocomplete="email"
-              value={remembered('authorEmail')}
-              class="h-9 rounded-md border bg-background px-3"
-            />
-          </label>
-          <label class="grid gap-1 text-sm sm:col-span-2"
+      <fieldset disabled={submitting} class="contents">
+        <h3 class="font-semibold">
+          {replyTo ? m.commentReplyTo(replyTo.name) : m.commentLeave}
+        </h3>
+        {#if replyTo}
+          <button
+            type="button"
+            class="text-sm text-muted-foreground hover:underline"
+            onclick={() => (selectedReply = null)}>{m.cancel}</button
+          >
+        {/if}
+        <input type="hidden" name="contentId" value={contentId} />
+        <input type="hidden" name="parentId" value={replyTo?.id ?? ''} />
+        <input type="hidden" name="parentName" value={replyTo?.name ?? ''} />
+        <!-- People never see this field; automated senders fill it in. -->
+        <div class="absolute -left-[9999px]" aria-hidden="true">
+          <label
             >{m.commentWebsite}
-            <input
-              name="authorUrl"
-              type="url"
-              maxlength={255}
-              autocomplete="url"
-              value={remembered('authorUrl')}
-              class="h-9 rounded-md border bg-background px-3"
-            />
-          </label>
+            <input name="website" tabindex="-1" autocomplete="off" /></label
+          >
         </div>
-        <label class="flex items-center gap-2 text-sm"
-          ><input
-            type="checkbox"
-            name="remember"
-            checked={failure
-              ? failure.remember === true
-              : !!comments.remembered}
-          />{m.commentRemember}</label
+        {#if failure && typeof failure.message === 'string'}
+          <p class="text-sm text-destructive" role="alert">
+            {errorMessage(m, i18n.language, failure)}
+          </p>
+        {/if}
+        {#if submitError}<p class="text-sm text-destructive" role="alert">
+            {submitError}
+          </p>{/if}
+        {#if visible.viewer}
+          <p class="text-sm">{m.commentSignedIn(visible.viewer.name)}</p>
+        {:else}
+          <div class="grid gap-4 sm:grid-cols-2">
+            {#if visible.fields.name}
+              <label class="grid gap-1 text-sm"
+                >{m.commentName}
+                <input
+                  name="authorName"
+                  required
+                  maxlength={100}
+                  autocomplete="name"
+                  value={remembered('authorName')}
+                  class="h-9 rounded-md border bg-background px-3"
+                />
+              </label>
+            {/if}
+            {#if visible.fields.email}
+              <label class="grid gap-1 text-sm"
+                >{m.commentEmail}
+                <input
+                  name="authorEmail"
+                  type="email"
+                  required
+                  maxlength={191}
+                  autocomplete="email"
+                  value={remembered('authorEmail')}
+                  class="h-9 rounded-md border bg-background px-3"
+                />
+              </label>
+            {/if}
+            {#if visible.fields.website}
+              <label class="grid gap-1 text-sm sm:col-span-2"
+                >{m.commentWebsite}
+                <input
+                  name="authorUrl"
+                  type="url"
+                  maxlength={255}
+                  autocomplete="url"
+                  value={remembered('authorUrl')}
+                  class="h-9 rounded-md border bg-background px-3"
+                />
+              </label>
+            {/if}
+          </div>
+          {#if visible.fields.name || visible.fields.email || visible.fields.website}
+            <label class="flex items-center gap-2 text-sm"
+              ><input
+                type="checkbox"
+                name="remember"
+                checked={failure
+                  ? failure.remember === true
+                  : !!comments.remembered}
+              />{m.commentRemember}</label
+            >
+          {/if}
+        {/if}
+        <label class="grid gap-1 text-sm"
+          >{m.commentBody}
+          <textarea
+            name="body"
+            required
+            maxlength={5000}
+            rows={5}
+            class="rounded-md border bg-background p-3"
+            >{typed('body')}</textarea
+          >
+        </label>
+        {#if visible.fields.email && !visible.viewer}<p
+            class="text-xs text-muted-foreground"
+          >
+            {m.commentEmailPrivate}
+          </p>{/if}
+        {#if showCaptcha && comments.captcha}
+          <Captcha
+            bind:this={captchaWidget}
+            captcha={comments.captcha}
+            onchange={(ready) => (captchaReady = ready)}
+          />
+        {/if}
+        <button
+          type="submit"
+          disabled={submitting || (showCaptcha && !captchaReady)}
+          class="h-9 rounded-md bg-primary px-4 text-sm text-primary-foreground"
+          >{submitting ? m.commentSubmitting : m.commentSubmit}</button
         >
-      {/if}
-      <label class="grid gap-1 text-sm"
-        >{m.commentBody}
-        <textarea
-          name="body"
-          required
-          maxlength={5000}
-          rows={5}
-          class="rounded-md border bg-background p-3">{typed('body')}</textarea
-        >
-      </label>
-      <p class="text-xs text-muted-foreground">{m.commentEmailPrivate}</p>
-      {#if showCaptcha && comments.captcha}
-        <Captcha captcha={comments.captcha} />
-      {/if}
-      <button
-        type="submit"
-        class="h-9 rounded-md bg-primary px-4 text-sm text-primary-foreground"
-        >{m.commentSubmit}</button
-      >
+      </fieldset>
     </form>
   {:else}
     <p class="text-sm text-muted-foreground">{m.commentsClosed}</p>
