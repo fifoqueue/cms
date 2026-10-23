@@ -1,13 +1,24 @@
 import { invalidInput, Errors } from '#api/shared/errors';
 
-/** Unpacks an uploaded theme archive into its text files, by path inside the theme. */
+/** What an archive holds: text files by path and an optional `screenshot.png`/`.webp`. */
+export interface ThemeArchiveContents {
+  files: Map<string, string>;
+  /** Unchecked bytes; the theme service sniffs them. */
+  screenshot: Uint8Array | null;
+}
+
+/** Unpacks an uploaded theme archive into its files, by path inside the theme. */
 export interface ThemeArchive {
   /**
-   * Text files only, paths relative to the theme root (a single top-level folder is removed).
-   * Throws `invalid_input` for anything that is not a small, well-formed archive.
+   * Paths are relative to the theme root (a single top-level folder is removed). Throws
+   * `invalid_input` for anything that is not a small, well-formed archive.
    */
-  read(bytes: Uint8Array): Map<string, string>;
+  read(bytes: Uint8Array): ThemeArchiveContents;
 }
+
+/** The optional preview image (WordPress `screenshot.png`). */
+export const isScreenshot = (path: string) =>
+  path === 'screenshot.png' || path === 'screenshot.webp';
 
 /** The files a theme may contain; everything else in an archive (images, readme) is ignored. */
 export const isThemeFile = (path: string) =>

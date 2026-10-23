@@ -6,7 +6,8 @@
   import { useI18n } from '#lib/i18n/index.js';
 
   /** Generic form built from the plugin's declared setting fields. Knows nothing about any plugin. */
-  let { plugin }: { plugin: PluginInfo } = $props();
+  let { plugin }: { plugin: Pick<PluginInfo, 'id' | 'settings' | 'values'> } =
+    $props();
 
   const i18n = useI18n();
 </script>

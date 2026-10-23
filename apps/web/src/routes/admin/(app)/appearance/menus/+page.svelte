@@ -7,6 +7,7 @@
     ArrowLeft,
     ArrowRight,
     ArrowUp,
+    GripVertical,
     Search,
     Trash2,
   } from '@lucide/svelte';
@@ -15,6 +16,7 @@
   import {
     indent,
     moveDown,
+    moveTo,
     moveUp,
     outdent,
     removeRow,
@@ -136,7 +138,19 @@
     newMenu = '';
   };
 
+  /** Row being dragged; arrow buttons stay for keyboards. */
+  let dragged = $state<number | null>(null);
+  const drop = (event: DragEvent, index: number) => {
+    event.preventDefault();
+    if (dragged !== null) {
+      const from = dragged;
+      edit((rows) => moveTo(rows, from, index));
+    }
+    dragged = null;
+  };
+
   const deleteMenu = () => {
+    if (!confirm(m.menuDeleteConfirm(current?.name ?? ''))) return;
     menus = menus.filter((menu) => menu.id !== selected);
     for (const location of MENU_LOCATIONS)
       if (locations[location] === selected) locations[location] = null;
@@ -260,9 +274,24 @@
           <ol class="grid gap-2">
             {#each current.rows as row, index (row.id)}
               <li
-                class="flex flex-wrap items-center gap-2 rounded-md border bg-background p-2"
+                class="flex flex-wrap items-center gap-2 rounded-md border bg-background p-2 {dragged ===
+                index
+                  ? 'opacity-50'
+                  : ''}"
                 style:margin-inline-start="{row.depth * 1.5}rem"
+                draggable="true"
+                ondragstart={(event) => {
+                  dragged = index;
+                  event.dataTransfer?.setData('text/plain', row.id);
+                }}
+                ondragend={() => (dragged = null)}
+                ondragover={(event) => event.preventDefault()}
+                ondrop={(event) => drop(event, index)}
               >
+                <GripVertical
+                  class="size-4 shrink-0 cursor-grab text-muted-foreground"
+                  aria-hidden="true"
+                />
                 <Input
                   aria-label={m.menuLabel}
                   placeholder={target(row)}
@@ -330,6 +359,14 @@
                 </span>
               </li>
             {/each}
+            <li
+              class="h-6 rounded-md border border-dashed {dragged === null
+                ? 'hidden'
+                : ''}"
+              aria-hidden="true"
+              ondragover={(event) => event.preventDefault()}
+              ondrop={(event) => drop(event, current.rows.length)}
+            ></li>
           </ol>
         {:else}
           <p class="text-sm text-muted-foreground">{m.menuEmpty}</p>

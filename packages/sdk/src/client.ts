@@ -40,6 +40,7 @@ import type { ClientProof, Visitor } from '#sdk/clients/security';
 import type { ClientOptions, Query } from '#sdk/transport';
 import type {
   SessionGrant,
+  SessionInfo,
   SetupStatus,
   LoginInput,
   SsoCallbackInput,
@@ -55,6 +56,7 @@ import {
   SSO_FRONTEND_SECRET_HEADER,
   adminUserSchema,
   sessionGrantSchema,
+  sessionInfoSchema,
   setupStatusSchema,
   ssoInfoSchema,
   ssoStartResultSchema,
@@ -87,6 +89,7 @@ import type {
   PluginInfo,
   PluginPage,
   PluginPageSummary,
+  DashboardWidget,
   PluginUpdate,
   SettingValues,
 } from '#sdk/plugins';
@@ -95,6 +98,7 @@ import {
   pluginPageResultSchema,
   pluginPageSchema,
   pluginPageSummarySchema,
+  dashboardWidgetSchema,
   pluginUpdateSchema,
 } from '#sdk/plugins';
 import type {
@@ -272,6 +276,18 @@ export const createAuthClient = (options: ClientOptions, token?: string) => {
         response: adminUserSchema,
       }),
     profile: profileClient(request),
+    /** The signed-in user's own sessions. */
+    sessions: {
+      list: () =>
+        request<SessionInfo[]>('GET', '/api/v1/auth/sessions', {
+          response: z.array(sessionInfoSchema),
+        }),
+      revoke: (id: string) =>
+        request<void>(
+          'DELETE',
+          `/api/v1/auth/sessions/${encodeURIComponent(id)}`,
+        ),
+    },
   };
 };
 
@@ -329,6 +345,13 @@ export const createAdminClient = (options: ClientOptions, token: string) => {
           json: input,
           response: roleDefinitionSchema,
         }),
+      /** Deletes a custom role after giving its users `reassignTo`. */
+      remove: (key: string, reassignTo: string) =>
+        request<void>(
+          'DELETE',
+          `/api/v1/admin/roles/${encodeURIComponent(key)}`,
+          { query: { reassignTo } },
+        ),
     },
     membership: (enabled: boolean) =>
       request<{ enabled: boolean }>('PUT', '/api/v1/admin/membership', {
@@ -545,6 +568,11 @@ export const createAdminClient = (options: ClientOptions, token: string) => {
       pages: () =>
         request<PluginPageSummary[]>('GET', '/api/v1/admin/plugin-pages', {
           response: z.array(pluginPageSummarySchema),
+        }),
+      /** Plugin dashboard widgets the user may see, rendered; failed ones are left out. */
+      dashboardWidgets: () =>
+        request<DashboardWidget[]>('GET', '/api/v1/admin/dashboard-widgets', {
+          response: z.array(dashboardWidgetSchema),
         }),
       page: (id: string, key: string) =>
         request<PluginPage>('GET', pagePath(id, key), {

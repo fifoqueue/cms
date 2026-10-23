@@ -74,6 +74,7 @@ export interface BlockLabels {
   image: string;
   audio: string;
   embed: string;
+  pattern: string;
 }
 
 const inline = (node: Node): string =>
@@ -126,6 +127,17 @@ export const blockLines = (document: unknown, labels: BlockLabels) => {
         return;
       case 'horizontalRule':
         lines.push(`${prefix}---`);
+        return;
+      case 'more':
+        lines.push(`${prefix}<!--more-->`);
+        return;
+      case 'pageBreak':
+        lines.push(`${prefix}<!--nextpage-->`);
+        return;
+      case 'patternRef':
+        lines.push(
+          `${prefix}[${labels.pattern}] ${String(node.attrs?.ref ?? '')}`,
+        );
         return;
       case 'blockquote':
         for (const child of children) walk(child, `${prefix}> `);

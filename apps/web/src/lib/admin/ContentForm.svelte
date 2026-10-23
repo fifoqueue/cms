@@ -30,6 +30,7 @@
   import { documentText, seoFormValues } from '#lib/admin/seo.js';
   import { flattenTree } from '#lib/admin/taxonomy-tree.js';
   import { editorBackup } from '#lib/admin/editor-backup.js';
+  import { errorMessage } from '#lib/admin/form-errors.js';
   import { confirmLeave } from '#lib/admin/unsaved.js';
   import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
@@ -81,6 +82,8 @@
     defaultAuthorId?: string;
     /** Thumbnail addresses of the saved image fields, by field key. */
     fieldImages?: Record<string, string>;
+    /** Settings → Writing: what a new entry starts with. */
+    defaults?: { categoryId: string | null; status: 'draft' | 'pending' };
     /** Saved versions of the entry, for the "Browse" link. */
     revisionCount?: number;
     /** Status a new entry was just created with (shown as the save result). */
@@ -105,6 +108,7 @@
     defaultAuthorId = '',
     fieldImages = {},
     revisionCount = 0,
+    defaults,
     created = null,
   }: Props = $props();
 
@@ -132,7 +136,10 @@
     title: values?.title ?? draft?.title ?? entry?.title ?? '',
     slug: values?.slug ?? entry?.slug ?? '',
     excerpt: values?.excerpt ?? draft?.excerpt ?? entry?.excerpt ?? '',
-    status: (values?.status ?? entry?.status ?? 'draft') as ContentStatus,
+    status: (values?.status ??
+      entry?.status ??
+      defaults?.status ??
+      'draft') as ContentStatus,
     publishedAt: localTime(values?.publishedAt || entry?.publishedAt),
     sticky: values?.sticky ?? entry?.sticky ?? false,
     allowComments: values?.allowComments ?? entry?.allowComments ?? true,
@@ -143,13 +150,21 @@
       entry?.document ??
       EMPTY,
     categoryIds: new Set(
-      values?.categoryIds ?? entry?.categories.map(({ id }) => id) ?? [],
+      values?.categoryIds ??
+        entry?.categories.map(({ id }) => id) ??
+        (defaults?.categoryId ? [defaults.categoryId] : []),
     ),
     tagIds: new Set(values?.tagIds ?? entry?.tags.map(({ id }) => id) ?? []),
+    parentId: values?.parentId ?? entry?.parentId ?? '',
+    extraTermIds: new Set(
+      values?.extraTermIds ?? entry?.extraTerms.map(({ id }) => id) ?? [],
+    ),
     seo: values?.seo ?? seoFormValues(entry?.seo ?? DEFAULT_ENTRY_SEO),
     fields: values?.fields ?? entry?.fields ?? {},
   }));
   let body = $state(initial.document);
+  /** The saved version the form's text is based on (`expectedUpdatedAt`). */
+  let version = $state(untrack(() => entry?.updatedAt ?? ''));
   // Remounts the editor when a browser backup is restored.
   let editorKey = $state(0);
   // Live fields the SEO previews and autosave follow.
@@ -410,36 +425,43 @@
     if (!expiredDialog.open) expiredDialog.showModal();
   };
 
-  // Autosave: every 30 seconds while the text differs from what was last kept. Autosaves and
-  // previews run one after another, so an older autosave never lands after a preview's text.
+  // Autosave: every 30 seconds while the text differs from what was last kept. Autosaves,
+  // previews and saves run one after another, so an older write never lands after a newer one.
   let autosaveState = $state<{ ok: boolean; at: Date } | null>(null);
   let kept = savedText;
   let queue: Promise<unknown> = Promise.resolve();
+  /** Stores the current text as the user's autosave; resolves once the server has it. */
+  const keepText = async (id: string) => {
+    const current = snapshot();
+    if (current === kept) return true;
+    const response = await fetch(`/admin/content/${id}/autosave`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title, excerpt, document: body }),
+    }).catch(() => null);
+    // An expired session answers with the sign-in page.
+    if (response?.redirected) sessionExpired();
+    const ok = !!response?.ok && !response.redirected;
+    autosaveState = { ok, at: new Date() };
+    if (ok) kept = current;
+    return ok;
+  };
   const autosave = () => {
-    if (!entry) return;
+    if (!entry || saving) return;
     const id = entry.id;
-    queue = queue.then(async () => {
-      const current = snapshot();
-      if (current === kept) return;
-      const response = await fetch(`/admin/content/${id}/autosave`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ title, excerpt, document: body }),
-      }).catch(() => null);
-      // An expired session answers with the sign-in page.
-      if (response?.redirected) sessionExpired();
-      const ok = !!response?.ok && !response.redirected;
-      autosaveState = { ok, at: new Date() };
-      if (ok) kept = current;
-    });
+    queue = queue.then(() => keepText(id));
   };
   const timer = setInterval(autosave, 30_000);
   onDestroy(() => clearInterval(timer));
 
   let previewForm = $state<HTMLFormElement>();
-  /** Opens the preview tab at once (popup rules), then sends the text after pending autosaves. */
+  /**
+   * Opens the preview tab at once (popup rules). The text is stored as an autosave first, and
+   * only then is the preview requested; the preview request itself writes nothing.
+   */
   const preview = () => {
-    if (!entry || !previewForm) return;
+    // A save in flight would clear the autosave the preview is about to show.
+    if (!entry || !previewForm || saving) return;
     if (
       !autosaveInputSchema.safeParse({ title, excerpt, document: body }).success
     ) {
@@ -448,10 +470,17 @@
     }
     saveError = '';
     const target = `cms-preview-${entry.id}`;
-    window.open('about:blank', target);
+    const tab = window.open('about:blank', target);
     const form = previewForm;
+    const id = entry.id;
     form.target = target;
-    queue = queue.then(() => form.submit());
+    queue = queue.then(async () => {
+      if (await keepText(id)) form.submit();
+      else {
+        tab?.close();
+        saveError = m.autosaveFailed;
+      }
+    });
   };
 
   /** The result of the last save: the saved status and what the entry was before. */
@@ -476,11 +505,13 @@
   );
 
   let formElement: HTMLFormElement;
-  const submit: SubmitFunction = () => {
+  const submit: SubmitFunction = async () => {
     const previous = entry?.status;
     const sent = { text: snapshot(), edits, draftStatus };
     saving = true;
     saveError = '';
+    // A queued autosave finishes first, so it cannot land after (and outdate) this save.
+    await queue;
     return async ({ result: outcome, update }) => {
       if (
         outcome.type === 'redirect' &&
@@ -496,13 +527,9 @@
         return;
       }
       if (outcome.type === 'failure') {
-        const message = outcome.data?.message;
-        saveError =
-          outcome.status === 409
-            ? m.entryConflict
-            : typeof message === 'string'
-              ? message
-              : m.saveFailed;
+        saveError = outcome.data?.stale
+          ? m.entryConflict
+          : errorMessage(m, i18n.language, outcome.data ?? {});
       } else {
         // Before `update`: a new entry's redirect must not ask about the text it just saved.
         savedText = kept = sent.text;
@@ -512,14 +539,21 @@
       }
       await update({ reset: false });
       saving = false;
-      if (outcome.type !== 'success' || !entry) return;
+      if (outcome.type !== 'success') return;
+      const saved = outcome.data as
+        { version?: string; status?: ContentStatus } | undefined;
+      // The version this form's text now matches: only what this save returned, never a
+      // refreshed entry that someone else may have saved meanwhile.
+      if (saved?.version) version = saved.version;
+      const status = saved?.status ?? entry?.status;
+      if (!status) return;
       // What the server stored, which can differ from the button (a past date publishes).
-      result = { status: entry.status, previous };
+      result = { status, previous };
       if (
         draftStatus === sent.draftStatus &&
-        (entry.status === 'draft' || entry.status === 'pending')
+        (status === 'draft' || status === 'pending')
       )
-        draftStatus = entry.status;
+        draftStatus = status;
     };
   };
 
@@ -612,11 +646,7 @@
       />
       <input type="hidden" name="slug" value={slug} />
       <!-- The version this form edits: the API refuses the save when someone saved since. -->
-      {#if entry}<input
-          type="hidden"
-          name="updatedAt"
-          value={entry.updatedAt}
-        />{/if}
+      {#if entry}<input type="hidden" name="updatedAt" value={version} />{/if}
       {#if entry && path && !editingSlug}
         {@const address = `${seo.siteUrl.replace(/\/$/, '')}${path}`}
         <p class="flex flex-wrap items-center gap-2 text-sm">
@@ -851,8 +881,11 @@
             >
           {/if}
           {#if entry}
-            <Button variant="outline" size="sm" onclick={preview}
-              >{m.preview}</Button
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={saving}
+              onclick={preview}>{m.preview}</Button
             >
           {/if}
         </div>
@@ -1237,7 +1270,7 @@
             class="w-full"
             name="parentId"
             aria-label={m.parentPage}
-            value={values?.parentId ?? entry?.parentId ?? ''}
+            value={initial.parentId}
           >
             <NativeSelectOption value="">{m.none}</NativeSelectOption>
             {#each parentPages.filter((parent) => parent.id !== entry?.id) as parent (parent.id)}
@@ -1262,11 +1295,7 @@
                 type="checkbox"
                 name="extraTermIds"
                 value={term.id}
-                checked={(
-                  values?.extraTermIds ??
-                  entry?.extraTerms.map((term) => term.id) ??
-                  []
-                ).includes(term.id)}
+                checked={initial.extraTermIds.has(term.id)}
               />{term.name}
             </label>
           {/each}
@@ -1285,19 +1314,15 @@
 </form>
 
 {#if entry}
-  <!-- Not enhanced: the browser follows the redirect into the preview tab. The action autosaves
-       the current text first, so the preview shows it. -->
+  <!-- Not enhanced: the browser follows the redirect into the preview tab. It sends no text:
+       `preview()` has already stored the current text as the autosave the preview shows. -->
   <form
     bind:this={previewForm}
     method="POST"
     action="?/preview"
     target="_blank"
     hidden
-  >
-    <input type="hidden" name="title" value={title} />
-    <input type="hidden" name="excerpt" value={excerpt} />
-    <input type="hidden" name="document" value={JSON.stringify(body)} />
-  </form>
+  ></form>
 {/if}
 
 <dialog

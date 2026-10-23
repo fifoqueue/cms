@@ -1263,6 +1263,25 @@ export const en = {
     `The alternative text could not be saved to the library (${reason}). Press the button again to use it here only.`,
   seoTabs: 'SEO settings',
   // site-theme
+  importAuthors: 'Assign authors',
+  importAuthorsHelp:
+    'Authors are matched to existing users by email address or login. For authors without a match:',
+  importAuthorMode: (mode: string) =>
+    mode === 'author'
+      ? 'Create a new user with the Author role'
+      : mode === 'subscriber'
+        ? 'Create a new user with the Subscriber role'
+        : 'Assign their posts to me',
+  importMoreSummary: (users: number, menus: number, redirects: number) =>
+    `${users} users and ${menus} menus created; ${redirects} old addresses now redirect.`,
+  importAttachments: (count: number) =>
+    count === 1 ? '1 media file to upload' : `${count} media files to upload`,
+  importAttachmentsHelp:
+    'Media files were not copied. Entries still show them from the old site; upload them to the media library and replace them, including featured images.',
+  importFeatured: (count: number) =>
+    count === 1
+      ? 'featured image of 1 entry'
+      : `featured image of ${count} entries`,
   adminBarEditCategory: 'Edit category',
   adminBarEditTag: 'Edit tag',
   adminBarEditTerm: 'Edit term',
@@ -1382,6 +1401,60 @@ export const en = {
     'Restore this version? The title, excerpt and body are replaced; the current text stays in the revisions.',
   diffRemoved: 'Removed',
   diffAdded: 'Added',
+  // editor-media wave 3
+  adminToolbar: 'Toolbar',
+  topNew: 'New',
+  newUser: 'User',
+  commentsAwaiting: (count: number) =>
+    count === 1
+      ? '1 comment awaiting moderation'
+      : `${count} comments awaiting moderation`,
+  collapseMenu: 'Collapse menu',
+  expandMenu: 'Expand menu',
+  errorGeneric: 'Something went wrong. Please try again.',
+  errorInvalidInput: 'Please check the highlighted values.',
+  errorUnauthorized: 'Please sign in again.',
+  errorForbidden: 'You are not allowed to do this.',
+  errorNotFound: 'It no longer exists.',
+  errorConflict:
+    'This conflicts with something that already exists or was changed meanwhile.',
+  errorRateLimited: 'Too many attempts. Please wait a moment and try again.',
+  errorTooLarge: 'This is too large.',
+  errorCaptchaRequired: 'Please complete the verification.',
+  errorFieldInvalid: 'Please enter a valid value.',
+  entryTrashed: 'Moved to the Trash.',
+  undo: 'Undo',
+  viewOnSite: 'View on site',
+  commentEmptySpam: 'Empty Spam',
+  commentEmptyTrash: 'Empty Trash',
+  commentNoticeApproved: 'Comment approved.',
+  commentNoticeUnapproved: 'Comment unapproved.',
+  commentNoticeSpam: 'Comment marked as spam.',
+  commentNoticeTrash: 'Comment moved to the Trash.',
+  commentNoticeDeleted: 'Comment deleted permanently.',
+  commentNoticeEmptied: 'Emptied.',
+  mediaGridView: 'Grid view',
+  mediaListView: 'List view',
+  mediaMonth: 'Uploaded in month',
+  mediaUnattached: 'Unattached',
+  mediaFile: 'File',
+  mediaUsedColumn: 'Used in',
+  mediaDeleted: (count: number) =>
+    count === 1 ? '1 file deleted.' : `${count} files deleted.`,
+  mediaKept: (count: number) =>
+    count === 1
+      ? '1 file was kept because it is in use or not yours.'
+      : `${count} files were kept because they are in use or not yours.`,
+  mediaCropHelp:
+    'Drag the box or its corner. With the box focused, arrow keys move it and Shift with arrow keys resizes it.',
+  mediaAspect: 'Aspect ratio',
+  mediaAspectFree: 'Free',
+  mediaAspectOriginal: 'Original',
+  settingsDates: 'Date and time',
+  weekStartsOn: 'Week starts on',
+  settingsWriting: 'Writing',
+  writingDefaultCategory: 'Default post category',
+  writingDefaultStatus: 'Default status of new entries',
   // core-content
   contentInsertBlock: 'Add block',
   contentSearchBlocks: 'Search blocks',
@@ -1431,6 +1504,8 @@ export const en = {
         spacer: 'Spacer',
         codeBlock: 'Code',
         embed: 'Embed',
+        more: 'More (teaser break)',
+        pageBreak: 'Page break',
       }) as Record<string, string>
     )[type] ?? type,
   contentAlignmentName: (align: string) =>
@@ -1476,6 +1551,58 @@ export const en = {
   themeDetails: 'Theme details',
   themeDetailsOf: (name: string) => `Theme details: ${name}`,
   themeLivePreview: 'Live Preview',
+  // editor-media wave 4
+  themePages: 'Pages:',
+  contentMoreBreak: '— More — (the text above is the teaser in lists)',
+  contentPageBreak: '— Page break —',
+  contentSyncedPattern: (title: string) =>
+    title ? `Synced pattern: ${title}` : 'Synced pattern',
+  patternsTitle: 'Patterns',
+  patternCreate: 'Create pattern',
+  patternCreateHelp:
+    'Saves the selected blocks as a pattern you can insert into other entries.',
+  patternSynced: 'Synced: editing the pattern updates every entry that uses it',
+  patternSyncedShort: 'Synced',
+  patternCreateFailed: 'The pattern could not be saved.',
+  patternAdd: 'Add pattern',
+  patternEdit: 'Edit pattern',
+  patternNone:
+    'No patterns yet. Select blocks in the editor and choose “Create pattern”.',
+  patternDraftHelp: 'Draft patterns are not shown on the site.',
+  patternUsage:
+    'Synced patterns show their current published version in every entry that uses them.',
+
+  // admin-screens wave 3
+  columnModified: 'Last modified',
+  usersEntriesOf: (name: string, count: number) =>
+    count === 1 ? `1 entry by ${name}` : `${count} entries by ${name}`,
+  rolesDelete: 'Delete role',
+  rolesReassign: 'Give its users the role',
+  rolesDeleteConfirm: (name: string) =>
+    `Delete the role ${name}? Its users get the role you chose.`,
+  usersAccountManagement: 'Account management',
+  usersSignOutEverywhere: 'Log out everywhere',
+  usersSignOutConfirm: (name: string) => `Sign ${name} out of every session?`,
+  usersSignedOut: 'The user was signed out everywhere.',
+  sessionsTitle: 'Sessions',
+  sessionsHelp:
+    'Where you are signed in. Sign out any session you do not recognize.',
+  sessionStarted: (date: string) => `Signed in ${date}`,
+  sessionExpires: (date: string) => `Expires ${date}`,
+  sessionCurrent: 'This session',
+  sessionRevoke: 'Sign out',
+  sessionRevoked: 'The session was signed out.',
+  dashboardBoxes: 'Boxes to show, in order',
+  moveUpItem: (name: string) => `Move ${name} up`,
+  moveDownItem: (name: string) => `Move ${name} down`,
+  pluginSettingsLink: 'Settings',
+  pluginSettingsOf: (name: string) => `${name} settings`,
+  pluginNoSettings: 'This plugin has no settings.',
+  menuDeleteConfirm: (name: string) => `Delete the menu “${name}”?`,
+  widgetMoveTo: (area: string) => `Move to ${area}`,
+  widgetDropHere: 'Drop here to place the widget last',
+  commentNoticePartlyEmptied:
+    'Many comments were deleted, but some remain. Choose Empty again to continue.',
 
   // security-hardening
   settingsEgress: 'Outbound access',

@@ -1,14 +1,24 @@
-import { ROLES, ROLE_CAPABILITIES, roleDefinitionSchema } from '@cms/sdk';
+import {
+  ROLES,
+  ROLE_CAPABILITIES,
+  roleDefinitionSchema,
+  roleDeleteSchema,
+} from '@cms/sdk';
 import type { RoleDefinition, Capability } from '@cms/sdk';
+import type { UserDirectory } from '#api/domain/users/user-directory';
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
-import { invalidInput, Errors } from '#api/shared/errors';
+import { invalidInput, notFound, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 
 /** Role definitions are validated again when resolving a session. */
 export class RoleService {
-  constructor(private readonly settings: SettingsRepository) {}
+  constructor(
+    private readonly settings: SettingsRepository,
+    /** Users, so a deleted role's members can be moved first. */
+    private readonly users?: Pick<UserDirectory, 'list' | 'setRole'>,
+  ) {}
 
   async list(): Promise<RoleDefinition[]> {
     const stored = await this.settings.list('role.');
@@ -46,5 +56,26 @@ export class RoleService {
       throw invalidInput(Errors.RoleBuiltin);
     await this.settings.set(`role.${role.key}`, role);
     return role;
+  }
+
+  /**
+   * Deletes a custom role after moving its users to `reassignTo`, another existing role. The
+   * settings store has no delete, so the definition is replaced by null, which `list` skips.
+   */
+  async remove(key: string, input: unknown, actor: Actor) {
+    authorize(actor, 'users.manage');
+    const { reassignTo } = parseInput(roleDeleteSchema, input);
+    const roles = await this.list();
+    if ((ROLES as readonly string[]).includes(key))
+      throw invalidInput(Errors.RoleBuiltin);
+    if (!roles.some((role) => role.key === key))
+      throw notFound(Errors.RoleUnknown);
+    if (reassignTo === key || !roles.some((role) => role.key === reassignTo))
+      throw invalidInput(Errors.RoleUnknown, [
+        { path: 'reassignTo', message: Errors.RoleUnknown },
+      ]);
+    for (const user of (await this.users?.list()) ?? [])
+      if (user.role === key) await this.users!.setRole(user.id, reassignTo);
+    await this.settings.set(`role.${key}`, null);
   }
 }

@@ -2,6 +2,7 @@ import {
   profileUpdateSchema,
   userCreateSchema,
   userDeleteSchema,
+  userRoleSchema,
   userUpdateSchema,
   membershipSchema,
   registrationSchema,
@@ -204,6 +205,15 @@ export class UserService {
       if (!(caught instanceof DomainError) || caught.code !== 'conflict')
         throw caught;
     }
+  }
+
+  /** Changes only the user's role; the profile stays as currently stored. */
+  async setRole(id: string, input: unknown, actor: Actor): Promise<void> {
+    authorize(actor, 'users.manage');
+    await this.require(id);
+    const { role } = parseInput(userRoleSchema, input);
+    await this.deps.roles?.require(role);
+    await this.deps.directory.setRole(id, role);
   }
 
   async update(

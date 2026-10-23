@@ -1,5 +1,5 @@
 import type { Cookies } from '@sveltejs/kit';
-import { SCREEN_COOKIE } from '#lib/admin/screen-options.js';
+import { DASHBOARD_COOKIE, SCREEN_COOKIE } from '#lib/admin/screen-options.js';
 
 /**
  * The viewer's Screen Options for one list (wp-admin's per-user screen settings). They live in a
@@ -19,13 +19,42 @@ export const readScreenOptions = <Column extends string>(
   } catch {
     // A malformed cookie means the defaults.
   }
-  const size = Math.trunc(Number(stored.perPage));
+  // Only a plain integer counts; any other JSON shape (objects included) means the default.
+  const size = stored.perPage;
   return {
-    perPage: size >= 1 && size <= 100 ? size : perPage,
+    perPage:
+      typeof size === 'number' &&
+      Number.isInteger(size) &&
+      size >= 1 &&
+      size <= 100
+        ? size
+        : perPage,
     hidden: Array.isArray(stored.hidden)
       ? columns.filter((column) =>
           (stored.hidden as unknown[]).includes(column),
         )
       : [],
   };
+};
+
+const ids = (value: unknown) =>
+  Array.isArray(value)
+    ? value
+        .filter(
+          (id): id is string => typeof id === 'string' && id.length <= 200,
+        )
+        .slice(0, 100)
+    : [];
+
+/** The viewer's dashboard layout from its cookie (untrusted: strings only, bounded). */
+export const readDashboardLayout = (cookies: Cookies) => {
+  try {
+    const value = JSON.parse(cookies.get(DASHBOARD_COOKIE) ?? '{}') as {
+      order?: unknown;
+      hidden?: unknown;
+    };
+    return { order: ids(value?.order), hidden: ids(value?.hidden) };
+  } catch {
+    return { order: [], hidden: [] };
+  }
 };

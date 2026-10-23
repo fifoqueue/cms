@@ -1,6 +1,5 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
-  import { DATE_FORMATS } from '@cms/sdk';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
@@ -24,13 +23,6 @@
   const m = $derived(i18n.m);
   // svelte-ignore state_referenced_locally
   let frontPage = $state(data.reading.frontPage);
-  const zones = Intl.supportedValuesOf('timeZone');
-  const formatNames = $derived({
-    long: m.dateFormatLong,
-    medium: m.dateFormatMedium,
-    short: m.dateFormatShort,
-    iso: 'YYYY-MM-DD',
-  });
 </script>
 
 <svelte:head><title>{m.settingsReading}</title></svelte:head>
@@ -155,34 +147,6 @@
               >{m.readingFeedExcerpt}</NativeSelectOption
             >
           </NativeSelect>
-        </div>
-        <div class="grid gap-2">
-          <Label for="dateFormat">{m.readingDateFormat}</Label>
-          <NativeSelect
-            class="w-full"
-            id="dateFormat"
-            name="dateFormat"
-            value={data.reading.dateFormat}
-          >
-            {#each DATE_FORMATS as format (format)}
-              <NativeSelectOption value={format}
-                >{formatNames[format]}</NativeSelectOption
-              >
-            {/each}
-          </NativeSelect>
-        </div>
-        <div class="grid gap-2">
-          <Label for="timeZone">{m.readingTimeZone}</Label>
-          <Input
-            id="timeZone"
-            name="timeZone"
-            list="time-zones"
-            maxlength={64}
-            value={data.reading.timeZone}
-          />
-          <datalist id="time-zones">
-            {#each zones as zone (zone)}<option value={zone}></option>{/each}
-          </datalist>
         </div>
         <div class="grid gap-2">
           <Label for="cacheSeconds">{m.readingCacheSeconds}</Label>

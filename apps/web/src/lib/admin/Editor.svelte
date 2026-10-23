@@ -2,7 +2,6 @@
   import { Editor } from '@tiptap/core';
   import type { ChainedCommands } from '@tiptap/core';
   import type { EditorView } from '@tiptap/pm/view';
-  import { contentExtensions } from '@cms/content';
   import { CONTENT_ALIGNMENTS, IMAGE_SIZES } from '@cms/sdk';
   import type { AdminMedia, ContentDocument } from '@cms/sdk';
   import {
@@ -23,8 +22,14 @@
     Table,
     Undo,
     SquarePlay,
+    Shapes,
   } from '@lucide/svelte';
   import BlockInserter from '#lib/admin/editor/BlockInserter.svelte';
+  import {
+    editorExtensions,
+    loadPatterns,
+  } from '#lib/admin/editor/patterns.js';
+  import type { PatternChoice } from '#lib/admin/editor/patterns.js';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import type { MediaChoice } from '#lib/admin/MediaPicker.svelte';
   import { uploadFile } from '#lib/admin/upload.js';
@@ -78,13 +83,19 @@
 
   const isImage = (file: File) => file.type.startsWith('image/');
   /** Where pending uploads go; every transaction maps them, so edits meanwhile keep them in place. */
-  let markers: { pos: number }[] = [];
+  let markers: { from: number; to: number }[] = [];
 
   /** Uploads dropped or pasted image files and inserts them at `position`. */
-  const uploadInto = (view: EditorView, files: File[], position: number) => {
+  /** `from`–`to` (a pasted-over selection) is replaced only once an image is ready. */
+  const uploadInto = (
+    view: EditorView,
+    files: File[],
+    from: number,
+    to = from,
+  ) => {
     const images = files.filter(isImage);
     if (!images.length) return false;
-    const marker = { pos: position };
+    const marker = { from, to };
     markers.push(marker);
     void (async () => {
       uploadErrors = [];
@@ -108,7 +119,7 @@
         editor
           .chain()
           .insertContentAt(
-            marker.pos,
+            { from: marker.from, to: marker.to },
             imageNode(media, {
               alt: media.alt,
               variant: media.variants.find(
@@ -117,6 +128,8 @@
             }),
           )
           .run();
+        // Later images follow the first one instead of replacing anything.
+        marker.from = marker.to;
       }
       markers = markers.filter((other) => other !== marker);
     })();
@@ -126,7 +139,7 @@
   onMount(() => {
     const instance = new Editor({
       element,
-      extensions: contentExtensions,
+      extensions: editorExtensions(markerLabel),
       content: value,
       editorProps: {
         attributes: {
@@ -151,22 +164,87 @@
         handlePaste: (view, event) => {
           const files = [...(event.clipboardData?.files ?? [])];
           if (!files.some(isImage)) return false;
-          // Pasting replaces the selection, as it does for text.
-          view.dispatch(view.state.tr.deleteSelection());
-          return uploadInto(view, files, view.state.selection.from);
+          // Pasting replaces the selection, as it does for text, once the upload succeeds.
+          const { from, to } = view.state.selection;
+          return uploadInto(view, files, from, to);
         },
       },
       onTransaction: ({ transaction }) => {
         revision++;
-        for (const marker of markers)
-          marker.pos = transaction.mapping.map(marker.pos);
+        for (const marker of markers) {
+          marker.from = transaction.mapping.map(marker.from);
+          marker.to = transaction.mapping.map(marker.to);
+        }
       },
       onUpdate: ({ editor: current }) =>
         (value = current.getJSON() as ContentDocument),
     });
     editor = instance;
+    // Pattern boxes show their titles once the library is read.
+    void loadPatterns().then((list) => {
+      patterns = list;
+      for (const box of element.querySelectorAll<HTMLElement>(
+        '[data-pattern-ref]',
+      ))
+        box.textContent = markerLabel(
+          'patternRef',
+          box.dataset.patternRef ?? null,
+        );
+    });
     return () => instance.destroy();
   });
+
+  let patterns = $state<PatternChoice[]>([]);
+  const markerLabel = (type: string, ref: string | null) =>
+    type === 'more'
+      ? m.contentMoreBreak
+      : type === 'pageBreak'
+        ? m.contentPageBreak
+        : m.contentSyncedPattern(
+            patterns.find((pattern) => pattern.id === ref)?.title ?? '',
+          );
+
+  // Save the selected blocks as a pattern; a synced one then replaces the selection.
+  let patternDialog: HTMLDialogElement;
+  let patternTitle = $state('');
+  let patternSynced = $state(true);
+  let patternError = $state('');
+  const createPattern = async () => {
+    if (!editor || !patternTitle.trim()) return;
+    const { from, to } = editor.state.selection;
+    const blocks = editor.state.doc
+      .slice(from, to)
+      .content.toJSON() as unknown[];
+    const response = await fetch('/admin/patterns/api', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        title: patternTitle.trim(),
+        synced: patternSynced,
+        document: { type: 'doc', content: blocks },
+      }),
+    }).catch(() => null);
+    const created =
+      response?.status === 201
+        ? ((await response.json()) as PatternChoice)
+        : null;
+    if (!created) {
+      patternError = m.patternCreateFailed;
+      return;
+    }
+    patterns = [...patterns, created];
+    patternDialog.close();
+    patternTitle = '';
+    if (created.synced)
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(
+          { from, to },
+          { type: 'patternRef', attrs: { ref: created.id } },
+        )
+        .run();
+  };
 
   const run = (command: (chain: ChainedCommands) => ChainedCommands) => {
     if (editor) command(editor.chain().focus()).run();
@@ -267,6 +345,33 @@
     });
   };
 
+  // One tab stop for the whole toolbar; arrow keys, Home and End move between buttons.
+  let focused = $state(0);
+  const moveFocus = (event: KeyboardEvent) => {
+    const buttons = [
+      ...(event.currentTarget as HTMLElement).querySelectorAll('button'),
+    ];
+    const last = buttons.length - 1;
+    const next =
+      event.key === 'ArrowRight'
+        ? focused === last
+          ? 0
+          : focused + 1
+        : event.key === 'ArrowLeft'
+          ? focused === 0
+            ? last
+            : focused - 1
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? last
+              : null;
+    if (next === null) return;
+    event.preventDefault();
+    focused = next;
+    buttons[next]?.focus();
+  };
+
   interface Tool {
     label: string;
     icon: Component;
@@ -362,22 +467,34 @@
       icon: SquarePlay,
       action: () => embedDialog.showModal(),
     },
+    {
+      label: m.patternCreate,
+      icon: Shapes,
+      action: () => {
+        patternError = '';
+        patternDialog.showModal();
+      },
+    },
     { label: m.editorUndo, icon: Undo, action: () => run((c) => c.undo()) },
     { label: m.editorRedo, icon: Redo, action: () => run((c) => c.redo()) },
   ]);
 </script>
 
 <div class="rounded-md border bg-background">
-  <BlockInserter {editor} />
+  <BlockInserter {editor} {patterns} />
   <div
     class="flex flex-wrap gap-1 border-b p-1"
     role="toolbar"
     aria-label={m.editorToolbar}
+    tabindex="-1"
+    onkeydown={moveFocus}
   >
     {#each tools as tool, index (index)}
       {@const Icon = tool.icon}
       <button
         type="button"
+        tabindex={index === focused ? 0 : -1}
+        onfocus={() => (focused = index)}
         title={tool.label}
         aria-label={tool.label}
         aria-pressed={tool.active?.()}
@@ -565,6 +682,48 @@
       >
       <Button type="button" onclick={() => applyLink(linkUrl.trim())}
         >{m.apply}</Button
+      >
+    </div>
+  </div>
+</dialog>
+
+<dialog
+  bind:this={patternDialog}
+  class="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-lg border bg-background p-4 text-foreground shadow-lg backdrop:bg-black/40"
+  aria-label={m.patternCreate}
+>
+  <!-- Not a <form>: the editor sits inside the content form, and forms cannot nest. -->
+  <div class="space-y-3">
+    <p class="text-sm text-muted-foreground">{m.patternCreateHelp}</p>
+    <label class="grid gap-2 text-sm">
+      {m.fieldTitle}
+      <Input
+        maxlength={191}
+        bind:value={patternTitle}
+        onkeydown={(event) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          void createPattern();
+        }}
+      />
+    </label>
+    <label class="flex items-center gap-2 text-sm">
+      <input type="checkbox" bind:checked={patternSynced} />
+      {m.patternSynced}
+    </label>
+    {#if patternError}<p class="text-sm text-destructive" role="alert">
+        {patternError}
+      </p>{/if}
+    <div class="flex justify-end gap-2">
+      <Button
+        type="button"
+        variant="ghost"
+        onclick={() => patternDialog.close()}>{m.cancel}</Button
+      >
+      <Button
+        type="button"
+        disabled={!patternTitle.trim()}
+        onclick={createPattern}>{m.create}</Button
       >
     </div>
   </div>

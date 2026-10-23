@@ -1,7 +1,11 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
   import { can } from '@cms/sdk/capabilities';
+  import { resolve } from '$app/paths';
+  import { ChevronLeft, ChevronRight } from '@lucide/svelte';
+  import CropBox from '#lib/admin/CropBox.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
@@ -13,7 +17,7 @@
   import { Input } from '#lib/components/ui/input/index.js';
   import { Label } from '#lib/components/ui/label/index.js';
   import { Textarea } from '#lib/components/ui/textarea/index.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { typeLabel, useI18n } from '#lib/i18n/index.js';
   import type { PageProps } from './$types';
 
   let { data, form }: PageProps = $props();
@@ -38,6 +42,34 @@
     setTimeout(() => (copied = false), 2000);
   };
 
+  // The crop box and the number fields edit the same rectangle, in original pixels.
+  let cropping = $state(false);
+  // svelte-ignore state_referenced_locally
+  let crop = $state({
+    left: 0,
+    top: 0,
+    width: data.media.width ?? 1,
+    height: data.media.height ?? 1,
+  });
+  let aspect = $state('');
+  // Previous/Next reuse this page: a new attachment starts without the old one's crop.
+  let cropFor = untrack(() => data.media.id);
+  $effect(() => {
+    const { id, width, height } = media;
+    if (id === cropFor) return;
+    cropFor = id;
+    cropping = false;
+    aspect = '';
+    crop = { left: 0, top: 0, width: width ?? 1, height: height ?? 1 };
+  });
+  const ratio = $derived(
+    aspect === 'original' && media.width && media.height
+      ? media.width / media.height
+      : aspect
+        ? Number(aspect.split(':')[0]) / Number(aspect.split(':')[1])
+        : null,
+  );
+
   const confirmDelete: SubmitFunction = ({ cancel }) => {
     if (!confirm(m.confirmDelete)) cancel();
   };
@@ -45,12 +77,43 @@
 
 <svelte:head><title>{media.filename}</title></svelte:head>
 
-<h1 class="text-2xl font-semibold break-all">{media.filename}</h1>
+<div class="flex flex-wrap items-center justify-between gap-3">
+  <h1 class="text-2xl font-semibold break-all">{media.filename}</h1>
+  <nav class="flex gap-2" aria-label={m.mediaDetails}>
+    {#if data.context.newerId}<Button
+        variant="outline"
+        size="sm"
+        href={resolve('/admin/(app)/media/[id]', {
+          id: data.context.newerId,
+        })}><ChevronLeft class="size-4" />{m.previous}</Button
+      >{/if}
+    {#if data.context.olderId}<Button
+        variant="outline"
+        size="sm"
+        href={resolve('/admin/(app)/media/[id]', {
+          id: data.context.olderId,
+        })}>{m.next}<ChevronRight class="size-4" /></Button
+      >{/if}
+  </nav>
+</div>
 <FormMessage {form} />
 
 <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
   <div class="overflow-hidden rounded-md border bg-background">
-    {#if media.kind === 'image'}
+    {#if media.kind === 'image' && cropping && media.width && media.height}
+      <div class="p-2 text-center">
+        <CropBox
+          src={media.variants.find((variant) => variant.name === 'large')
+            ?.url ?? media.url}
+          alt={media.alt}
+          width={media.width}
+          height={media.height}
+          bind:crop
+          {ratio}
+          label={m.mediaCrop}
+        />
+      </div>
+    {:else if media.kind === 'image'}
       <img
         src={media.variants.find((variant) => variant.name === 'large')?.url ??
           media.url}
@@ -103,6 +166,21 @@
           {media.uploaderName || m.none}
         </p>
         <p>{m.mediaUsed(media.usageCount)}</p>
+        {#if data.context.usedIn.length}
+          <ul class="list-disc pl-5">
+            {#each data.context.usedIn as entry (entry.id)}
+              <li>
+                <a
+                  href={resolve('/admin/(app)/content/[id]', { id: entry.id })}
+                  class="underline">{entry.title}</a
+                >
+                <span class="text-muted-foreground"
+                  >({typeLabel(m, entry.type)})</span
+                >
+              </li>
+            {/each}
+          </ul>
+        {/if}
       </CardContent>
     </Card>
 
@@ -114,25 +192,41 @@
             <form method="POST" action="?/edit" use:enhance class="space-y-3">
               <p class="text-sm text-muted-foreground">{m.mediaEditCopyHelp}</p>
               <label class="flex items-center gap-2"
-                ><input type="checkbox" name="crop" />{m.mediaCrop}</label
+                ><input
+                  type="checkbox"
+                  name="crop"
+                  bind:checked={cropping}
+                />{m.mediaCrop}</label
               >
-              <div class="grid grid-cols-2 gap-2">
-                {#each ['left', 'top', 'width', 'height'] as key (key)}
-                  <label class="grid gap-1 text-sm"
-                    >{m.mediaCropField(key)}
-                    <Input
-                      type="number"
-                      name={key}
-                      min={key === 'left' || key === 'top' ? 0 : 1}
-                      value={key === 'width'
-                        ? (media.width ?? 1)
-                        : key === 'height'
-                          ? (media.height ?? 1)
-                          : 0}
-                    />
-                  </label>
-                {/each}
-              </div>
+              {#if cropping}
+                <p class="text-xs text-muted-foreground">{m.mediaCropHelp}</p>
+                <label class="grid gap-1 text-sm"
+                  >{m.mediaAspect}
+                  <select
+                    bind:value={aspect}
+                    class="rounded border bg-background p-2"
+                  >
+                    <option value="">{m.mediaAspectFree}</option>
+                    <option value="original">{m.mediaAspectOriginal}</option>
+                    {#each ['1:1', '4:3', '3:2', '16:9', '3:4', '9:16'] as option (option)}
+                      <option value={option}>{option}</option>
+                    {/each}
+                  </select>
+                </label>
+                <div class="grid grid-cols-2 gap-2">
+                  {#each ['left', 'top', 'width', 'height'] as const as key (key)}
+                    <label class="grid gap-1 text-sm"
+                      >{m.mediaCropField(key)}
+                      <Input
+                        type="number"
+                        name={key}
+                        min={key === 'left' || key === 'top' ? 0 : 1}
+                        bind:value={crop[key]}
+                      />
+                    </label>
+                  {/each}
+                </div>
+              {/if}
               <label class="grid gap-1"
                 >{m.mediaRotate}
                 <select name="rotate" class="rounded border bg-background p-2">

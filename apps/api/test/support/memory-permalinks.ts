@@ -8,13 +8,19 @@ import {
   regenerationEntry,
 } from '#api/domain/permalinks/path-plan';
 import type { PathChange, StoredPath } from '#api/domain/permalinks/path-plan';
-import type { PermalinkRepository } from '#api/domain/permalinks/permalink-repository';
+import type {
+  PermalinkRepository,
+  RedirectWriter,
+} from '#api/domain/permalinks/permalink-repository';
+import { permalinkPathIssue } from '@cms/sdk';
 
 /**
  * Same contract as `PrismaPermalinkRepository`; `assign` and `remove` mirror `assignContentPath`
  * and the ON DELETE CASCADE. Plans are checked before any mutation, so failures change nothing.
  */
-export class MemoryPermalinkRepository implements PermalinkRepository {
+export class MemoryPermalinkRepository
+  implements PermalinkRepository, RedirectWriter
+{
   readonly paths = new Map<string, StoredPath>();
   private stored: string | undefined;
 
@@ -31,6 +37,12 @@ export class MemoryPermalinkRepository implements PermalinkRepository {
     const row = this.paths.get(path);
 
     return row ? { contentId: row.contentId, current: row.current } : null;
+  }
+
+  async addRedirect(contentId: string, path: string) {
+    if (permalinkPathIssue(path) || this.paths.has(path)) return false;
+    this.paths.set(path, { path, contentId, current: false });
+    return true;
   }
 
   async saveSettings(settings: PermalinkSettings) {

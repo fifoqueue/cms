@@ -13,6 +13,7 @@ import type { PluginScope } from '#api/plugin-runtime/plugin-scope';
 import type { PluginSettings } from '#api/plugin-runtime/plugin-settings';
 import type { EmbedRegistry } from '#api/plugin-runtime/embed-registry';
 import type { AdminPageRegistry } from '#api/plugin-runtime/admin-page-registry';
+import type { DashboardWidgetRegistry } from '#api/plugin-runtime/dashboard-widget-registry';
 import type {
   PluginDataRepository,
   TaskScheduler,
@@ -30,6 +31,7 @@ export interface PluginContextServices {
   embeds: EmbedRegistry;
   scheduler: TaskScheduler;
   pages: AdminPageRegistry;
+  dashboardWidgets: DashboardWidgetRegistry;
   routes: PluginRouteRegistry;
   data: PluginDataRepository;
   settings: PluginSettings;
@@ -62,6 +64,7 @@ export class PluginContextFactory {
       embeds,
       scheduler,
       pages,
+      dashboardWidgets,
       routes,
       data,
       settings,
@@ -74,6 +77,7 @@ export class PluginContextFactory {
     const widgetRegistrar = widgets.registrar(id);
     const embedRegistrar = embeds.registrar(id);
     const pageRegistrar = pages.registrar(id);
+    const widgetBoxes = dashboardWidgets.registrar(id);
     const log = logger(id);
     const routeRegistrar = routes.registrar(id);
 
@@ -118,6 +122,8 @@ export class PluginContextFactory {
       },
       admin: {
         page: (key, page) => scope.track(pageRegistrar.page(key, page)),
+        dashboardWidget: (key, widget) =>
+          scope.track(widgetBoxes.dashboardWidget(key, widget)),
       },
       routes: { add: (route) => scope.track(routeRegistrar.add(route)) },
       settings: {

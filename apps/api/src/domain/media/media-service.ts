@@ -9,9 +9,10 @@ import type {
   AdminMedia,
   ImageSizeName,
   MediaAdmission,
+  RateRule,
+  MediaContext,
   MediaType,
   Paginated,
-  RateRule,
 } from '@cms/sdk';
 import { can } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
@@ -88,12 +89,20 @@ export class MediaService {
 
   async list(query: unknown, actor: Actor): Promise<Paginated<AdminMedia>> {
     authorize(actor, 'media.upload');
-    const { page, pageSize, ...filters } = parseInput(
+    const { page, pageSize, month, ...filters } = parseInput(
       mediaListQuerySchema,
       query,
     );
+    const [year, number] = month?.split('-').map(Number) ?? [];
     const { items, total } = await this.deps.repository.list({
       ...filters,
+      uploaded:
+        year && number
+          ? {
+              start: new Date(Date.UTC(year, number - 1, 1)),
+              end: new Date(Date.UTC(year, number, 1)),
+            }
+          : undefined,
       page,
       pageSize,
     });
@@ -103,6 +112,18 @@ export class MediaService {
   async get(id: string, actor: Actor): Promise<AdminMedia> {
     authorize(actor, 'media.upload');
     return toAdminMedia(await this.require(id));
+  }
+
+  /** Previous/next files for the details screen and the entries that show this one. */
+  async context(id: string, actor: Actor): Promise<MediaContext> {
+    authorize(actor, 'media.upload');
+    await this.require(id);
+    const [{ newer, older }, usedIn] = await Promise.all([
+      this.deps.repository.neighbors(id),
+      // Writers list every entry anyway; others learn only of published ones.
+      this.deps.repository.usedIn(id, 50, !can(actor, 'content.create')),
+    ]);
+    return { newerId: newer, olderId: older, usedIn };
   }
 
   /**

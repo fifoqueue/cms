@@ -9,13 +9,18 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
   const user = event.locals.user!;
-  const [terms, seo, authors, model] = await Promise.all([
+  const [terms, seo, authors, model, writing] = await Promise.all([
     loadTermChoices(event),
     loadSeoContext(event),
     can(user, 'content.editOthers') ? adminFor(event).users.authors() : null,
     adminFor(event).contentModel.model(),
+    adminFor(event).writing.get(),
   ]);
   return {
+    defaults: {
+      categoryId: writing.defaultCategoryId,
+      status: writing.defaultStatus,
+    },
     ...terms,
     model,
     seo,

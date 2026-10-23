@@ -3,11 +3,12 @@ import { authApi, contentApi } from '#lib/server/api.js';
 import { failFrom, text } from '#lib/server/errors.js';
 import { RETURN_PARAM, returnPath } from '#lib/server/return-path.js';
 import { startSession } from '#lib/server/session-cookie.js';
+import { takeSignedOut } from '#lib/server/session.js';
 import { rememberSsoTransaction, ssoApi } from '#lib/server/sso.js';
 import { clientProof, visitorOf } from '#lib/server/visitor.js';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ fetch, locals, url }) => {
+export const load: PageServerLoad = async ({ fetch, locals, url, cookies }) => {
   if ((await authApi(fetch).status()).setupRequired)
     redirect(303, '/admin/setup');
   const back = returnPath(url.searchParams.get(RETURN_PARAM));
@@ -22,6 +23,7 @@ export const load: PageServerLoad = async ({ fetch, locals, url }) => {
     captcha,
     membership: await authApi(fetch).membership(),
     back,
+    signedOut: takeSignedOut(cookies),
   };
 };
 

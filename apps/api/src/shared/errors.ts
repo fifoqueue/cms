@@ -28,10 +28,15 @@ export class DomainError extends Error {
 export const Errors = {
   AuthenticationRequired: 'Authentication required',
   Forbidden: 'You do not have permission to do this',
+  PatternNotFound: 'Pattern not found',
+  PatternLimit: 'A site can keep at most 500 patterns',
   TooManyAttempts: 'Too many attempts. Please wait a while and try again.',
   CaptchaRequired: 'Please confirm that you are not a robot.',
   CaptchaInvalid: 'The robot check failed. Please try again.',
   UserNotFound: 'User not found',
+  SessionNotFound: 'Session not found',
+  PasswordResetLimit:
+    'Too many password reset emails were sent. Try again later.',
   PasswordRequired:
     'Enter a password, or set up email delivery to send an invitation',
   LastAdministrator: 'The site needs at least one administrator',
@@ -242,6 +247,8 @@ export const Errors = {
     '설정 파일이 손상되었습니다. 기존 설정을 복구해 주세요.',
   // site-theme
   SiteImageInvalid: 'Choose an image from the media library.',
+  ThemeScreenshotInvalid:
+    'The theme screenshot must be a PNG or WebP image of at most 512 KB.',
 } as const;
 
 export const invalidInput = (message: string, issues?: unknown) =>

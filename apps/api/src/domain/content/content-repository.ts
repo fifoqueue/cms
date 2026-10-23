@@ -1,4 +1,5 @@
 import type {
+  ContentOrder,
   PublicImage,
   AdminEntrySeo,
   ContentDocument,
@@ -108,7 +109,7 @@ export interface ContentCriteria {
   page: number;
   pageSize: number;
   /** Sort field (then id); newest first unless `order` is `asc`. */
-  orderBy: 'publishedAt' | 'updatedAt';
+  orderBy: ContentOrder;
   order?: 'asc' | 'desc';
 }
 

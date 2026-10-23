@@ -89,6 +89,7 @@ model Session {
   userId     String        @map("user_id") @db.Char(36)
   /// Set when issued through a linked identity; unlinking or replacing it deletes the session.
   identityId String?       @map("identity_id") @db.Char(36)
+  createdAt  DateTime      @default(now()) @map("created_at") @db.DateTime(3)
   expiresAt  DateTime      @map("expires_at") @db.DateTime(3)
   user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   identity   UserIdentity? @relation(fields: [identityId], references: [id], onDelete: Cascade)

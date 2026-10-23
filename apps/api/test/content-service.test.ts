@@ -42,7 +42,6 @@ import {
   sequentialIds,
   noUsers,
 } from '#test/support/memory';
-import { MemoryRevisionRepository } from '#test/support/memory-revisions';
 import { Embeds, vimeo, youtube } from '#api/domain/content/embeds';
 import { MemoryPublishedContentRepository } from '#test/support/memory-published';
 import { MemorySeoSettingsRepository } from '#test/support/memory-seo';
@@ -85,7 +84,9 @@ const setup = () => {
     listener.on(name, (entry) => void events.push(`${name}:${entry.slug}`));
   }
   const clock = fixedClock();
-  const revisions = new MemoryRevisionRepository();
+  const revisions = repository.revisions;
+  /** Settings → Writing's default category. */
+  const writing = { category: null as string | null };
   const service = new ContentService({
     repository,
     renderer: tiptapRenderer,
@@ -97,6 +98,7 @@ const setup = () => {
     hasher: plainHasher,
     types: testTypes(),
     fields: testFields(),
+    defaultCategory: async () => writing.category,
   });
   const published = new MemoryPublishedContentRepository(repository);
   const protectedActions: string[] = [];
@@ -120,6 +122,7 @@ const setup = () => {
     repository,
     revisions,
     protectedActions,
+    writing,
   };
 };
 
@@ -558,9 +561,7 @@ describe('ContentService', () => {
   });
 
   test('partial edits keep unsaved editor text: refused while an autosave is pending, never discarding one', async () => {
-    const { service, revisions, repository, clock } = setup();
-    repository.autosaves = revisions;
-    revisions.saves = { savedAt: (id) => repository.rows.get(id)?.updatedAt };
+    const { service, revisions, clock } = setup();
     const history = new RevisionService({
       content: service,
       revisions,
@@ -604,6 +605,59 @@ describe('ContentService', () => {
     expect(renamed.title).toBe('Renamed');
     expect((await history.pendingAutosave(entry.id, ADMIN))?.document).toEqual(
       unsaved.document,
+    );
+
+    // A partial save and an autosave overlapping: the autosave is never lost.
+    await revisions.clearAutosave(entry.id, ADMIN.id);
+    const latest = await service.get(entry.id, ADMIN);
+    await Promise.allSettled([
+      quick(latest.updatedAt),
+      history.autosave(entry.id, unsaved, ADMIN),
+    ]);
+    expect(await history.pendingAutosave(entry.id, ADMIN)).not.toBeNull();
+  });
+
+  test('scheduled publishing advances the version and keeps unsaved editor text pending', async () => {
+    const { service, repository, clock } = setup();
+    const history = new RevisionService({
+      content: service,
+      revisions: repository.revisions,
+      renderer: tiptapRenderer,
+      ids: sequentialIds(),
+      clock,
+    });
+    clock.set('2026-03-01T00:00:00.000Z');
+    const entry = await service.create(
+      input({ status: 'scheduled', publishedAt: '2026-03-01T00:00:00.500Z' }),
+      ADMIN,
+    );
+    // Same clock as the save: the version must still move forward.
+    const edited = await service.update(
+      entry.id,
+      input({ status: 'scheduled', publishedAt: '2026-03-01T00:00:00.500Z' }),
+      ADMIN,
+    );
+    await history.autosave(
+      entry.id,
+      { title: 'Draft', excerpt: '', document: input().document },
+      ADMIN,
+    );
+    clock.set('2026-03-01T00:00:01.000Z');
+    await service.publishDue();
+    const published = await service.get(entry.id, ADMIN);
+    expect(published.status).toBe('published');
+    expect(published.updatedAt > edited.updatedAt).toBe(true);
+    expect(
+      await codeOf(
+        service.update(
+          entry.id,
+          input({ status: 'published', expectedUpdatedAt: edited.updatedAt }),
+          ADMIN,
+        ),
+      ),
+    ).toBe('conflict');
+    expect((await history.pendingAutosave(entry.id, ADMIN))?.title).toBe(
+      'Draft',
     );
   });
 
@@ -660,6 +714,32 @@ describe('ContentService', () => {
       expect(item).not.toHaveProperty('document');
       expect(item).not.toHaveProperty('html');
     }
+    // A child names its parent only while the parent is public too.
+    const parent = await service.create(
+      input({ type: 'page', title: 'Parent', status: 'private' }),
+      ADMIN,
+    );
+    await service.create(
+      input({
+        type: 'page',
+        title: 'Child',
+        status: 'published',
+        parentId: parent.id,
+      }),
+      ADMIN,
+    );
+    const child = async () =>
+      (await publicContent.list({ type: 'page' })).items.find(
+        (item) => item.slug === 'child',
+      )!;
+    expect((await child()).parentId).toBeNull();
+    expect((await publicContent.getBySlug('child')).parentId).toBeNull();
+    await service.update(
+      parent.id,
+      { ...input({ type: 'page', title: 'Parent' }), status: 'published' },
+      ADMIN,
+    );
+    expect((await child()).parentId).toBe(parent.id);
   });
 
   test('slots requested by path get the content at its current path only', async () => {
@@ -832,6 +912,22 @@ const doc = (...texts: string[]): ContentInput['document'] => ({
 });
 
 describe('content taxonomy and search', () => {
+  test('a post saved without a category gets the default one; pages and chosen categories do not', async () => {
+    const { service, taxonomy, writing } = setup();
+    const fallback = await taxonomy.create('category', { name: 'General' });
+    const chosen = await taxonomy.create('category', { name: 'News' });
+    writing.category = fallback.id;
+    const post = await service.create(input(), ADMIN);
+    expect(post.categories.map(({ id }) => id)).toEqual([fallback.id]);
+    const picked = await service.create(
+      input({ categoryIds: [chosen.id] }),
+      ADMIN,
+    );
+    expect(picked.categories.map(({ id }) => id)).toEqual([chosen.id]);
+    const page = await service.create(input({ type: 'page' }), ADMIN);
+    expect(page.categories).toEqual([]);
+  });
+
   const seed = async () => {
     const context = setup();
     const { taxonomy } = context;
@@ -1205,7 +1301,7 @@ describe('content types and fields', () => {
       ids: sequentialIds(),
       clock: fixedClock(),
       users: noUsers,
-      revisions: new MemoryRevisionRepository(),
+      revisions: repository.revisions,
       hasher: plainHasher,
       types,
       fields,

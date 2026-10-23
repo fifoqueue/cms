@@ -43,6 +43,8 @@ const summaryColumns = {
   seoAuthorUrl: true,
   sticky: true,
   parentId: true,
+  // Only whether the parent is public leaves the repository (see `toSummary`).
+  parent: { select: { status: true, trashedAt: true, passwordHash: true } },
   commentCount: true,
   summary: true,
   passwordHash: true,
@@ -63,6 +65,7 @@ const toSummary = ({
   author,
   passwordHash,
   featuredMedia,
+  parent,
   ...row
 }: SummaryRow): PublishedSummaryRecord => {
   if (!currentPath) throw new Error(Errors.ContentPathMissing);
@@ -88,7 +91,13 @@ const toSummary = ({
     categories: termSummaries(terms, 'category'),
     tags: termSummaries(terms, 'tag'),
     author,
-    parentId: row.parentId,
+    // Unpublished, trashed or locked parents stay private: the child shows as top-level.
+    parentId:
+      parent?.status === 'published' &&
+      parent.trashedAt === null &&
+      parent.passwordHash === null
+        ? row.parentId
+        : null,
     featuredImage: featuredImageOf(featuredMedia),
     sticky: row.sticky,
     commentCount: row.commentCount,

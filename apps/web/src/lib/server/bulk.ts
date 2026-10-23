@@ -1,3 +1,4 @@
+import { fail } from '@sveltejs/kit';
 import { CmsApiError } from '@cms/sdk/client';
 import { Errors } from '#lib/server/errors.js';
 
@@ -18,8 +19,13 @@ const CONCURRENCY = 4;
 export const eachBounded = async (
   ids: readonly string[],
   task: (id: string) => Promise<string | void>,
+  /** Selected ids that were not valid for the action; reported, never run. */
+  invalid: readonly string[] = [],
 ): Promise<{ done: number; failed: BulkFailure[] }> => {
-  const failed: BulkFailure[] = [];
+  const failed: BulkFailure[] = invalid.map((id) => ({
+    id: id.slice(0, 100),
+    message: Errors.BulkItemInvalid,
+  }));
   let next = 0;
   let done = 0;
   const worker = async () => {
@@ -46,18 +52,37 @@ export const eachBounded = async (
   return { done, failed };
 };
 
-/** The distinct ids a bulk form submitted, at most `limit`. */
-export const formIds = (form: FormData, limit = 100) =>
-  [
+/** Most items one bulk action may name. */
+export const BULK_LIMIT = 100;
+
+/** Content entries and users have UUIDs. */
+export const isRecordId = (id: string) => id.length <= 36;
+
+/**
+ * The distinct ids a bulk form submitted, split into ids the domain accepts (`valid`) and the
+ * rest, which are reported as failed rather than dropped. More than `BULK_LIMIT` is refused
+ * before anything changes.
+ */
+export const readSelection = (
+  form: FormData,
+  valid: (id: string) => boolean = isRecordId,
+) => {
+  const ids = [
     ...new Set(
       form
         .getAll('ids')
-        .filter(
-          (id): id is string =>
-            typeof id === 'string' && id !== '' && id.length <= 36,
-        ),
+        .filter((id): id is string => typeof id === 'string' && id !== ''),
     ),
-  ].slice(0, limit);
+  ];
+  if (ids.length > BULK_LIMIT)
+    return {
+      failure: fail(400, { message: Errors.BulkTooMany(BULK_LIMIT) }),
+    } as const;
+  return {
+    ids: ids.filter(valid),
+    invalid: ids.filter((id) => !valid(id)),
+  } as const;
+};
 
 /** `Promise.all(items.map(task))` with at most `CONCURRENCY` calls at once, in input order. */
 export const mapBounded = async <T, R>(

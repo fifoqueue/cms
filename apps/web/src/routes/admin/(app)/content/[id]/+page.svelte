@@ -97,7 +97,7 @@
 {/if}
 
 <!-- Saving keeps the editor (cursor, open panels); restoring a revision reloads its text. -->
-{#key `${data.entry.id}:${data.useAutosave}:${restored}`}
+{#key `${data.user.id}:${data.entry.id}:${data.useAutosave}:${restored}`}
   <ContentForm
     entry={data.entry}
     userId={data.user.id}

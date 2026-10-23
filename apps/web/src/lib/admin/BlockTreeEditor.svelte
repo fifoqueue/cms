@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Block, BlockName } from '@cms/sdk';
+  import { untrack } from 'svelte';
   import type { Snippet } from 'svelte';
   import BlockInserter from '#lib/admin/BlockInserter.svelte';
   import BlockListView from '#lib/admin/BlockListView.svelte';
@@ -14,6 +15,8 @@
     slotAt,
   } from '#lib/admin/blocks.js';
   import type { BlockPath } from '#lib/admin/blocks.js';
+  import { History, historyKey } from '#lib/admin/history.js';
+  import { Redo2, Undo2 } from '@lucide/svelte';
   import { useI18n } from '#lib/i18n/index.js';
 
   /**
@@ -43,6 +46,32 @@
   const initial = $derived(JSON.stringify(blocks));
   const json = $derived(JSON.stringify(tree));
   $effect(() => onchange?.(json !== initial, JSON.parse(json) as Block[]));
+
+  // svelte-ignore state_referenced_locally
+  const history = new History(json);
+  /** Bumped after history changes, so the undo/redo buttons update. */
+  let steps = $state(0);
+  $effect(() => {
+    history.record(json);
+    untrack(() => steps++);
+  });
+  const restore = (snapshot: string | null) => {
+    if (snapshot === null) return;
+    tree.splice(0, tree.length, ...(JSON.parse(snapshot) as Block[]));
+    selected = null;
+  };
+  const step = (direction: 'undo' | 'redo') => {
+    restore(direction === 'undo' ? history.undo() : history.redo());
+    steps++;
+  };
+  const canUndo = $derived.by(() => {
+    void steps;
+    return history.canUndo;
+  });
+  const canRedo = $derived.by(() => {
+    void steps;
+    return history.canRedo;
+  });
 
   let selected = $state<BlockPath | null>(null);
   const block = $derived(selected ? blockAt(tree, selected) : null);
@@ -81,6 +110,15 @@
   };
 </script>
 
+<svelte:window
+  onkeydown={(event) => {
+    const direction = historyKey(event);
+    if (!direction) return;
+    event.preventDefault();
+    step(direction);
+  }}
+/>
+
 <input type="hidden" name="blocks" value={json} />
 
 <!-- Canvas beside a sidebar (List View above the settings); List View moves left on wide screens. -->
@@ -91,7 +129,27 @@
     aria-label={m.editorListView}
     class="max-h-[50vh] overflow-y-auto rounded-md border p-2 lg:col-start-2 lg:row-start-1 2xl:col-start-1 2xl:row-span-2 2xl:max-h-[80vh]"
   >
-    <h3 class="px-2 pb-2 text-sm font-medium">{m.editorListView}</h3>
+    <div class="flex items-center justify-between gap-2 px-2 pb-2">
+      <h3 class="text-sm font-medium">{m.editorListView}</h3>
+      <div class="flex gap-1">
+        <button
+          type="button"
+          class="flex size-7 items-center justify-center rounded hover:bg-muted disabled:opacity-30"
+          aria-label={m.editorUndo}
+          title="{m.editorUndo} (Ctrl+Z)"
+          disabled={!canUndo}
+          onclick={() => step('undo')}><Undo2 class="size-4" /></button
+        >
+        <button
+          type="button"
+          class="flex size-7 items-center justify-center rounded hover:bg-muted disabled:opacity-30"
+          aria-label={m.editorRedo}
+          title="{m.editorRedo} (Ctrl+Shift+Z)"
+          disabled={!canRedo}
+          onclick={() => step('redo')}><Redo2 class="size-4" /></button
+        >
+      </div>
+    </div>
     {#if tree.length}
       <BlockListView
         blocks={tree}

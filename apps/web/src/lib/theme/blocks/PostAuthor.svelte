@@ -9,10 +9,9 @@
   const current = useCurrentPost();
   const scope = useScope();
   const author = $derived(current().post?.author ?? null);
-  const details = $derived.by(() => {
-    const loaded = scope().postAuthor;
-    return loaded && loaded.slug === author?.slug ? loaded : null;
-  });
+  const details = $derived(
+    author ? (scope().authors?.[author.slug] ?? null) : null,
+  );
 </script>
 
 {#if author}

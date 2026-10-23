@@ -6,8 +6,22 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
   requireCapability(event.locals, 'media.upload');
+  const admin = adminFor(event);
+  const [media, context] = await Promise.all([
+    admin.media.get(event.params.id).catch(notFoundFrom),
+    admin.media.context(event.params.id).catch(notFoundFrom),
+  ]);
   return {
-    media: await adminFor(event).media.get(event.params.id).catch(notFoundFrom),
+    media,
+    context: {
+      newerId: context.newerId,
+      olderId: context.olderId,
+      usedIn: context.usedIn.map(({ id, title, type }) => ({
+        id,
+        title,
+        type,
+      })),
+    },
   };
 };
 

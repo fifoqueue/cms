@@ -20,6 +20,7 @@ import type { SettingsRepository } from '#api/domain/site/site-service';
 import { BUILTIN_THEMES } from '#api/domain/theme/builtin-themes';
 import { packageFromFiles } from '#api/domain/theme/theme-archive';
 import type { ThemeArchive } from '#api/domain/theme/theme-archive';
+import { ThemeScreenshots } from '#api/domain/theme/theme-screenshots';
 import {
   findTheme,
   isBuiltinTheme,
@@ -115,7 +116,11 @@ const isCustomized = (custom: ThemeCustomization | undefined) =>
     Object.keys(custom.colors).length > 0 ||
     Object.keys(custom.styles).length > 0);
 
-const toAdmin = (state: ThemeState, theme: ThemePackage): AdminTheme => ({
+const toAdmin = (
+  state: ThemeState,
+  theme: ThemePackage,
+  screenshots: Record<string, string> = {},
+): AdminTheme => ({
   id: theme.manifest.id,
   name: theme.manifest.name,
   version: theme.manifest.version,
@@ -127,6 +132,7 @@ const toAdmin = (state: ThemeState, theme: ThemePackage): AdminTheme => ({
   active: state.active === theme.manifest.id,
   builtin: isBuiltinTheme(theme.manifest.id),
   customized: isCustomized(state.customizations[theme.manifest.id]),
+  screenshot: screenshots[theme.manifest.id] ?? null,
 });
 
 /**
@@ -136,6 +142,7 @@ const toAdmin = (state: ThemeState, theme: ThemePackage): AdminTheme => ({
  */
 export class ThemeService {
   private readonly state: ThemeStateStore;
+  private readonly screenshots: ThemeScreenshots;
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(
@@ -143,6 +150,12 @@ export class ThemeService {
     private readonly archive: ThemeArchive,
   ) {
     this.state = new ThemeStateStore(settings);
+    this.screenshots = new ThemeScreenshots(settings);
+  }
+
+  /** A theme's preview image (PNG or WebP), or null. */
+  screenshot(id: string) {
+    return this.screenshots.get(id);
   }
 
   /** The active theme; the default built-in when nothing (valid) is configured. */
@@ -164,19 +177,21 @@ export class ThemeService {
 
   /** Built-in themes first, then installed ones in install order. */
   async list(): Promise<AdminTheme[]> {
-    const state = await this.state.load();
+    const [state, screenshots] = await Promise.all([
+      this.state.load(),
+      this.screenshots.versions(),
+    ]);
 
     return [...BUILTIN_THEMES, ...state.installed].map((theme) =>
-      toAdmin(state, theme),
+      toAdmin(state, theme, screenshots),
     );
   }
 
   /** Installs a theme archive, or upgrades the installed theme with the same id, keeping its activation and changes. */
   async install(bytes: Uint8Array): Promise<AdminTheme> {
-    const theme = parseInput(
-      themePackageSchema,
-      packageFromFiles(this.archive.read(bytes)),
-    );
+    const { files, screenshot } = this.archive.read(bytes);
+    const theme = parseInput(themePackageSchema, packageFromFiles(files));
+    if (screenshot) this.screenshots.check(screenshot);
 
     if (isBuiltinTheme(theme.manifest.id))
       throw conflict(Errors.ThemeBuiltinReplace);
@@ -191,8 +206,10 @@ export class ThemeService {
       else state.installed[index] = theme;
 
       await this.state.save(state);
+      // An upgrade without a screenshot drops the old one.
+      await this.screenshots.save(theme.manifest.id, screenshot);
 
-      return toAdmin(state, theme);
+      return toAdmin(state, theme, await this.screenshots.versions());
     });
   }
 
@@ -226,6 +243,7 @@ export class ThemeService {
         delete state.customizations[id];
         await this.state.saveCustomizations(state);
       }
+      await this.screenshots.save(id, null);
     });
   }
 

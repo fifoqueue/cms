@@ -77,7 +77,9 @@ export const editorBackup = (
     },
     write: (text: string) => {
       try {
-        storage?.setItem(
+        // A form left over from another account never writes into this tab again.
+        if (storage?.getItem(OWNER) !== userId) return;
+        storage.setItem(
           key,
           JSON.stringify({ owner: userId, at: Date.now(), text }),
         );

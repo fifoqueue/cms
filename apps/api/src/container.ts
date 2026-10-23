@@ -12,6 +12,8 @@ import { ResponsiveImages } from '#api/domain/content/responsive-images';
 import { EmbedRegistry } from '#api/plugin-runtime/embed-registry';
 import { MediaService } from '#api/domain/media/media-service';
 import { ReadingService } from '#api/domain/site/reading-service';
+import { WritingService } from '#api/domain/site/writing-service';
+import { PatternService } from '#api/domain/content/pattern-service';
 import { MenuService } from '#api/domain/appearance/menu-service';
 import { ContentTypeService } from '#api/domain/content/content-types';
 import { FieldService } from '#api/domain/content/fields';
@@ -112,6 +114,7 @@ import { PluginRouteRegistry } from '#api/plugin-runtime/route-registry';
 import { SlotRegistry } from '#api/plugin-runtime/slot-registry';
 import { WidgetRegistry } from '#api/plugin-runtime/widget-registry';
 import { AdminPageRegistry } from '#api/plugin-runtime/admin-page-registry';
+import { DashboardWidgetRegistry } from '#api/plugin-runtime/dashboard-widget-registry';
 import { WidgetService } from '#api/domain/appearance/widget-service';
 import { CommentService } from '#api/domain/comments/comment-service';
 import { AvatarService } from '#api/domain/comments/avatar-service';
@@ -221,6 +224,7 @@ export const createContainer = async (
   const slotRegistry = new SlotRegistry({ timeoutMs, logger });
   const widgetRegistry = new WidgetRegistry({ timeoutMs, logger });
   const pluginPages = new AdminPageRegistry({ timeoutMs, logger });
+  const dashboardWidgets = new DashboardWidgetRegistry({ timeoutMs, logger });
   const pluginRoutes = new PluginRouteRegistry();
   const embedRegistry = new EmbedRegistry({ timeoutMs, logger });
   // Core providers first; plugins add more and never replace them.
@@ -232,6 +236,12 @@ export const createContainer = async (
 
   const contentRepository = new PrismaContentRepository(db);
   const settingsRepository = new PrismaSettingsRepository(db);
+  const patterns = new PatternService({
+    settings: settingsRepository,
+    renderer: tiptapRenderer,
+    ids: uuidV7,
+    clock: systemClock,
+  });
   const taxonomyRepository = new PrismaTaxonomyRepository(db);
   const taxonomyTypes = new TaxonomyTypeService(
     settingsRepository,
@@ -256,10 +266,10 @@ export const createContainer = async (
   const responsiveImages = new ResponsiveImages((ids) =>
     mediaRepository.publicImages(ids),
   );
-  /** Body HTML as served: players for embeds, then responsive images. */
+  /** Body HTML as served: synced patterns, players for embeds, then responsive images. */
   const served = {
     expand: async (html: string) =>
-      responsiveImages.expand(await embeds.expand(html)),
+      responsiveImages.expand(await embeds.expand(await patterns.expand(html))),
   };
   const activeSecret = secretKey(
     config.CMS_SECRET_KEY,
@@ -331,6 +341,7 @@ export const createContainer = async (
     mediaRepository.publicImages(ids),
   );
   const reading = new ReadingService(settingsRepository, publishedRepository);
+  const writing = new WritingService(settingsRepository);
   const menus = new MenuService({
     archives: archivePaths,
     settings: settingsRepository,
@@ -430,7 +441,8 @@ export const createContainer = async (
     ids: uuidV7,
     clock: systemClock,
   });
-  const roles = new RoleService(settingsRepository);
+  const directory = new PrismaUserDirectory(db);
+  const roles = new RoleService(settingsRepository, directory);
   const auth = createAuth(users, sessions, config, {
     protection,
     apiTokens,
@@ -442,6 +454,7 @@ export const createContainer = async (
     credentials: new PrismaCredentialRepository(db),
     issuer: randomTokenIssuer,
     hasher: bunPasswordHasher,
+    limits: rateLimits,
     email,
     sealedJobs,
     protection,
@@ -492,6 +505,11 @@ export const createContainer = async (
     hasher: bunPasswordHasher,
     types: contentTypes,
     fields,
+    defaultCategory: async () => {
+      const id = (await writing.get()).defaultCategoryId;
+      const term = id && (await taxonomyRepository.findById(id, 'all'));
+      return term && term.taxonomy === 'category' ? term.id : null;
+    },
   });
   const contentRevisions = new RevisionService({
     content,
@@ -519,7 +537,6 @@ export const createContainer = async (
     intervalMs: 6 * HOUR,
     run: () => content.emptyTrash(TRASH_DAYS),
   });
-  const directory = new PrismaUserDirectory(db);
   const userAdmin = new UserService({
     roles,
     settings: settingsRepository,
@@ -635,6 +652,7 @@ export const createContainer = async (
       embeds: embedRegistry,
       scheduler,
       pages: pluginPages,
+      dashboardWidgets,
       routes: pluginRoutes,
       data: pluginData,
       settings: pluginSettings,
@@ -658,9 +676,15 @@ export const createContainer = async (
     users: directory,
     ids: uuidV7,
     clock: systemClock,
+    redirects: permalinkRepository,
+    menus,
+    accounts: userAdmin,
+    tokens: randomTokenIssuer,
+    patterns,
   });
   const exporter = new ExportService({
     content: contentRepository,
+    patterns: () => patterns.exportable(),
     terms: taxonomyRepository,
     comments: commentRepository,
     users: directory,
@@ -718,12 +742,15 @@ export const createContainer = async (
       ),
       adminContent: content,
       reading,
+      writing,
+      patterns,
       menus,
       widgets,
       comments,
       avatars,
       search,
       pluginPages,
+      dashboardWidgets,
       webhooks,
       siteHealth,
       themePreviews,

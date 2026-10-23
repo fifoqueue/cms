@@ -174,6 +174,8 @@ export const contentView = (content: PublicContent) => ({
   /** Public custom fields; image fields are public images. */
   fields: structuredClone(content.fields),
   html: content.html,
+  /** Page breaks (WordPress `<!--nextpage-->`) split a single entry; `entryPage` sets these. */
+  pages: { current: 1, total: 1 },
   updatedAt: content.updatedAt,
   seo: entrySeoView(content.seo),
 });

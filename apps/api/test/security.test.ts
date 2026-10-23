@@ -220,6 +220,7 @@ describe('password reset', () => {
       tokenHash: 'old',
       userId: 'admin',
       identityId: null,
+      createdAt: new Date('2026-01-01'),
       expiresAt: new Date('2030-01-01'),
     });
     const settings = new MemorySeoSettingsRepository();
@@ -279,6 +280,7 @@ describe('password reset', () => {
         captcha: { verify: async () => true },
         clock,
       }),
+      limits: new MemoryRateLimitStore(),
       clock,
       site: async () => ({
         siteUrl: 'https://example.com',
@@ -319,5 +321,22 @@ describe('password reset', () => {
         passwords.reset({ token: issued, password: 'other-password' }),
       ),
     ).toBe('invalid_input');
+
+    // Administrators send resets without captcha or visitor limits, but only so many an hour.
+    expect(
+      await codeOf(
+        passwords.sendReset('admin', { id: 'editor', role: 'editor' }),
+      ),
+    ).toBe('forbidden');
+    const queued = queue.rows.size;
+    await passwords.sendReset('admin', { id: 'boss', role: 'administrator' });
+    expect(queue.rows.size).toBe(queued + 1);
+    for (let sent = 1; sent < 20; sent++)
+      await passwords.sendReset('admin', { id: 'boss', role: 'administrator' });
+    expect(
+      await codeOf(
+        passwords.sendReset('admin', { id: 'boss', role: 'administrator' }),
+      ),
+    ).toBe('rate_limited');
   });
 });
