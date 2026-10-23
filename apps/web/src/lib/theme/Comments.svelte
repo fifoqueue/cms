@@ -5,6 +5,7 @@
   import { enhance } from '$app/forms';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
+  import { Rss } from '@lucide/svelte';
   import PrivacyPolicyLink from '#lib/theme/PrivacyPolicyLink.svelte';
   import type { SubmitFunction } from '$app/forms';
   import type {
@@ -144,16 +145,20 @@
 </script>
 
 <section id="comments" class="mx-auto mt-12 max-w-3xl space-y-8 border-t pt-8">
-  <h2 class="text-2xl font-semibold tracking-tight">
-    {m.commentCount(visible.count)}
-  </h2>
-
-  <a
-    class="text-sm text-primary hover:underline"
-    href={resolve(
-      `/comments/feed.xml?contentId=${encodeURIComponent(contentId)}`,
-    )}>{m.privacyCommentFeed}</a
-  >
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h2 class="text-2xl font-semibold tracking-tight">
+      {m.commentCount(visible.count)}
+    </h2>
+    <a
+      class="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      href={resolve(
+        `/comments/feed.xml?contentId=${encodeURIComponent(contentId)}`,
+      )}
+      type="application/rss+xml"
+      data-sveltekit-reload
+      ><Rss class="size-4" aria-hidden="true" />{m.privacyCommentFeed}</a
+    >
+  </div>
   {#if submitted?.moderation ?? moderation}
     <p class="rounded-md border bg-card p-3 text-sm" role="status">
       {m.commentAwaitingModeration}
