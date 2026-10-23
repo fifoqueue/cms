@@ -34,7 +34,10 @@ import {
   recordingLogger,
   sequentialIds,
   noUsers,
+  userRecord,
 } from '#test/support/memory';
+import { MemoryUserDirectory } from '#test/support/memory-users';
+import { MemoryUsers } from '#test/support/sso-memory';
 import { Embeds, vimeo, youtube } from '#api/domain/content/embeds';
 import { MemoryPublishedContentRepository } from '#test/support/memory-published';
 import { MemorySeoSettingsRepository } from '#test/support/memory-seo';
@@ -87,7 +90,6 @@ const setup = () => {
     ids,
     clock,
     users: noUsers,
-    revisions,
     hasher: plainHasher,
     types: testTypes(),
     fields: testFields(),
@@ -590,9 +592,9 @@ describe('ContentService', () => {
     );
 
     // An autosave that raced a partial save (dated before it, written after) stays pending.
-    await revisions.clearAutosave(entry.id, ADMIN.id);
+    await service.update(entry.id, input(), ADMIN);
     clock.set('2026-03-02T00:00:00.000Z');
-    const renamed = await quick(entry.updatedAt);
+    const renamed = await quick((await service.get(entry.id, ADMIN)).updatedAt);
     clock.set('2026-03-01T12:00:00.000Z');
     await history.autosave(entry.id, unsaved, ADMIN);
     expect(renamed.title).toBe('Renamed');
@@ -601,7 +603,7 @@ describe('ContentService', () => {
     );
 
     // A partial save and an autosave overlapping: the autosave is never lost.
-    await revisions.clearAutosave(entry.id, ADMIN.id);
+    await service.update(entry.id, input(), ADMIN);
     const latest = await service.get(entry.id, ADMIN);
     await Promise.allSettled([
       quick(latest.updatedAt),
@@ -652,6 +654,324 @@ describe('ContentService', () => {
     expect((await history.pendingAutosave(entry.id, ADMIN))?.title).toBe(
       'Draft',
     );
+  });
+
+  test('deleting newest and all saved history preserves the text watermark and every autosave', async () => {
+    const { service, repository, revisions, clock } = setup();
+    const history = new RevisionService({
+      content: service,
+      revisions,
+      renderer: tiptapRenderer,
+      ids: { next: () => crypto.randomUUID() },
+      clock,
+    });
+    const other = { id: 'editor', role: 'editor' };
+    const entry = await service.create(input(), ADMIN);
+    const unrelated = await service.create(
+      input({ title: 'Unrelated' }),
+      ADMIN,
+    );
+    clock.set('2026-03-01T00:00:00Z');
+    await history.autosave(
+      entry.id,
+      { title: 'Stale', excerpt: '', document: input().document },
+      other,
+    );
+    clock.set('2026-03-02T00:00:00Z');
+    await service.update(
+      entry.id,
+      input({
+        title: 'Saved',
+        status: 'scheduled',
+        publishedAt: '2026-03-04T00:00:00Z',
+      }),
+      ADMIN,
+    );
+    clock.set('2026-03-03T00:00:00Z');
+    await history.autosave(
+      entry.id,
+      { title: 'Pending', excerpt: '', document: input().document },
+      ADMIN,
+    );
+    clock.set('2026-03-05T00:00:00Z');
+    await service.publishDue();
+    const before = await repository.findById(entry.id);
+    const autosaves = structuredClone(
+      revisions.rows.filter((row) => row.kind === 'autosave'),
+    );
+    const saved = (await history.list(entry.id, ADMIN)).filter(
+      (row) => row.kind === 'revision',
+    );
+    expect(saved[0]?.isCurrent).toBe(true);
+    expect(
+      await codeOf(history.delete(unrelated.id, saved[0]!.id, ADMIN)),
+    ).toBe('not_found');
+    expect(
+      await codeOf(
+        history.delete(entry.id, saved[0]!.id, {
+          id: 'outsider',
+          role: 'contributor',
+        }),
+      ),
+    ).toBe('forbidden');
+    for (const autosave of autosaves)
+      expect(await codeOf(history.delete(entry.id, autosave.id, ADMIN))).toBe(
+        'invalid_input',
+      );
+    for (const revision of saved) {
+      await history.delete(entry.id, revision.id, ADMIN);
+      expect(
+        (await history.list(entry.id, ADMIN)).some((row) => row.isCurrent),
+      ).toBe(false);
+      expect(await history.pendingAutosave(entry.id, other)).toBeNull();
+      expect((await history.pendingAutosave(entry.id, ADMIN))?.title).toBe(
+        'Pending',
+      );
+    }
+    expect(await repository.findById(entry.id)).toEqual(before);
+    expect(revisions.rows.filter((row) => row.kind === 'autosave')).toEqual(
+      autosaves,
+    );
+    expect((await history.list(unrelated.id, ADMIN)).length).toBe(1);
+    expect(await codeOf(history.delete(entry.id, saved[0]!.id, ADMIN))).toBe(
+      'not_found',
+    );
+    // Autosave recovery is still supported after all saved history is gone.
+    const recovered = await history.restore(
+      entry.id,
+      autosaves.find((row) => row.authorId === ADMIN.id)!.id,
+      ADMIN,
+    );
+    expect(recovered.title).toBe('Pending');
+    expect(
+      (await history.list(entry.id, ADMIN)).some((row) => row.isCurrent),
+    ).toBe(true);
+    expect(recovered).not.toHaveProperty('textSavedAt');
+  });
+
+  test.each(['publish', 'reassign'] as const)(
+    'revision deletion rejects stale ownership after %s',
+    async (change) => {
+      const { service, repository, revisions, clock } = setup();
+      const history = new RevisionService({
+        content: service,
+        revisions,
+        renderer: tiptapRenderer,
+        ids: sequentialIds(),
+        clock,
+      });
+      const contributor = { id: 'writer', role: 'contributor' };
+      const entry = await service.create(input(), contributor);
+      const revision = (await history.list(entry.id, contributor))[0]!;
+      const remove = revisions.delete.bind(revisions);
+      const entered = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      revisions.delete = async (...args) => {
+        entered.resolve();
+        await resume.promise;
+        return remove(...args);
+      };
+      const deletion = codeOf(
+        history.delete(entry.id, revision.id, contributor),
+      );
+      await entered.promise;
+      try {
+        if (change === 'publish')
+          await service.update(entry.id, input({ status: 'published' }), ADMIN);
+        else {
+          const users = new MemoryUsers();
+          await users.insert(userRecord({ id: ADMIN.id }));
+          await users.insert(userRecord(contributor));
+          const directory = new MemoryUserDirectory(users, repository);
+          const locked = Promise.withResolvers<void>();
+          const release = Promise.withResolvers<void>();
+          const holding = repository.exclusive(async () => {
+            locked.resolve();
+            await release.promise;
+          });
+          await locked.promise;
+          const reassignment = directory.delete(contributor.id, ADMIN.id);
+          try {
+            expect(await directory.get(contributor.id)).not.toBeNull();
+            expect(repository.rows.get(entry.id)!.authorId).toBe(
+              contributor.id,
+            );
+          } finally {
+            release.resolve();
+            await holding;
+          }
+          await reassignment;
+          expect(await revisions.get(revision.id)).toMatchObject({
+            authorId: null,
+            authorName: '',
+          });
+        }
+      } finally {
+        resume.resolve();
+      }
+      expect(await deletion).toBe('conflict');
+      expect(await revisions.get(revision.id)).not.toBeNull();
+    },
+  );
+
+  test.each(['delete', 'save'] as const)(
+    'restore rejects a source/content changed by %s before its locked write',
+    async (change) => {
+      const { service, repository, revisions, clock } = setup();
+      const history = new RevisionService({
+        content: service,
+        revisions,
+        renderer: tiptapRenderer,
+        ids: sequentialIds(),
+        clock,
+      });
+      const entry = await service.create(input({ title: 'Original' }), ADMIN);
+      const source = (await history.list(entry.id, ADMIN))[0]!;
+      await service.update(entry.id, input({ title: 'Current' }), ADMIN);
+      const update = repository.update.bind(repository);
+      const entered = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      repository.update = async (...args) => {
+        entered.resolve();
+        await resume.promise;
+        return update(...args);
+      };
+      const restore = codeOf(history.restore(entry.id, source.id, ADMIN));
+      await entered.promise;
+      repository.update = update;
+      try {
+        if (change === 'delete')
+          await history.delete(entry.id, source.id, ADMIN);
+        else await service.update(entry.id, input({ title: 'Newer' }), ADMIN);
+      } finally {
+        resume.resolve();
+      }
+      expect(await restore).toBe(
+        change === 'delete' ? 'not_found' : 'conflict',
+      );
+      expect((await service.get(entry.id, ADMIN)).title).toBe(
+        change === 'delete' ? 'Current' : 'Newer',
+      );
+    },
+  );
+
+  test('a full save and an overlapping later autosave share one write queue without losing newer text', async () => {
+    const { service, revisions, clock } = setup();
+    const history = new RevisionService({
+      content: service,
+      revisions,
+      renderer: tiptapRenderer,
+      ids: { next: () => crypto.randomUUID() },
+      clock,
+    });
+    const entry = await service.create(input(), ADMIN);
+    const save = revisions.save.bind(revisions);
+    let autosave: Promise<void> | undefined;
+    revisions.save = (record, revision) => {
+      autosave = history.autosave(
+        entry.id,
+        { title: 'Later tab', excerpt: '', document: input().document },
+        ADMIN,
+      );
+      save(record, revision);
+    };
+    await service.update(entry.id, input({ title: 'Completed save' }), ADMIN);
+    await autosave;
+    expect((await history.pendingAutosave(entry.id, ADMIN))?.title).toBe(
+      'Later tab',
+    );
+  });
+
+  test('metadata-only writes preserve another writer’s autosave and current revision; full saves clear only their own covered autosave', async () => {
+    const { service, repository, revisions, clock, taxonomy } = setup();
+    const history = new RevisionService({
+      content: service,
+      revisions,
+      renderer: tiptapRenderer,
+      ids: { next: () => crypto.randomUUID() },
+      clock,
+    });
+    const entry = await service.create(input(), ADMIN);
+    const other = { id: 'writer', role: 'editor' };
+    clock.set('2026-03-01T00:00:00Z');
+    await history.autosave(
+      entry.id,
+      { title: 'Other unsaved text', excerpt: '', document: input().document },
+      other,
+    );
+    const before = (await repository.findById(entry.id))!;
+    const listed = await history.list(entry.id, ADMIN);
+    const category = await taxonomy.create('category', { name: 'Metadata' });
+    clock.set('2026-03-02T00:00:00Z');
+    await service.update(
+      entry.id,
+      input({
+        status: 'published',
+        categoryIds: [category.id],
+        sticky: true,
+        preserveAutosave: true,
+      }),
+      ADMIN,
+    );
+    expect((await repository.findById(entry.id))!.textSavedAt).toEqual(
+      before.textSavedAt,
+    );
+    expect(await history.list(entry.id, ADMIN)).toEqual(listed);
+    expect((await history.pendingAutosave(entry.id, other))?.title).toBe(
+      'Other unsaved text',
+    );
+    await history.autosave(
+      entry.id,
+      { title: 'Own covered text', excerpt: '', document: input().document },
+      ADMIN,
+    );
+    clock.set('2026-03-03T00:00:00Z');
+    await service.update(entry.id, input(), ADMIN);
+    expect(await revisions.findAutosave(entry.id, ADMIN.id)).toBeNull();
+    expect((await history.pendingAutosave(entry.id, other))?.title).toBe(
+      'Other unsaved text',
+    );
+    expect(
+      (await history.list(entry.id, ADMIN)).filter(
+        (row) => row.kind === 'revision',
+      ),
+    ).toEqual(listed.filter((row) => row.kind === 'revision'));
+  });
+
+  test('revision persistence failure rolls back content, paths, watermark and autosaves before hooks run', async () => {
+    const { service, repository, revisions, clock, events } = setup();
+    const history = new RevisionService({
+      content: service,
+      revisions,
+      renderer: tiptapRenderer,
+      ids: { next: () => crypto.randomUUID() },
+      clock,
+    });
+    const entry = await service.create(input(), ADMIN);
+    await history.autosave(
+      entry.id,
+      { title: 'Unsaved', excerpt: '', document: input().document },
+      ADMIN,
+    );
+    const before = await repository.findById(entry.id);
+    const rows = structuredClone(revisions.rows);
+    const emitted = [...events];
+    const save = revisions.save.bind(revisions);
+    revisions.save = (...args) => {
+      save(...args);
+      throw new Error('Revision persistence failed');
+    };
+    await expect(
+      service.update(entry.id, input({ title: 'Lost', slug: 'lost' }), ADMIN),
+    ).rejects.toThrow('Revision persistence failed');
+    expect(await repository.findById(entry.id)).toEqual(before);
+    expect(revisions.rows).toEqual(rows);
+    expect(events).toEqual(emitted);
+    const count = repository.rows.size;
+    await expect(
+      service.create(input({ title: 'Failed create' }), ADMIN),
+    ).rejects.toThrow('Revision persistence failed');
+    expect(repository.rows.size).toBe(count);
   });
 
   test('the public API serves published content only', async () => {
@@ -1201,7 +1521,6 @@ describe('content types and fields', () => {
       ids: sequentialIds(),
       clock: fixedClock(),
       users: noUsers,
-      revisions: repository.revisions,
       hasher: plainHasher,
       types,
       fields,

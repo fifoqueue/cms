@@ -139,6 +139,7 @@ export const Errors = {
   FieldRequired: 'This field is required',
   ScheduleDateRequired: 'Choose when to publish the entry',
   RevisionNotFound: 'Revision not found',
+  RevisionAutosaveDelete: 'Autosaves cannot be deleted as saved revisions',
   PreviewInvalid: 'This preview link is invalid or has expired',
   ContentPasswordWrong: 'The password is not correct',
   UnknownCategory: 'Unknown category',

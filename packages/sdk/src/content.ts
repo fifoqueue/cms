@@ -436,6 +436,7 @@ export const contentRevisionSummarySchema = z.object({
   authorName: z.string(),
   createdAt: z.string(),
   title: z.string(),
+  isCurrent: z.boolean(),
 });
 
 export type ContentRevisionSummary = z.output<

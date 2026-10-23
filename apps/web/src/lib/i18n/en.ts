@@ -271,6 +271,13 @@ export const en = {
   revisionRestored: 'The version was restored.',
   revisionsEmpty: 'No revisions yet.',
   revisionCurrent: 'Current',
+  revisionDelete: 'Delete this revision',
+  revisionDeleteConfirm: (date: string) =>
+    `Permanently delete the saved revision from ${date}? The current entry and autosaves are kept.`,
+  revisionDeleted:
+    'The saved revision was deleted. The current entry and autosaves are kept.',
+  revisionDeleteFailed:
+    'Could not delete the revision. Try again; it may already have been deleted.',
   revisionSelected: 'Selected version',
   autosaveNewer:
     'There is an autosave of this entry that is newer than the version below.',

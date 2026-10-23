@@ -8,6 +8,7 @@ import type { Actions, PageServerLoad } from './$types';
 const version = ({
   id,
   kind,
+  isCurrent,
   authorName,
   createdAt,
   title,
@@ -16,6 +17,7 @@ const version = ({
 }: ContentRevision) => ({
   id,
   kind,
+  isCurrent,
   authorName,
   createdAt,
   title,
@@ -57,13 +59,25 @@ export const load: PageServerLoad = async (event) => {
       authorName,
       createdAt,
     })),
-    current: revisions.find((revision) => revision.kind === 'revision')?.id,
+    current: revisions.find((revision) => revision.isCurrent)?.id,
     from: before && version(before),
     to: after && version(after),
   };
 };
 
 export const actions: Actions = {
+  delete: async (event) => {
+    const form = await event.request.formData();
+    try {
+      await adminFor(event).content.deleteRevision(
+        event.params.id,
+        text(form, 'revisionId'),
+      );
+    } catch (caught) {
+      return failFrom(caught);
+    }
+    return { notice: 'revisionDeleted' };
+  },
   restore: async (event) => {
     const form = await event.request.formData();
     try {

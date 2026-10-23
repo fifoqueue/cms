@@ -125,7 +125,7 @@
   <CardContent>
     {#if data.revisions.length}
       <ul class="divide-y rounded-md border">
-        {#each data.revisions as revision, index (revision.id)}
+        {#each data.revisions as revision (revision.id)}
           <li class="flex flex-wrap items-center justify-between gap-3 p-3">
             <div class="text-sm">
               <p class="font-medium">
@@ -133,8 +133,9 @@
                 {#if revision.kind === 'autosave'}<Badge
                     variant="outline"
                     class="ml-1">{m.revisionAutosave}</Badge
-                  >{:else if index === 0}<Badge variant="secondary" class="ml-1"
-                    >{m.revisionCurrent}</Badge
+                  >{:else if revision.isCurrent}<Badge
+                    variant="secondary"
+                    class="ml-1">{m.revisionCurrent}</Badge
                   >{/if}
               </p>
               <p class="text-muted-foreground">
@@ -150,7 +151,7 @@
                 })}?to=${encodeURIComponent(revision.id)}`}
                 >{m.revisionCompare}</Button
               >
-              {#if index > 0 || revision.kind === 'autosave'}
+              {#if !revision.isCurrent}
                 <form
                   method="POST"
                   action="?/restoreRevision"

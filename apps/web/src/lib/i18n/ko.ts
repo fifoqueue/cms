@@ -261,6 +261,13 @@ export const ko: Messages = {
   revisionRestored: '이 버전으로 복원했습니다.',
   revisionsEmpty: '리비전이 없습니다.',
   revisionCurrent: '현재',
+  revisionDelete: '이 리비전 삭제',
+  revisionDeleteConfirm: (date: string) =>
+    `${date}에 저장한 리비전을 영구 삭제할까요? 현재 콘텐츠와 자동 저장은 유지됩니다.`,
+  revisionDeleted:
+    '저장한 리비전을 삭제했습니다. 현재 콘텐츠와 자동 저장은 유지됩니다.',
+  revisionDeleteFailed:
+    '리비전을 삭제하지 못했습니다. 이미 삭제되었을 수 있으니 다시 확인해 주세요.',
   revisionSelected: '선택한 버전',
   autosaveNewer: '아래 버전보다 최신인 자동 저장본이 있습니다.',
   autosaveLoad: '자동 저장본 불러오기',

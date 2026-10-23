@@ -53,7 +53,6 @@ const setup = () => {
     ids,
     clock,
     users: noUsers,
-    revisions: repository.revisions,
     hasher: plainHasher,
     types,
     fields: testFields(),

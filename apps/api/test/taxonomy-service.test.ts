@@ -66,7 +66,6 @@ const setup = (customTaxonomies = false) => {
     ids,
     clock,
     users: noUsers,
-    revisions: content.revisions,
     hasher: plainHasher,
     types: testTypes(),
     fields: testFields(),

@@ -50,7 +50,7 @@ export class MemoryUserDirectory implements UserDirectory, RoleWriter {
       : null;
   }
 
-  /** User writes run one at a time, like the Prisma adapter's `users.lock` (taken before content). */
+  /** User writes run one at a time, like the Prisma adapter's `users.lock`. */
   private writing: Promise<unknown> = Promise.resolve();
   private exclusive<T>(task: () => Promise<T>): Promise<T> {
     const run = this.writing.then(task, task);
@@ -113,15 +113,22 @@ export class MemoryUserDirectory implements UserDirectory, RoleWriter {
   }
 
   delete(id: string, reassignTo: string | null) {
-    return this.exclusive(async () => {
-      this.assertOtherAdministrator(id);
-      for (const row of [...this.content.rows.values()])
-        if (row.authorId === id) {
-          if (reassignTo) row.authorId = reassignTo;
-          else await this.content.delete(row.id);
-        }
-      this.users.rows.delete(id);
-    });
+    return this.content.transaction(() =>
+      this.exclusive(async () => {
+        this.assertOtherAdministrator(id);
+        for (const row of [...this.content.rows.values()])
+          if (row.authorId === id) {
+            if (reassignTo) row.authorId = reassignTo;
+            else await this.content.erase(row.id);
+          }
+        for (const revision of this.content.revisions.rows)
+          if (revision.authorId === id) {
+            revision.authorId = null;
+            revision.authorName = '';
+          }
+        this.users.rows.delete(id);
+      }),
+    );
   }
 
   private assertOtherAdministrator(id: string) {

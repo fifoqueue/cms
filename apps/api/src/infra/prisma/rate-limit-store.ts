@@ -69,7 +69,7 @@ export class PrismaRateLimitStore implements RateLimitStore {
           next.blockedUntil?.getTime() ?? 0,
         ),
       );
-      await tx.rateLimitBucket.update({
+      await tx.rateLimitBucket.updateMany({
         where: { keyHash },
         data: { ...next, expiresAt },
       });

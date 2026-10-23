@@ -113,6 +113,11 @@ export const contentWorkflowClient = (request: Request) => {
         `${path(id)}/revisions/${encodeURIComponent(revisionId)}/restore`,
         { response: adminContentSchema },
       ),
+    deleteRevision: (id: string, revisionId: string) =>
+      request<void>(
+        'DELETE',
+        `${path(id)}/revisions/${encodeURIComponent(revisionId)}`,
+      ),
     /** The user's autosave when newer than the saved entry, else null. */
     // 204 (nothing pending) arrives as a null payload.
     pendingAutosave: (id: string) =>

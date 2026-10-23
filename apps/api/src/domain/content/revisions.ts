@@ -1,4 +1,10 @@
 import type { ContentDocument } from '@cms/sdk';
+import type { ContentRecord } from '#api/domain/content/content-repository';
+
+export type RevisionDeleteGuard = Pick<
+  ContentRecord,
+  'updatedAt' | 'authorId' | 'status'
+>;
 
 export interface RevisionRecord {
   id: string;
@@ -14,25 +20,35 @@ export interface RevisionRecord {
 
 export type RevisionWrite = Omit<RevisionRecord, 'authorName'>;
 
+/** History policy and attribution, committed atomically by the content store. */
+export interface RevisionSave {
+  id: string;
+  authorId: string;
+  keep: number;
+  clearAutosave: boolean;
+}
+
 /** Saved versions of entries, and one autosave per user and entry. */
 export interface RevisionRepository {
-  /** Stores a revision and keeps only the newest `keep` revisions of the entry. */
-  add(revision: RevisionWrite, keep: number): Promise<void>;
   /**
    * Replaces the user's autosave of the entry, under the content write lock, dated after the
    * entry's last save: an autosave that raced a save stays pending instead of looking stale.
    */
   autosave(revision: RevisionWrite): Promise<void>;
-  /** Removes the user's autosave once the entry is saved. */
-  clearAutosave(contentId: string, authorId: string): Promise<void>;
+  /** Deletes one saved revision under the content lock, checking the authorized snapshot. */
+  delete(
+    contentId: string,
+    id: string,
+    guard: RevisionDeleteGuard,
+  ): Promise<void>;
   /** Newest first, without documents. */
   list(
     contentId: string,
   ): Promise<Omit<RevisionRecord, 'document' | 'excerpt'>[]>;
   get(id: string): Promise<RevisionRecord | null>;
   /**
-   * The user's autosave when it holds text newer than the entry's last text save: its newest
-   * revision, else `savedAt`. Status-only changes (scheduled publishing) never hide it.
+   * The user's autosave newer than the durable text-save watermark `savedAt`.
+   * Status-only changes and history deletion never change that watermark.
    */
   pendingAutosave(
     contentId: string,

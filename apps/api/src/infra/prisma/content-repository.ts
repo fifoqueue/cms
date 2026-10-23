@@ -10,7 +10,11 @@ import type {
 import { checkContentParent } from '#api/domain/content/hierarchy';
 import { checkTermKinds } from '#api/domain/content/term-assignment';
 import { guardUnique } from '#api/infra/prisma/client';
-import { pendingIn } from '#api/infra/prisma/revision-repository';
+import {
+  pendingIn,
+  saveRevisionIn,
+} from '#api/infra/prisma/revision-repository';
+import type { RevisionSave } from '#api/domain/content/revisions';
 import {
   parseFields,
   featuredImageOf,
@@ -22,7 +26,7 @@ import type { Database } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
 import { takenSlugs } from '#api/infra/prisma/taken-slugs';
 import type { Content } from '#api/infra/prisma/generated/client';
-import { conflict, invalidInput, Errors } from '#api/shared/errors';
+import { conflict, invalidInput, notFound, Errors } from '#api/shared/errors';
 import { fromSeoColumns, toSeoColumns } from '#api/infra/prisma/seo-mapper';
 import {
   assignContentPath,
@@ -118,7 +122,10 @@ const toRow = ({
   tagIds: _tagIds,
   mediaIds: _mediaIds,
   ...record
-}: ContentWrite): Omit<Content, 'trashedAt' | 'commentCount'> => ({
+}: ContentWrite): Omit<
+  Content,
+  'trashedAt' | 'commentCount' | 'textSavedAt'
+> => ({
   ...record,
   parentId: record.parentId ?? null,
   menuOrder: record.menuOrder ?? 0,
@@ -220,27 +227,52 @@ export class PrismaContentRepository implements ContentRepository {
     return rows.map((row) => toRecord(row));
   }
 
-  async insert(record: ContentWrite) {
-    return this.write(record, async (tx, next) =>
+  async insert(record: ContentWrite, revision: RevisionSave) {
+    return this.write(record, revision, async (tx, next) =>
       tx.content.create({
-        data: { ...toRow(next), terms: { create: assignments(next) } },
+        data: {
+          ...toRow(next),
+          textSavedAt: next.updatedAt,
+          terms: { create: assignments(next) },
+        },
         include: withRelations,
       }),
     );
   }
 
-  async update(record: ContentWrite, guard: ContentWriteGuard = {}) {
-    return this.write(record, async (tx, next, current) => {
+  async update(
+    record: ContentWrite,
+    revision: RevisionSave,
+    guard: ContentWriteGuard = {},
+  ) {
+    return this.write(record, revision, async (tx, next, current) => {
       if (
         guard.expectedUpdatedAt &&
         current?.updatedAt.getTime() !== guard.expectedUpdatedAt.getTime()
       )
         throw conflict(Errors.ContentChanged);
+      if (guard.revision) {
+        if (
+          current?.authorId !== guard.revision.authorId ||
+          current?.status !== guard.revision.status
+        )
+          throw conflict(Errors.ContentChanged);
+        if (
+          !(await tx.contentRevision.count({
+            where: {
+              id: guard.revision.id,
+              contentId: record.id,
+              kind: { in: ['revision', 'autosave'] },
+            },
+          }))
+        )
+          throw notFound(Errors.RevisionNotFound);
+      }
       // Autosaves are written under the same lock, so none can appear before this write commits.
       if (
         guard.autosaveOf &&
         current &&
-        (await pendingIn(tx, record.id, guard.autosaveOf, current.updatedAt))
+        (await pendingIn(tx, record.id, guard.autosaveOf, current.textSavedAt))
       )
         throw conflict(Errors.ContentAutosavePending);
       const { id, ...data } = toRow(next);
@@ -248,6 +280,13 @@ export class PrismaContentRepository implements ContentRepository {
         where: { id },
         data: {
           ...data,
+          textSavedAt:
+            current &&
+            current.title === next.title &&
+            current.excerpt === next.excerpt &&
+            current.document === JSON.stringify(next.document)
+              ? current.textSavedAt
+              : next.updatedAt,
           terms: { deleteMany: {}, create: assignments(next) },
         },
         include: withRelations,
@@ -338,10 +377,21 @@ export class PrismaContentRepository implements ContentRepository {
   /** Checks the term kinds and saves in one transaction; a term deleted meanwhile fails the FK. */
   private async write(
     record: ContentWrite,
+    revision: RevisionSave,
     save: (
       tx: Transaction,
       next: ContentWrite,
-      current: { publishedAt: Date | null; updatedAt: Date } | null,
+      current: Pick<
+        Content,
+        | 'publishedAt'
+        | 'updatedAt'
+        | 'textSavedAt'
+        | 'authorId'
+        | 'status'
+        | 'title'
+        | 'excerpt'
+        | 'document'
+      > | null,
     ) => Promise<Row>,
   ): Promise<ContentRecord> {
     try {
@@ -351,7 +401,16 @@ export class PrismaContentRepository implements ContentRepository {
             await lockPermalinks(tx);
             const current = await tx.content.findUnique({
               where: { id: record.id },
-              select: { publishedAt: true, updatedAt: true },
+              select: {
+                publishedAt: true,
+                updatedAt: true,
+                textSavedAt: true,
+                authorId: true,
+                status: true,
+                title: true,
+                excerpt: true,
+                document: true,
+              },
             });
             if (
               record.type !== 'page' &&
@@ -422,6 +481,7 @@ export class PrismaContentRepository implements ContentRepository {
               row,
               current?.publishedAt != null,
             );
+            await saveRevisionIn(tx, row, revision);
             return toRecord(row, path);
           }),
         Errors.SlugConflict,

@@ -2,12 +2,17 @@ import type {
   RevisionRecord,
   RevisionRepository,
   RevisionWrite,
+  RevisionDeleteGuard,
+  RevisionSave,
 } from '#api/domain/content/revisions';
+import type { ContentRecord } from '#api/domain/content/content-repository';
+import { conflict, invalidInput, notFound, Errors } from '#api/shared/errors';
 
 /** The content store whose write queue autosaves share (the Prisma adapter's content lock). */
 export interface MemoryContentWrites {
   exclusive<T>(task: () => Promise<T>): Promise<T>;
   savedAt(contentId: string): Date | undefined;
+  snapshot(contentId: string): RevisionDeleteGuard | undefined;
 }
 
 /** Same contract as `PrismaRevisionRepository`. Built by `MemoryContentRepository`. */
@@ -16,16 +21,28 @@ export class MemoryRevisionRepository implements RevisionRepository {
 
   constructor(private readonly content: MemoryContentWrites) {}
 
-  async add(revision: RevisionWrite, keep: number) {
-    this.rows.push({
-      ...structuredClone(revision),
-      authorName: revision.authorId ?? '',
-    });
-    const own = this.newestFirst(revision.contentId).filter(
-      (row) => row.kind === 'revision',
-    );
-    for (const stale of own.slice(keep))
-      this.rows.splice(this.rows.indexOf(stale), 1);
+  /** Called by the content transaction; never takes the write queue a second time. */
+  save(record: ContentRecord, revision: RevisionSave) {
+    if (record.textSavedAt.getTime() === record.updatedAt.getTime()) {
+      this.rows.push({
+        id: revision.id,
+        contentId: record.id,
+        authorId: revision.authorId,
+        authorName: revision.authorId,
+        kind: 'revision',
+        title: record.title,
+        excerpt: record.excerpt,
+        document: structuredClone(record.document),
+        createdAt: record.textSavedAt,
+      });
+      const own = this.newestFirst(record.id).filter(
+        (row) => row.kind === 'revision',
+      );
+      for (const stale of own.slice(revision.keep))
+        this.rows.splice(this.rows.indexOf(stale), 1);
+    }
+    if (revision.clearAutosave)
+      this.clearNow(record.id, revision.authorId, record.updatedAt);
   }
 
   /** In the content write queue, dated after the entry's last save. */
@@ -46,31 +63,46 @@ export class MemoryRevisionRepository implements RevisionRepository {
     });
   }
 
-  async clearAutosave(contentId: string, authorId: string) {
-    this.clearNow(contentId, authorId);
+  delete(contentId: string, id: string, guard: RevisionDeleteGuard) {
+    return this.content.exclusive(async () => {
+      const current = this.content.snapshot(contentId);
+      if (!current) throw notFound(Errors.ContentNotFound);
+      if (
+        current.updatedAt.getTime() !== guard.updatedAt.getTime() ||
+        current.authorId !== guard.authorId ||
+        current.status !== guard.status
+      )
+        throw conflict(Errors.ContentChanged);
+      const revision = this.rows.find(
+        (row) => row.id === id && row.contentId === contentId,
+      );
+      if (!revision) throw notFound(Errors.RevisionNotFound);
+      if (revision.kind !== 'revision')
+        throw invalidInput(Errors.RevisionAutosaveDelete);
+      this.rows.splice(this.rows.indexOf(revision), 1);
+    });
   }
 
-  /** The user's autosave newer than the entry's newest revision (else `savedAt`). */
+  /** The user's autosave newer than the durable text-save watermark. */
   pendingNow(contentId: string, authorId: string, savedAt: Date) {
     const rows = this.newestFirst(contentId);
     const autosave = rows.find(
       (row) => row.kind === 'autosave' && row.authorId === authorId,
     );
-    const baseline =
-      rows.find((row) => row.kind === 'revision')?.createdAt ?? savedAt;
-    return autosave && autosave.createdAt > baseline ? autosave : null;
+    return autosave && autosave.createdAt > savedAt ? autosave : null;
   }
 
   async pendingAutosave(contentId: string, authorId: string, savedAt: Date) {
     return structuredClone(this.pendingNow(contentId, authorId, savedAt));
   }
 
-  private clearNow(contentId: string, authorId: string) {
+  private clearNow(contentId: string, authorId: string, savedAt?: Date) {
     for (const row of [...this.rows])
       if (
         row.contentId === contentId &&
         row.authorId === authorId &&
-        row.kind === 'autosave'
+        row.kind === 'autosave' &&
+        (!savedAt || row.createdAt <= savedAt)
       )
         this.rows.splice(this.rows.indexOf(row), 1);
   }

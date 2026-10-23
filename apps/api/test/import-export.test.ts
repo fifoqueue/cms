@@ -43,7 +43,6 @@ const site = async (accounts?: Pick<UserService, 'create'>) => {
     ids,
     clock,
     users: noUsers,
-    revisions: content.revisions,
     hasher: plainHasher,
     types: testTypes(),
     fields: testFields(),

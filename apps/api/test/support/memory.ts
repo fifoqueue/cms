@@ -33,10 +33,11 @@ import type {
   PluginStateRepository,
   StagedBundle,
 } from '#api/plugin-runtime/ports';
-import { conflict, invalidInput, Errors } from '#api/shared/errors';
+import { conflict, invalidInput, notFound, Errors } from '#api/shared/errors';
 import type { Logger } from '#api/shared/logger';
 import { MemoryPermalinkRepository } from '#test/support/memory-permalinks';
 import { MemoryRevisionRepository } from '#test/support/memory-revisions';
+import type { RevisionSave } from '#api/domain/content/revisions';
 
 /**
  * Content rows keep their term ids; `terms` is the term table, shared with
@@ -44,6 +45,7 @@ import { MemoryRevisionRepository } from '#test/support/memory-revisions';
  */
 export class MemoryContentRepository implements ContentRepository {
   readonly rows = new Map<string, ContentWrite>();
+  readonly textSavedAt = new Map<string, Date>();
   readonly trashed = new Map<string, Date>();
   /** Approved comment counts, kept by `MemoryCommentRepository`. */
   readonly commentCounts = new Map<string, number>();
@@ -224,11 +226,11 @@ export class MemoryContentRepository implements ContentRepository {
       .map((row) => this.toRecord(row));
   }
 
-  insert(record: ContentWrite) {
-    return this.exclusive(() => this.add(record));
+  insert(record: ContentWrite, revision: RevisionSave) {
+    return this.transaction(() => this.add(record, revision));
   }
 
-  private async add(record: ContentWrite) {
+  private async add(record: ContentWrite, revision: RevisionSave) {
     await checkContentParent(
       { id: record.id, type: record.type, parentId: record.parentId ?? null },
       async (id) => {
@@ -243,6 +245,8 @@ export class MemoryContentRepository implements ContentRepository {
       throw conflict('Slug is already in use');
     await this.permalinks.assign(record, false);
     this.rows.set(record.id, structuredClone(record));
+    this.textSavedAt.set(record.id, record.updatedAt);
+    this.revisions.save(this.toRecord(record), revision);
     return this.toRecord(record);
   }
 
@@ -250,6 +254,7 @@ export class MemoryContentRepository implements ContentRepository {
   readonly revisions: MemoryRevisionRepository = new MemoryRevisionRepository({
     exclusive: (task) => this.exclusive(task),
     savedAt: (id) => this.rows.get(id)?.updatedAt,
+    snapshot: (id) => this.rows.get(id),
   });
 
   /** Content writes and autosaves run one at a time, like the Prisma adapter's write lock. */
@@ -260,11 +265,19 @@ export class MemoryContentRepository implements ContentRepository {
     return run;
   }
 
-  update(record: ContentWrite, guard: ContentWriteGuard = {}) {
-    return this.exclusive(() => this.write(record, guard));
+  update(
+    record: ContentWrite,
+    revision: RevisionSave,
+    guard: ContentWriteGuard = {},
+  ) {
+    return this.transaction(() => this.write(record, revision, guard));
   }
 
-  private async write(input: ContentWrite, guard: ContentWriteGuard) {
+  private async write(
+    input: ContentWrite,
+    revision: RevisionSave,
+    guard: ContentWriteGuard,
+  ) {
     const stored = this.rows.get(input.id);
     // The version (`updatedAt`) strictly advances, so equal clocks never share one.
     const record =
@@ -276,10 +289,30 @@ export class MemoryContentRepository implements ContentRepository {
       stored?.updatedAt.getTime() !== guard.expectedUpdatedAt.getTime()
     )
       throw conflict(Errors.ContentChanged);
+    if (guard.revision) {
+      if (
+        stored?.authorId !== guard.revision.authorId ||
+        stored?.status !== guard.revision.status
+      )
+        throw conflict(Errors.ContentChanged);
+      if (
+        !this.revisions.rows.some(
+          (row) =>
+            row.id === guard.revision!.id &&
+            row.contentId === record.id &&
+            (row.kind === 'revision' || row.kind === 'autosave'),
+        )
+      )
+        throw notFound(Errors.RevisionNotFound);
+    }
     if (
       guard.autosaveOf &&
       stored &&
-      this.revisions.pendingNow(record.id, guard.autosaveOf, stored.updatedAt)
+      this.revisions.pendingNow(
+        record.id,
+        guard.autosaveOf,
+        this.textSavedAt.get(record.id) ?? stored.updatedAt,
+      )
     )
       throw conflict(Errors.ContentAutosavePending);
     if (
@@ -303,6 +336,16 @@ export class MemoryContentRepository implements ContentRepository {
     const current = this.rows.get(record.id);
     await this.permalinks.assign(record, current?.publishedAt != null);
     this.rows.set(record.id, structuredClone(record));
+    this.textSavedAt.set(
+      record.id,
+      stored &&
+        stored.title === record.title &&
+        stored.excerpt === record.excerpt &&
+        JSON.stringify(stored.document) === JSON.stringify(record.document)
+        ? (this.textSavedAt.get(record.id) ?? stored.updatedAt)
+        : record.updatedAt,
+    );
+    this.revisions.save(this.toRecord(record), revision);
     return this.toRecord(record);
   }
 
@@ -310,7 +353,33 @@ export class MemoryContentRepository implements ContentRepository {
     return this.exclusive(() => this.erase(id));
   }
 
-  private async erase(id: string) {
+  /** Shared rollback boundary for content writes and user-deletion cascades. */
+  transaction<T>(task: () => Promise<T>) {
+    return this.exclusive(async () => {
+      const rows = structuredClone([...this.rows]);
+      const paths = structuredClone([...this.permalinks.paths]);
+      const savedAt = structuredClone([...this.textSavedAt]);
+      const trashed = structuredClone([...this.trashed]);
+      const revisions = structuredClone(this.revisions.rows);
+      try {
+        return await task();
+      } catch (caught) {
+        this.rows.clear();
+        for (const [id, row] of rows) this.rows.set(id, row);
+        this.permalinks.paths.clear();
+        for (const [id, path] of paths) this.permalinks.paths.set(id, path);
+        this.textSavedAt.clear();
+        for (const [id, at] of savedAt) this.textSavedAt.set(id, at);
+        this.trashed.clear();
+        for (const [id, at] of trashed) this.trashed.set(id, at);
+        this.revisions.rows.splice(0, this.revisions.rows.length, ...revisions);
+        throw caught;
+      }
+    });
+  }
+
+  /** Caller already holds the content write queue. */
+  async erase(id: string) {
     const rows = structuredClone([...this.rows]);
     const paths = structuredClone([...this.permalinks.paths]);
     try {
@@ -320,6 +389,10 @@ export class MemoryContentRepository implements ContentRepository {
         if (row.parentId === id) row.parentId = null;
       await this.permalinks.saveSettings(await this.permalinks.readSettings());
       this.trashed.delete(id);
+      this.textSavedAt.delete(id);
+      for (const revision of [...this.revisions.rows])
+        if (revision.contentId === id)
+          this.revisions.rows.splice(this.revisions.rows.indexOf(revision), 1);
     } catch (caught) {
       this.rows.clear();
       for (const [key, row] of rows) this.rows.set(key, row);
@@ -359,6 +432,7 @@ export class MemoryContentRepository implements ContentRepository {
         .map(({ id, name, slug }) => ({ id, name, slug }));
     return {
       id: row.id,
+      textSavedAt: this.textSavedAt.get(row.id) ?? row.updatedAt,
       type: row.type,
       slug: row.slug,
       path,

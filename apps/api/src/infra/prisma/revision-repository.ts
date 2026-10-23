@@ -3,10 +3,16 @@ import type {
   RevisionRecord,
   RevisionRepository,
   RevisionWrite,
+  RevisionDeleteGuard,
+  RevisionSave,
 } from '#api/domain/content/revisions';
 import type { Database } from '#api/infra/prisma/client';
 import { lockPermalinks } from '#api/infra/prisma/permalink-repository';
-import type { ContentRevision } from '#api/infra/prisma/generated/client';
+import type {
+  Content,
+  ContentRevision,
+} from '#api/infra/prisma/generated/client';
+import { conflict, invalidInput, notFound, Errors } from '#api/shared/errors';
 
 type Row = ContentRevision & { author: { name: string } | null };
 
@@ -25,7 +31,7 @@ const toRow = ({ document, ...revision }: RevisionWrite) => ({
 const withAuthor = { author: { select: { name: true } } } as const;
 
 /**
- * The user's autosave newer than the entry's last text save (newest revision, else `savedAt`).
+ * The user's autosave newer than the durable text-save watermark.
  * Shared with the content write guard, which runs it inside its locked transaction.
  */
 export const pendingIn = async (
@@ -34,39 +40,60 @@ export const pendingIn = async (
   authorId: string,
   savedAt: Date,
 ) => {
-  // Sequential: inside an interactive transaction the queries share one connection.
   const autosave = await db.contentRevision.findFirst({
     where: { contentId, authorId, kind: 'autosave' },
     include: withAuthor,
   });
   if (!autosave) return null;
-  const latest = await db.contentRevision.findFirst({
-    where: { contentId, kind: 'revision' },
-    select: { createdAt: true },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-  });
-  const baseline = latest?.createdAt ?? savedAt;
-  return autosave.createdAt > baseline ? toRecord(autosave) : null;
+  return autosave.createdAt > savedAt ? toRecord(autosave) : null;
+};
+
+/** Called only inside the content write transaction, after its locked text comparison. */
+export const saveRevisionIn = async (
+  tx: Pick<Database, 'contentRevision'>,
+  record: Pick<
+    Content,
+    'id' | 'title' | 'excerpt' | 'document' | 'textSavedAt' | 'updatedAt'
+  >,
+  revision: RevisionSave,
+) => {
+  if (record.textSavedAt.getTime() === record.updatedAt.getTime()) {
+    await tx.contentRevision.create({
+      data: {
+        id: revision.id,
+        contentId: record.id,
+        authorId: revision.authorId,
+        kind: 'revision',
+        title: record.title,
+        excerpt: record.excerpt,
+        document: record.document,
+        createdAt: record.textSavedAt,
+      },
+    });
+    const stale = await tx.contentRevision.findMany({
+      where: { contentId: record.id, kind: 'revision' },
+      select: { id: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: revision.keep,
+    });
+    if (stale.length)
+      await tx.contentRevision.deleteMany({
+        where: { id: { in: stale.map((row) => row.id) } },
+      });
+  }
+  if (revision.clearAutosave)
+    await tx.contentRevision.deleteMany({
+      where: {
+        contentId: record.id,
+        authorId: revision.authorId,
+        kind: 'autosave',
+        createdAt: { lte: record.updatedAt },
+      },
+    });
 };
 
 export class PrismaRevisionRepository implements RevisionRepository {
   constructor(private readonly db: Database) {}
-
-  async add(revision: RevisionWrite, keep: number) {
-    await this.db.$transaction(async (tx) => {
-      await tx.contentRevision.create({ data: toRow(revision) });
-      const stale = await tx.contentRevision.findMany({
-        where: { contentId: revision.contentId, kind: 'revision' },
-        select: { id: true },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        skip: keep,
-      });
-      if (stale.length)
-        await tx.contentRevision.deleteMany({
-          where: { id: { in: stale.map((row) => row.id) } },
-        });
-    });
-  }
 
   async autosave(revision: RevisionWrite) {
     await this.db.$transaction(async (tx) => {
@@ -93,9 +120,31 @@ export class PrismaRevisionRepository implements RevisionRepository {
     });
   }
 
-  async clearAutosave(contentId: string, authorId: string) {
-    await this.db.contentRevision.deleteMany({
-      where: { contentId, authorId, kind: 'autosave' },
+  async delete(contentId: string, id: string, guard: RevisionDeleteGuard) {
+    await this.db.$transaction(async (tx) => {
+      await lockPermalinks(tx);
+      const current = await tx.content.findUnique({
+        where: { id: contentId },
+        select: { updatedAt: true, authorId: true, status: true },
+      });
+      if (!current) throw notFound(Errors.ContentNotFound);
+      if (
+        current.updatedAt.getTime() !== guard.updatedAt.getTime() ||
+        current.authorId !== guard.authorId ||
+        current.status !== guard.status
+      )
+        throw conflict(Errors.ContentChanged);
+      const revision = await tx.contentRevision.findFirst({
+        where: { id, contentId },
+        select: { kind: true },
+      });
+      if (!revision) throw notFound(Errors.RevisionNotFound);
+      if (revision.kind !== 'revision')
+        throw invalidInput(Errors.RevisionAutosaveDelete);
+      const result = await tx.contentRevision.deleteMany({
+        where: { id, contentId, kind: 'revision' },
+      });
+      if (!result.count) throw notFound(Errors.RevisionNotFound);
     });
   }
 

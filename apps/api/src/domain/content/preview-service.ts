@@ -56,7 +56,7 @@ export class PreviewService {
       (await this.deps.revisions.pendingAutosave(
         contentId,
         userId,
-        record.updatedAt,
+        record.textSavedAt,
       )) ?? record;
     return publicContentSchema.parse({
       id: record.id,

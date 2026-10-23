@@ -9,6 +9,7 @@ import type {
   TermSummary,
   ExtraTermSummary,
 } from '@cms/sdk';
+import type { RevisionSave } from '#api/domain/content/revisions';
 
 /** Stored content as read back, with its assigned terms ordered by `compareTerms`. */
 export interface ContentRecord {
@@ -28,6 +29,8 @@ export interface ContentRecord {
   publishedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  /** Last saved text version; independent of deletable history and status-only writes. */
+  textSavedAt: Date;
   /** Set while in the trash. Trashed entries are never public. */
   trashedAt: Date | null;
   authorId: string;
@@ -68,6 +71,7 @@ export interface ContentWrite extends Omit<
   | 'trashedAt'
   | 'featuredImage'
   | 'commentCount'
+  | 'textSavedAt'
 > {
   /** Media the entry shows (body images and featured image); rebuilt on every save. */
   mediaIds: string[];
@@ -85,6 +89,8 @@ export interface ContentWriteGuard {
   expectedUpdatedAt?: Date;
   /** A user whose pending autosave of the entry refuses the write. */
   autosaveOf?: string;
+  /** Source and authorized ownership snapshot for a revision restore. */
+  revision?: { id: string; authorId: string; status: ContentStatus };
 }
 
 export interface ContentCriteria {
@@ -139,7 +145,7 @@ export interface ContentRepository {
    * (see `checkTermKinds`) when an id is not a term of the matching taxonomy.
    * Content and its current path are saved atomically; path conflicts change neither.
    */
-  insert(record: ContentWrite): Promise<ContentRecord>;
+  insert(record: ContentWrite, revision: RevisionSave): Promise<ContentRecord>;
   /**
    * Replaces fields/assignments and moves the path atomically, retaining all previously public URLs.
    * `record.publishedAt` is written as given (the service resolves an omitted date). Throws
@@ -149,6 +155,7 @@ export interface ContentRepository {
    */
   update(
     record: ContentWrite,
+    revision: RevisionSave,
     guard?: ContentWriteGuard,
   ): Promise<ContentRecord>;
   /** Also removes its term assignments, paths and revisions. */

@@ -20,7 +20,7 @@ import { ContentService } from '#api/domain/content/content-service';
 import { ContentTypeService } from '#api/domain/content/content-types';
 import { FieldService } from '#api/domain/content/fields';
 import { PublishedContentReader } from '#api/domain/content/public-content';
-import { inputOf } from '#api/domain/content/revision-service';
+import { RevisionService, inputOf } from '#api/domain/content/revision-service';
 import { MediaService } from '#api/domain/media/media-service';
 import { ArchivePathsService } from '#api/domain/permalinks/archive-paths';
 import { PermalinkResolver } from '#api/domain/permalinks/permalink-resolver';
@@ -35,7 +35,10 @@ import { PrismaCommentRepository } from '#api/infra/prisma/comment-repository';
 import { PrismaContentRepository } from '#api/infra/prisma/content-repository';
 import { PrismaJobQueue } from '#api/infra/prisma/job-queue';
 import { PrismaMediaRepository } from '#api/infra/prisma/media-repository';
-import { PrismaPermalinkRepository } from '#api/infra/prisma/permalink-repository';
+import {
+  lockPermalinks,
+  PrismaPermalinkRepository,
+} from '#api/infra/prisma/permalink-repository';
 import { PrismaPublishedContentRepository } from '#api/infra/prisma/published-content-repository';
 import { PrismaRateLimitStore } from '#api/infra/prisma/rate-limit-store';
 import { PrismaRevisionRepository } from '#api/infra/prisma/revision-repository';
@@ -86,10 +89,9 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
 
   afterAll(() => drop(), SLOW);
 
-  const services = () => {
+  const services = (repository = new PrismaContentRepository(db)) => {
     const settings = new PrismaSettingsRepository(db);
     const types = new ContentTypeService(settings, async () => false);
-    const repository = new PrismaContentRepository(db);
     const content = new ContentService({
       repository,
       renderer: tiptapRenderer,
@@ -97,7 +99,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       ids: uuidV7,
       clock: systemClock,
       users: new PrismaUserRepository(db),
-      revisions: new PrismaRevisionRepository(db),
+
       hasher: plainHasher,
       types,
       fields: new FieldService({ settings, images: async () => new Map() }),
@@ -152,6 +154,463 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       source: new PrismaSearchSource(db),
     };
   };
+
+  test(
+    'text-save migration backfills history without hiding valid autosaves, including entries without history',
+    async () => {
+      const { content } = services();
+      const entry = await content.create(
+        {
+          type: 'post',
+          title: 'Migration history',
+          document: paragraph('Saved'),
+        },
+        ADMIN,
+      );
+      const noHistory = await content.create(
+        {
+          type: 'post',
+          title: 'Migration fallback',
+          document: paragraph('Saved'),
+        },
+        ADMIN,
+      );
+      const savedAt = new Date('2026-03-01T00:00:00Z');
+      const autosaveAt = new Date('2026-03-02T00:00:00Z');
+      const statusAt = new Date('2026-03-03T00:00:00Z');
+      await db.contentRevision.updateMany({
+        where: { contentId: entry.id },
+        data: { createdAt: savedAt },
+      });
+      await db.contentRevision.deleteMany({
+        where: { contentId: noHistory.id },
+      });
+      await db.content.updateMany({
+        where: { id: { in: [entry.id, noHistory.id] } },
+        data: { updatedAt: statusAt },
+      });
+      await db.contentRevision.create({
+        data: {
+          id: uuidV7.next(),
+          contentId: entry.id,
+          authorId: ADMIN.id,
+          kind: 'autosave',
+          title: 'Pending across migration',
+          excerpt: '',
+          document: JSON.stringify(paragraph('Unsaved')),
+          createdAt: autosaveAt,
+        },
+      });
+      // Re-run the actual additive migration against populated pre-column rows in this disposable DB.
+      await db.$executeRawUnsafe(
+        'ALTER TABLE contents DROP COLUMN text_saved_at',
+      );
+      const sql = await Bun.file(
+        new URL(
+          '../prisma/migrations/20261108100000_content_text_saved_at/migration.sql',
+          import.meta.url,
+        ),
+      ).text();
+      for (const statement of sql
+        .split(';')
+        .map((part) => part.trim())
+        .filter(Boolean))
+        await db.$executeRawUnsafe(statement);
+      expect(
+        (await db.content.findUniqueOrThrow({ where: { id: entry.id } }))
+          .textSavedAt,
+      ).toEqual(savedAt);
+      expect(
+        (await db.content.findUniqueOrThrow({ where: { id: noHistory.id } }))
+          .textSavedAt,
+      ).toEqual(statusAt);
+      const revisions = new PrismaRevisionRepository(db);
+      expect(
+        (await revisions.pendingAutosave(entry.id, ADMIN.id, savedAt))?.title,
+      ).toBe('Pending across migration');
+      const baseline = await new PrismaContentRepository(db).findById(entry.id);
+      for (const row of await revisions.list(entry.id))
+        if (row.kind === 'revision')
+          await revisions.delete(entry.id, row.id, baseline!);
+      expect(await new PrismaContentRepository(db).findById(entry.id)).toEqual(
+        baseline,
+      );
+      expect(
+        (await revisions.pendingAutosave(entry.id, ADMIN.id, savedAt))?.title,
+      ).toBe('Pending across migration');
+    },
+    SLOW,
+  );
+
+  test(
+    'revision mutations share the content lock, reject stale ownership and source rows, and preserve later autosaves',
+    async () => {
+      const { content, repository } = services();
+      const revisions = new PrismaRevisionRepository(db);
+      const history = new RevisionService({
+        content,
+        revisions,
+        renderer: tiptapRenderer,
+        ids: uuidV7,
+        clock: systemClock,
+      });
+      const entry = await content.create(
+        { type: 'post', title: 'Original', document: paragraph('Original') },
+        ADMIN,
+      );
+      const source = (await history.list(entry.id, ADMIN))[0]!;
+      const current = await content.update(
+        entry.id,
+        { ...inputOf(entry), title: 'Current' },
+        ADMIN,
+      );
+      const guard = (await repository.findById(entry.id))!;
+      const other = userRecord({
+        id: uuidV7.next(),
+        email: 'revision-owner@example.com',
+        slug: 'revision-owner',
+        createdAt: new Date(),
+      });
+      await new PrismaUserRepository(db).insert(other);
+      const entered = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      const reassignment = db.$transaction(async (tx) => {
+        await lockPermalinks(tx);
+        entered.resolve();
+        await resume.promise;
+        // User reassignment changes no updatedAt; the ownership check must catch it separately.
+        await tx.content.update({
+          where: { id: entry.id },
+          data: { authorId: other.id },
+        });
+      });
+      await entered.promise;
+      let finished = false;
+      const deletion = revisions.delete(entry.id, source.id, guard).then(
+        () => {
+          finished = true;
+          return null;
+        },
+        (error: unknown) => {
+          finished = true;
+          return error;
+        },
+      );
+      try {
+        await Bun.sleep(50);
+        expect(finished).toBe(false);
+      } finally {
+        resume.resolve();
+      }
+      await reassignment;
+      expect(await deletion).toMatchObject({ code: 'conflict' });
+      expect(await revisions.get(source.id)).not.toBeNull();
+      await db.content.update({
+        where: { id: entry.id },
+        data: { authorId: ADMIN.id },
+      });
+      const sourceRecord = (await revisions.get(source.id))!;
+      await history.delete(entry.id, source.id, ADMIN);
+      // A stale restore has already read the source, but deletion wins before its locked write.
+      await expect(
+        content.update(
+          entry.id,
+          {
+            ...inputOf(current),
+            title: sourceRecord.title,
+            document: sourceRecord.document,
+            expectedUpdatedAt: current.updatedAt,
+          },
+          ADMIN,
+          { id: source.id, authorId: ADMIN.id, status: current.status },
+        ),
+      ).rejects.toMatchObject({ code: 'not_found' });
+      expect((await content.get(entry.id, ADMIN)).title).toBe('Current');
+      await history.autosave(
+        entry.id,
+        { title: 'Newer tab', excerpt: '', document: paragraph('Unsaved') },
+        ADMIN,
+      );
+      const clearing = Promise.withResolvers<void>();
+      const complete = Promise.withResolvers<void>();
+      const paused = db.$extends({
+        query: {
+          contentRevision: {
+            deleteMany: async ({ args, query }) => {
+              const result = await query(args);
+              if (args.where?.kind === 'autosave') {
+                clearing.resolve();
+                await complete.promise;
+              }
+              return result;
+            },
+          },
+        },
+      }) as unknown as Database;
+      const saving = services(
+        new PrismaContentRepository(paused),
+      ).content.update(
+        entry.id,
+        { ...inputOf(current), title: 'Completed save' },
+        ADMIN,
+      );
+      await clearing.promise;
+      let autosaved = false;
+      const autosaving = history
+        .autosave(
+          entry.id,
+          { title: 'Newer tab', excerpt: '', document: paragraph('Unsaved') },
+          ADMIN,
+        )
+        .then(() => {
+          autosaved = true;
+        });
+      try {
+        await Bun.sleep(50);
+        expect(autosaved).toBe(false);
+      } finally {
+        complete.resolve();
+      }
+      const renewed = await saving;
+      await autosaving;
+      const later = (await revisions.findAutosave(entry.id, ADMIN.id))!;
+      expect((await history.pendingAutosave(entry.id, ADMIN))?.id).toBe(
+        later.id,
+      );
+      await expect(
+        revisions.delete(
+          entry.id,
+          later.id,
+          (await repository.findById(entry.id))!,
+        ),
+      ).rejects.toMatchObject({ code: 'invalid_input' });
+      expect(await revisions.findAutosave(entry.id, ADMIN.id)).toEqual(later);
+      // Pruning takes the same lock and also cannot invalidate the durable watermark.
+      const watermark = (await repository.findById(entry.id))!.textSavedAt;
+      let next = renewed;
+      for (let index = 0; index < 26; index++)
+        next = await content.update(
+          entry.id,
+          { ...inputOf(next), title: `Prune ${index}`, preserveAutosave: true },
+          { ...ADMIN, id: other.id },
+        );
+      expect(
+        (await revisions.list(entry.id)).filter(
+          (row) => row.kind === 'revision',
+        ),
+      ).toHaveLength(25);
+      expect(
+        (await repository.findById(entry.id))!.textSavedAt > watermark,
+      ).toBe(true);
+      expect(await revisions.findAutosave(entry.id, ADMIN.id)).toEqual(later);
+    },
+    SLOW,
+  );
+
+  test(
+    'metadata-only saves preserve other writers’ pending text and the current revision on MariaDB',
+    async () => {
+      const { content, repository, taxonomy } = services();
+      const revisions = new PrismaRevisionRepository(db);
+      const history = new RevisionService({
+        content,
+        revisions,
+        renderer: tiptapRenderer,
+        ids: uuidV7,
+        clock: systemClock,
+      });
+      const entry = await content.create(
+        {
+          type: 'post',
+          title: 'Metadata base',
+          document: paragraph('Unchanged'),
+        },
+        ADMIN,
+      );
+      const writer = userRecord({
+        id: uuidV7.next(),
+        email: 'metadata-writer@example.com',
+        slug: 'metadata-writer',
+        createdAt: new Date(),
+      });
+      await new PrismaUserRepository(db).insert(writer);
+      const other = { ...ADMIN, id: writer.id };
+      await history.autosave(
+        entry.id,
+        {
+          title: 'Other pending text',
+          excerpt: '',
+          document: paragraph('Unsaved'),
+        },
+        other,
+      );
+      const before = (await repository.findById(entry.id))!;
+      const listed = await history.list(entry.id, ADMIN);
+      const term = await taxonomy.create('category', {
+        name: 'Revision metadata',
+      });
+      const metadata = await content.update(
+        entry.id,
+        {
+          ...inputOf(entry),
+          status: 'published',
+          categoryIds: [term.id],
+          preserveAutosave: true,
+        },
+        ADMIN,
+      );
+      expect(metadata.updatedAt > entry.updatedAt).toBe(true);
+      expect((await repository.findById(entry.id))!.textSavedAt).toEqual(
+        before.textSavedAt,
+      );
+      expect(await history.list(entry.id, ADMIN)).toEqual(listed);
+      expect((await history.pendingAutosave(entry.id, other))?.title).toBe(
+        'Other pending text',
+      );
+      await history.autosave(
+        entry.id,
+        { title: 'Own pending text', excerpt: '', document: paragraph('Own') },
+        ADMIN,
+      );
+      await content.update(entry.id, inputOf(metadata), ADMIN);
+      expect(await revisions.findAutosave(entry.id, ADMIN.id)).toBeNull();
+      expect((await history.pendingAutosave(entry.id, other))?.title).toBe(
+        'Other pending text',
+      );
+      expect(
+        (await history.list(entry.id, ADMIN)).filter(
+          (row) => row.kind === 'revision',
+        ),
+      ).toEqual(listed.filter((row) => row.kind === 'revision'));
+    },
+    SLOW,
+  );
+
+  test(
+    'revision persistence failures roll back content, history, covered autosaves, paths and outbox together',
+    async () => {
+      const { content } = services();
+      const entry = await content.create(
+        {
+          type: 'post',
+          title: 'Atomic original',
+          document: paragraph('Original'),
+        },
+        ADMIN,
+      );
+      const revisions = new PrismaRevisionRepository(db);
+      const history = new RevisionService({
+        content,
+        revisions,
+        renderer: tiptapRenderer,
+        ids: uuidV7,
+        clock: systemClock,
+      });
+      await history.autosave(
+        entry.id,
+        {
+          title: 'Covered autosave',
+          excerpt: '',
+          document: paragraph('Unsaved'),
+        },
+        ADMIN,
+      );
+      const before = await db.content.findUniqueOrThrow({
+        where: { id: entry.id },
+      });
+      const historyBefore = await revisions.list(entry.id);
+      const pathsBefore = await db.contentPath.findMany({
+        where: { contentId: entry.id },
+      });
+      const outboxBefore = await db.searchOutbox.count({
+        where: { contentId: entry.id },
+      });
+      for (const stage of ['revision', 'clear'] as const) {
+        const failing = db.$extends({
+          query: {
+            contentRevision: {
+              create: async ({ args, query }) => {
+                const result = await query(args);
+                if (stage === 'revision')
+                  throw new Error('Injected revision failure');
+                return result;
+              },
+              deleteMany: async ({ args, query }) => {
+                const result = await query(args);
+                if (stage === 'clear' && args.where?.kind === 'autosave')
+                  throw new Error('Injected clear failure');
+                return result;
+              },
+            },
+          },
+        }) as unknown as Database;
+        const failed = services(new PrismaContentRepository(failing)).content;
+        await expect(
+          failed.update(
+            entry.id,
+            {
+              ...inputOf(entry),
+              title: 'Must roll back',
+              slug: 'atomic-failed-path',
+            },
+            ADMIN,
+          ),
+        ).rejects.toThrow('Injected');
+        expect(
+          await db.content.findUniqueOrThrow({ where: { id: entry.id } }),
+        ).toEqual(before);
+        expect(await revisions.list(entry.id)).toEqual(historyBefore);
+        expect(
+          await db.contentPath.findMany({ where: { contentId: entry.id } }),
+        ).toEqual(pathsBefore);
+        expect(
+          await db.searchOutbox.count({ where: { contentId: entry.id } }),
+        ).toBe(outboxBefore);
+        await expect(
+          failed.create(
+            {
+              type: 'post',
+              title: 'Failed atomic create',
+              slug: 'atomic-failed-create',
+              document: paragraph('New'),
+            },
+            ADMIN,
+          ),
+        ).rejects.toThrow('Injected');
+        expect(
+          await db.content.count({ where: { slug: 'atomic-failed-create' } }),
+        ).toBe(0);
+      }
+      // A lost response AFTER commit must leave the whole save committed; never compensate it.
+      const repository = new PrismaContentRepository(db);
+      const update = repository.update.bind(repository);
+      repository.update = async (...args) => {
+        await update(...args);
+        throw new Error('Response lost after commit');
+      };
+      await expect(
+        services(repository).content.update(
+          entry.id,
+          { ...inputOf(entry), title: 'Atomic committed' },
+          ADMIN,
+        ),
+      ).rejects.toThrow('Response lost');
+      const committed = await db.content.findUniqueOrThrow({
+        where: { id: entry.id },
+      });
+      expect(committed.title).toBe('Atomic committed');
+      expect(committed.textSavedAt).toEqual(committed.updatedAt);
+      expect(
+        (await history.list(entry.id, ADMIN)).find((row) => row.isCurrent)
+          ?.title,
+      ).toBe('Atomic committed');
+      expect(await revisions.findAutosave(entry.id, ADMIN.id)).toBeNull();
+      expect(
+        await db.searchOutbox.count({ where: { contentId: entry.id } }),
+      ).toBe(outboxBefore + 1);
+    },
+    SLOW,
+  );
 
   test('content writes queue search updates in their transaction; documents carry category ancestors', async () => {
     const { content, taxonomy, source } = services();
@@ -466,12 +925,25 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     );
 
     const limits = new PrismaRateLimitStore(db);
+    const otherLimits = new PrismaRateLimitStore(db);
     const rule = { ...DEFAULT_RATE_RULES.commentClient, max: 5 };
-    await Promise.all(
-      Array.from({ length: 5 }, () => limits.hit('ip:1', rule, new Date())),
+    const attempts = await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        (index % 2 ? limits : otherLimits).hit('ip:1', rule, now),
+      ),
     );
-    expect(await limits.exceeded('ip:1', rule, new Date())).toBe(true);
-    expect(await limits.exceeded('ip:2', rule, new Date())).toBe(false);
+    expect(attempts.filter((over) => !over)).toHaveLength(5);
+    expect(attempts.filter(Boolean)).toHaveLength(3);
+    expect(await limits.exceeded('ip:1', rule, now)).toBe(true);
+    expect(await limits.exceeded('ip:2', rule, now)).toBe(false);
+    const expiry = new Date(
+      now.getTime() + Math.max(rule.windowSeconds, rule.blockSeconds) * 1000,
+    );
+    expect(
+      await otherLimits.hit('ip:1', rule, new Date(expiry.getTime() - 1)),
+    ).toBe(true);
+    expect(await limits.hit('ip:1', rule, expiry)).toBe(false);
+    expect(await otherLimits.exceeded('ip:1', rule, expiry)).toBe(false);
   });
 
   test('role deletion is atomic with assignments across processes', async () => {

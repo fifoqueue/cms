@@ -73,6 +73,15 @@ describe('DTO trust boundaries', () => {
   });
 
   test('public content rejects admin fields before they can become page data', async () => {
+    const stored = { title: ' Public title ', focusKeyword: 'private' };
+    const projected = toPublicEntrySeo(stored);
+    expect(projected).toEqual({ ...published.seo, title: 'Public title' });
+    projected.title = 'Changed copy';
+    expect(toPublicEntrySeo(stored).title).toBe('Public title');
+    expect(() =>
+      toPublicEntrySeo({ ...stored, canonicalUrl: 'javascript:alert(1)' }),
+    ).toThrow();
+
     for (const extra of [
       { document: { type: 'doc', content: [] } },
       { authorId: 'private-user' },

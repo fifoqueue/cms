@@ -68,7 +68,6 @@ test('plugin blocks render through isolation, are checked on save and survive th
     ids: sequentialIds(),
     clock: fixedClock(),
     users: noUsers,
-    revisions: repository.revisions,
     hasher: plainHasher,
     types: testTypes(),
     fields: testFields(),

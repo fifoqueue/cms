@@ -13,21 +13,28 @@ import type {
   RevisionRepository,
 } from '#api/domain/content/revisions';
 import type { Clock, IdGenerator } from '#api/domain/ports';
-import { notFound, Errors } from '#api/shared/errors';
+import { notFound, invalidInput, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 
 const toSummary = (
   revision: Omit<RevisionRecord, 'document' | 'excerpt'>,
+  savedAt: Date,
 ): ContentRevisionSummary => ({
   id: revision.id,
   kind: revision.kind,
   authorName: revision.authorName,
   createdAt: revision.createdAt.toISOString(),
   title: revision.title,
+  isCurrent:
+    revision.kind === 'revision' &&
+    revision.createdAt.getTime() === savedAt.getTime(),
 });
 
-const toRevision = (revision: RevisionRecord): ContentRevision => ({
-  ...toSummary(revision),
+const toRevision = (
+  revision: RevisionRecord,
+  savedAt: Date,
+): ContentRevision => ({
+  ...toSummary(revision, savedAt),
   excerpt: revision.excerpt,
   document: revision.document,
 });
@@ -68,8 +75,10 @@ export class RevisionService {
     contentId: string,
     actor: Actor,
   ): Promise<ContentRevisionSummary[]> {
-    await this.editable(contentId, actor);
-    return (await this.deps.revisions.list(contentId)).map(toSummary);
+    const record = await this.editable(contentId, actor);
+    return (await this.deps.revisions.list(contentId)).map((revision) =>
+      toSummary(revision, record.textSavedAt),
+    );
   }
 
   async get(
@@ -77,8 +86,20 @@ export class RevisionService {
     id: string,
     actor: Actor,
   ): Promise<ContentRevision> {
-    await this.editable(contentId, actor);
-    return toRevision(await this.require(contentId, id));
+    const record = await this.editable(contentId, actor);
+    return toRevision(await this.require(contentId, id), record.textSavedAt);
+  }
+
+  async delete(contentId: string, id: string, actor: Actor): Promise<void> {
+    const record = await this.editable(contentId, actor);
+    const revision = await this.require(contentId, id);
+    if (revision.kind !== 'revision')
+      throw invalidInput(Errors.RevisionAutosaveDelete);
+    await this.deps.revisions.delete(contentId, id, {
+      updatedAt: record.updatedAt,
+      authorId: record.authorId,
+      status: record.status,
+    });
   }
 
   /** Copies a revision's text into the entry; everything else stays as it is. */
@@ -96,8 +117,10 @@ export class RevisionService {
         title: revision.title,
         excerpt: revision.excerpt,
         document: revision.document,
+        expectedUpdatedAt: entry.updatedAt,
       },
       actor,
+      { id, authorId: entry.authorId, status: entry.status },
     );
   }
 
@@ -128,9 +151,9 @@ export class RevisionService {
     const autosave = await this.deps.revisions.pendingAutosave(
       contentId,
       actor.id,
-      record.updatedAt,
+      record.textSavedAt,
     );
-    return autosave && toRevision(autosave);
+    return autosave && toRevision(autosave, record.textSavedAt);
   }
 
   private async editable(contentId: string, actor: Actor) {

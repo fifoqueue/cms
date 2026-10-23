@@ -21,6 +21,7 @@ import type {
   ContentRecord,
   ContentRepository,
   ContentWrite,
+  ContentWriteGuard,
   DocumentRenderer,
 } from '#api/domain/content/content-repository';
 import {
@@ -28,7 +29,7 @@ import {
   plainText,
   summarize,
 } from '#api/domain/content/plain-text';
-import type { RevisionRepository } from '#api/domain/content/revisions';
+import type { RevisionSave } from '#api/domain/content/revisions';
 import type { ContentTypeService } from '#api/domain/content/content-types';
 import { fieldMediaIds } from '#api/domain/content/fields';
 import type { FieldService } from '#api/domain/content/fields';
@@ -46,7 +47,6 @@ import { parseInput } from '#api/shared/validation';
 
 export interface ContentServiceDeps {
   repository: ContentRepository;
-  revisions: RevisionRepository;
   renderer: DocumentRenderer;
   hooks: HookDispatcher;
   ids: IdGenerator;
@@ -112,28 +112,30 @@ export class ContentService {
     const id = this.deps.ids.next();
     const now = this.deps.clock.now();
     if (data.slug) await this.assertSlugFree(data.slug);
-    const record = await this.deps.repository.insert({
-      ...(await this.fields(data, null)),
-      ...this.schedule(data, null, now),
-      passwordHash: await this.passwordHash(data, null),
-      seo: data.seo ?? { ...DEFAULT_ENTRY_SEO },
-      id,
-      slug:
-        data.slug ??
-        (await uniqueSlug(
-          slugify(data.title) || `${data.type}-${id.slice(-12)}`,
-          async (candidates) =>
-            new Set([
-              ...RESERVED_CONTENT_SLUGS,
-              ...(await this.deps.repository.takenSlugs(candidates)),
-            ]),
-          () => this.deps.ids.next().slice(-8),
-        )),
-      createdAt: now,
-      updatedAt: now,
-      authorId,
-    });
-    await this.saveRevision(record, actor);
+    const record = await this.deps.repository.insert(
+      {
+        ...(await this.fields(data, null)),
+        ...this.schedule(data, null, now),
+        passwordHash: await this.passwordHash(data, null),
+        seo: data.seo ?? { ...DEFAULT_ENTRY_SEO },
+        id,
+        slug:
+          data.slug ??
+          (await uniqueSlug(
+            slugify(data.title) || `${data.type}-${id.slice(-12)}`,
+            async (candidates) =>
+              new Set([
+                ...RESERVED_CONTENT_SLUGS,
+                ...(await this.deps.repository.takenSlugs(candidates)),
+              ]),
+            () => this.deps.ids.next().slice(-8),
+          )),
+        createdAt: now,
+        updatedAt: now,
+        authorId,
+      },
+      this.revision(actor),
+    );
 
     const entry = toEntry(record);
     void this.deps.hooks.emit('content.created', entry);
@@ -147,6 +149,7 @@ export class ContentService {
     id: string,
     input: unknown,
     actor: Actor,
+    revision?: ContentWriteGuard['revision'],
   ): Promise<ContentEntry> {
     const current = await this.require(id);
     this.assertEditable(actor, current);
@@ -177,12 +180,13 @@ export class ContentService {
         updatedAt: now,
         authorId,
       },
+      this.revision(actor, !data.preserveAutosave),
       {
         expectedUpdatedAt: expected,
         autosaveOf: data.preserveAutosave ? actor.id : undefined,
+        revision,
       },
     );
-    await this.saveRevision(record, actor, !data.preserveAutosave);
 
     const entry = toEntry(record);
     void this.deps.hooks.emit('content.updated', entry);
@@ -344,27 +348,13 @@ export class ContentService {
     return data.password ? this.deps.hasher.hash(data.password) : null;
   }
 
-  /** Records the saved text; a full save also discards the actor's autosave it replaced. */
-  private async saveRevision(
-    record: ContentRecord,
-    actor: Actor,
-    clearAutosave = true,
-  ) {
-    await this.deps.revisions.add(
-      {
-        id: this.deps.ids.next(),
-        contentId: record.id,
-        authorId: actor.id,
-        kind: 'revision',
-        title: record.title,
-        excerpt: record.excerpt,
-        document: record.document,
-        createdAt: record.updatedAt,
-      },
-      REVISIONS_KEPT,
-    );
-    if (clearAutosave)
-      await this.deps.revisions.clearAutosave(record.id, actor.id);
+  private revision(actor: Actor, clearAutosave = true): RevisionSave {
+    return {
+      id: this.deps.ids.next(),
+      authorId: actor.id,
+      keep: REVISIONS_KEPT,
+      clearAutosave,
+    };
   }
 
   private async prepare(input: unknown): Promise<ContentData> {

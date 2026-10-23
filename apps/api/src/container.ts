@@ -528,7 +528,6 @@ export const createContainer = async (
 
   const content = new ContentService({
     repository: contentRepository,
-    revisions,
     renderer: tiptapRenderer,
     hooks,
     ids: uuidV7,

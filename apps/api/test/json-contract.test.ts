@@ -174,7 +174,6 @@ describe('content.public filter output', () => {
       ids: sequentialIds(),
       clock: fixedClock(),
       users: noUsers,
-      revisions: repository.revisions,
       hasher: plainHasher,
       types: testTypes(),
       fields: testFields(),

@@ -73,6 +73,31 @@
   const confirmRestore: SubmitFunction = ({ cancel }) => {
     if (!confirm(m.revisionRestoreAsk)) cancel();
   };
+
+  let deleting = $state(false);
+  let deleteFailed = $state(false);
+  const deleteRevision: SubmitFunction = ({ cancel }) => {
+    if (
+      deleting ||
+      !data.to ||
+      !confirm(m.revisionDeleteConfirm(date(data.to.createdAt)))
+    ) {
+      cancel();
+      return;
+    }
+    deleting = true;
+    deleteFailed = false;
+    return async ({ result, update }) => {
+      try {
+        if (result.type === 'error') deleteFailed = true;
+        else await update({ reset: false });
+      } catch {
+        deleteFailed = true;
+      } finally {
+        deleting = false;
+      }
+    };
+  };
 </script>
 
 {#snippet meta(
@@ -107,6 +132,9 @@
 </div>
 
 <FormMessage {form} />
+{#if deleteFailed}<p role="alert" class="text-destructive">
+    {m.revisionDeleteFailed}
+  </p>{/if}
 
 {#if data.from && data.to}
   <div class="space-y-4 rounded-md border bg-background p-4">
@@ -168,6 +196,22 @@
           <form method="POST" action="?/restore" use:enhance={confirmRestore}>
             <input type="hidden" name="revisionId" value={data.to.id} />
             <Button type="submit" size="sm">{m.revisionRestore}</Button>
+          </form>
+        {/if}
+        {#if data.to.kind === 'revision'}
+          <form
+            method="POST"
+            action="?/delete"
+            use:enhance={deleteRevision}
+            aria-busy={deleting}
+          >
+            <input type="hidden" name="revisionId" value={data.to.id} />
+            <Button
+              type="submit"
+              variant="destructive"
+              size="sm"
+              disabled={deleting}>{m.revisionDelete}</Button
+            >
           </form>
         {/if}
       </div>

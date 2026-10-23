@@ -61,9 +61,11 @@ export type AdminEntrySeo = z.output<typeof adminEntrySeoSchema>;
 export type EntrySeoInput = z.input<typeof seoInputSchema>;
 export const DEFAULT_ENTRY_SEO: AdminEntrySeo = adminEntrySeoSchema.parse({});
 
+const publicSeoProjection = publicEntrySeoSchema.strip();
+
 /** A schema allowlist, not a blacklist/spread of the stored admin object. */
 export const toPublicEntrySeo = (value: unknown): PublicEntrySeo =>
-  publicEntrySeoSchema.strip().parse(value);
+  publicSeoProjection.parse(value);
 
 const siteOriginSchema = z
   .string()

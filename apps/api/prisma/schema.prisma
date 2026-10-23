@@ -116,6 +116,7 @@ model Content {
   publishedAt          DateTime?         @map("published_at") @db.DateTime(3)
   createdAt            DateTime          @map("created_at") @db.DateTime(3)
   updatedAt            DateTime          @map("updated_at") @db.DateTime(3)
+  textSavedAt          DateTime          @map("text_saved_at") @db.DateTime(3)
   authorId             String            @map("author_id") @db.Char(36)
   /// Plain text of the document (no markup), searched together with the title and excerpt.
   searchText           String            @map("search_text") @db.LongText
