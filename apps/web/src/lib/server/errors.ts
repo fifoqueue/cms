@@ -12,7 +12,7 @@ export const Errors = {
     `Sitemap index would exceed ${limit} sitemaps`,
   FormInvalid: 'Please fix the fields below',
   PermalinkPatternsInvalid: 'Please fix the permalink patterns',
-  PasswordMismatch: '비밀번호가 일치하지 않습니다.',
+  PasswordMismatch: 'Passwords do not match.',
   SsoRequestExpired: 'The sign-in request has expired. Please try again.',
   PluginBundleRequired: 'Choose a plugin bundle (.js)',
   ImportFileRequired: 'Choose a WordPress export file (.xml)',

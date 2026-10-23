@@ -686,14 +686,18 @@
         <CardContent class="space-y-4">
           {#key `${editor.id}/${item.key}/${item.customized}`}
             <form
+              id="theme-blocks"
+              hidden
               method="POST"
               action={item.save}
               use:enhance={keep}
-              class="space-y-4"
             >
               <input type="hidden" name="theme" value={editor.id} />
               <input type="hidden" name={item.field} value={item.value} />
+            </form>
+            <div class="space-y-4">
               <BlockTreeEditor
+                form="theme-blocks"
                 blocks={item.blocks}
                 {colors}
                 {parts}
@@ -752,14 +756,14 @@
                 {/snippet}
               </BlockTreeEditor>
               <div class="flex flex-wrap items-center gap-3 border-t pt-4">
-                <Button type="submit">{m.save}</Button>
+                <Button type="submit" form="theme-blocks">{m.save}</Button>
                 {#if dirty}
                   <span class="text-sm text-muted-foreground" role="status"
                     >{m.editorUnsaved}</span
                   >
                 {/if}
               </div>
-            </form>
+            </div>
           {/key}
           {#if item.customized}
             <form method="POST" action={item.reset} use:enhance={confirmReset}>
