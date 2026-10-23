@@ -21,6 +21,7 @@ export const load: PageServerLoad = async (event) => {
     seo,
     authors,
     canPublish: can(user, 'content.publish'),
+    canManageTerms: can(user, 'taxonomy.manage'),
     authorId: event.locals.user!.id,
   };
 };
@@ -34,11 +35,13 @@ export const actions: Actions = {
     const { input, values, failure } = readContentForm(formData, model.fields);
     if (failure) return failure;
     let id: string;
+    let status: string;
     try {
-      ({ id } = await adminFor(event).content.create(input));
+      ({ id, status } = await adminFor(event).content.create(input));
     } catch (caught) {
       return failFrom(caught, { values });
     }
-    redirect(303, `/admin/content/${id}`);
+    // `saved` lets the editor say what the save did.
+    redirect(303, `/admin/content/${id}?saved=${status}`);
   },
 };

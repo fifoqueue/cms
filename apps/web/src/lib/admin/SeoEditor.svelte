@@ -226,7 +226,7 @@
   <input type="hidden" name={SEO_FIELDSET} value="1" />
 
   <div class="border-t">
-    <div role="tablist" aria-label="SEO" class="flex gap-1 border-b px-3">
+    <div role="tablist" aria-label={m.seoTabs} class="flex gap-1 border-b px-3">
       {#each TABS as key (key)}
         <button
           type="button"

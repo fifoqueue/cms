@@ -4,6 +4,7 @@
   import type { Widget, WidgetArea } from '@cms/sdk';
   import { ArrowDown, ArrowUp, Trash2 } from '@lucide/svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import { confirmLeave } from '#lib/admin/unsaved.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
     Card,
@@ -28,6 +29,13 @@
 
   // svelte-ignore state_referenced_locally
   let areas = $state(structuredClone(data.widgets));
+  // What the server has; leaving with anything else asks first.
+  // svelte-ignore state_referenced_locally
+  let saved = JSON.stringify(data.widgets);
+  confirmLeave(
+    () => JSON.stringify(areas) !== saved,
+    () => m.unsavedLeave,
+  );
   let type = $state('recentPosts');
   let area = $state<WidgetArea>('sidebar');
 
@@ -80,9 +88,13 @@
 <form
   method="POST"
   action="?/save"
-  use:enhance={() =>
-    ({ update }) =>
-      update({ reset: false })}
+  use:enhance={() => {
+    const sent = JSON.stringify(areas);
+    return async ({ result, update }) => {
+      if (result.type === 'success') saved = sent;
+      await update({ reset: false });
+    };
+  }}
   class="grid gap-6"
 >
   <input type="hidden" name="widgets" value={JSON.stringify(areas)} />

@@ -72,9 +72,10 @@ export const adminMediaSchema = z.object({
 
 export type AdminMedia = z.output<typeof adminMediaSchema>;
 
+/** Omitted fields keep their stored text (a picker may change the alt text only). */
 export const mediaUpdateSchema = z.object({
-  alt: z.string().trim().max(500).default(''),
-  caption: z.string().trim().max(2000).default(''),
+  alt: z.string().trim().max(500).optional(),
+  caption: z.string().trim().max(2000).optional(),
 });
 
 export type MediaUpdateInput = z.input<typeof mediaUpdateSchema>;

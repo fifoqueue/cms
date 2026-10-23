@@ -165,6 +165,13 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
   }
 
   if (isProtected(event.url.pathname) && !event.locals.user) {
+    // Enhanced forms get an action redirect they can intercept (the editor keeps unsaved text).
+    if (event.request.headers.get('x-sveltekit-action') === 'true')
+      return Response.json({
+        type: 'redirect',
+        status: 303,
+        location: '/admin/login',
+      });
     // Only a page visit can be repeated after signing in; a form post cannot.
     const back =
       event.request.method === 'GET' && event.url.pathname !== '/admin'
