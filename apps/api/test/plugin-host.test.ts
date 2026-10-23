@@ -645,6 +645,23 @@ test('dashboard widgets are checked, isolated, authorized and released with the 
             title: 'Markup',
             render: () => [{ kind: 'html', html: '<script>' }] as never,
           });
+          admin.dashboardWidget('title-getter', {
+            get title(): string {
+              throw new Error('title getter');
+            },
+            render: () => [],
+          });
+          admin.dashboardWidget('block-getter', {
+            title: 'Block getter',
+            render: () => [
+              {
+                kind: 'text',
+                get text(): string {
+                  throw new Error('block getter');
+                },
+              },
+            ],
+          });
         },
       }),
     ),

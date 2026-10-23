@@ -64,18 +64,16 @@ export class DashboardWidgetRegistry {
 
   private async renderOne(entry: Registration) {
     const result = await isolate(
-      () => entry.widget.render(),
-      this.options.timeoutMs,
-    );
-    const widget = result.ok
-      ? dashboardWidgetSchema.safeParse({
+      async () =>
+        dashboardWidgetSchema.safeParse({
           plugin: entry.owner,
           key: entry.key,
           title: String(entry.widget.title).slice(0, 100),
-          blocks: result.value,
-        })
-      : null;
-    if (widget?.success) return widget.data;
+          blocks: await entry.widget.render(),
+        }),
+      this.options.timeoutMs,
+    );
+    if (result.ok && result.value.success) return result.value.data;
     this.options.logger.warn(
       `Plugin "${entry.owner}" dashboard widget "${entry.key}" failed: ${
         result.ok ? 'returned invalid blocks' : result.error.message
