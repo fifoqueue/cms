@@ -1335,4 +1335,18 @@ export const en = {
   commentInReplyTo: (name: string) => `In reply to ${name}`,
   commentsForEntry: (title: string) => `Comments on: ${title}`,
   commentsAllEntries: 'All entries',
+  // editor-media wave 2
+  revisionsCompareTitle: (title: string) => `Compare revisions of “${title}”`,
+  returnToEditor: 'Return to editor',
+  revisionsCount: (count: number) => `Revisions: ${count}`,
+  revisionsBrowse: 'Browse',
+  revisionFrom: 'From',
+  revisionTo: 'To',
+  revisionTimeline: 'Revision timeline',
+  revisionsIdentical:
+    'These two versions have the same title, excerpt and body.',
+  revisionRestoreAsk:
+    'Restore this version? The title, excerpt and body are replaced; the current text stays in the revisions.',
+  diffRemoved: 'Removed',
+  diffAdded: 'Added',
 } as const;

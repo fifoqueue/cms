@@ -77,6 +77,9 @@
 </div>
 
 <FormMessage {form} />
+{#if page.url.searchParams.has('restored')}
+  <Alert><AlertTitle>{m.revisionRestored}</AlertTitle></Alert>
+{/if}
 
 {#if data.autosave && !data.useAutosave}
   <Alert>
@@ -98,6 +101,9 @@
   <ContentForm
     entry={data.entry}
     userId={data.user.id}
+    revisionCount={data.revisions.filter(
+      (revision) => revision.kind === 'revision',
+    ).length}
     fieldImages={data.fieldImages}
     canManageTerms={data.canManageTerms}
     created={page.url.searchParams.get('saved')}
@@ -139,13 +145,10 @@
               <Button
                 variant="ghost"
                 size="sm"
-                href={resolve(
-                  '/admin/(app)/content/[id]/revisions/[revisionId]',
-                  {
-                    id: data.entry.id,
-                    revisionId: revision.id,
-                  },
-                )}>{m.revisionCompare}</Button
+                href={`${resolve('/admin/(app)/content/[id]/revisions', {
+                  id: data.entry.id,
+                })}?to=${encodeURIComponent(revision.id)}`}
+                >{m.revisionCompare}</Button
               >
               {#if index > 0 || revision.kind === 'autosave'}
                 <form

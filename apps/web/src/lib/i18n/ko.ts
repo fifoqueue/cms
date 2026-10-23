@@ -1303,4 +1303,17 @@ export const ko: Messages = {
   commentInReplyTo: (name: string) => `${name}님의 댓글에 대한 답글`,
   commentsForEntry: (title: string) => `댓글 목록: ${title}`,
   commentsAllEntries: '모든 글',
+  // editor-media wave 2
+  revisionsCompareTitle: (title: string) => `‘${title}’ 리비전 비교`,
+  returnToEditor: '편집기로 돌아가기',
+  revisionsCount: (count: number) => `리비전: ${count}개`,
+  revisionsBrowse: '둘러보기',
+  revisionFrom: '이전',
+  revisionTo: '이후',
+  revisionTimeline: '리비전 타임라인',
+  revisionsIdentical: '두 버전의 제목, 요약, 본문이 같습니다.',
+  revisionRestoreAsk:
+    '이 버전으로 복원할까요? 제목, 요약, 본문이 바뀌며 현재 내용은 리비전에 남습니다.',
+  diffRemoved: '삭제됨',
+  diffAdded: '추가됨',
 };
