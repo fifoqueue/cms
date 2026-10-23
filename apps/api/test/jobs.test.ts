@@ -6,6 +6,7 @@ import { Scheduler } from '#api/domain/jobs/scheduler';
 import { fixedClock, recordingLogger } from '#test/support/memory';
 import { MemoryJobQueue, MemoryTaskLeases } from '#test/support/memory-jobs';
 import { aesSecretBox } from '#api/infra/secret-box';
+import { Errors } from '#api/shared/errors';
 
 describe('scheduler and jobs', () => {
   test('a recurring task runs in one process per interval, even when it fails', async () => {
@@ -116,7 +117,9 @@ describe('scheduler and jobs', () => {
       queue,
       aesSecretBox('new-active-job-key', 'correct-job-key'),
     );
-    await correct.enqueue('secret', { token: 'credential' });
+    const expiresAt = new Date(clock.now().getTime() + 60_000);
+    await correct.enqueue('secret', { token: 'credential' }, expiresAt);
+    expect([...queue.rows.values()][0]?.expiresAt).toEqual(expiresAt);
     const runner = new JobRunner({
       queue,
       clock,
@@ -130,6 +133,7 @@ describe('scheduler and jobs', () => {
 
     await runner.drain();
     expect([...queue.rows.values()][0]?.payload).not.toBeNull();
+    expect((await queue.failures(10))[0]?.error).toBe(Errors.JobFailed);
     await rotated.recover(['secret']);
     runner.handle('secret', async (payload) => {
       value = rotated.open(payload, z.object({ token: z.string() })).token;

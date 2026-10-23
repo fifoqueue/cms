@@ -1,11 +1,13 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import type { Path } from '$app/types';
   import { page } from '$app/state';
   import type { CommentSection } from '#lib/server/comments.js';
   import PrivacyPolicyLink from '#lib/theme/PrivacyPolicyLink.svelte';
   import Captcha from '#lib/security/Captcha.svelte';
   import { useI18n } from '#lib/i18n/index.js';
   import { useDateFormat } from '#lib/theme/format.js';
+  import { useScope } from '#lib/theme/scope.js';
 
   interface Props {
     contentId: string;
@@ -19,6 +21,7 @@
   const i18n = useI18n();
   const m = $derived(i18n.m);
   const formatDate = useDateFormat();
+  const scope = useScope();
 
   const failure = $derived(
     page.form && 'authorName' in page.form
@@ -152,7 +155,9 @@
   {#if comments.open && comments.requireLogin && !comments.viewer}
     <p>
       <a
-        href={resolve('/admin/(auth)/login')}
+        href={resolve(
+          `${scope().site.loginPath}?${new URLSearchParams({ redirect_to: `${page.url.pathname}${page.url.search}` })}` as Path,
+        )}
         class="text-primary hover:underline">{m.commentLoginRequired}</a
       >
     </p>

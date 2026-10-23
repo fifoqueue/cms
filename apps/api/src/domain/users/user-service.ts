@@ -73,6 +73,7 @@ const toSummary = (user: UserListItem): AdminUserSummary => ({
 });
 
 export const REGISTRATION_JOB = 'user.register';
+const REGISTRATION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 const registrationJobSchema = registrationSchema.pick({
   email: true,
   name: true,
@@ -152,7 +153,7 @@ export class UserService {
       createdAt: this.deps.clock.now(),
     };
     if (data.slug) await this.assertSlugFree(data.slug);
-    await this.deps.users.insert(user);
+    await this.deps.directory.insert(user);
     if (!data.password) await this.deps.invitations.send(user);
     return toSummary({ ...user, contentCount: 0 });
   }
@@ -185,10 +186,15 @@ export class UserService {
     });
     if (!(await this.deps.invitations.available()))
       throw invalidInput(Errors.EmailDisabled);
-    await this.deps.sealedJobs.enqueue(REGISTRATION_JOB, {
-      email: data.email.toLowerCase(),
-      name: data.name,
-    });
+    await this.deps.sealedJobs.enqueue(
+      REGISTRATION_JOB,
+      {
+        email: data.email.toLowerCase(),
+        name: data.name,
+        subjects: [data.email.toLowerCase()],
+      },
+      new Date(this.deps.clock.now().getTime() + REGISTRATION_LIFETIME_MS),
+    );
   }
 
   /** Creates the account after the public request has returned. */
@@ -266,11 +272,10 @@ export class UserService {
       ]);
     await this.assertEmailFree(email, current.id);
     await this.assertSlugFree(data.slug, current.slug);
-    await this.deps.directory.update({
+    await this.deps.directory.updateProfile({
       id: current.id,
       email,
       name: data.name,
-      role: current.role,
       slug: data.slug,
       bio: data.bio,
       locale: data.locale,

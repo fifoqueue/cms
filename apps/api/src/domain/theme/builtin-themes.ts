@@ -53,6 +53,7 @@ const header = ({ masthead }: Variant): BlockInput[] => [
               block('group', { layout: 'flex', gap: 'medium', wrap: false }, [
                 block('navigation'),
                 block('search'),
+                block('loginout'),
               ]),
             ],
           ),
@@ -67,6 +68,7 @@ const header = ({ masthead }: Variant): BlockInput[] => [
           block('group', { layout: 'flex', justify: 'center', gap: 'medium' }, [
             block('navigation'),
             block('search'),
+            block('loginout'),
           ]),
         ],
   ),

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import type { Path } from '$app/types';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
@@ -34,7 +35,11 @@
       </Button>
     {:else}
       <Button
-        href={resolve('/admin/(auth)/login')}
+        href={resolve(
+          (data.returnTo
+            ? `${data.loginPath}?${new URLSearchParams({ redirect_to: data.returnTo })}`
+            : data.loginPath) as Path,
+        )}
         variant="outline"
         class="w-full"
       >

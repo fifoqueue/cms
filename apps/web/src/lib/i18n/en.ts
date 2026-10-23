@@ -1668,4 +1668,10 @@ export const en = {
       }) as Record<string, string>
     )[status] ?? status,
   skipToContent: 'Skip to main content',
+
+  // auth-followup
+  siteLoginPath: 'Public login path',
+  siteLoginPathHelp:
+    'Visitors and signed-out administrators use this address to reach the sign-in screen.',
+  siteShowLogin: 'Show login links and redirect signed-out administrators',
 } as const;

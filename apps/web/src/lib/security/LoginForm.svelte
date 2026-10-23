@@ -1,6 +1,7 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import { onMount } from 'svelte';
+  import type { PublicCaptcha, SsoInfo } from '@cms/sdk';
   import { clearBackups } from '#lib/admin/editor-backup.js';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -15,35 +16,61 @@
   import { Separator } from '#lib/components/ui/separator/index.js';
   import { useI18n } from '#lib/i18n/index.js';
   import Captcha from '#lib/security/Captcha.svelte';
-  import type { PageProps } from './$types';
+  import PrivacyPolicyLink from '#lib/theme/PrivacyPolicyLink.svelte';
 
-  let { data, form }: PageProps = $props();
+  interface Result {
+    message?: string;
+    code?: string;
+    issues?: unknown;
+    notice?: string;
+    captcha?: boolean;
+    email?: string;
+    back?: string;
+  }
+
+  let {
+    sso,
+    captcha,
+    membership,
+    back,
+    signedOut,
+    privacyPolicy,
+    form,
+  }: {
+    sso: SsoInfo;
+    captcha: PublicCaptcha;
+    membership: { enabled: boolean };
+    back: string;
+    signedOut: boolean;
+    privacyPolicy?: { title: string; path: string } | null;
+    form?: unknown;
+  } = $props();
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
-
-  // After a completed sign-out, nothing typed in this tab stays in its storage.
-  onMount(() => {
-    if (data.signedOut) clearBackups();
-  });
-  const showCaptcha = $derived(
-    data.captcha.provider !== 'none' &&
-      (data.captcha.always.includes('login') ||
-        (!!form && 'captcha' in form && form.captcha === true)),
+  const result = $derived(
+    form && typeof form === 'object' ? (form as Result) : null,
   );
-</script>
+  const showCaptcha = $derived(
+    captcha.provider !== 'none' &&
+      (captcha.always.includes('login') || result?.captcha === true),
+  );
 
-<svelte:head><title>{m.signInTitle}</title></svelte:head>
+  onMount(() => {
+    if (signedOut) clearBackups();
+  });
+</script>
 
 <Card>
   <CardHeader><CardTitle>{m.signInTitle}</CardTitle></CardHeader>
   <CardContent class="space-y-4">
-    <FormMessage {form} />
+    <FormMessage form={result} />
 
-    {#if data.sso.enabled && data.sso.name}
+    {#if sso.enabled && sso.name}
       <form method="POST" action="?/sso">
+        <input type="hidden" name="redirect_to" value={result?.back ?? back} />
         <Button type="submit" variant="outline" class="w-full">
-          {m.signInWith(data.sso.name)}
+          {m.signInWith(sso.name)}
         </Button>
       </form>
 
@@ -56,11 +83,7 @@
 
     <!-- Not enhanced: a captcha widget must render fresh after each attempt. -->
     <form method="POST" action="?/login" class="space-y-4">
-      <input
-        type="hidden"
-        name="redirect_to"
-        value={form && 'back' in form ? form.back : data.back}
-      />
+      <input type="hidden" name="redirect_to" value={result?.back ?? back} />
       <div class="grid gap-2">
         <Label for="email">{m.email}</Label>
         <Input
@@ -69,7 +92,7 @@
           type="email"
           autocomplete="username"
           required
-          value={form && 'email' in form ? form.email : ''}
+          value={result?.email ?? ''}
         />
       </div>
       <div class="grid gap-2">
@@ -83,7 +106,7 @@
         />
       </div>
       {#if showCaptcha}
-        <Captcha captcha={data.captcha} />
+        <Captcha {captcha} />
       {/if}
       <Button type="submit" class="w-full">{m.signIn}</Button>
     </form>
@@ -96,7 +119,13 @@
   </CardContent>
 </Card>
 
-{#if data.membership.enabled}<a
+{#if membership.enabled}<a
     href={resolve('/admin/(auth)/register')}
     class="block text-center underline">{m.registerTitle}</a
   >{/if}
+
+{#if privacyPolicy}
+  <div class="mt-4 text-center">
+    <PrivacyPolicyLink policy={privacyPolicy} />
+  </div>
+{/if}

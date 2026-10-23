@@ -4,6 +4,7 @@ import type {
   TaskLeases,
   TaskState,
 } from '#api/domain/jobs/ports';
+import { Errors } from '#api/shared/errors';
 
 interface Lease extends TaskState {
   lockedUntil: Date | null;
@@ -208,7 +209,10 @@ export class MemoryJobQueue implements JobQueue {
       .slice(0, limit)
       .map((row) => ({
         kind: row.kind,
-        error: row.error ?? '',
+        error:
+          row.error === Errors.JobPayloadUnreadable
+            ? Errors.JobFailed
+            : (row.error ?? ''),
         failedAt: row.failedAt!,
       }));
   }

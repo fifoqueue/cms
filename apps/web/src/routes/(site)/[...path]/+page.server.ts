@@ -8,6 +8,7 @@ import { Errors, notFoundFrom } from '#lib/server/errors.js';
 import { latestPosts, loadTermArchive } from '#lib/server/archive.js';
 import { pageParam } from '#lib/server/public-view.js';
 import { isInternalPath } from '#lib/server/permalink.js';
+import { loginAction, loginPage, loginSsoAction } from '#lib/server/login.js';
 import { loadSlots } from '#lib/server/slots.js';
 import {
   loadTemplateData,
@@ -31,7 +32,10 @@ export const load: PageServerLoad = async (event) => {
   resolving.catch(() => undefined);
   const slots = loadSlots(api, { path: url.pathname });
   const layout = parent();
-  const { archives, reading } = await layout;
+  const layoutData = await layout;
+  const { archives, reading, site } = layoutData;
+  if (url.pathname === site.loginPath)
+    return loginPage(event, site.loginPath, Boolean(layoutData.toolbar));
   const archive = resolveArchivePath(archives, url.pathname);
   if (archive) {
     if (archive.redirect) redirect(308, `${archive.path}${url.search}`);
@@ -76,4 +80,6 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   unlock: unlockAction,
   comment: commentAction,
+  login: loginAction,
+  sso: loginSsoAction,
 };

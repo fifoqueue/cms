@@ -4,15 +4,34 @@ export const sealJob = (payload: unknown, secrets: SecretBox) => ({
   version: 1,
   sealed: secrets.seal(stringifyJson(payload)),
 });
-export const openJob = (payload: unknown, secrets: SecretBox): unknown => {
+
+export type OpenJobResult =
+  | { ok: true; value: unknown; sealed: boolean }
+  | { ok: false; reason: 'invalid' | 'unreadable' };
+
+/** Opens the shared envelope while distinguishing bad data from a temporary key mismatch. */
+export const inspectJob = (
+  payload: unknown,
+  secrets: SecretBox,
+): OpenJobResult => {
   if (!payload || typeof payload !== 'object' || !('sealed' in payload))
-    return payload;
-  if (typeof payload.sealed !== 'string') return null;
+    return { ok: true, value: payload, sealed: false };
+  if (
+    !('version' in payload) ||
+    payload.version !== 1 ||
+    typeof payload.sealed !== 'string'
+  )
+    return { ok: false, reason: 'invalid' };
   const plain = secrets.open(payload.sealed);
-  if (!plain) return null;
+  if (plain === null) return { ok: false, reason: 'unreadable' };
   try {
-    return JSON.parse(plain);
+    return { ok: true, value: JSON.parse(plain) as unknown, sealed: true };
   } catch {
-    return null;
+    return { ok: false, reason: 'invalid' };
   }
+};
+
+export const openJob = (payload: unknown, secrets: SecretBox): unknown => {
+  const result = inspectJob(payload, secrets);
+  return result.ok ? result.value : null;
 };

@@ -98,6 +98,7 @@ import {
   PrismaPluginStateRepository,
 } from '#api/infra/prisma/plugin-repositories';
 import { PrismaSettingsRepository } from '#api/infra/prisma/settings-repository';
+import { PrismaSiteSettingsWriter } from '#api/infra/prisma/site-settings';
 import { PrismaSeoDiscoveryRepository } from '#api/infra/prisma/seo-discovery-repository';
 import { PrismaPermalinkRepository } from '#api/infra/prisma/permalink-repository';
 import {
@@ -351,8 +352,11 @@ export const createContainer = async (
     permalinkRepository,
     publicContent,
   );
-  const site = new SiteService(settingsRepository, hooks, (ids) =>
-    mediaRepository.publicImages(ids),
+  const site = new SiteService(
+    settingsRepository,
+    hooks,
+    (ids) => mediaRepository.publicImages(ids),
+    new PrismaSiteSettingsWriter(db),
   );
   const reading = new ReadingService(settingsRepository, publishedRepository);
   const writing = new WritingService(settingsRepository);
@@ -441,7 +445,7 @@ export const createContainer = async (
     settings: settingsRepository,
     secrets,
     tokens: randomTokenIssuer,
-    jobs: jobQueue,
+    sealedJobs,
     transport: createHttpWebhookTransport(egressFetch('webhook'), (url) =>
       checkUrl('webhook', url),
     ),
@@ -496,6 +500,7 @@ export const createContainer = async (
         EMAIL_JOB,
         PASSWORD_RESET_REQUEST_JOB,
         REGISTRATION_JOB,
+        WEBHOOK_JOB,
       ]);
       await jobs.purge();
     },

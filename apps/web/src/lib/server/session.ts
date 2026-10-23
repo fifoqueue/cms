@@ -1,5 +1,5 @@
 import type { Cookies } from '@sveltejs/kit';
-import { error, redirect } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { can } from '@cms/sdk';
 import type { Capability } from '@cms/sdk';
 import { adminApi } from '#lib/server/api.js';
@@ -10,7 +10,7 @@ import { Errors } from '#lib/server/errors.js';
  * editor backups. A server-set, short-lived cookie: a crafted link cannot trigger the cleanup.
  */
 const SIGNED_OUT_COOKIE = 'cms_signed_out';
-const SIGNED_OUT_PATH = '/admin/login';
+const SIGNED_OUT_PATH = '/';
 
 export const markSignedOut = (cookies: Cookies) =>
   cookies.set(SIGNED_OUT_COOKIE, '1', {
@@ -34,7 +34,7 @@ export const adminFor = ({
   fetch: typeof globalThis.fetch;
   locals: App.Locals;
 }) => {
-  if (!locals.token) redirect(303, '/admin/login');
+  if (!locals.token) error(404, Errors.NotFound);
   return adminApi(fetch, locals.token);
 };
 

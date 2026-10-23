@@ -47,6 +47,7 @@ const LITERAL = /^[\p{L}\p{N} \-._~/]*$/u;
 const RESERVED_ROOTS = ['admin', 'api', '_app'];
 /** Roots whose nested paths are archives or generated listings; the bare root stays usable. */
 const RESERVED_PREFIXES = [
+  'avatars',
   'taxonomy',
   'category',
   'tag',

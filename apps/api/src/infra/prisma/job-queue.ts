@@ -265,7 +265,10 @@ export class PrismaJobQueue implements JobQueue {
     });
     return rows.map((row) => ({
       kind: row.kind,
-      error: row.lastError ?? '',
+      error:
+        row.lastError === Errors.JobPayloadUnreadable
+          ? Errors.JobFailed
+          : (row.lastError ?? ''),
       failedAt: row.failedAt!,
     }));
   }

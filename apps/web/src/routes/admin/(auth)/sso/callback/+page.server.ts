@@ -1,7 +1,9 @@
 import { redirect } from '@sveltejs/kit';
 import { resolve } from '$app/paths';
 import { CmsApiError } from '@cms/sdk/client';
+import { contentApi } from '#lib/server/api.js';
 import { Errors } from '#lib/server/errors.js';
+import { returnPath } from '#lib/server/return-path.js';
 import { startSession } from '#lib/server/session-cookie.js';
 import { ssoApi, takeSsoTransaction } from '#lib/server/sso.js';
 import type { PageServerLoad } from './$types';
@@ -16,23 +18,28 @@ export const load: PageServerLoad = async ({ url, cookies, fetch, locals }) => {
     return {
       back,
       message: Errors.SsoRequestExpired,
+      returnTo: null,
     };
 
   let result;
 
   try {
     result = await ssoApi(fetch, locals.token).callback({
-      transaction,
+      transaction: transaction.transaction,
       query: url.search,
     });
   } catch (caught) {
     if (caught instanceof CmsApiError && caught.status < 500)
-      return { back, message: caught.message };
+      return { back, message: caught.message, returnTo: transaction.back };
     throw caught;
   }
 
   if (result.kind === 'linked') redirect(303, resolve('/admin/(app)/account'));
 
   startSession(cookies, result.session, url);
-  redirect(303, resolve('/admin/(app)'));
+  const loginPath = await contentApi(fetch)
+    .site()
+    .then((site) => site.loginPath)
+    .catch(() => '/login');
+  redirect(303, returnPath(transaction.back, loginPath));
 };

@@ -2,12 +2,11 @@ import { WEBHOOK_EVENTS, webhookInputSchema } from '@cms/sdk';
 import type { AdminWebhook, WebhookEvent, WebhookWithSecret } from '@cms/sdk';
 import type { HookRegistrar } from '@cms/sdk/plugin';
 import { z } from 'zod';
-import { sealJob, openJob } from '#api/domain/jobs/payload';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
 import type { TokenIssuer } from '#api/domain/auth/ports';
 import { PermanentJobError } from '#api/domain/jobs/job-runner';
-import type { JobQueue } from '#api/domain/jobs/ports';
+import type { SealedJobs } from '#api/domain/jobs/sealed-jobs';
 import type { Clock, IdGenerator, SecretBox } from '#api/domain/ports';
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import { notFound, messageOf, Errors } from '#api/shared/errors';
@@ -64,7 +63,7 @@ export class WebhookService {
       settings: SettingsRepository;
       secrets: SecretBox;
       tokens: Pick<TokenIssuer, 'issue'>;
-      jobs: JobQueue;
+      sealedJobs: SealedJobs;
       transport: WebhookTransport;
       ids: IdGenerator;
       clock: Clock;
@@ -140,12 +139,15 @@ export class WebhookService {
 
   /** The job handler for `WEBHOOK_JOB`. 4xx answers (other than 408 and 429) are not retried. */
   async deliver(payload: unknown): Promise<void> {
-    const delivery = deliverySchema.safeParse(
-      openJob(payload, this.deps.secrets),
-    );
-    if (!delivery.success)
-      throw new PermanentJobError(Errors.WebhookInvalidJob);
-    const { webhookId, deliveryId, event, occurredAt, data } = delivery.data;
+    let delivery: z.output<typeof deliverySchema>;
+    try {
+      delivery = this.deps.sealedJobs.open(payload, deliverySchema);
+    } catch (error) {
+      if (error instanceof PermanentJobError)
+        throw new PermanentJobError(Errors.WebhookInvalidJob);
+      throw error;
+    }
+    const { webhookId, deliveryId, event, occurredAt, data } = delivery;
     const hook = (await this.stored()).find(
       (candidate) => candidate.id === webhookId,
     );
@@ -190,19 +192,22 @@ export class WebhookService {
   }
 
   private enqueue(hook: StoredWebhook, event: string, data: unknown) {
-    return this.deps.jobs.enqueue(
-      WEBHOOK_JOB,
-      sealJob(
-        {
-          webhookId: hook.id,
-          deliveryId: this.deps.ids.next(),
-          event,
-          occurredAt: this.deps.clock.now().toISOString(),
-          data,
-        },
-        this.deps.secrets,
-      ),
+    const record = data as {
+      id?: unknown;
+      authorId?: unknown;
+      uploaderId?: unknown;
+    };
+    const subjects = [record?.id, record?.authorId, record?.uploaderId].filter(
+      (value): value is string => typeof value === 'string',
     );
+    return this.deps.sealedJobs.enqueue(WEBHOOK_JOB, {
+      webhookId: hook.id,
+      deliveryId: this.deps.ids.next(),
+      event,
+      occurredAt: this.deps.clock.now().toISOString(),
+      data,
+      subjects,
+    });
   }
 
   private toAdmin(

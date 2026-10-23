@@ -4,6 +4,7 @@ import type { ArchivePathRepository } from '#api/domain/permalinks/archive-paths
 import type { Database } from '#api/infra/prisma/client';
 import type { Prisma } from '#api/infra/prisma/generated/client';
 import { lockPermalinks } from '#api/infra/prisma/permalink-repository';
+import { checkLoginArchives } from '#api/infra/prisma/site-settings';
 import { conflict, Errors } from '#api/shared/errors';
 
 const KEY = 'permalink.archives';
@@ -55,6 +56,7 @@ export class PrismaArchivePaths implements ArchivePathRepository {
         bases,
         history: state.history,
       });
+      await checkLoginArchives(tx, next);
       await tx.setting.upsert({
         where: { key: KEY },
         create: { key: KEY, value: JSON.stringify(next) },
