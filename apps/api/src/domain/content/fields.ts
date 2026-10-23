@@ -150,6 +150,7 @@ export class FieldService {
     type: string,
     values: FieldValues,
   ): Promise<Record<string, unknown>> {
+    if (Object.keys(values).length === 0) return {};
     const fields = (await this.forType(type)).filter((field) => field.public);
     const images = await this.deps.images(fieldMediaIds(fields, values));
     return Object.fromEntries(
