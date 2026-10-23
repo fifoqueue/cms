@@ -146,6 +146,36 @@ describe('generated documents', () => {
     expect(feed).toContain('<pubDate>Thu, 01 Jan 2026 00:00:00 GMT</pubDate>');
   });
 
+  test('full-text feeds carry absolute bodies, bylines, terms and audio enclosures', async () => {
+    const body =
+      '<p><a href="/about">About</a></p><img src="/media/a.webp" srcset="/media/a-300.webp 300w" sizes="100vw" alt=""><audio src="/media/talk.mp3" controls=""></audio>';
+    const feed = await rssFeed(
+      site,
+      settings(),
+      [
+        entry({
+          author: { name: 'Ann', slug: 'ann' },
+          categories: [{ id: 'c1', name: 'News', slug: 'news' }],
+        } as Partial<PublicContent>),
+      ],
+      {
+        title: 'News',
+        self: '/feed.xml?category=news',
+        bodies: new Map([['id-1', body]]),
+      },
+    ).text();
+    expect(feed).toContain('<title>Site &amp; &lt;Co&gt; » News</title>');
+    expect(feed).toContain(`href="${ORIGIN}/feed.xml?category=news"`);
+    expect(feed).toContain('<dc:creator>Ann</dc:creator>');
+    expect(feed).toContain('<category>News</category>');
+    expect(feed).toContain(`href=&quot;${ORIGIN}/about&quot;`);
+    expect(feed).toContain(`src=&quot;${ORIGIN}/media/a.webp&quot;`);
+    expect(feed).not.toContain('srcset');
+    expect(feed).toContain(
+      `<enclosure url="${ORIGIN}/media/talk.mp3" length="0" type="audio/mpeg"/>`,
+    );
+  });
+
   test('llms.txt titles cannot inject links and point at Markdown alternates', async () => {
     const text = await llmsTxt(site, settings(), [entry()]).text();
     expect(text).toContain(`](${ORIGIN}/hello.md)`);

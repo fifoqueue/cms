@@ -8,6 +8,7 @@ import { latestPosts, loadTermArchive } from '#lib/server/archive.js';
 import { pageParam } from '#lib/server/public-view.js';
 import { isInternalPath } from '#lib/server/permalink.js';
 import { loadSlots } from '#lib/server/slots.js';
+import { withTemplateData } from '#lib/server/theme-queries.js';
 import { unlockAction, unlockProofs } from '#lib/server/unlock.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -19,34 +20,27 @@ import type { Actions, PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ fetch, url, cookies, parent }) => {
   const api = contentApi(fetch);
-  const layout = await parent();
-  const archive = resolveArchivePath(layout.archives, url.pathname);
-  if (archive) {
-    if (archive.redirect) redirect(308, `${archive.path}${url.search}`);
-    return loadTermArchive(
-      fetch,
-      url,
-      archive.taxonomy,
-      archive.slug,
-      layout.reading.postsPerPage,
-      layout.archives,
-    );
-  }
+  // The lookup starts with the layout instead of waiting for it; archive paths discard it.
+  const resolving = api.resolvePath(url.pathname, unlockProofs(cookies));
+  resolving.catch(() => undefined);
   // The API finds the content of a current path itself, so slots load alongside the lookup.
   const slots = loadSlots(api, { path: url.pathname });
   const types = api.contentTypes().catch(() => []);
-  const reading = api.reading().catch(() => null);
-  const { content, redirect: moved } = await api
-    .resolvePath(url.pathname, unlockProofs(cookies))
-    .catch(notFoundFrom);
+  const layout = parent();
+  const { archives, reading } = await layout;
+  const archive = resolveArchivePath(archives, url.pathname);
+  if (archive) {
+    if (archive.redirect) redirect(308, `${archive.path}${url.search}`);
+    return loadTermArchive(fetch, url, archive.taxonomy, archive.slug, layout);
+  }
+  const { content, redirect: moved } = await resolving.catch(notFoundFrom);
   if (moved) {
     if (!isInternalPath(content.path)) error(502, Errors.InvalidContentPath);
     redirect(308, `${content.path}${url.search}`);
   }
-  const settings = await reading;
-  if (settings?.frontPagePath === content.path) redirect(308, `/${url.search}`);
-  if (settings?.postsPagePath === content.path) {
-    return {
+  if (reading.frontPagePath === content.path) redirect(308, `/${url.search}`);
+  if (reading.postsPagePath === content.path) {
+    return withTemplateData(api, parent, {
       kind: 'home' as const,
       type: 'post' as const,
       path: content.path,
@@ -55,12 +49,19 @@ export const load: PageServerLoad = async ({ fetch, url, cookies, parent }) => {
         api,
         'post',
         pageParam(url),
-        settings.postsPerPage,
+        reading.postsPerPage,
       ),
       slots: await slots,
-    };
+    });
   }
-  return entryPage(api, url, content, types, slots);
+  return entryPage(
+    api,
+    url,
+    content,
+    types,
+    slots,
+    layout.then(({ theme }) => theme),
+  );
 };
 
 export const actions: Actions = {

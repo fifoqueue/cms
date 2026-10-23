@@ -8,6 +8,7 @@ import type { AppConfig } from '#api/config';
 import { hostname } from 'node:os';
 import { ContentLocks } from '#api/domain/content/content-locks';
 import { Embeds, vimeo, youtube } from '#api/domain/content/embeds';
+import { ResponsiveImages } from '#api/domain/content/responsive-images';
 import { EmbedRegistry } from '#api/plugin-runtime/embed-registry';
 import { MediaService } from '#api/domain/media/media-service';
 import { ReadingService } from '#api/domain/site/reading-service';
@@ -236,6 +237,14 @@ export const createContainer = async (
     images: (ids) => mediaRepository.publicImages(ids),
   });
   const reader = new PublishedContentReader(publishedRepository);
+  const responsiveImages = new ResponsiveImages((ids) =>
+    mediaRepository.publicImages(ids),
+  );
+  /** Body HTML as served: players for embeds, then responsive images. */
+  const served = {
+    expand: async (html: string) =>
+      responsiveImages.expand(await embeds.expand(html)),
+  };
   const signer = hmacSigner(
     secretKey(config.CMS_SECRET_KEY, join(API_DIRECTORY, 'data/secret.key')),
   );
@@ -268,7 +277,7 @@ export const createContainer = async (
       clock: systemClock,
       protection,
     }),
-    embeds,
+    served,
     fields,
     contentTypes,
     search,
@@ -280,7 +289,9 @@ export const createContainer = async (
     permalinkRepository,
     publicContent,
   );
-  const site = new SiteService(settingsRepository, hooks);
+  const site = new SiteService(settingsRepository, hooks, (ids) =>
+    mediaRepository.publicImages(ids),
+  );
   const reading = new ReadingService(settingsRepository, publishedRepository);
   const menus = new MenuService({
     archives: archivePaths,
@@ -412,7 +423,7 @@ export const createContainer = async (
     renderer: tiptapRenderer,
     signer,
     clock: systemClock,
-    embeds,
+    embeds: served,
     fields,
   });
   scheduler.add({
@@ -701,7 +712,12 @@ export const createBootstrap = async () => {
         initializeSite(runtime!.db, async ({ users, sessions, settings }) => {
           const auth = createAuth(users, sessions, config);
           const grant = await auth.setup(input.admin);
-          await new SiteService(settings, runtime!.hooks).update(input.site);
+          // A new site has no media library yet, so no icon or logo can be chosen.
+          await new SiteService(
+            settings,
+            runtime!.hooks,
+            async () => new Map(),
+          ).update(input.site);
           return grant;
         }),
     },

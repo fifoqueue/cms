@@ -1,5 +1,6 @@
-import { loadThemeQueries } from '#lib/server/theme-queries.js';
+import { loadTemplateData } from '#lib/server/theme-queries.js';
 import { authApi, contentApi } from '#lib/server/api.js';
+import { Errors } from '#lib/server/errors.js';
 import {
   menuView,
   pageLink,
@@ -19,7 +20,7 @@ import type { LayoutServerLoad } from './$types';
  * Slots depend on the page, so each page loads its own; reading neither `url` nor `route` here
  * keeps client-side navigation (and link preloading) from re-running this load.
  */
-export const load: LayoutServerLoad = async ({ fetch, cookies }) => {
+export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
   const api = contentApi(fetch);
   const token = cookies
     .getAll()
@@ -32,16 +33,26 @@ export const load: LayoutServerLoad = async ({ fetch, cookies }) => {
           .catch(() => null)
       : null,
   ]);
-  const { site, seo, theme, reading, menus, widgets } = layout;
+  const { site, seo, reading, menus, widgets } = layout;
+  const theme = themeView(layout.theme);
   const { primary, footer } = menus;
-  // Without a primary menu, navigation falls back to the published pages.
-  const pages = primary ? null : await api.list({ type: 'page', pageSize: 20 });
+  locals.lang = site.locale;
+  const [pages, blocks] = await Promise.all([
+    // Without a primary menu, navigation falls back to the published pages.
+    primary ? null : api.list({ type: 'page', pageSize: 20 }),
+    // Pages load the data of their own template; error pages only have this one.
+    loadTemplateData(api, theme, {
+      kind: 'error',
+      status: 404,
+      message: Errors.NotFound,
+    }),
+  ]);
   return {
     archives: layout.archives,
-    queries: await loadThemeQueries(api, theme),
+    ...blocks,
     site: siteView(site),
     seo: seoSettingsView(seo),
-    theme: themeView(theme),
+    theme,
     reading: readingView(reading),
     menus: {
       primary: primary && menuView(primary),

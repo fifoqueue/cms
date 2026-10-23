@@ -2,7 +2,7 @@
   import '#lib/theme/site.css';
   import TemplateView from '#lib/theme/TemplateView.svelte';
   import { themeStyle } from '#lib/theme/style.js';
-  import { queryKey } from '#lib/theme/queries.js';
+  import { queryKey, selectionOf } from '#lib/theme/queries.js';
   import { untrack } from 'svelte';
   import type { Block } from '@cms/sdk';
   import { resolve } from '$app/paths';
@@ -12,6 +12,7 @@
     THEME_FONT_SIZES,
     THEME_LINE_HEIGHTS,
     THEME_RADII,
+    isIndependentQuery,
     walkBlocks,
   } from '@cms/sdk';
   import {
@@ -77,7 +78,15 @@
   const querySignature = $derived(
     JSON.stringify(
       [...walkBlocks(canvasBlocks ?? [])].flatMap((block) =>
-        block.name === 'query' && !block.attrs.inherit ? [queryKey(block)] : [],
+        isIndependentQuery(block)
+          ? [
+              queryKey(
+                selectionOf(
+                  block as Extract<Block, { name: 'query' | 'latest-posts' }>,
+                ),
+              ),
+            ]
+          : [],
       ),
     ),
   );

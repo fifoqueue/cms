@@ -258,6 +258,37 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
     }));
   }
 
+  async adjacent(id: string) {
+    const entry = await this.db.content.findFirst({
+      where: { id, ...PUBLIC_CONTENT },
+      select: { type: true, publishedAt: true },
+    });
+    const at = entry?.publishedAt;
+    if (!entry || !at) return { previous: null, next: null };
+    // Ties on `publishedAt` fall back to the id, like the list order.
+    const near = (direction: 'lt' | 'gt') =>
+      this.db.content.findFirst({
+        where: {
+          ...PUBLIC_CONTENT,
+          type: entry.type,
+          OR: [
+            { publishedAt: { [direction]: at } },
+            { publishedAt: at, id: { [direction]: id } },
+          ],
+        },
+        select: summaryColumns,
+        orderBy:
+          direction === 'lt'
+            ? [{ publishedAt: 'desc' }, { id: 'desc' }]
+            : [{ publishedAt: 'asc' }, { id: 'asc' }],
+      });
+    const [previous, next] = await Promise.all([near('lt'), near('gt')]);
+    return {
+      previous: previous && toSummary(previous),
+      next: next && toSummary(next),
+    };
+  }
+
   async passwordHash(id: string) {
     const row = await this.db.content.findFirst({
       where: { id, ...PUBLIC_CONTENT },

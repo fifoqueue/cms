@@ -5,7 +5,9 @@
 import type {
   ContentType,
   PublicContent,
+  PublicContentListQuery,
   PublicContentSummary,
+  PublicContentType,
   PublicSeoSettings,
   PublicSiteDto,
   SeoSitemapEntry,
@@ -14,6 +16,7 @@ import { SEO_SITEMAP_PAGE_SIZE } from '@cms/sdk';
 import type { ContentClient } from '@cms/sdk/client';
 import { Errors } from '#lib/server/errors.js';
 import { contentMarkdown, markdownInline } from '#lib/server/markdown.js';
+import { FEED_PATH } from '#lib/seo/paths.js';
 
 export const SITEMAP_KINDS = ['content', 'category', 'tag'] as const;
 export type SitemapKind = (typeof SITEMAP_KINDS)[number];
@@ -23,8 +26,16 @@ const SITEMAP_INDEX_LIMIT = 50_000;
 
 /** Entries listed by the feed and llms.txt: a recent selection, not the full corpus. */
 export const RECENT_LIMIT = 20;
-/** Content types syndicated in the feed; pages are not part of it. */
+/** Content types syndicated in the feed when the type list is unavailable. */
 export const FEED_TYPES: readonly ContentType[] = ['post', 'article'];
+
+/** Types marked for search and feeds (Content types), except pages. */
+export const feedTypes = (types: readonly PublicContentType[] | null) =>
+  types
+    ? types
+        .filter((type) => type.searchable && type.key !== 'page')
+        .map((type) => type.key)
+    : FEED_TYPES;
 
 /** Never crawled. Each permitted group repeats these, since a named group replaces `*`. */
 const PRIVATE_RULES = [
@@ -58,9 +69,12 @@ export const loadRecent = async (
   settings: PublicSeoSettings,
   types?: readonly ContentType[],
   limit = RECENT_LIMIT,
+  filter: PublicContentListQuery = {},
 ) => {
   const lists = await Promise.all(
-    (types ?? [undefined]).map((type) => api.list({ type, pageSize: limit })),
+    (types ?? [undefined]).map((type) =>
+      api.list({ ...filter, type, pageSize: limit }),
+    ),
   );
   return lists
     .flatMap((list) => list.items)
@@ -197,36 +211,106 @@ export const sitemapChunk = (
   );
 };
 
-/** RSS 2.0 of recent discoverable posts and articles, linked to their canonical URLs. */
+/** Rendered bodies of feed entries by id (Settings → Reading: full text). */
+export const loadBodies = async (
+  api: ContentClient,
+  items: readonly PublicContentSummary[],
+) =>
+  new Map(
+    await Promise.all(
+      items.map(
+        async (item) =>
+          [
+            item.id,
+            // Protected entries stay locked: their body is empty.
+            await api.resolvePath(item.path).then(
+              ({ content }) => content.html,
+              () => '',
+            ),
+          ] as const,
+      ),
+    ),
+  );
+
+const AUDIO_TYPES: Record<string, string> = {
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  oga: 'audio/ogg',
+};
+
+/** Feed readers show bodies elsewhere: site paths become absolute, responsive hints go. */
+const absoluteBody = (origin: string, html: string) =>
+  html
+    .replace(/\s(?:srcset|sizes)="[^"]*"/g, '')
+    .replace(
+      /(\s(?:src|href|poster)=")\/(?!\/)/g,
+      (_, attribute: string) => `${attribute}${origin}/`,
+    );
+
+/** The first audio file of a body as an RSS enclosure (podcasts); its size is unknown. */
+const enclosure = (origin: string, html: string) => {
+  const src = /<audio\b[^>]*\ssrc="([^"]+)"/.exec(html)?.[1];
+  const type = AUDIO_TYPES[src?.split('.').pop()?.toLowerCase() ?? ''];
+  if (!src || !type) return null;
+  const url =
+    src.startsWith('/') && !src.startsWith('//') ? `${origin}${src}` : src;
+  return `<enclosure url="${xmlText(url.replace(/&amp;/g, '&'))}" length="0" type="${type}"/>`;
+};
+
+/** What a feed shows besides its entries. */
+export interface FeedOptions {
+  /** The category, tag or author a narrowed feed follows. */
+  title?: string;
+  /** The feed's own path with its query (`/feed.xml?category=news`). */
+  self?: string;
+  /** Rendered bodies by entry id; omitted when feeds carry excerpts only. */
+  bodies?: ReadonlyMap<string, string>;
+}
+
+/** RSS 2.0 of recent discoverable entries, linked to their canonical URLs. */
 export const rssFeed = (
   site: PublicSiteDto,
   settings: PublicSeoSettings,
   items: readonly PublicContentSummary[],
+  { title, self = FEED_PATH, bodies }: FeedOptions = {},
 ) => {
   const origin = settings.siteUrl;
   const element = (name: string, value: string) =>
     `<${name}>${xmlText(value)}</${name}>`;
   const entries = items.map((content) => {
     const link = absoluteUrl(origin, content.path);
+    const body = bodies?.get(content.id);
+    const media = body && enclosure(origin, body);
     return [
       '    <item>',
       `      ${element('title', content.title)}`,
       `      ${element('link', link)}`,
       `      <guid isPermaLink="true">${xmlText(link)}</guid>`,
       `      ${element('pubDate', new Date(content.publishedAt).toUTCString())}`,
+      ...(content.author
+        ? [`      ${element('dc:creator', content.author.name)}`]
+        : []),
+      ...[...content.categories, ...content.tags].map(
+        (term) => `      ${element('category', term.name)}`,
+      ),
       `      ${element('description', content.seo.description || content.excerpt)}`,
+      ...(body
+        ? [`      ${element('content:encoded', absoluteBody(origin, body))}`]
+        : []),
+      ...(media ? [`      ${media}`] : []),
       '    </item>',
     ].join('\n');
   });
   return xmlResponse(
     [
-      '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',
+      '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">',
       '  <channel>',
-      `    ${element('title', site.title)}`,
+      `    ${element('title', title ? `${site.title} » ${title}` : site.title)}`,
       `    ${element('link', absoluteUrl(origin, '/'))}`,
       `    ${element('description', settings.homeDescription || site.description)}`,
       `    ${element('language', site.locale)}`,
-      `    <atom:link href="${xmlText(absoluteUrl(origin, '/feed.xml'))}" rel="self" type="application/rss+xml"/>`,
+      `    <atom:link href="${xmlText(absoluteUrl(origin, self))}" rel="self" type="application/rss+xml"/>`,
       ...entries,
       '  </channel>',
       '</rss>',

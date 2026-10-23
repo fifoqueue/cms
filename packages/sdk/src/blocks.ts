@@ -41,6 +41,29 @@ const color = { type: 'color' as const, default: '' };
 
 export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/** A link a theme may hold: a site path, an `https:`/`http:` or `mailto:` address, or a fragment. */
+export const LINK =
+  /^(?:https?:\/\/[^\s"<>]+|\/[^\s"<>]*|mailto:[^\s"<>]+|#[\w-]*)$/;
+
+/** Services a `social-link` block names (WordPress social icons). */
+export const SOCIAL_SERVICES = [
+  'link',
+  'email',
+  'rss',
+  'facebook',
+  'x',
+  'instagram',
+  'threads',
+  'bluesky',
+  'mastodon',
+  'youtube',
+  'tiktok',
+  'linkedin',
+  'github',
+] as const;
+
+const link = { type: 'text' as const, max: 2048, default: '', pattern: LINK };
+
 export const BLOCKS = {
   group: {
     attrs: {
@@ -90,6 +113,14 @@ export const BLOCKS = {
     },
   },
   'site-tagline': { attrs: {} },
+  /** The custom logo (Settings → General); renders nothing while none is set. */
+  'site-logo': {
+    attrs: {
+      /** Display width in pixels; the height follows the image. */
+      width: { type: 'number', min: 16, max: 600, default: 120 },
+      link: flag(true),
+    },
+  },
   navigation: {
     attrs: {
       location: choice(['primary', 'footer'], 'primary'),
@@ -137,6 +168,8 @@ export const BLOCKS = {
   },
   'post-fields': { attrs: {} },
   comments: { attrs: {} },
+  /** Links to the previous and next entry of the same type. */
+  'post-navigation': { attrs: { showTitle: flag(true) } },
   breadcrumbs: { attrs: {} },
   query: {
     attrs: {
@@ -182,6 +215,49 @@ export const BLOCKS = {
   separator: { attrs: {} },
   spacer: { attrs: { size: space('medium') } },
   copyright: { attrs: {} },
+  buttons: {
+    attrs: { justify: choice(['start', 'center', 'end'], 'start') },
+    children: ['button'],
+  },
+  button: {
+    attrs: {
+      text: { type: 'text', max: 100, default: '' },
+      url: link,
+      style: choice(['fill', 'outline'], 'fill'),
+      newTab: flag(false),
+    },
+    parent: ['buttons'],
+  },
+  'social-links': {
+    attrs: { justify: choice(['start', 'center', 'end'], 'start') },
+    children: ['social-link'],
+  },
+  'social-link': {
+    attrs: {
+      service: choice(SOCIAL_SERVICES, 'link'),
+      url: link,
+      /** Shown instead of the service name. */
+      label: { type: 'text', max: 100, default: '' },
+    },
+    parent: ['social-links'],
+  },
+  /** Titles of the newest published entries of a type (posts by default). */
+  'latest-posts': {
+    attrs: {
+      type: { type: 'text', max: 32, default: '', pattern: SLUG },
+      count: { type: 'number', min: 1, max: 20, default: 5 },
+    },
+  },
+  /** Categories with published entries, as a tree. */
+  categories: { attrs: {} },
+  /** Tags with published entries. */
+  'tag-cloud': { attrs: {} },
+  /** Monthly archive links. */
+  archives: {
+    attrs: { months: { type: 'number', min: 1, max: 60, default: 12 } },
+  },
+  /** A sign-in link, or a sign-out button for signed-in visitors. */
+  loginout: { attrs: {} },
 } as const satisfies Record<string, BlockSpec>;
 
 export type BlockName = keyof typeof BLOCKS;
@@ -365,6 +441,11 @@ export const parseBlocks = (
   const blocks = list(input, '', 0, null);
   return { blocks, issues };
 };
+
+/** Blocks that select their own published entries (not the page's); a theme may hold 32. */
+export const isIndependentQuery = (block: Block) =>
+  (block.name === 'query' && !block.attrs.inherit) ||
+  block.name === 'latest-posts';
 
 /** Every block in a tree, depth first. */
 export function* walkBlocks(blocks: readonly Block[]): Generator<Block> {

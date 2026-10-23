@@ -66,6 +66,21 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
       .slice(0, limit);
   }
 
+  async adjacent(id: string) {
+    const entry = await this.byId(id);
+    if (!entry?.publishedAt) return { previous: null, next: null };
+    const { items } = await this.summaries({
+      type: entry.type,
+      page: 1,
+      pageSize: 1e6,
+    });
+    const index = items.findIndex((item) => item.id === id);
+    return {
+      previous: items[index + 1] ?? null,
+      next: items[index - 1] ?? null,
+    };
+  }
+
   async summaries(criteria: PublishedCriteria) {
     const { items, total } = await this.content.list({
       ...criteria,

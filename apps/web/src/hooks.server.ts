@@ -162,9 +162,40 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
+/** Languages written right to left (primary subtags). */
+const RTL = new Set([
+  'ar',
+  'ckb',
+  'dv',
+  'fa',
+  'he',
+  'ps',
+  'sd',
+  'ug',
+  'ur',
+  'yi',
+]);
+
+/** `<html lang dir>` from the site locale; anything that is not a language tag counts as `en`. */
+const documentLanguage: Handle = ({ event, resolve }) =>
+  resolve(event, {
+    transformPageChunk: ({ html }) => {
+      const lang = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(
+        event.locals.lang ?? '',
+      )
+        ? event.locals.lang!
+        : 'en';
+      const primary = lang.split('-')[0]!.toLowerCase();
+      return html
+        .replace('%lang%', lang)
+        .replace('%dir%', RTL.has(primary) ? 'rtl' : 'ltr');
+    },
+  });
+
 export const handle = sequence(
   requestSize,
   publicCache,
   robotsHeader,
   guardAdmin,
+  documentLanguage,
 );

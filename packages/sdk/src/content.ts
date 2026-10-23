@@ -295,6 +295,31 @@ export const publicContentSummarySchema = publicContentSchema.omit({
 
 export type PublicContentSummary = z.output<typeof publicContentSummarySchema>;
 
+/** The published entries of the same type just before and after one (WordPress post navigation). */
+export const publicAdjacentSchema = z.strictObject({
+  previous: publicContentSummarySchema.nullable(),
+  next: publicContentSummarySchema.nullable(),
+});
+
+export type PublicAdjacent = z.output<typeof publicAdjacentSchema>;
+
+export const adjacentQuerySchema = z.object({
+  contentId: z.string().trim().min(1).max(36),
+});
+
+/** Months with published posts (UTC), newest first. */
+export const publicMonthSchema = z.strictObject({
+  year: z.number().int(),
+  month: z.number().int().min(1).max(12),
+  count: z.number().int().min(0),
+});
+
+export type PublicMonth = z.output<typeof publicMonthSchema>;
+
+export const monthsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(60).default(12),
+});
+
 export const CONTENT_REVISION_KINDS = ['revision', 'autosave'] as const;
 
 /** A saved version of an entry's text, listed in the editor. */

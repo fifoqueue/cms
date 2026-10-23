@@ -76,6 +76,14 @@ export interface PublishedContentRepository {
     types: readonly string[],
     limit: number,
   ): Promise<{ year: number; month: number; count: number }[]>;
+  /**
+   * The public entries of the same type published just before (`previous`) and after (`next`)
+   * entry `id`, in `list` order; both null when the entry is not public.
+   */
+  adjacent(id: string): Promise<{
+    previous: PublishedSummaryRecord | null;
+    next: PublishedSummaryRecord | null;
+  }>;
   /** Same selection and order as `list`, without reading the body. */
   summaries(
     criteria: PublishedCriteria,

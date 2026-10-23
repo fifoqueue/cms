@@ -8,6 +8,20 @@ export const SITEMAP_PATH = '/sitemap.xml';
 export const FEED_PATH = '/feed.xml';
 export const LLMS_TXT_PATH = '/llms.txt';
 
+/** What a narrowed feed follows (WordPress category, tag and author feeds). */
+export interface FeedTarget {
+  kind: 'category' | 'tag' | 'author';
+  slug: string;
+}
+
+export const FEED_KINDS = ['category', 'tag', 'author'] as const;
+
+/** The site feed, or the feed of one category, tag or author. */
+export const feedPath = (target?: FeedTarget) =>
+  target
+    ? `${FEED_PATH}?${target.kind}=${encodeURIComponent(target.slug)}`
+    : FEED_PATH;
+
 /** Stable Markdown alias of a content entry, independent of its permalink format. */
 export const markdownPath = (slug: string) => `/${encodeURIComponent(slug)}.md`;
 

@@ -5,8 +5,10 @@ import {
   contentRevisionSummarySchema,
   contentUnlockedSchema,
   previewTokenSchema,
+  publicAdjacentSchema,
   publicAuthorSchema,
   publicContentSchema,
+  publicMonthSchema,
 } from '#sdk/content';
 import type {
   AutosaveInput,
@@ -15,8 +17,10 @@ import type {
   ContentRevisionSummary,
   ContentUnlocked,
   PreviewToken,
+  PublicAdjacent,
   PublicAuthor,
   PublicContent,
+  PublicMonth,
 } from '#sdk/content';
 import { adminContentSchema } from '#sdk/content';
 import type { Request } from '#sdk/transport';
@@ -56,6 +60,18 @@ export const publicEntriesClient = (request: Request) => ({
         response: publicAuthorSchema,
       },
     ),
+  /** The previous (older) and next (newer) published entry of the same type. */
+  adjacent: (contentId: string) =>
+    request<PublicAdjacent>('GET', '/api/v1/adjacent', {
+      query: { contentId },
+      response: publicAdjacentSchema,
+    }),
+  /** Months with published posts, newest first. */
+  months: (limit = 12) =>
+    request<PublicMonth[]>('GET', '/api/v1/months', {
+      query: { limit },
+      response: z.array(publicMonthSchema),
+    }),
 });
 
 /** Editing workflow of one entry: trash, revisions, autosave and previews. */

@@ -290,6 +290,7 @@ const publicEvent = (
     ),
     parent: async () => ({
       reading,
+      theme,
       archives: {
         bases: { category: '/category', tag: '/tag' },
         history: { category: [], tag: [] },

@@ -5,6 +5,7 @@ import { notFoundFrom } from '#lib/server/errors.js';
 import { latestPosts } from '#lib/server/archive.js';
 import { homeTypeParam, listView, pageParam } from '#lib/server/public-view.js';
 import { loadSlots } from '#lib/server/slots.js';
+import { withTemplateData } from '#lib/server/theme-queries.js';
 import { unlockAction, unlockProofs } from '#lib/server/unlock.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -13,7 +14,7 @@ import type { Actions, PageServerLoad } from './$types';
  * shows the static front page (Settings → Reading) or lists posts, or articles with
  * `?type=article`; search covers every searchable type.
  */
-export const load: PageServerLoad = async ({ fetch, url, cookies }) => {
+export const load: PageServerLoad = async ({ fetch, url, cookies, parent }) => {
   const api = contentApi(fetch);
   const page = pageParam(url);
   const reading = await api.reading().catch(() => null);
@@ -24,12 +25,12 @@ export const load: PageServerLoad = async ({ fetch, url, cookies }) => {
       query ? api.list({ search: query, page, pageSize }) : null,
       loadSlots(api, { path: url.pathname }),
     ]);
-    return {
+    return withTemplateData(api, parent, {
       kind: 'search' as const,
       query,
       posts: posts && listView(posts),
       slots: loaded,
-    };
+    });
   }
   if (reading?.frontPagePath && !url.searchParams.has('type')) {
     const types = api.contentTypes().catch(() => []);
@@ -42,6 +43,7 @@ export const load: PageServerLoad = async ({ fetch, url, cookies }) => {
       content,
       types,
       loadSlots(api, { path: '/', contentId: content.id }),
+      parent().then(({ theme }) => theme),
       '/',
     );
   }
@@ -50,7 +52,12 @@ export const load: PageServerLoad = async ({ fetch, url, cookies }) => {
     latestPosts(api, type, page, pageSize),
     loadSlots(api, { path: url.pathname }),
   ]);
-  return { kind: 'home' as const, type, posts, slots: loaded };
+  return withTemplateData(api, parent, {
+    kind: 'home' as const,
+    type,
+    posts,
+    slots: loaded,
+  });
 };
 
 export const actions: Actions = {

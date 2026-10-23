@@ -458,7 +458,11 @@ describe('ContentService', () => {
       .provide('content.before', ({ content }) => content?.title ?? '');
     const slots = new SlotService({
       registry,
-      site: new SiteService(new MemorySeoSettingsRepository(), hooks),
+      site: new SiteService(
+        new MemorySeoSettingsRepository(),
+        hooks,
+        async () => new Map(),
+      ),
       content: new PublishedContentReader(
         new MemoryPublishedContentRepository(repository),
       ),

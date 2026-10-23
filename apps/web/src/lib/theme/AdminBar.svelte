@@ -41,7 +41,13 @@
   aria-label={m.adminBar}
 >
   <div class="flex min-w-0 items-stretch">
-    <a href={resolve('/admin/(app)')} class={item}>
+    <!-- Subscribers have no dashboard; their profile is their admin home (WordPress). -->
+    <a
+      href={can(user, 'content.create')
+        ? resolve('/admin/(app)')
+        : resolve('/admin/(app)/account')}
+      class={item}
+    >
       <LayoutDashboard class="size-4" />
       <span class="hidden max-w-48 truncate sm:inline">{siteTitle}</span>
     </a>

@@ -21,10 +21,11 @@ import {
   LLMS_TXT_PATH,
   SITEMAP_PATH,
   crumbPath,
+  feedPath,
   listingPath,
   markdownPath,
 } from '#lib/seo/paths.js';
-import type { CrumbTarget } from '#lib/seo/paths.js';
+import type { CrumbTarget, FeedTarget } from '#lib/seo/paths.js';
 import { lastPageOf } from '#lib/theme/pagination.js';
 import type { HomeListType, ListingTarget } from '#lib/theme/pagination.js';
 
@@ -524,12 +525,32 @@ export const buildHead = ({
       type: 'application/xml',
       href: href(SITEMAP_PATH),
     });
-  links.push({
-    rel: 'alternate',
-    type: 'application/rss+xml',
-    title: site.title,
-    href: href(FEED_PATH),
-  });
+  // The feed route answers only while discoverable; narrowed feeds follow archives.
+  if (discoverable) {
+    links.push({
+      rel: 'alternate',
+      type: 'application/rss+xml',
+      title: site.title,
+      href: href(FEED_PATH),
+    });
+    const term = page?.kind === 'term' ? page.term : null;
+    const followed: (FeedTarget & { name: string }) | null =
+      page?.kind === 'author'
+        ? { kind: 'author', slug: page.author.slug, name: page.author.name }
+        : term && (term.taxonomy === 'category' || term.taxonomy === 'tag')
+          ? { kind: term.taxonomy, slug: term.slug, name: term.name }
+          : null;
+    if (followed)
+      links.push({
+        rel: 'alternate',
+        type: 'application/rss+xml',
+        title: messagesFor(site.locale).themeFeedTitle(
+          site.title,
+          followed.name,
+        ),
+        href: href(feedPath({ kind: followed.kind, slug: followed.slug })),
+      });
+  }
   if (discoverable && settings.llmsTxtEnabled)
     links.push({
       rel: 'describedby',
@@ -553,6 +574,9 @@ export const buildHead = ({
     settings.siteUrl ? `${absolute(path)}#${key}` : `_:${key}`;
   const ref = (key: string) => ({ '@id': key });
   const person = settings.entityType === 'Person';
+  // The custom logo stands in for an SEO logo, as an absolute URL only.
+  const logoUrl =
+    settings.logoUrl || (site.logo ? absolute(site.logo.url) : '');
   const identityName = settings.entityName || (person ? '' : site.title);
   const identityId = id('/', person ? 'person' : 'organization');
   const publisher = identityName ? ref(identityId) : undefined;
@@ -590,8 +614,8 @@ export const buildHead = ({
           '@id': identityId,
           name: identityName,
           url: absolute('/'),
-          [person ? 'image' : 'logo']: settings.logoUrl
-            ? { '@type': 'ImageObject', url: settings.logoUrl }
+          [person ? 'image' : 'logo']: logoUrl
+            ? { '@type': 'ImageObject', url: logoUrl }
             : undefined,
           sameAs: settings.sameAs,
         })

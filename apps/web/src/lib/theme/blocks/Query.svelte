@@ -7,7 +7,7 @@
   import Blocks from '#lib/theme/blocks/Blocks.svelte';
   import BlockView from '#lib/theme/blocks/Block.svelte';
   import PostScope from '#lib/theme/blocks/PostScope.svelte';
-  import { queryKey } from '#lib/theme/queries.js';
+  import { queryKey, selectionOf } from '#lib/theme/queries.js';
   import { useScope } from '#lib/theme/scope.js';
 
   /** The page's main query (WordPress "inherit query"): the posts of this archive, search or home. */
@@ -35,7 +35,7 @@
       ? 'posts' in page
         ? page.posts
         : null
-      : (scope().queries?.[queryKey(block)] ?? null),
+      : (scope().queries?.[queryKey(selectionOf(block))] ?? null),
   );
   const target = $derived.by((): ListingTarget | null => {
     if (!block.attrs.inherit) return null;
