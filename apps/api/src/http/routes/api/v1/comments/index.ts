@@ -1,4 +1,4 @@
-import { COMMENT_PENDING_HEADER } from '@cms/sdk';
+import { COMMENTER_PROOF_HEADER, COMMENT_PENDING_HEADER } from '@cms/sdk';
 import { currentUser, unlockProofs } from '#api/http/request';
 import { t } from 'elysia';
 import { readJson, SMALL_BODY_BYTES } from '#api/http/request';
@@ -37,6 +37,7 @@ export const routes = (app: ApiApp) =>
           clients.attempt(request),
           unlockProofs(request),
           await currentUser(auth, request),
+          request.headers.get(COMMENTER_PROOF_HEADER) ?? '',
         ),
       );
     });

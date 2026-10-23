@@ -37,7 +37,7 @@ export class MemoryUserDirectory implements UserDirectory {
         !this.content.trashed.has(row.id),
     );
     return user && hasPublic
-      ? { name: user.name, slug: user.slug, bio: user.bio, email: user.email }
+      ? { name: user.name, slug: user.slug, bio: user.bio }
       : null;
   }
 

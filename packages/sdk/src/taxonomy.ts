@@ -77,7 +77,14 @@ export type AdminTaxonomyTerm = z.output<typeof adminTaxonomyTermSchema>;
  */
 export const taxonomyInputSchema = z.object({
   name: z.string().trim().min(1).max(191),
-  slug: z.string().trim().toLowerCase().max(191).regex(CONTENT_SLUG).optional(),
+  slug: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .normalize('NFC')
+    .max(191)
+    .regex(CONTENT_SLUG)
+    .optional(),
   description: z.string().trim().max(1000).default(''),
   parentId: z.string().trim().min(1).max(36).nullable().default(null),
   /** Omission preserves existing SEO on update. */

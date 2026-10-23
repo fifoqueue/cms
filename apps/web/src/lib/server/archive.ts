@@ -41,20 +41,20 @@ export const loadTermArchive = async (
       page: pageParam(url),
       pageSize,
     });
+  // Requested together with the term, whose lookup decides the error.
+  const guess = list(slug);
+  guess.catch(() => undefined);
+  const term = await api.taxonomy.getBySlug(taxonomy, slug).catch(notFoundFrom);
   const canonicalPath =
     taxonomy === 'category' || taxonomy === 'tag'
       ? archivePath(
           archives?.bases ?? { category: '/category', tag: '/tag' },
           taxonomy,
-          slug,
+          term.slug,
         )
-      : `/taxonomy/${encodeURIComponent(taxonomy)}/${encodeURIComponent(slug)}`;
+      : `/taxonomy/${encodeURIComponent(taxonomy)}/${encodeURIComponent(term.slug)}`;
   if (url.pathname !== canonicalPath)
     redirect(308, `${canonicalPath}${url.search}`);
-  // Requested together with the term, whose lookup decides the error.
-  const guess = list(slug);
-  guess.catch(() => undefined);
-  const term = await api.taxonomy.getBySlug(taxonomy, slug).catch(notFoundFrom);
   // The term lookup ignores case and padding; list by the stored slug when spelled differently.
   const posts = await (term.slug === slug ? guess : list(term.slug));
   const page = {

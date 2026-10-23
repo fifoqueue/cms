@@ -49,7 +49,7 @@ export interface UserServiceDeps {
   ids: IdGenerator;
   clock: Clock;
   /** Avatar image of an email address (Settings → Discussion), or null. */
-  avatar?: (email: string) => Promise<string | null>;
+  avatar?: (key: string) => Promise<string | null>;
   /** Invitations by email to choose a password. */
   invitations: {
     /** Whether email delivery can send one now. */
@@ -86,7 +86,7 @@ export class UserService {
       name: author.name,
       slug: author.slug,
       bio: author.bio,
-      avatarUrl: (await this.deps.avatar?.(author.email)) ?? null,
+      avatarUrl: (await this.deps.avatar?.(`author:${author.slug}`)) ?? null,
     };
   }
 

@@ -170,6 +170,12 @@ describe('ContentService', () => {
     expect((await service.create(input({ title: '🌧️' }), ADMIN)).slug).toMatch(
       /^post-[0-9a-f]+$/,
     );
+    const normalized = await service.create(
+      input({ title: 'Café', slug: 'cafe\u0301' }),
+      ADMIN,
+    );
+    expect(normalized.slug).toBe('café');
+    expect(normalized.path).toBe(`/${encodeURIComponent('café')}`);
   });
 
   test('private site reads require resolved capabilities and never expose drafts or admin fields', async () => {

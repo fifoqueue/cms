@@ -1,3 +1,4 @@
+import { redirect } from '@sveltejs/kit';
 import { CONTENT_SLUG } from '@cms/sdk';
 import { contentApi, mediaFiles } from '#lib/server/api.js';
 import {
@@ -71,6 +72,9 @@ export const GET: RequestHandler = async ({ fetch, url }) => {
   if (!settings.indexingEnabled || followed === undefined) return notFound();
   if (!settings.siteUrl) return missingSiteUrl('The feed');
   const narrowed = target && followed && { ...target, slug: followed.slug };
+  const canonicalPath = narrowed ? feedPath(narrowed) : null;
+  if (canonicalPath && `${url.pathname}${url.search}` !== canonicalPath)
+    redirect(308, canonicalPath);
   const items = await loadRecent(
     api,
     settings,
