@@ -1263,6 +1263,25 @@ export const en = {
     `The alternative text could not be saved to the library (${reason}). Press the button again to use it here only.`,
   seoTabs: 'SEO settings',
   // site-theme
+  importAuthors: 'Assign authors',
+  importAuthorsHelp:
+    'Authors are matched to existing users by email address or login. For authors without a match:',
+  importAuthorMode: (mode: string) =>
+    mode === 'author'
+      ? 'Create a new user with the Author role'
+      : mode === 'subscriber'
+        ? 'Create a new user with the Subscriber role'
+        : 'Assign their posts to me',
+  importMoreSummary: (users: number, menus: number, redirects: number) =>
+    `${users} users and ${menus} menus created; ${redirects} old addresses now redirect.`,
+  importAttachments: (count: number) =>
+    count === 1 ? '1 media file to upload' : `${count} media files to upload`,
+  importAttachmentsHelp:
+    'Media files were not copied. Entries still show them from the old site; upload them to the media library and replace them, including featured images.',
+  importFeatured: (count: number) =>
+    count === 1
+      ? 'featured image of 1 entry'
+      : `featured image of ${count} entries`,
   adminBarEditCategory: 'Edit category',
   adminBarEditTag: 'Edit tag',
   adminBarEditTerm: 'Edit term',
@@ -1552,4 +1571,34 @@ export const en = {
   patternDraftHelp: 'Draft patterns are not shown on the site.',
   patternUsage:
     'Synced patterns show their current published version in every entry that uses them.',
+
+  // admin-screens wave 3
+  columnModified: 'Last modified',
+  usersEntriesOf: (name: string, count: number) =>
+    count === 1 ? `1 entry by ${name}` : `${count} entries by ${name}`,
+  rolesDelete: 'Delete role',
+  rolesReassign: 'Give its users the role',
+  rolesDeleteConfirm: (name: string) =>
+    `Delete the role ${name}? Its users get the role you chose.`,
+  usersAccountManagement: 'Account management',
+  usersSignOutEverywhere: 'Log out everywhere',
+  usersSignOutConfirm: (name: string) => `Sign ${name} out of every session?`,
+  usersSignedOut: 'The user was signed out everywhere.',
+  sessionsTitle: 'Sessions',
+  sessionsHelp:
+    'Where you are signed in. Sign out any session you do not recognize.',
+  sessionStarted: (date: string) => `Signed in ${date}`,
+  sessionExpires: (date: string) => `Expires ${date}`,
+  sessionCurrent: 'This session',
+  sessionRevoke: 'Sign out',
+  sessionRevoked: 'The session was signed out.',
+  dashboardBoxes: 'Boxes to show, in order',
+  moveUpItem: (name: string) => `Move ${name} up`,
+  moveDownItem: (name: string) => `Move ${name} down`,
+  pluginSettingsLink: 'Settings',
+  pluginSettingsOf: (name: string) => `${name} settings`,
+  pluginNoSettings: 'This plugin has no settings.',
+  menuDeleteConfirm: (name: string) => `Delete the menu “${name}”?`,
+  widgetMoveTo: (area: string) => `Move to ${area}`,
+  widgetDropHere: 'Drop here to place the widget last',
 } as const;

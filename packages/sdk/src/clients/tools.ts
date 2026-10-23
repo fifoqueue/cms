@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { siteHealthSchema, wxrImportResultSchema } from '#sdk/health';
-import type { SiteHealth, WxrImportResult } from '#sdk/health';
+import type {
+  SiteHealth,
+  WxrImportOptions,
+  WxrImportResult,
+} from '#sdk/health';
 import { adminWebhookSchema, webhookSecretSchema } from '#sdk/webhooks';
 import type {
   AdminWebhook,
@@ -17,8 +21,9 @@ export const toolsAdminClient = (request: Request) => {
     /** The whole site as a WordPress export (WXR) document. */
     exportWxr: () =>
       request<Response>('GET', '/api/v1/admin/export', { raw: true }),
-    importWxr: (xml: string) =>
+    importWxr: (xml: string, options: WxrImportOptions = {}) =>
       request<WxrImportResult>('POST', '/api/v1/admin/import', {
+        query: { authors: options.authors },
         body: xml,
         contentType: 'application/xml',
         response: wxrImportResultSchema,

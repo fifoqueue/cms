@@ -31,7 +31,7 @@
       adjacent?: BlockData['adjacent'];
       pageTree?: BlockData['pageTree'];
       recentComments?: BlockData['recentComments'];
-      postAuthor?: BlockData['postAuthor'];
+      authors?: BlockData['authors'];
       calendar?: BlockData['calendar'];
       theme: ThemeView;
       site: SiteView;
@@ -64,7 +64,7 @@
     adjacent: data.adjacent ?? null,
     pageTree: data.pageTree ?? null,
     recentComments: data.recentComments ?? null,
-    postAuthor: data.postAuthor ?? null,
+    authors: data.authors ?? null,
     calendar: data.calendar ?? null,
     theme: data.theme,
     site: data.site,

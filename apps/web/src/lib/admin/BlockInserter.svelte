@@ -30,6 +30,12 @@
     aria-label={m.editorSearchBlocks}
     bind:value={search}
     class="h-8"
+    onkeydown={(event) => {
+      // The inserter sits inside the template's save form: Enter inserts, never saves.
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      if (shown[0]) onpick(shown[0]);
+    }}
   />
   <ul class="grid max-h-64 grid-cols-2 gap-1 overflow-y-auto">
     {#each shown as name (name)}

@@ -1,10 +1,16 @@
 import { error } from '@sveltejs/kit';
 import { isIndependentQuery, walkBlocks } from '@cms/sdk';
-import type { Block, PublicTaxonomyTerm, TaxonomyType } from '@cms/sdk';
+import type {
+  Block,
+  PublicContentSummary,
+  PublicTaxonomyTerm,
+  TaxonomyType,
+} from '@cms/sdk';
 import { childrenOf } from '@cms/sdk/tree';
 import type { contentApi } from '#lib/server/api.js';
 import { Errors } from '#lib/server/errors.js';
 import { listView } from '#lib/server/public-view.js';
+import { mapLimit } from '#lib/server/seo-discovery.js';
 import type { PostList, ThemeView } from '#lib/server/public-view.js';
 import { queryKey, selectionOf } from '#lib/theme/queries.js';
 import type { QuerySelection } from '#lib/theme/queries.js';
@@ -46,13 +52,11 @@ export interface BlockData {
   pageTree: (EntryLink & { depth: number })[] | null;
   /** Newest approved comments (`latest-comments`). */
   recentComments: { author: string; title: string; path: string }[] | null;
-  /** The single entry's author (`post-author`). */
-  postAuthor: {
-    name: string;
-    slug: string;
-    bio: string;
-    avatarUrl: string | null;
-  } | null;
+  /** Profiles of the authors `post-author` blocks show, by author slug. */
+  authors: Record<
+    string,
+    { name: string; slug: string; bio: string; avatarUrl: string | null }
+  > | null;
   /** Posts per day of one month (`calendar`), UTC like the date archives. */
   calendar: {
     year: number;
@@ -70,12 +74,39 @@ export interface BlockContext {
   entry: { id: string; author: string | null } | null;
   /** The month a calendar shows; the current UTC month by default. */
   month: { year: number; month: number } | null;
+  /** Authors of the page's own posts (archives, home), for post-author blocks in loops. */
+  authors: string[];
 }
 
 /** Months of posts the calendar looks through for its previous and next links. */
 const CALENDAR_MONTHS = 60;
 
-const NO_CONTEXT: BlockContext = { entry: null, month: null };
+/** Pages and calendar posts read at most (100 per request). */
+const LIST_MAX = 2_000;
+/** Distinct author profiles one page loads at most. */
+const AUTHORS_MAX = 50;
+
+const NO_CONTEXT: BlockContext = { entry: null, month: null, authors: [] };
+
+/**
+ * Every item of a paginated public list up to `LIST_MAX`, a few pages at a time. A failed
+ * page fails the whole read, so a partial list is never shown as complete.
+ */
+const listAll = async (
+  api: Api,
+  query: Parameters<Api['list']>[0],
+): Promise<PublicContentSummary[]> => {
+  const first = await api.list({ ...query, page: 1, pageSize: 100 });
+  const pages = Math.min(
+    Math.ceil(first.total / 100),
+    Math.ceil(LIST_MAX / 100),
+  );
+  const rest = await mapLimit(
+    Array.from({ length: Math.max(pages - 1, 0) }, (_, index) => index + 2),
+    (page) => api.list({ ...query, page, pageSize: 100 }),
+  );
+  return [first, ...rest].flatMap((list) => list.items);
+};
 
 /** The block context of a page. */
 export const contextOf = (page: ThemePage): BlockContext => ({
@@ -87,6 +118,12 @@ export const contextOf = (page: ThemePage): BlockContext => ({
     page.kind === 'date' && page.date.month
       ? { year: page.date.year, month: page.date.month }
       : null,
+  authors:
+    'posts' in page && page.posts
+      ? page.posts.items.flatMap((post) =>
+          post.author ? [post.author.slug] : [],
+        )
+      : [],
 });
 
 /** A template's blocks followed by those of the parts it includes, each part once. */
@@ -243,7 +280,6 @@ export const loadBlockData = async (
     adjacent,
     pageTree,
     recentComments,
-    postAuthor,
     calendar,
   ] = await Promise.all([
     Promise.all(
@@ -286,8 +322,9 @@ export const loadBlockData = async (
     !needs.pages
       ? (known.pageTree ?? null)
       : (known.pageTree ??
-        api.list({ type: 'page', pageSize: 100 }).then(
-          ({ items }) => toPageTree(items),
+        listAll(api, { type: 'page' }).then(
+          // Locked pages are not listed; their children show at the top level.
+          (items) => toPageTree(items.filter((item) => !item.protected)),
           () => null,
         )),
     !needs.comments
@@ -299,19 +336,13 @@ export const loadBlockData = async (
               list.map(({ author, title, path }) => ({ author, title, path })),
             () => null,
           ),
-    entry?.author && needs.author
-      ? api.author(entry.author).then(
-          ({ name, slug, bio, avatarUrl }) => ({ name, slug, bio, avatarUrl }),
-          () => null,
-        )
-      : null,
     needs.calendar
       ? Promise.all([
-          api.list({ type: 'post', ...month, pageSize: 100 }),
+          listAll(api, { type: 'post', ...month }),
           // Newest first; months further back than this get no "previous" link.
           api.months(CALENDAR_MONTHS).catch(() => []),
         ])
-          .then(([{ items }, listed]) => {
+          .then(([items, listed]) => {
             const days: Record<number, number> = {};
             for (const { publishedAt } of items) {
               const day = new Date(publishedAt).getUTCDate();
@@ -335,8 +366,36 @@ export const loadBlockData = async (
           .catch(() => null)
       : null,
   ]);
+  const queries = { ...known.queries, ...Object.fromEntries(lists) };
+  // Post-author blocks show the entry's author or, in loops, each listed post's author.
+  const slugs = needs.author
+    ? [
+        ...new Set([
+          ...(entry?.author ? [entry.author] : []),
+          ...context.authors,
+          ...Object.values(queries).flatMap((list) =>
+            list.items.flatMap((post) =>
+              post.author ? [post.author.slug] : [],
+            ),
+          ),
+        ]),
+      ].slice(0, AUTHORS_MAX)
+    : [];
+  const profiles = await mapLimit(slugs, (slug) =>
+    api.author(slug).then(
+      ({ name, slug, bio, avatarUrl }) => ({ name, slug, bio, avatarUrl }),
+      () => null,
+    ),
+  );
+  const authors = needs.author
+    ? Object.fromEntries(
+        profiles.flatMap((profile) =>
+          profile ? [[profile.slug, profile] as const] : [],
+        ),
+      )
+    : null;
   return {
-    queries: { ...known.queries, ...Object.fromEntries(lists) },
+    queries,
     terms: { category, tag },
     months,
     limits: {
@@ -356,7 +415,7 @@ export const loadBlockData = async (
     adjacent,
     pageTree,
     recentComments,
-    postAuthor,
+    authors,
     calendar,
   };
 };

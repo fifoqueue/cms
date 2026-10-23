@@ -81,6 +81,68 @@ describe('user administration', () => {
     expect(await codeOf(service.list(refreshed!))).toBe('forbidden');
   });
 
+  test('sessions are listed and revoked only by their owner; deleting a role moves its users', async () => {
+    const roles = new RoleService(new MemorySeoSettingsRepository());
+    const { users } = await setup({ roles });
+    const directory = new MemoryUserDirectory(
+      users,
+      new MemoryContentRepository(),
+    );
+    const deletable = new RoleService(
+      new MemorySeoSettingsRepository(),
+      directory,
+    );
+    await deletable.save(
+      { key: 'staff', name: 'Staff', capabilities: [] },
+      admin,
+    );
+    await users.insert(userRecord({ id: 'staff', role: 'staff' }));
+    let issued = 0;
+    const auth = new AuthService({
+      users,
+      sessions: new MemorySessions(() => false, users),
+      hasher: plainHasher,
+      tokens: {
+        issue: () => `token-${++issued}`,
+        digest: (token) => `#${token}`,
+      },
+      ids: sequentialIds(),
+      clock: fixedClock(),
+      sessionTtlMs: 60_000,
+    });
+    const writer = (await users.findById('writer'))!;
+    const first = await auth.startSession(writer);
+    await auth.startSession(writer);
+    const listed = await auth.sessions(writer, first.token);
+    expect(listed.map((session) => session.current).sort()).toEqual([
+      false,
+      true,
+    ]);
+    // Ids are opaque: neither the token nor its digest.
+    expect(listed.map((session) => session.id)).not.toContain('#token-1');
+    const other = listed.find((session) => !session.current)!;
+    expect(await codeOf(auth.revokeSession(admin, other.id))).toBe('not_found');
+    await auth.revokeSession(writer, other.id);
+    expect(await auth.sessions(writer, first.token)).toHaveLength(1);
+    expect(await codeOf(auth.signOutEverywhere('writer', writer))).toBe(
+      'forbidden',
+    );
+    await auth.signOutEverywhere('writer', admin);
+    expect(await auth.authenticate(first.token)).toBeNull();
+
+    expect(
+      await codeOf(deletable.remove('staff', { reassignTo: 'staff' }, admin)),
+    ).toBe('invalid_input');
+    expect(
+      await codeOf(deletable.remove('author', { reassignTo: 'editor' }, admin)),
+    ).toBe('invalid_input');
+    await deletable.remove('staff', { reassignTo: 'editor' }, admin);
+    expect((await users.findById('staff'))?.role).toBe('editor');
+    expect((await deletable.list()).some((role) => role.key === 'staff')).toBe(
+      false,
+    );
+  });
+
   test('public registration requires membership and invites only subscribers', async () => {
     const settings = new MemorySeoSettingsRepository();
     const invitations: string[] = [];

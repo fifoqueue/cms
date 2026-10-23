@@ -7,6 +7,8 @@ export interface WxrAuthor {
 }
 
 export interface WxrTerm {
+  /** WordPress term id (`wp:term_id`), for menu items that link to terms. */
+  id?: string;
   slug: string;
   name: string;
   description: string;
@@ -47,13 +49,25 @@ export interface WxrItem {
   categories: string[];
   tags: string[];
   comments: WxrComment[];
-  /** `wp:postmeta` pairs the CMS reads or writes (`wp_pattern_sync_status`). */
+  /** The entry's public URL on the old site (`link`). */
+  link?: string;
+  /** WordPress id of the parent entry (`wp:post_parent`), `0`/empty for none. */
+  parentId?: string;
+  /** `wp:menu_order`. */
+  menuOrder?: number;
+  /** Attachments: the file's URL (`wp:attachment_url`). */
+  attachmentUrl?: string;
+  /** `wp:postmeta` values this importer reads or writes (`_thumbnail_id`, `_menu_item_*`, `wp_pattern_sync_status`). */
   meta?: Record<string, string>;
+  /** Navigation menus (`nav_menu` terms) a menu item belongs to: slug and name. */
+  menus?: { slug: string; name: string }[];
 }
 
 export interface WxrDocument {
   title: string;
   link: string;
+  /** `wp:base_site_url`: old URLs on this origin can become redirects. */
+  baseUrl?: string;
   authors: WxrAuthor[];
   categories: WxrTerm[];
   tags: WxrTerm[];
@@ -148,6 +162,7 @@ export const wxrItemStart = (
   return [
     '<item>',
     tag('title', cdata(item.title)),
+    ...(item.link ? [tag('link', text(item.link))] : []),
     tag('dc:creator', cdata(item.author)),
     `<guid isPermaLink="false">${text(item.id)}</guid>`,
     tag('content:encoded', cdata(item.html)),
@@ -158,6 +173,7 @@ export const wxrItemStart = (
     tag('wp:post_name', cdata(item.slug)),
     tag('wp:status', cdata(item.status)),
     tag('wp:post_type', cdata(item.type)),
+    tag('wp:post_parent', text(item.parentId || '0')),
     tag('wp:post_password', cdata(item.password)),
     tag('wp:is_sticky', item.sticky ? '1' : '0'),
     ...terms,
@@ -210,12 +226,16 @@ export const fromWordPressHtml = (
   patterns: ReadonlyMap<string, string>,
 ) =>
   html
-    .replace(/<!--more(?:\s[^>]*)?-->/g, '<div data-cms-more="true"></div>')
-    .replace(/<!--nextpage-->/g, '<div data-cms-nextpage="true"></div>')
+    // Blank lines around each marker keep classic-content paragraphs from wrapping it.
+    .replace(
+      /<!--more(?:\s[^>]*)?-->/g,
+      '\n\n<div data-cms-more="true"></div>\n\n',
+    )
+    .replace(/<!--nextpage-->/g, '\n\n<div data-cms-nextpage="true"></div>\n\n')
     .replace(
       /<!--\s*wp:block\s+\{\s*"ref"\s*:\s*"?([\w-]{1,36})"?\s*\}\s*\/-->/g,
       (_, ref: string) => {
         const id = patterns.get(ref);
-        return id ? `<div data-cms-pattern="${id}"></div>` : '';
+        return id ? `\n\n<div data-cms-pattern="${id}"></div>\n\n` : '';
       },
     );

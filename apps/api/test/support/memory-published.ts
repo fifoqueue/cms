@@ -12,18 +12,22 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
   constructor(private readonly content: MemoryContentRepository) {}
 
   async byId(id: string) {
-    return published(await this.content.findById(id));
+    return this.ancestry(published(await this.content.findById(id)));
   }
 
   async privateById(id: string) {
     const record = await this.content.findById(id);
     return record?.status === 'private' && !record.trashedAt
-      ? { ...project(record), html: record.html, fields: record.fields }
+      ? this.ancestry({
+          ...project(record),
+          html: record.html,
+          fields: record.fields,
+        })
       : null;
   }
 
   async bySlug(slug: string) {
-    return published(await this.content.findBySlug(slug));
+    return this.ancestry(published(await this.content.findBySlug(slug)));
   }
 
   async summariesByIds(ids: readonly string[]) {
@@ -95,7 +99,21 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
       view: 'active',
       orderBy: 'publishedAt',
     });
-    return { items: items.map(project), total };
+    return {
+      items: items.map((item) => this.ancestry(project(item))!),
+      total,
+    };
+  }
+
+  /** Like the Prisma projection: a parent only while it is public and unlocked. */
+  private ancestry<T extends PublishedSummaryRecord | null>(record: T): T {
+    if (!record?.parentId) return record;
+    const parent = this.content.rows.get(record.parentId);
+    const open =
+      parent?.status === 'published' &&
+      !this.content.trashed.has(parent.id) &&
+      parent.passwordHash === null;
+    return open ? record : { ...record, parentId: null };
   }
 }
 

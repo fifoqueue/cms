@@ -41,6 +41,8 @@ export interface SessionRecord {
   userId: string;
   /** The linked identity the session was issued through; `null` for every other sign-in. */
   identityId: string | null;
+  /** When it was issued (sessions from before this column carry the migration time). */
+  createdAt: Date;
   expiresAt: Date;
 }
 
@@ -63,6 +65,8 @@ export interface SessionRepository {
   deleteExpired(now: Date): Promise<void>;
   /** Signs the user out everywhere, except the session `keep` when given. */
   deleteForUser(userId: string, keep?: string): Promise<void>;
+  /** The user's sessions that have not expired by `now`, newest first. */
+  listForUser(userId: string, now: Date): Promise<SessionRecord[]>;
 }
 
 export interface PasswordHasher {

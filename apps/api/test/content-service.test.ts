@@ -664,6 +664,32 @@ describe('ContentService', () => {
       expect(item).not.toHaveProperty('document');
       expect(item).not.toHaveProperty('html');
     }
+    // A child names its parent only while the parent is public too.
+    const parent = await service.create(
+      input({ type: 'page', title: 'Parent', status: 'private' }),
+      ADMIN,
+    );
+    await service.create(
+      input({
+        type: 'page',
+        title: 'Child',
+        status: 'published',
+        parentId: parent.id,
+      }),
+      ADMIN,
+    );
+    const child = async () =>
+      (await publicContent.list({ type: 'page' })).items.find(
+        (item) => item.slug === 'child',
+      )!;
+    expect((await child()).parentId).toBeNull();
+    expect((await publicContent.getBySlug('child')).parentId).toBeNull();
+    await service.update(
+      parent.id,
+      { ...input({ type: 'page', title: 'Parent' }), status: 'published' },
+      ADMIN,
+    );
+    expect((await child()).parentId).toBe(parent.id);
   });
 
   test('slots requested by path get the content at its current path only', async () => {

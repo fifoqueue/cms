@@ -80,4 +80,12 @@ export class PrismaSessionRepository implements SessionRepository {
   async deleteExpired(now: Date) {
     await this.db.session.deleteMany({ where: { expiresAt: { lte: now } } });
   }
+
+  listForUser(userId: string, now: Date) {
+    return this.db.session.findMany({
+      where: { userId, expiresAt: { gt: now } },
+      orderBy: [{ createdAt: 'desc' }, { tokenHash: 'asc' }],
+      take: 100,
+    });
+  }
 }

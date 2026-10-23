@@ -33,8 +33,10 @@ const STATUSES: Record<ContentStatus, string> = {
 const APPROVED = { approved: '1', pending: '0', spam: 'spam', trash: 'trash' };
 const PAGE = 100;
 
-const toItem = (record: ContentRecord): WxrItem => ({
+const toItem = (record: ContentRecord, origin: string): WxrItem => ({
   id: record.id,
+  link: origin ? `${origin}${record.path}` : '',
+  parentId: record.parentId ?? '',
   type: record.type,
   title: record.title,
   slug: record.slug,
@@ -176,7 +178,7 @@ export class ExportService {
       const records = await this.deps.content.exportPage(afterContent, PAGE);
       if (!records.length) break;
       for (const record of records) {
-        yield wxrItemStart(toItem(record), header, names);
+        yield wxrItemStart(toItem(record, header.link), header, names);
         let afterComment: string | null = null;
         for (;;) {
           const comments = await this.deps.comments.exportPage(

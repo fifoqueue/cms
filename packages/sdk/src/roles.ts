@@ -8,6 +8,9 @@ export const roleDefinitionSchema = z.object({
   capabilities: z.array(z.enum(CAPABILITIES)).max(CAPABILITIES.length),
 });
 export type RoleDefinition = z.output<typeof roleDefinitionSchema>;
+/** Deleting a custom role: its users get `reassignTo` first. */
+export const roleDeleteSchema = z.object({ reassignTo: roleSchema });
+export type RoleDeleteInput = z.input<typeof roleDeleteSchema>;
 export const membershipSchema = z.object({
   enabled: z.boolean().default(false),
 });

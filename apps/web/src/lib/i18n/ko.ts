@@ -1233,6 +1233,21 @@ export const ko: Messages = {
     `대체 텍스트를 라이브러리에 저장하지 못했습니다(${reason}). 여기에서만 쓰려면 버튼을 다시 누르세요.`,
   seoTabs: '검색 엔진 최적화 설정',
   // site-theme
+  importAuthors: '글쓴이 지정',
+  importAuthorsHelp:
+    '글쓴이는 이메일 주소나 로그인 이름으로 기존 사용자와 연결합니다. 일치하는 사용자가 없으면:',
+  importAuthorMode: (mode: string) =>
+    mode === 'author'
+      ? '글쓴이 역할의 새 사용자 만들기'
+      : mode === 'subscriber'
+        ? '구독자 역할의 새 사용자 만들기'
+        : '내 글로 지정하기',
+  importMoreSummary: (users: number, menus: number, redirects: number) =>
+    `사용자 ${users}명과 메뉴 ${menus}개를 만들었고, 이전 주소 ${redirects}개를 새 주소로 연결했습니다.`,
+  importAttachments: (count: number) => `업로드할 미디어 파일 ${count}개`,
+  importAttachmentsHelp:
+    '미디어 파일은 복사하지 않았습니다. 글에는 이전 사이트의 파일이 그대로 표시되니 미디어 라이브러리에 올린 뒤 대표 이미지와 함께 바꿔 주세요.',
+  importFeatured: (count: number) => `글 ${count}개의 대표 이미지`,
   adminBarEditCategory: '카테고리 편집',
   adminBarEditTag: '태그 편집',
   adminBarEditTerm: '항목 편집',
@@ -1509,4 +1524,33 @@ export const ko: Messages = {
   patternDraftHelp: '임시 패턴은 사이트에 표시되지 않습니다.',
   patternUsage:
     '동기화 패턴은 이를 쓰는 모든 글에 현재 발행된 버전으로 표시됩니다.',
+
+  // admin-screens wave 3
+  columnModified: '최근 수정',
+  usersEntriesOf: (name: string, count: number) => `${name}의 글 ${count}개`,
+  rolesDelete: '역할 삭제',
+  rolesReassign: '이 역할의 사용자에게 줄 역할',
+  rolesDeleteConfirm: (name: string) =>
+    `${name} 역할을 삭제할까요? 이 역할의 사용자는 선택한 역할로 바뀝니다.`,
+  usersAccountManagement: '계정 관리',
+  usersSignOutEverywhere: '모든 곳에서 로그아웃',
+  usersSignOutConfirm: (name: string) =>
+    `${name}님을 모든 세션에서 로그아웃할까요?`,
+  usersSignedOut: '사용자를 모든 곳에서 로그아웃했습니다.',
+  sessionsTitle: '세션',
+  sessionsHelp: '로그인되어 있는 곳입니다. 모르는 세션은 로그아웃하세요.',
+  sessionStarted: (date: string) => `${date}에 로그인`,
+  sessionExpires: (date: string) => `${date}에 만료`,
+  sessionCurrent: '현재 세션',
+  sessionRevoke: '로그아웃',
+  sessionRevoked: '세션을 로그아웃했습니다.',
+  dashboardBoxes: '표시할 상자와 순서',
+  moveUpItem: (name: string) => `${name} 위로 이동`,
+  moveDownItem: (name: string) => `${name} 아래로 이동`,
+  pluginSettingsLink: '설정',
+  pluginSettingsOf: (name: string) => `${name} 설정`,
+  pluginNoSettings: '이 플러그인에는 설정이 없습니다.',
+  menuDeleteConfirm: (name: string) => `“${name}” 메뉴를 삭제할까요?`,
+  widgetMoveTo: (area: string) => `${area}(으)로 이동`,
+  widgetDropHere: '여기에 놓으면 위젯이 맨 끝에 배치됩니다',
 };
