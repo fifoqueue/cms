@@ -23,6 +23,8 @@ export interface MediaRecord {
   height: number | null;
   alt: string;
   caption: string;
+  title?: string;
+  description?: string;
   storageKey: string;
   variants: Partial<Record<ImageSizeName, StoredVariant>>;
   createdAt: Date;
@@ -55,7 +57,12 @@ export interface MediaRepository {
   ): Promise<{ items: MediaRecord[]; total: number }>;
   update(
     id: string,
-    changes: { alt?: string; caption?: string },
+    changes: {
+      alt?: string;
+      caption?: string;
+      title?: string;
+      description?: string;
+    },
   ): Promise<void>;
   /** The files just newer and just older than `id` in the library order. */
   neighbors(

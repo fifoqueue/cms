@@ -34,6 +34,7 @@ const RULES: Record<
   // Anyone can comment, so unproven clients (direct API calls) share one limit instead of none.
   comment: [{ name: 'commentClient', scope: 'visitor' }],
   contentUnlock: [{ name: 'contentUnlockClient', scope: 'visitor' }],
+  privacy: [{ name: 'privacyClient', scope: 'visitor' }],
 };
 
 /**

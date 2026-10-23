@@ -41,7 +41,7 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
     // Pages load the data of their own template; error pages only have this one.
     loadTemplateData(
       api,
-      { theme },
+      { theme, reading },
       {
         kind: 'error',
         status: 404,
@@ -50,6 +50,7 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
     ),
   ]);
   return {
+    privacy: layout.privacy,
     archives: layout.archives,
     ...blocks,
     site: siteView(site),

@@ -37,8 +37,12 @@ export type CrumbTarget =
   | { kind: 'content'; path: string };
 
 /** A date archive: `/date/2026` or `/date/2026/03`. */
-export const datePath = (year: number, month: number | null) =>
-  month ? `/date/${year}/${String(month).padStart(2, '0')}` : `/date/${year}`;
+export const datePath = (year: number, month: number | null, day?: number) =>
+  month && day
+    ? `/date/${year}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}`
+    : month
+      ? `/date/${year}/${String(month).padStart(2, '0')}`
+      : `/date/${year}`;
 
 const listingRoot = (target: ListingTarget) =>
   'path' in target && target.path
@@ -48,7 +52,7 @@ const listingRoot = (target: ListingTarget) =>
       : target.kind === 'taxonomy'
         ? `/taxonomy/${encodeURIComponent(target.taxonomy)}/${encodeURIComponent(target.slug)}`
         : target.kind === 'date'
-          ? datePath(target.year, target.month)
+          ? datePath(target.year, target.month, target.day)
           : target.kind === 'category' ||
               target.kind === 'tag' ||
               target.kind === 'author' ||

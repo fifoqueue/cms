@@ -29,7 +29,7 @@ export const readingSettingsSchema = z.object({
   /** What each feed item carries: the full text (WordPress default) or the excerpt only. */
   feedContent: z.enum(['full', 'excerpt']).default('full'),
   dateFormat: z.enum(DATE_FORMATS).default('long'),
-  /** Dates on the site show in this zone. Permalinks always use UTC. */
+  /** Dates, archives and newly saved permalinks use this zone; stored paths remain until the next save. */
   timeZone: timeZoneSchema.default('UTC'),
   /** First day of a week in calendars: 0 Sunday … 6 Saturday (WordPress "Week Starts On"). */
   weekStartsOn: z.number().int().min(0).max(6).default(1),

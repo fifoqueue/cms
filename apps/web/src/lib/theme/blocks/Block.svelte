@@ -1,6 +1,7 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import type { Block } from '@cms/sdk';
+  import PrivacyPolicyLink from '#lib/theme/PrivacyPolicyLink.svelte';
   import Breadcrumbs from '#lib/seo/Breadcrumbs.svelte';
   import { crumbs } from '#lib/seo/head.js';
   import type { SitePage } from '#lib/seo/head.js';
@@ -117,6 +118,8 @@
       />
     </svelte:element>
   {/if}
+{:else if block.name === 'privacy-policy-link'}
+  <PrivacyPolicyLink policy={scope().privacy?.policy} />
 {:else if block.name === 'navigation'}
   <Navigation {block} />
 {:else if block.name === 'search'}

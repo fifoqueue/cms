@@ -92,11 +92,12 @@ export const load: PageServerLoad = async (event) => {
       : null;
   }
 
-  const blocks = await loadThemeData(
-    api,
-    layout.theme,
-    previewPage ? contextOf(previewPage) : undefined,
-  );
+  const blocks = await loadThemeData(api, layout.theme, {
+    ...(previewPage
+      ? contextOf(previewPage)
+      : { entry: null, month: null, authors: [] }),
+    timeZone: layout.reading.timeZone,
+  });
 
   return {
     themes: themes.map(({ id, name, active }) => ({ id, name, active })),
@@ -138,7 +139,7 @@ export const actions: Actions = {
     try {
       const preview = await adminFor(event).themes.preview(text(form, 'theme'));
       const api = contentApi(event.fetch);
-      const { theme } = await api.layout(preview.token);
+      const { theme, reading } = await api.layout(preview.token);
       const kind = text(form, 'kind');
       const key = text(form, 'key');
       if (
@@ -165,6 +166,7 @@ export const actions: Actions = {
           entry: contentId ? { id: contentId, author: author || null } : null,
           month: null,
           authors: [],
+          timeZone: reading.timeZone,
         },
       );
     } catch (caught) {

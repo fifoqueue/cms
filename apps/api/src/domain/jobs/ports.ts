@@ -47,7 +47,12 @@ export interface QueuedJob {
 
 /** Durable one-off work with retries (email, webhook deliveries, imports). */
 export interface JobQueue {
-  enqueue(kind: string, payload: unknown, runAt?: Date): Promise<void>;
+  enqueue(
+    kind: string,
+    payload: unknown,
+    runAt?: Date,
+    expiresAt?: Date,
+  ): Promise<void>;
   /** Leases up to `limit` due jobs for `leaseMs`; other processes skip them meanwhile. */
   claim(
     limit: number,

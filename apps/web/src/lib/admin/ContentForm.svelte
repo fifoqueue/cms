@@ -54,6 +54,7 @@
     id: string;
     name: string;
     parentId: string | null;
+    menuOrder?: number;
   }
 
   interface Props {
@@ -156,6 +157,7 @@
     ),
     tagIds: new Set(values?.tagIds ?? entry?.tags.map(({ id }) => id) ?? []),
     parentId: values?.parentId ?? entry?.parentId ?? '',
+    menuOrder: values?.menuOrder ?? entry?.menuOrder ?? 0,
     extraTermIds: new Set(
       values?.extraTermIds ?? entry?.extraTerms.map(({ id }) => id) ?? [],
     ),
@@ -284,6 +286,7 @@
   const path = $derived(
     entry
       ? renderPermalink(pattern, {
+          timeZone: seo.timeZone,
           id: entry.id,
           slug: slug.trim() || entry.slug,
           title: title.trim() || entry.title,
@@ -1279,6 +1282,15 @@
               >
             {/each}
           </NativeSelect>
+          <Label for="menu-order">{m.privacyMenuOrder}</Label>
+          <Input
+            id="menu-order"
+            name="menuOrder"
+            type="number"
+            min={-100000}
+            max={100000}
+            value={initial.menuOrder}
+          />
         </CardContent></Card
       >
     {/if}

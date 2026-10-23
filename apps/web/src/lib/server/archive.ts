@@ -7,6 +7,7 @@ import { contentApi } from '#lib/server/api.js';
 import { notFoundFrom } from '#lib/server/errors.js';
 import {
   listView,
+  requirePage,
   pageParam,
   termArchiveView,
 } from '#lib/server/public-view.js';
@@ -57,6 +58,7 @@ export const loadTermArchive = async (
     redirect(308, `${canonicalPath}${url.search}`);
   // The term lookup ignores case and padding; list by the stored slug when spelled differently.
   const posts = await (term.slug === slug ? guess : list(term.slug));
+  requirePage(posts);
   const page = {
     kind: 'term' as const,
     term: { ...termArchiveView(term), path: canonicalPath },
@@ -80,6 +82,7 @@ export const latestPosts = async (
     api.list({ type, sticky: 'exclude', page, pageSize }),
     page === 1 ? api.list({ type, sticky: 'only', pageSize }) : null,
   ]);
+  requirePage(posts);
   const listed = listView(posts);
   return sticky
     ? { ...listed, items: [...listView(sticky).items, ...listed.items] }

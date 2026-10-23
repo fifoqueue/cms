@@ -1,3 +1,4 @@
+import { requirePage } from '#lib/server/public-view.js';
 import { error } from '@sveltejs/kit';
 import { contentApi } from '#lib/server/api.js';
 import { Errors } from '#lib/server/errors.js';
@@ -6,7 +7,7 @@ import { loadSlots } from '#lib/server/slots.js';
 import { withTemplateData } from '#lib/server/theme-queries.js';
 import type { PageServerLoad } from './$types';
 
-/** Posts published in a UTC year (`/date/2026`) or month (`/date/2026/03`). */
+/** Posts published in a site-local year (`/date/2026`) or month (`/date/2026/03`). */
 export const load: PageServerLoad = async ({ fetch, url, params, parent }) => {
   const year = /^\d{4}$/.test(params.year) ? Number(params.year) : NaN;
   const month =
@@ -28,7 +29,7 @@ export const load: PageServerLoad = async ({ fetch, url, params, parent }) => {
   return withTemplateData(api, parent, {
     kind: 'date' as const,
     date: { year, month },
-    posts: listView(posts),
+    posts: (requirePage(posts), listView(posts)),
     slots: await slots,
   });
 };

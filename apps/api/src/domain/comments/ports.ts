@@ -1,4 +1,4 @@
-import type { CommentStatus } from '@cms/sdk';
+import type { CommentStatus, FeedComment } from '@cms/sdk';
 
 export interface CommentRecord {
   id: string;
@@ -59,6 +59,10 @@ export type CommentChanges = Partial<
  * `commentCount` in the same transaction.
  */
 export interface CommentRepository {
+  feed(
+    limit: number,
+    contentId?: string,
+  ): Promise<(Omit<FeedComment, 'createdAt'> & { createdAt: Date })[]>;
   target(contentId: string): Promise<CommentTarget | null>;
   findById(id: string): Promise<CommentRecord | null>;
   /** Page containing this top-level comment, ordered by creation time then id. */

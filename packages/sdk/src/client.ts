@@ -6,6 +6,7 @@ import { membershipSchema, roleDefinitionSchema } from '#sdk/roles';
 import type { RoleDefinition } from '#sdk/roles';
 // HTTP clients for the API. Frontends must talk to the API through these only.
 import { z } from 'zod';
+import { publicPrivacyClient, privacyAdminClient } from '#sdk/clients/privacy';
 import { createTransport, pageSchema } from '#sdk/transport';
 import { profileClient, usersClient } from '#sdk/clients/users';
 import { mediaAdminClient } from '#sdk/clients/media';
@@ -72,6 +73,7 @@ import type {
 import { installationStatusSchema } from '#sdk/installation';
 import type {
   AdminContentSummary,
+  ContentCounts,
   ContentEntry,
   ContentInput,
   ContentListQuery,
@@ -80,6 +82,7 @@ import type {
   PublicContentSummary,
 } from '#sdk/content';
 import {
+  contentCountsSchema,
   adminContentSchema,
   adminContentSummarySchema,
   publicContentSchema,
@@ -162,6 +165,7 @@ export const createContentClient = (options: ClientOptions, token?: string) => {
   const request = createTransport(options, token);
   return {
     ...captchaClient(request),
+    ...publicPrivacyClient(request),
     ...publicTypesClient(request),
     ...publicAppearanceClient(request),
     ...publicCommentsClient(request),
@@ -229,7 +233,16 @@ export const createContentClient = (options: ClientOptions, token?: string) => {
     },
     list: (query: PublicContentListQuery = {}) =>
       request<Paginated<PublicContentSummary>>('GET', '/api/v1/content', {
-        query: query as Query,
+        query: {
+          ...query,
+          include: Array.isArray(query.include)
+            ? query.include.join(',')
+            : query.include,
+          exclude: Array.isArray(query.exclude)
+            ? query.exclude.join(',')
+            : query.exclude,
+          parent: query.parent === null ? '0' : query.parent,
+        } as Query,
         response: pageSchema(publicContentSummarySchema),
       }),
     getBySlug: (slug: string, proofs?: readonly string[]) =>
@@ -378,6 +391,7 @@ export const createAdminClient = (options: ClientOptions, token: string) => {
     ...commentsAdminClient(request),
     ...searchAdminClient(request),
     ...toolsAdminClient(request),
+    ...privacyAdminClient(request),
     ...securityAdminClient(request),
     ...ssoAdminClient(request),
     archivePaths: {
@@ -414,6 +428,11 @@ export const createAdminClient = (options: ClientOptions, token: string) => {
         }),
     },
     content: {
+      counts: (type?: string) =>
+        request<ContentCounts>('GET', '/api/v1/admin/content/counts', {
+          query: { type },
+          response: contentCountsSchema,
+        }),
       list: (query: ContentListQuery = {}) =>
         request<Paginated<AdminContentSummary>>(
           'GET',

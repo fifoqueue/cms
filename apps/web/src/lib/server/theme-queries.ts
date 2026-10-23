@@ -1,5 +1,9 @@
 import { error } from '@sveltejs/kit';
-import { isIndependentQuery, walkBlocks } from '@cms/sdk';
+import {
+  calendar as calendarParts,
+  isIndependentQuery,
+  walkBlocks,
+} from '@cms/sdk';
 import type {
   Block,
   PublicContentSummary,
@@ -57,7 +61,7 @@ export interface BlockData {
     string,
     { name: string; slug: string; bio: string; avatarUrl: string | null }
   > | null;
-  /** Posts per day of one month (`calendar`), UTC like the date archives. */
+  /** Posts per day of one month (`calendar`), in the site time zone. */
   calendar: {
     year: number;
     month: number;
@@ -70,9 +74,10 @@ export interface BlockData {
 
 /** What the page shows, for blocks whose data depends on it. */
 export interface BlockContext {
+  timeZone?: string;
   /** The single entry (post navigation, post author). */
   entry: { id: string; author: string | null } | null;
-  /** The month a calendar shows; the current UTC month by default. */
+  /** The month a calendar shows; the current site month by default. */
   month: { year: number; month: number } | null;
   /** Authors of the page's own posts (archives, home), for post-author blocks in loops. */
   authors: string[];
@@ -180,7 +185,10 @@ type Shared = Partial<
 >;
 
 /** What the site layout already loaded (for error pages); pages reuse it instead of asking again. */
-export type LayoutBlockData = { theme: ThemeView } & Shared;
+export type LayoutBlockData = {
+  theme: ThemeView;
+  reading?: { timeZone: string };
+} & Shared;
 
 /** Pages in tree order by parent, each once (cycles and missing parents end up at the top). */
 const toPageTree = (
@@ -264,11 +272,12 @@ export const loadBlockData = async (
       () => null,
     );
   const { entry } = context;
-  const now = new Date();
-  const month = context.month ?? {
-    year: now.getUTCFullYear(),
-    month: now.getUTCMonth() + 1,
-  };
+  const timeZone =
+    context.timeZone ??
+    (needs.calendar ? (await api.reading()).timeZone : 'UTC');
+  const parts = calendarParts(timeZone);
+  const now = parts(new Date());
+  const month = context.month ?? { year: now.year, month: now.month };
   const [
     lists,
     category,
@@ -344,7 +353,7 @@ export const loadBlockData = async (
           .then(([items, neighbours]) => {
             const days: Record<number, number> = {};
             for (const { publishedAt } of items) {
-              const day = new Date(publishedAt).getUTCDate();
+              const day = parts(new Date(publishedAt)).day;
               days[day] = (days[day] ?? 0) + 1;
             }
             const near = (entry: { year: number; month: number } | null) =>
@@ -428,7 +437,7 @@ export const loadTemplateData = (
       ),
       layout.theme.parts,
     ),
-    contextOf(page),
+    { ...contextOf(page), timeZone: layout.reading?.timeZone },
     layout,
   );
 

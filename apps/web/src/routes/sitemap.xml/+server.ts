@@ -16,10 +16,14 @@ export const GET: RequestHandler = async ({ fetch }) => {
   ]);
   if (!settings.indexingEnabled) return notFound();
   if (!settings.siteUrl) return missingSiteUrl('The sitemap');
-  const [content, category, tag] = pages.map((page) => page.total);
+  const [content, category, tag, author, taxonomy] = pages.map(
+    (page) => page.total,
+  );
   return sitemapIndex(settings.siteUrl, {
     content: content ?? 0,
     category: category ?? 0,
     tag: tag ?? 0,
+    author: author ?? 0,
+    taxonomy: taxonomy ?? 0,
   });
 };

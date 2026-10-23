@@ -1,5 +1,5 @@
 export interface SeoDiscoveryCriteria {
-  kind: 'content' | 'category' | 'tag';
+  kind: 'content' | 'category' | 'tag' | 'author' | 'taxonomy';
   page: number;
   pageSize: number;
   /** Normalized public origin, used to recognize an explicit self-canonical URL. */

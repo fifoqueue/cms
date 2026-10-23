@@ -249,7 +249,12 @@ export class MediaService {
     );
     return this.update(
       copy.id,
-      { alt: media.alt, caption: media.caption },
+      {
+        alt: media.alt,
+        caption: media.caption,
+        title: media.title,
+        description: media.description,
+      },
       actor,
     );
   }

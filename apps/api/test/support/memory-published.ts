@@ -122,7 +122,7 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
       ...criteria,
       status: 'published',
       view: 'active',
-      orderBy: 'publishedAt',
+      orderBy: criteria.orderBy ?? 'publishedAt',
     });
     return {
       items: items.map((item) => this.ancestry(project(item))!),

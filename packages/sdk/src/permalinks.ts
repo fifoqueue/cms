@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { calendar } from '#sdk/calendar';
 import { Errors } from '#sdk/errors';
 
 /**
@@ -12,7 +13,7 @@ import { Errors } from '#sdk/errors';
 export const PERMALINK_CONTENT_TYPES = ['post', 'article', 'page'] as const;
 export type PermalinkContentType = (typeof PERMALINK_CONTENT_TYPES)[number];
 
-/** Date tokens use UTC; `%title%`, `%slug%` and `%id%` are `encodeURIComponent` of the value. */
+/** Date tokens use the supplied site zone (UTC by default); `%title%`, `%slug%` and `%id%` are `encodeURIComponent` of the value. */
 export const PERMALINK_TOKENS = [
   'year',
   'month',
@@ -62,6 +63,8 @@ const RESERVED_FILES = [
   '/sitemap.xml',
   '/feed.xml',
   '/llms.txt',
+  '/comments/feed.xml',
+  '/privacy/confirm',
 ];
 
 const UNSAFE_SEGMENT = /[\\/?#\p{Cc}\p{Zl}\p{Zp}]/u;
@@ -226,6 +229,7 @@ export const DEFAULT_PERMALINK_SETTINGS: PermalinkSettings = {
 };
 
 export interface PermalinkValues {
+  timeZone?: string;
   author?: string;
   category?: readonly string[];
   parents?: readonly string[];
@@ -253,12 +257,13 @@ export const renderPermalink = (
 
   if (Number.isNaN(date.getTime())) throw new TypeError(Errors.InvalidDate);
 
+  const local = calendar(values.timeZone ?? 'UTC')(date);
   const tokens: Record<PermalinkToken, () => string> = {
-    monthnum: () => pad(date.getUTCMonth() + 1, 2),
-    day: () => pad(date.getUTCDate(), 2),
-    hour: () => pad(date.getUTCHours(), 2),
-    minute: () => pad(date.getUTCMinutes(), 2),
-    second: () => pad(date.getUTCSeconds(), 2),
+    monthnum: () => pad(local.month, 2),
+    day: () => pad(local.day, 2),
+    hour: () => pad(local.hour, 2),
+    minute: () => pad(local.minute, 2),
+    second: () => pad(local.second, 2),
     post_id: () => encodeURIComponent(values.id),
     postname: () => encodeURIComponent(values.slug),
     author: () => encodeURIComponent(values.author || 'author'),
@@ -270,9 +275,9 @@ export const renderPermalink = (
       [...(values.parents ?? []), values.slug]
         .map((part) => encodeURIComponent(part))
         .join('/'),
-    year: () => pad(date.getUTCFullYear(), 4),
-    month: () => pad(date.getUTCMonth() + 1, 2),
-    date: () => pad(date.getUTCDate(), 2),
+    year: () => pad(local.year, 4),
+    month: () => pad(local.month, 2),
+    date: () => pad(local.day, 2),
     title: () => encodeURIComponent(values.title),
     slug: () => encodeURIComponent(values.slug),
     id: () => encodeURIComponent(values.id),

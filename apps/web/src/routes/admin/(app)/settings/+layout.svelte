@@ -13,6 +13,10 @@
   /** wp-admin's order first, then this CMS's own screens (the same order as the menu). */
   const tabs = $derived([
     {
+      route: '/admin/(app)/settings/privacy',
+      label: (m: Messages) => m.privacySettings,
+    },
+    {
       route: '/admin/(app)/settings',
       label: (m: Messages) => m.settingsGeneral,
     },

@@ -1,3 +1,5 @@
+import { error } from '@sveltejs/kit';
+import { Errors } from '#lib/server/errors.js';
 // Public page data. Every field sent to the browser is listed here explicitly, so nothing the
 // API adds later (or any admin-only field) reaches public pages without a deliberate change.
 import type {
@@ -324,3 +326,15 @@ export const widgetsView = ({ sidebar, footer }: PublicWidgets) => ({
 });
 
 export type WidgetView = ReturnType<typeof widgetView>;
+
+export const requirePage = (listing: {
+  page: number;
+  total: number;
+  pageSize: number;
+}) => {
+  if (
+    listing.page > 1 &&
+    (listing.page - 1) * listing.pageSize >= listing.total
+  )
+    error(404, Errors.NotFound);
+};

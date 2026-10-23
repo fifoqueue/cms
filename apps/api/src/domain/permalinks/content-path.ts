@@ -11,6 +11,7 @@ import { invalidInput, Errors } from '#api/shared/errors';
 
 /** The content fields a permalink is built from. */
 export interface PermalinkSubject {
+  timeZone?: string;
   parentId?: string | null;
   parents?: readonly string[];
   author?: string;
@@ -63,6 +64,7 @@ export const contentPath = (
 
   try {
     path = renderPermalink(permalinkPatternFor(settings, subject.type), {
+      timeZone: subject.timeZone,
       author: subject.author,
       category: subject.category,
       parents: subject.parents,

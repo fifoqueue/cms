@@ -1,5 +1,6 @@
 import { archivePathsStateSchema } from '#sdk/archive-paths';
 import { z } from 'zod';
+import { publicPrivacySchema } from '#sdk/privacy';
 import { publicMenuSchema } from '#sdk/menus';
 import { publicReadingSchema } from '#sdk/reading';
 import { publicSeoSettingsSchema } from '#sdk/seo';
@@ -13,6 +14,7 @@ export const publicLayoutSchema = z.strictObject({
     bases: { category: '/category', tag: '/tag' },
     history: { category: [], tag: [] },
   }),
+  privacy: publicPrivacySchema.default({ policy: null, commentCookies: true }),
   site: publicSiteSchema,
   seo: publicSeoSettingsSchema,
   theme: publicThemeSchema,

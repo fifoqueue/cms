@@ -1,4 +1,5 @@
 import {
+  commentFeedSchema,
   commentBulkSchema,
   commentInputSchema,
   commentListQuerySchema,
@@ -309,6 +310,31 @@ export class CommentService {
     return this.deps.avatar.url(key, settings);
   }
 
+  async feed(query: unknown) {
+    const { contentId, limit } = parseInput(
+      z.object({
+        contentId: z.string().min(1).max(36).optional(),
+        limit: z.coerce.number().int().min(1).max(100).default(20),
+      }),
+      query,
+    );
+    if (contentId) {
+      const target = await this.deps.repository.target(contentId);
+      if (!target || target.protected) throw notFound(Errors.ContentNotFound);
+    }
+    return (await this.deps.repository.feed(limit, contentId)).map((row) =>
+      commentFeedSchema.parse({
+        id: row.id,
+        contentId: row.contentId,
+        authorName: row.authorName,
+        body: row.body,
+        createdAt: row.createdAt.toISOString(),
+        title: row.title,
+        path: row.path,
+      }),
+    );
+  }
+
   /** Newest approved comments on public entries, for the recent comments widget. */
   recent(limit: number) {
     return this.deps.repository.recent(limit);
@@ -575,6 +601,12 @@ export class CommentService {
       for (const user of moderators)
         await this.deps.email.queue({
           to: user.email,
+          subjects: [
+            user.id,
+            record.authorEmail,
+            record.id,
+            ...(record.userId ? [record.userId] : []),
+          ],
           ...copy.commentPending(site.title, target.title, record, link),
         });
     }
@@ -586,6 +618,12 @@ export class CommentService {
         : '';
       await this.deps.email.queue({
         to: author.email,
+        subjects: [
+          author.id,
+          record.authorEmail,
+          record.id,
+          ...(record.userId ? [record.userId] : []),
+        ],
         ...copy.commentApproved(site.title, target.title, record, link),
       });
     }

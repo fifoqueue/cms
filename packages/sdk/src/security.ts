@@ -6,6 +6,7 @@ export const PROTECTED_ACTIONS = [
   'passwordReset',
   'comment',
   'contentUnlock',
+  'privacy',
 ] as const;
 export type ProtectedAction = (typeof PROTECTED_ACTIONS)[number];
 
@@ -43,6 +44,7 @@ export const RATE_RULES = [
   'passwordResetAccount',
   'commentClient',
   'contentUnlockClient',
+  'privacyClient',
 ] as const;
 export type RateRuleName = (typeof RATE_RULES)[number];
 
@@ -66,18 +68,28 @@ export const DEFAULT_RATE_RULES: Record<RateRuleName, RateRule> = {
   passwordResetAccount: rule(3, 3600, 3600, 'block'),
   commentClient: rule(10, 600, 600, 'captcha'),
   contentUnlockClient: rule(10, 900, 900, 'captcha'),
+  privacyClient: rule(10, 3600, 3600, 'block'),
 };
 
 const rulesSchema = z.object(
   Object.fromEntries(
-    RATE_RULES.map((name) => [name, rateRuleSchema]),
-  ) as Record<RateRuleName, typeof rateRuleSchema>,
+    RATE_RULES.map((name) => [
+      name,
+      rateRuleSchema.default(DEFAULT_RATE_RULES[name]),
+    ]),
+  ) as Record<RateRuleName, z.ZodDefault<typeof rateRuleSchema>>,
 );
 
 const captchaModesSchema = z.object(
   Object.fromEntries(
-    PROTECTED_ACTIONS.map((action) => [action, z.enum(CAPTCHA_MODES)]),
-  ) as Record<ProtectedAction, z.ZodEnum<{ [K in CaptchaMode]: K }>>,
+    PROTECTED_ACTIONS.map((action) => [
+      action,
+      z.enum(CAPTCHA_MODES).default('limited'),
+    ]),
+  ) as Record<
+    ProtectedAction,
+    z.ZodDefault<z.ZodEnum<{ [K in CaptchaMode]: K }>>
+  >,
 );
 
 export const mediaAdmissionSchema = z.object({
@@ -140,6 +152,7 @@ export const DEFAULT_SECURITY_SETTINGS: AdminSecuritySettings = {
       passwordReset: 'limited',
       comment: 'limited',
       contentUnlock: 'limited',
+      privacy: 'limited',
     },
   },
   rules: DEFAULT_RATE_RULES,

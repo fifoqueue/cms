@@ -65,6 +65,10 @@ export const actions: Actions = {
       await adminFor(event).media.update(event.params.id, {
         alt: form.has('alt') ? text(form, 'alt') : undefined,
         caption: form.has('caption') ? text(form, 'caption') : undefined,
+        title: form.has('title') ? text(form, 'title') : undefined,
+        description: form.has('description')
+          ? text(form, 'description')
+          : undefined,
       });
     } catch (caught) {
       return failFrom(caught);

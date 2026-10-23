@@ -86,9 +86,9 @@ export class EmailService {
   }
 
   /** Queues `message`; throws `invalid_input` while email is disabled. */
-  async queue(message: EmailMessage): Promise<void> {
+  async queue(message: EmailMessage, expiresAt?: Date): Promise<void> {
     if (!(await this.enabled())) throw invalidInput(Errors.EmailDisabled);
-    await this.deps.sealedJobs.enqueue(EMAIL_JOB, message);
+    await this.deps.sealedJobs.enqueue(EMAIL_JOB, message, expiresAt);
   }
 
   /** Sends a test message now, so the administrator sees the server's answer. */

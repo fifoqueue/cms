@@ -1,3 +1,4 @@
+import { requirePage } from '#lib/server/public-view.js';
 import { contentApi } from '#lib/server/api.js';
 import { sessionToken } from '#lib/server/session-cookie.js';
 import { commentAction } from '#lib/server/comments.js';
@@ -35,7 +36,7 @@ export const load: PageServerLoad = async (event) => {
     return withTemplateData(publicApi, parent, {
       kind: 'search' as const,
       query,
-      posts: posts && listView(posts),
+      posts: posts && (requirePage(posts), listView(posts)),
       slots: loaded,
     });
   }

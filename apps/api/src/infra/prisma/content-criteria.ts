@@ -1,3 +1,5 @@
+import { calendarBounds } from '@cms/sdk';
+import { siteTimeZone } from '#api/infra/prisma/content-calendar';
 import type { TaxonomyType, TermSummary } from '@cms/sdk';
 import type { ContentCriteria } from '#api/domain/content/content-repository';
 import { compareTerms } from '#api/domain/taxonomy/hierarchy';
@@ -7,6 +9,10 @@ import { Prisma } from '#api/infra/prisma/generated/client';
 
 export type ContentFilters = Pick<
   ContentCriteria,
+  | 'include'
+  | 'exclude'
+  | 'parent'
+  | 'day'
   | 'taxonomy'
   | 'term'
   | 'type'
@@ -71,16 +77,22 @@ export const termScope = async (
   return rows.map((row) => row.id);
 };
 
-/** The UTC year, or month of it, as a date range. */
-export const publishedIn = (year: number, month?: number) => ({
-  gte: new Date(Date.UTC(year, month ? month - 1 : 0, 1)),
-  lt: new Date(Date.UTC(month ? year : year + 1, month ?? 0, 1)),
-});
+/** A local year/month/day as UTC boundaries for indexed comparisons. */
+export const publishedIn = (
+  year: number,
+  month?: number,
+  day?: number,
+  zone = 'UTC',
+) => calendarBounds(year, month, day, zone);
 
 /** Where clause for `ContentCriteria` filters; null when an unknown category matches nothing. */
 export const contentWhere = async (
   db: Database,
   {
+    include,
+    exclude,
+    parent,
+    day,
     taxonomy,
     term,
     type,
@@ -104,10 +116,16 @@ export const contentWhere = async (
     if (!ids.length) return null;
     filters.push({ terms: { some: { termId: { in: ids } } } });
   }
+  if (include) filters.push({ id: { in: [...include] } });
+  if (exclude) filters.push({ id: { notIn: [...exclude] } });
+  if (parent !== undefined) filters.push({ parentId: parent });
   if (author) filters.push({ author: { slug: author } });
   if (!type && types) filters.push({ type: { in: [...types] } });
   if (sticky) filters.push({ sticky: sticky === 'only' });
-  if (year) filters.push({ publishedAt: publishedIn(year, month) });
+  if (year)
+    filters.push({
+      publishedAt: publishedIn(year, month, day, await siteTimeZone(db)),
+    });
   if (search) {
     const contains = literal(search);
     filters.push({

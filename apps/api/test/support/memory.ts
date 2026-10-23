@@ -98,7 +98,32 @@ export class MemoryContentRepository implements ContentRepository {
     return [...this.rows.values()].some((row) => row.type === type);
   }
 
+  async counts(type?: string) {
+    const result = {
+      all: 0,
+      trash: 0,
+      draft: 0,
+      pending: 0,
+      scheduled: 0,
+      published: 0,
+      private: 0,
+    };
+    for (const row of this.rows.values())
+      if (!type || row.type === type) {
+        if (this.trashed.has(row.id)) result.trash += 1;
+        else {
+          result.all += 1;
+          result[row.status] += 1;
+        }
+      }
+    return result;
+  }
+
   async list({
+    include,
+    exclude,
+    parent,
+    day,
     type,
     status,
     view,
@@ -133,6 +158,9 @@ export class MemoryContentRepository implements ContentRepository {
         (row) =>
           (!customIds ||
             (row.extraTermIds ?? []).some((id) => customIds.includes(id))) &&
+          (!include || include.includes(row.id)) &&
+          (!exclude || !exclude.includes(row.id)) &&
+          (parent === undefined || (row.parentId ?? null) === parent) &&
           (!type || row.type === type) &&
           (!!type || !types || types.includes(row.type)) &&
           (!status || row.status === status) &&
@@ -141,7 +169,8 @@ export class MemoryContentRepository implements ContentRepository {
           (!sticky || row.sticky === (sticky === 'only')) &&
           (!year ||
             (row.publishedAt?.getUTCFullYear() === year &&
-              (!month || row.publishedAt.getUTCMonth() + 1 === month))) &&
+              (!month || row.publishedAt.getUTCMonth() + 1 === month) &&
+              (!day || row.publishedAt.getUTCDate() === day))) &&
           (!needle ||
             [row.title, row.excerpt, row.searchText].some((text) =>
               text.toLowerCase().includes(needle),
@@ -153,13 +182,15 @@ export class MemoryContentRepository implements ContentRepository {
       .sort((a, b) => {
         // Newest/largest first, then id; `asc` reverses both.
         const key = (row: ContentWrite) =>
-          orderBy === 'title'
-            ? row.title
+          orderBy === 'title' || orderBy === 'id'
+            ? row[orderBy]
             : orderBy === 'author'
               ? row.authorId
               : orderBy === 'commentCount'
                 ? (this.commentCounts.get(row.id) ?? 0)
-                : (row[orderBy]?.getTime() ?? 0);
+                : orderBy === 'menuOrder'
+                  ? (row.menuOrder ?? 0)
+                  : (row[orderBy]?.getTime() ?? 0);
         const [left, right] = [key(a), key(b)];
         const compared =
           typeof left === 'string'

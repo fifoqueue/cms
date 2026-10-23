@@ -87,6 +87,8 @@ export class PrismaMediaRepository implements MediaRepository {
           { filename: { contains } },
           { alt: { contains } },
           { caption: { contains } },
+          { title: { contains } },
+          { description: { contains } },
         ],
       });
     }
@@ -167,7 +169,15 @@ export class PrismaMediaRepository implements MediaRepository {
     );
   }
 
-  async update(id: string, changes: { alt?: string; caption?: string }) {
+  async update(
+    id: string,
+    changes: {
+      alt?: string;
+      caption?: string;
+      title?: string;
+      description?: string;
+    },
+  ) {
     await this.db.media.update({ where: { id }, data: changes });
   }
 

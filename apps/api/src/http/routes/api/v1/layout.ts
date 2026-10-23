@@ -8,6 +8,7 @@ export const routes = (app: ApiApp) =>
     '',
     async ({
       site,
+      privacy,
       seo,
       themes,
       themePreviews,
@@ -30,6 +31,7 @@ export const routes = (app: ApiApp) =>
         ]);
       return json({
         archives: await archivePaths.get(),
+        privacy: await privacy.publicSettings(),
         site: siteData,
         seo: seoData,
         theme,

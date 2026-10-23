@@ -5,8 +5,8 @@
   import { useScope } from '#lib/theme/scope.js';
 
   /**
-   * A month by day (UTC, like the date archives); days with posts link to the month archive
-   * (there are no day archives), and the nearest months with posts are linked below.
+   * A month in the site time zone; marked days open their day archive.
+   * The nearest months with posts are linked below.
    */
   const scope = useScope();
   const calendar = $derived(scope().calendar);
@@ -64,10 +64,10 @@
             <td class="py-1">
               {#if day && calendar.days[day]}
                 <a
-                  href={resolve(
-                    '/(site)/date/[year]/[[month]]',
-                    monthParams(calendar),
-                  )}
+                  href={resolve('/(site)/date/[year]/[month]/[day]', {
+                    ...monthParams(calendar),
+                    day: String(day).padStart(2, '0'),
+                  })}
                   class="font-semibold text-primary hover:underline">{day}</a
                 >
               {:else if day}{day}{/if}

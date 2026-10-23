@@ -92,6 +92,12 @@ export class ContentService {
     return { items: items.map(toEntrySummary), total, page, pageSize };
   }
 
+  async counts(query: unknown, actor: Actor) {
+    authorize(actor, 'content.create');
+    const { type } = parseInput(contentListQuerySchema, query);
+    return this.deps.repository.counts(type);
+  }
+
   async get(id: string, actor: Actor): Promise<ContentEntry> {
     const record = await this.require(id);
     this.assertEditable(actor, record);
@@ -265,6 +271,8 @@ export class ContentService {
       status: data.status,
       sticky: data.sticky,
       allowComments: data.allowComments,
+      menuOrder:
+        data.type === 'page' ? (data.menuOrder ?? current?.menuOrder ?? 0) : 0,
       // Types that do not use terms drop them.
       parentId:
         data.type === 'page'

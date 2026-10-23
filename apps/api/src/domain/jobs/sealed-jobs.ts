@@ -19,11 +19,16 @@ export class SealedJobs {
     private readonly secrets: SecretBox,
   ) {}
 
-  enqueue(kind: string, payload: unknown) {
-    return this.queue.enqueue(kind, {
-      version: 1,
-      sealed: this.secrets.seal(JSON.stringify(payload)),
-    });
+  enqueue(kind: string, payload: unknown, expiresAt?: Date) {
+    return this.queue.enqueue(
+      kind,
+      {
+        version: 1,
+        sealed: this.secrets.seal(JSON.stringify(payload)),
+      },
+      undefined,
+      expiresAt,
+    );
   }
 
   open<T>(payload: unknown, schema: z.ZodType<T>): T {

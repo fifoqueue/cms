@@ -1,5 +1,7 @@
 export interface EmailMessage {
   to: string;
+  /** Subjects whose personal information is included in this message; encrypted with the body. */
+  subjects?: string[];
   subject: string;
   text: string;
 }

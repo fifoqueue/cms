@@ -46,6 +46,11 @@ export type PublishedSummaryRecord = Omit<PublishedRecord, 'html' | 'fields'>;
 /** `ContentCriteria` filters without a status: only published content is ever matched. */
 export type PublishedCriteria = Pick<
   ContentCriteria,
+  | 'include'
+  | 'exclude'
+  | 'parent'
+  | 'order'
+  | 'day'
   | 'taxonomy'
   | 'term'
   | 'type'
@@ -59,7 +64,7 @@ export type PublishedCriteria = Pick<
   | 'month'
   | 'page'
   | 'pageSize'
->;
+> & { orderBy?: 'publishedAt' | 'updatedAt' | 'menuOrder' | 'title' | 'id' };
 
 /** Read-only view of published content; drafts are filtered by the store and never returned. */
 export interface PublishedContentRepository {
@@ -75,7 +80,7 @@ export interface PublishedContentRepository {
   list(
     criteria: PublishedCriteria,
   ): Promise<{ items: PublishedRecord[]; total: number }>;
-  /** The nearest months (UTC) before and after `year`-`month` with public entries of `types`. */
+  /** The nearest months (site time zone) before and after `year`-`month` with public entries of `types`. */
   monthNeighbours(
     types: readonly string[],
     year: number,
@@ -84,7 +89,7 @@ export interface PublishedContentRepository {
     previous: { year: number; month: number } | null;
     next: { year: number; month: number } | null;
   }>;
-  /** Months with public entries of `types` (UTC), newest first, at most `limit`. */
+  /** Months with public entries of `types` (site time zone), newest first, at most `limit`. */
   months(
     types: readonly string[],
     limit: number,

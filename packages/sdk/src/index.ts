@@ -36,3 +36,6 @@ export * from '#sdk/roles';
 export * from '#sdk/archive-paths';
 
 export * from '#sdk/content-blocks';
+export * from '#sdk/privacy';
+
+export * from '#sdk/calendar';

@@ -95,10 +95,21 @@ export class MemoryMediaRepository implements MediaRepository {
     return images;
   }
 
-  async update(id: string, changes: { alt?: string; caption?: string }) {
+  async update(
+    id: string,
+    changes: {
+      alt?: string;
+      caption?: string;
+      title?: string;
+      description?: string;
+    },
+  ) {
     const row = this.rows.get(id)!;
     if (changes.alt !== undefined) row.alt = changes.alt;
     if (changes.caption !== undefined) row.caption = changes.caption;
+    if (changes.title !== undefined) row.title = changes.title;
+    if (changes.description !== undefined)
+      row.description = changes.description;
   }
 
   async delete(id: string) {

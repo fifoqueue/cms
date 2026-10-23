@@ -35,7 +35,7 @@ export const formatDate = (
   }
 };
 
-/** A month of a date archive, such as "March 2026", in UTC like the archive itself. */
+/** A site-local calendar month. UTC here prevents shifting its already-resolved year/month. */
 export const formatMonth = (year: number, month: number, locale: string) => {
   const date = new Date(Date.UTC(year, month - 1, 1));
   try {

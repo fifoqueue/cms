@@ -15,11 +15,16 @@
   let { target, page, total, pageSize }: Props = $props();
 
   const lastPage = $derived(lastPageOf({ total, pageSize }));
+  const numbers = $derived(
+    [...new Set([1, page - 2, page - 1, page, page + 1, page + 2, lastPage])]
+      .filter((number) => number > 0 && number <= lastPage)
+      .sort((a, b) => a - b),
+  );
   const i18n = useI18n();
   const m = $derived(i18n.m);
 </script>
 
-{#snippet link(to: number, label: string, rel: 'prev' | 'next')}
+{#snippet link(to: number, label: string, rel?: 'prev' | 'next')}
   <!-- Route ids take no query string (`resolve('/(site)?page=2')` keeps the group name), so the query is appended. -->
   {@const path =
     'path' in target && target.path
@@ -27,12 +32,18 @@
       : target.kind === 'home' || target.kind === 'search'
         ? resolve('/(site)')
         : target.kind === 'date'
-          ? resolve('/(site)/date/[year]/[[month]]', {
-              year: String(target.year),
-              month: target.month
-                ? String(target.month).padStart(2, '0')
-                : undefined,
-            })
+          ? target.day && target.month
+            ? resolve('/(site)/date/[year]/[month]/[day]', {
+                year: String(target.year),
+                month: String(target.month).padStart(2, '0'),
+                day: String(target.day).padStart(2, '0'),
+              })
+            : resolve('/(site)/date/[year]/[[month]]', {
+                year: String(target.year),
+                month: target.month
+                  ? String(target.month).padStart(2, '0')
+                  : undefined,
+              })
           : target.kind === 'taxonomy'
             ? resolve('/(site)/taxonomy/[taxonomy]/[slug]', {
                 taxonomy: target.taxonomy,
@@ -48,7 +59,8 @@
   <!-- eslint-disable svelte/no-navigation-without-resolve -- `path` comes from resolve() -->
   <a
     {rel}
-    class="rounded-md border px-3 py-1.5 hover:bg-muted"
+    aria-current={to === page ? 'page' : undefined}
+    class="rounded-md border px-3 py-1.5 hover:bg-muted aria-[current=page]:bg-muted aria-[current=page]:font-semibold"
     href={`${path}?${pageQuery(target, to)}`}>{label}</a
   >
   <!-- eslint-enable svelte/no-navigation-without-resolve -->
@@ -61,7 +73,11 @@
   >
     {#if page > 1}{@render link(page - 1, m.newer, 'prev')}{:else}<span
       ></span>{/if}
-    <span class="text-muted-foreground">{m.pageOf(page, lastPage)}</span>
+    <div class="flex flex-wrap items-center gap-2">
+      {#each numbers as number, index (number)}{#if index > 0 && number - numbers[index - 1]! > 1}<span
+            aria-hidden="true">…</span
+          >{/if}{@render link(number, String(number))}{/each}
+    </div>
     {#if page < lastPage}{@render link(page + 1, m.older, 'next')}{:else}<span
       ></span>{/if}
   </nav>

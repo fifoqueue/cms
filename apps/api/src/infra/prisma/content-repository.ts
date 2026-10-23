@@ -121,6 +121,7 @@ const toRow = ({
 }: ContentWrite): Omit<Content, 'trashedAt' | 'commentCount'> => ({
   ...record,
   parentId: record.parentId ?? null,
+  menuOrder: record.menuOrder ?? 0,
   ...toSeoColumns(seo),
   document: JSON.stringify(document),
   fields: JSON.stringify(record.fields),
@@ -148,6 +149,32 @@ export class PrismaContentRepository implements ContentRepository {
 
   async takenSlugs(slugs: readonly string[]) {
     return takenSlugs(this.db, 'contents', slugs);
+  }
+
+  async counts(type?: string) {
+    const rows = await this.db.$queryRaw<
+      { status: string; trash: number; total: bigint }[]
+    >(
+      Prisma.sql`SELECT status, (trashed_at IS NOT NULL) AS trash, COUNT(*) AS total FROM contents ${type ? Prisma.sql`WHERE type = ${type}` : Prisma.empty} GROUP BY status, (trashed_at IS NOT NULL)`,
+    );
+    const result = {
+      all: 0,
+      trash: 0,
+      draft: 0,
+      pending: 0,
+      scheduled: 0,
+      published: 0,
+      private: 0,
+    };
+    for (const row of rows) {
+      const total = Number(row.total);
+      if (Number(row.trash)) result.trash += total;
+      else {
+        result.all += total;
+        result[row.status as 'draft'] += total;
+      }
+    }
+    return result;
   }
 
   async list({

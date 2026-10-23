@@ -41,6 +41,7 @@ export const seoFormValues = (seo: AdminEntrySeo): SeoFormValues => ({
 
 /** Saved settings an editor preview needs to match what the public site renders. */
 export interface SeoPreviewContext {
+  timeZone?: string;
   siteTitle: string;
   siteDescription: string;
   siteUrl: string;

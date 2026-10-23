@@ -2,6 +2,7 @@
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import type { CommentSection } from '#lib/server/comments.js';
+  import PrivacyPolicyLink from '#lib/theme/PrivacyPolicyLink.svelte';
   import Captcha from '#lib/security/Captcha.svelte';
   import { useI18n } from '#lib/i18n/index.js';
   import { useDateFormat } from '#lib/theme/format.js';
@@ -58,6 +59,12 @@
     {m.commentCount(comments.count)}
   </h2>
 
+  <a
+    class="text-sm text-primary hover:underline"
+    href={resolve(
+      `/comments/feed.xml?contentId=${encodeURIComponent(contentId)}`,
+    )}>{m.privacyCommentFeed}</a
+  >
   {#if moderation}
     <p class="rounded-md border bg-card p-3 text-sm" role="status">
       {m.commentAwaitingModeration}
@@ -221,15 +228,16 @@
             />
           </label>
         </div>
-        <label class="flex items-center gap-2 text-sm"
-          ><input
-            type="checkbox"
-            name="remember"
-            checked={failure
-              ? failure.remember === true
-              : !!comments.remembered}
-          />{m.commentRemember}</label
-        >
+        {#if comments.commentCookies}<label
+            class="flex items-center gap-2 text-sm"
+            ><input
+              type="checkbox"
+              name="remember"
+              checked={failure
+                ? failure.remember === true
+                : !!comments.remembered}
+            />{m.commentRemember}</label
+          >{/if}
       {/if}
       <label class="grid gap-1 text-sm"
         >{m.commentBody}
@@ -242,6 +250,7 @@
         >
       </label>
       <p class="text-xs text-muted-foreground">{m.commentEmailPrivate}</p>
+      <PrivacyPolicyLink policy={comments.privacyPolicy} />
       {#if showCaptcha && comments.captcha}
         <Captcha captcha={comments.captcha} />
       {/if}

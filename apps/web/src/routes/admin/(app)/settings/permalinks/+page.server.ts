@@ -13,6 +13,7 @@ export const load: PageServerLoad = async (event) => {
   ]);
   return {
     archives,
+    timeZone: (await admin.reading.get()).timeZone,
     permalinks: permalinkView(permalinks),
     types: model.types.map(({ key, pluralName }) => ({ key, pluralName })),
   };

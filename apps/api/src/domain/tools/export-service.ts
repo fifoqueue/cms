@@ -1,3 +1,4 @@
+import { readable } from '#api/shared/stream';
 import type { ContentStatus } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
@@ -90,24 +91,6 @@ const toComment = (comment: CommentRecord): WxrComment => ({
   type: 'comment',
   createdAt: comment.createdAt,
 });
-
-const readable = (parts: AsyncGenerator<string>) => {
-  const encoder = new TextEncoder();
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const part = await parts.next();
-        if (part.done) controller.close();
-        else controller.enqueue(encoder.encode(part.value));
-      } catch (error) {
-        controller.error(error);
-      }
-    },
-    async cancel() {
-      await parts.return(undefined);
-    },
-  });
-};
 
 /** Streams every non-trashed entry and its comments as WordPress WXR 1.2. */
 export class ExportService {

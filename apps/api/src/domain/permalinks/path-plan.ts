@@ -54,11 +54,12 @@ export const regenerationEntry = (
 export const pathChanges = (
   settings: PermalinkSettings,
   entries: Iterable<PathEntry>,
+  timeZone = 'UTC',
 ): PathChange[] => {
   const changes: PathChange[] = [];
 
   for (const { subject, current, retainPrevious } of entries) {
-    const to = contentPath(settings, subject, current);
+    const to = contentPath(settings, { ...subject, timeZone }, current);
 
     if (to !== current)
       changes.push({

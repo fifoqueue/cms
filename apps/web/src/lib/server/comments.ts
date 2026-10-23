@@ -78,6 +78,9 @@ export const loadComments = async (
     (!comments.open && comments.count === 0 && !comments.ownPending)
   )
     return null;
+  const privacy = await api
+    .privacy()
+    .catch(() => ({ policy: null, commentCookies: false }));
   let remembered = null;
   try {
     const saved = commenterSchema.safeParse(
@@ -89,7 +92,9 @@ export const loadComments = async (
   }
   return {
     ...commentsView(comments),
-    remembered: comments.viewer ? null : remembered,
+    privacyPolicy: privacy.policy,
+    commentCookies: privacy.commentCookies,
+    remembered: comments.viewer || !privacy.commentCookies ? null : remembered,
     captcha:
       captcha && comments.open
         ? {
@@ -145,7 +150,14 @@ export const commentAction = async (event: RequestEvent) => {
     sameSite: 'lax' as const,
     secure: event.url.protocol === 'https:',
   };
-  if (!sessionToken(event.cookies, event.url) && typed.remember) {
+  const privacy = await contentApi(event.fetch)
+    .privacy()
+    .catch(() => ({ commentCookies: false }));
+  if (
+    privacy.commentCookies &&
+    !sessionToken(event.cookies, event.url) &&
+    typed.remember
+  ) {
     const saved = commenterSchema.safeParse(typed);
     if (saved.success) {
       event.cookies.set(COMMENTER_COOKIE, JSON.stringify(saved.data), {

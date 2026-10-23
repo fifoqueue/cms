@@ -26,6 +26,20 @@ export class DomainError extends Error {
  * instead of writing message text at the throw site; ESLint rejects literal messages.
  */
 export const Errors = {
+  PrivacyPolicyInvalid:
+    'Choose a published, unprotected page for the privacy policy',
+  PrivacyConfirmationInvalid:
+    'This confirmation link is invalid, expired, or already used',
+  PrivacyRequestMissing: 'Privacy request not found',
+  PrivacyNotConfirmed: 'The person must confirm this request first',
+  PrivacyJobsBusy:
+    'A message involving this person is being sent. Try again after it finishes',
+  PrivacyJobsUnscoped:
+    'Older comment notifications have no subject reference. Let them finish or expire before completing this request',
+  PrivacyJobsUnreadable:
+    'A queued message cannot be read. Repair or remove it before erasing personal data',
+  JobFailed: 'Job delivery failed',
+
   AuthenticationRequired: 'Authentication required',
   Forbidden: 'You do not have permission to do this',
   PatternNotFound: 'Pattern not found',

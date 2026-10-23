@@ -1,3 +1,14 @@
+import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
+import { DEFAULT_EMAIL_SETTINGS } from '@cms/sdk';
+import { PrivacyService } from '#api/domain/privacy/privacy-service';
+import { EmailService } from '#api/domain/email/email-service';
+import { ProtectionService } from '#api/domain/security/protection-service';
+import { SecuritySettingsService } from '#api/domain/security/security-settings';
+import { PrismaPrivacyRepository } from '#api/infra/prisma/privacy-repository';
+import { aesSecretBox } from '#api/infra/secret-box';
+import { hmacSigner } from '#api/infra/hmac-signer';
+import { randomTokenIssuer } from '#api/infra/system';
+import { openJob, sealJob } from '#api/domain/jobs/payload';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { default as sharp } from 'sharp';
 import { DEFAULT_RATE_RULES } from '@cms/sdk';
@@ -86,7 +97,42 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       fields: new FieldService({ settings, images: async () => new Map() }),
     });
     const terms = new PrismaTaxonomyRepository(db);
+    const secrets = aesSecretBox('core-privacy-test');
+    const jobs = new PrismaJobQueue(db, uuidV7, secrets);
+    const email = new EmailService({
+      settings,
+      secrets,
+      sealedJobs: new SealedJobs(jobs, secrets),
+      mailer: { send: async () => undefined },
+    });
+    const privacy = new PrivacyService({
+      repository: new PrismaPrivacyRepository(db, secrets),
+      settings,
+      published: new PrismaPublishedContentRepository(db),
+      email,
+      site: async () => ({
+        title: 'Site',
+        locale: 'en',
+        siteUrl: 'https://example.com',
+      }),
+      signer: hmacSigner('core-privacy-test'),
+      tokens: randomTokenIssuer,
+      hasher: plainHasher,
+      ids: uuidV7,
+      clock: systemClock,
+      protection: new ProtectionService({
+        settings: new SecuritySettingsService(settings, secrets),
+        store: new PrismaRateLimitStore(db),
+        captcha: { verify: async () => false },
+        clock: systemClock,
+      }),
+    });
+
     return {
+      privacy,
+      email,
+      jobs,
+      secrets,
       settings,
       repository,
       content,
@@ -588,6 +634,487 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       expect(await search.find(query)).toBeNull();
       await search.sync();
       expect(await search.find(query)).toEqual({ ids: [], total: 0 });
+    },
+    SLOW,
+  );
+  test(
+    'privacy confirmation signatures cannot be changed or consumed twice',
+    async () => {
+      const { privacy, email, secrets } = services();
+      await email.update({
+        ...DEFAULT_EMAIL_SETTINGS,
+        enabled: true,
+        host: 'smtp.example.com',
+        fromEmail: 'site@example.com',
+      });
+      const subject = `confirm-${uuidV7.next()}@example.com`;
+      const attempt = { client: subject, address: null, captchaToken: null };
+      const request = await privacy.create(
+        { email: subject, action: 'export' },
+        ADMIN,
+        attempt,
+      );
+      const rows = await db.job.findMany({ where: { kind: 'email.send' } });
+      const message = rows
+        .map(
+          (row) =>
+            openJob(JSON.parse(row.payload), secrets) as {
+              to: string;
+              text: string;
+            },
+        )
+        .find((item) => item.to === subject)!;
+      const token = decodeURIComponent(
+        /token=([^\s]+)/.exec(message.text)![1]!,
+      );
+      expect(JSON.stringify(request)).not.toContain(token);
+      await expect(
+        privacy.confirm({ token: `${token}x` }, attempt),
+      ).rejects.toMatchObject({ code: 'invalid_input' });
+      const results = await Promise.allSettled([
+        privacy.confirm({ token }, attempt),
+        privacy.confirm({ token }, attempt),
+      ]);
+      expect(
+        results.filter((result) => result.status === 'fulfilled'),
+      ).toHaveLength(1);
+      expect(
+        (await db.privacyRequest.findUnique({ where: { id: request.id } }))
+          ?.tokenHash,
+      ).toBeNull();
+      await expect(privacy.confirm({ token }, attempt)).rejects.toMatchObject({
+        code: 'invalid_input',
+      });
+    },
+    SLOW,
+  );
+
+  test(
+    'personal export contains only its confirmed subject and no credentials',
+    async () => {
+      const { privacy, email, secrets, content, comments } = services();
+      await email.update({
+        ...DEFAULT_EMAIL_SETTINGS,
+        enabled: true,
+        host: 'smtp.example.com',
+        fromEmail: 'site@example.com',
+      });
+      const id = uuidV7.next();
+      const subject = `export-${id}@example.com`;
+      await new PrismaUserRepository(db).insert(
+        userRecord({
+          id,
+          email: subject,
+          role: 'author',
+          name: 'Subject',
+          passwordHash: 'SECRET-HASH',
+        }),
+      );
+      const entry = await content.create(
+        {
+          type: 'post',
+          title: `Export ${id}`,
+          status: 'published',
+          authorId: id,
+          document: paragraph('Own content'),
+        },
+        ADMIN,
+      );
+      const now = new Date();
+      await comments.insert({
+        id: uuidV7.next(),
+        contentId: entry.id,
+        parentId: null,
+        userId: id,
+        authorName: 'Subject',
+        authorEmail: subject,
+        authorUrl: '',
+        body: 'Own comment',
+        status: 'pending',
+        createdAt: now,
+        updatedAt: now,
+      });
+      await comments.insert({
+        id: uuidV7.next(),
+        contentId: entry.id,
+        parentId: null,
+        userId: null,
+        authorName: 'OTHER-PERSON',
+        authorEmail: 'other-person@example.com',
+        authorUrl: '',
+        body: 'OTHER-PRIVATE-COMMENT',
+        status: 'pending',
+        createdAt: now,
+        updatedAt: now,
+      });
+      const tokenHash = randomTokenIssuer.digest(uuidV7.next());
+      await db.apiToken.create({
+        data: {
+          id: uuidV7.next(),
+          userId: id,
+          name: 'Phone',
+          tokenHash,
+          createdAt: now,
+        },
+      });
+      const attempt = { client: subject, address: null, captchaToken: null };
+      const request = await privacy.create(
+        { email: subject, action: 'export' },
+        ADMIN,
+        attempt,
+      );
+      await expect(privacy.export(request.id, ADMIN)).rejects.toMatchObject({
+        code: 'invalid_input',
+      });
+      const rows = await db.job.findMany({ where: { kind: 'email.send' } });
+      const message = rows
+        .map(
+          (row) =>
+            openJob(JSON.parse(row.payload), secrets) as {
+              to: string;
+              text: string;
+            },
+        )
+        .find((item) => item.to === subject)!;
+      await privacy.confirm(
+        { token: decodeURIComponent(/token=([^\s]+)/.exec(message.text)![1]!) },
+        attempt,
+      );
+      await expect(
+        privacy.export(request.id, { id, role: 'author' }),
+      ).rejects.toMatchObject({ code: 'forbidden' });
+      const json = await new Response(
+        await privacy.export(request.id, ADMIN),
+      ).text();
+      expect(json).toContain('Own comment');
+      expect(json).toContain('Own content');
+      expect(json).toContain('Phone');
+      for (const value of [
+        'OTHER-PERSON',
+        'other-person@example.com',
+        'OTHER-PRIVATE-COMMENT',
+        'SECRET-HASH',
+        tokenHash,
+        'tokenHash',
+        'passwordHash',
+      ])
+        expect(json).not.toContain(value);
+    },
+    SLOW,
+  );
+
+  test(
+    'privacy erasure anonymizes the subject, revokes credentials and removes queued and failed snapshots atomically',
+    async () => {
+      const { privacy, email, jobs, secrets, content, comments } = services();
+      await email.update({
+        ...DEFAULT_EMAIL_SETTINGS,
+        enabled: true,
+        host: 'smtp.example.com',
+        fromEmail: 'site@example.com',
+      });
+      const id = uuidV7.next(),
+        subject = `erase-${id}@example.com`,
+        now = new Date();
+      await new PrismaUserRepository(db).insert(
+        userRecord({
+          id,
+          email: subject,
+          role: 'author',
+          name: 'Subject Name',
+          bio: 'Personal biography',
+        }),
+      );
+      const entry = await content.create(
+        {
+          type: 'post',
+          title: `Erase ${id}`,
+          status: 'published',
+          authorId: id,
+          document: paragraph('Preserved publication'),
+        },
+        ADMIN,
+      );
+      const mediaId = uuidV7.next(),
+        identityId = uuidV7.next();
+      await db.media.create({
+        data: {
+          id: mediaId,
+          uploaderId: id,
+          filename: 'personal.pdf',
+          title: 'Personal title',
+          description: 'Personal description',
+          alt: 'Personal alt',
+          caption: 'Personal caption',
+          mime: 'application/pdf',
+          size: 10,
+          storageKey: `privacy/${mediaId}.pdf`,
+          createdAt: now,
+        },
+      });
+      await db.userIdentity.create({
+        data: {
+          id: identityId,
+          userId: id,
+          issuer: new TextEncoder().encode('https://issuer.example.com'),
+          subject: new TextEncoder().encode('PRIVATE-SUBJECT'),
+          createdAt: now,
+        },
+      });
+      await db.ssoTransaction.create({
+        data: {
+          handleHash: randomTokenIssuer.digest(`sso:${id}`),
+          userId: id,
+          state: 'state',
+          nonce: 'nonce',
+          codeVerifier: 'verifier',
+          clientKey: randomTokenIssuer.digest(id),
+          expiresAt: new Date(now.getTime() + 60000),
+        },
+      });
+      const commentId = uuidV7.next();
+      await comments.insert({
+        id: commentId,
+        contentId: entry.id,
+        parentId: null,
+        userId: id,
+        authorName: 'Subject Name',
+        authorEmail: subject,
+        authorUrl: 'https://example.com/me',
+        body: 'Personal comment body',
+        status: 'approved',
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.session.create({
+        data: {
+          tokenHash: randomTokenIssuer.digest(`session:${id}`),
+          userId: id,
+          expiresAt: new Date(now.getTime() + 86400000),
+        },
+      });
+      await db.apiToken.create({
+        data: {
+          id: uuidV7.next(),
+          userId: id,
+          name: 'Token',
+          tokenHash: randomTokenIssuer.digest(`api:${id}`),
+          createdAt: now,
+        },
+      });
+      await db.passwordToken.create({
+        data: {
+          tokenHash: randomTokenIssuer.digest(`reset:${id}`),
+          userId: id,
+          purpose: 'reset',
+          expiresAt: new Date(now.getTime() + 3600000),
+        },
+      });
+      await email.queue({
+        to: 'moderator@example.com',
+        subjects: [id, commentId, subject],
+        subject: 'Moderation',
+        text: 'Personal snapshot',
+      });
+      const failedId = uuidV7.next();
+      await db.job.create({
+        data: {
+          id: failedId,
+          kind: 'email.send',
+          payload: JSON.stringify({
+            to: subject,
+            text: 'Legacy private snapshot',
+          }),
+          runAt: now,
+          createdAt: now,
+          failedAt: now,
+        },
+      });
+      const attempt = { client: subject, address: null, captchaToken: null };
+      const request = await privacy.create(
+        { email: subject, action: 'erase' },
+        ADMIN,
+        attempt,
+      );
+      const rows = await db.job.findMany({ where: { kind: 'email.send' } });
+      const message = rows
+        .map(
+          (row) =>
+            openJob(JSON.parse(row.payload), secrets) as {
+              to: string;
+              text: string;
+            },
+        )
+        .find((item) => item.to === subject && item.text.includes('token='))!;
+      await privacy.confirm(
+        { token: decodeURIComponent(/token=([^\s]+)/.exec(message.text)![1]!) },
+        attempt,
+      );
+      await db.job.update({
+        where: { id: failedId },
+        data: { lockedUntil: new Date(Date.now() + 60000) },
+      });
+      await expect(privacy.erase(request.id, ADMIN)).rejects.toMatchObject({
+        code: 'conflict',
+      });
+      expect((await db.user.findUnique({ where: { id } }))?.email).toBe(
+        subject,
+      );
+      await db.job.update({
+        where: { id: failedId },
+        data: { lockedUntil: null },
+      });
+      await privacy.erase(request.id, ADMIN);
+      expect(await db.user.findUnique({ where: { id } })).toMatchObject({
+        name: 'Anonymous',
+        bio: '',
+        email: `erased-${id}@invalid.invalid`,
+        role: 'subscriber',
+      });
+      expect(
+        await db.comment.findUnique({ where: { id: commentId } }),
+      ).toMatchObject({
+        authorEmail: '',
+        authorUrl: '',
+        body: '',
+        userId: null,
+      });
+      expect(await db.session.count({ where: { userId: id } })).toBe(0);
+      expect(await db.apiToken.count({ where: { userId: id } })).toBe(0);
+      expect(await db.passwordToken.count({ where: { userId: id } })).toBe(0);
+      expect(await db.content.count({ where: { id: entry.id } })).toBe(1);
+      expect(await db.userIdentity.count({ where: { userId: id } })).toBe(0);
+      expect(await db.ssoTransaction.count({ where: { userId: id } })).toBe(0);
+      expect(
+        await db.media.findUnique({ where: { id: mediaId } }),
+      ).toMatchObject({
+        uploaderId: null,
+        title: '',
+        description: '',
+        alt: '',
+        caption: '',
+        storageKey: `privacy/${mediaId}.pdf`,
+      });
+      const remaining = await db.job.findMany();
+      expect(
+        remaining.every(
+          (row) =>
+            !JSON.stringify(openJob(JSON.parse(row.payload), secrets)).includes(
+              subject,
+            ),
+        ),
+      ).toBe(true);
+      const count = remaining.length;
+      await jobs.enqueue(
+        'email.send',
+        sealJob(
+          {
+            to: 'moderator@example.com',
+            subjects: [commentId],
+            text: 'Late snapshot',
+          },
+          secrets,
+        ),
+      );
+      expect(await db.job.count()).toBe(count);
+    },
+    SLOW,
+  );
+  test(
+    'changing the site timezone retains stored addresses when an entry is saved later',
+    async () => {
+      const { settings, content } = services();
+      const paths = new PrismaPermalinkRepository(db);
+      const current = await paths.readSettings();
+      await settings.set('reading', { timeZone: 'UTC' });
+      await paths.saveSettings({
+        ...current,
+        post: '/dated/%year%/%month%/%day%/%slug%',
+      });
+      const entry = await content.create(
+        {
+          type: 'post',
+          title: `Timezone ${uuidV7.next()}`,
+          status: 'published',
+          publishedAt: '2026-01-01T00:30:00.000Z',
+          document: paragraph('Date boundary'),
+        },
+        ADMIN,
+      );
+      expect(entry.path).toContain('/2026/01/01/');
+      await settings.set('reading', { timeZone: 'America/Los_Angeles' });
+      expect((await content.get(entry.id, ADMIN)).path).toBe(entry.path);
+      const saved = await content.update(
+        entry.id,
+        inputOf(await content.get(entry.id, ADMIN)),
+        ADMIN,
+      );
+      expect(saved.path).toContain('/2025/12/31/');
+      expect(await paths.findByPath(entry.path)).toMatchObject({
+        contentId: entry.id,
+        current: false,
+      });
+      const published = new PrismaPublishedContentRepository(db);
+      expect(
+        (
+          await published.list({
+            type: 'post',
+            year: 2025,
+            month: 12,
+            day: 31,
+            page: 1,
+            pageSize: 100,
+          })
+        ).items.some((item) => item.id === entry.id),
+      ).toBe(true);
+      expect(
+        (await published.monthNeighbours(['post'], 2026, 1)).previous,
+      ).toEqual({ year: 2025, month: 12 });
+      await settings.set('reading', { timeZone: 'UTC' });
+      await paths.saveSettings(current);
+    },
+    SLOW,
+  );
+  test(
+    'erasure does not declare completion while an unscoped legacy comment notice remains',
+    async () => {
+      const { privacy } = services();
+      const id = uuidV7.next(),
+        jobId = uuidV7.next(),
+        now = new Date();
+      await db.privacyRequest.create({
+        data: {
+          id,
+          email: `legacy-${id}@example.com`,
+          action: 'erase',
+          status: 'confirmed',
+          createdAt: now,
+          confirmedAt: now,
+          expiresAt: new Date(now.getTime() + 86400000),
+        },
+      });
+      await db.job.create({
+        data: {
+          id: jobId,
+          kind: 'email.send',
+          payload: JSON.stringify({
+            to: 'moderator@example.com',
+            subject: '[Site] New comment: Post',
+            text: 'An old name and comment without a link',
+          }),
+          runAt: now,
+          createdAt: now,
+          failedAt: now,
+        },
+      });
+      await expect(privacy.erase(id, ADMIN)).rejects.toMatchObject({
+        code: 'conflict',
+      });
+      expect(
+        (await db.privacyRequest.findUnique({ where: { id } }))?.status,
+      ).toBe('confirmed');
+      expect(await db.job.count({ where: { id: jobId } })).toBe(1);
+      await db.job.delete({ where: { id: jobId } });
     },
     SLOW,
   );

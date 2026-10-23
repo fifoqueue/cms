@@ -24,6 +24,10 @@
   interface Props {
     /** Layout data plus the page's own data (`page.data`). */
     data: {
+      privacy?: {
+        policy: { title: string; path: string } | null;
+        commentCookies: boolean;
+      };
       archives?: ArchivePathsState;
       queries?: Record<string, PostList>;
       terms?: BlockData['terms'];
@@ -57,6 +61,7 @@
   if (editable) provideBlockPath([]);
 
   provideScope(() => ({
+    privacy: data.privacy,
     archives: data.archives,
     queries: data.queries,
     terms: data.terms ?? { category: null, tag: null },

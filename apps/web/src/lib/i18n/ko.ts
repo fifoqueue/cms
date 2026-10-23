@@ -903,6 +903,7 @@ export const ko: Messages = {
         column: '열 하나',
         'template-part': '템플릿 파트',
         'site-title': '사이트 제목',
+        'privacy-policy-link': '개인정보 처리방침 링크',
         'site-tagline': '사이트 설명',
         navigation: '내비게이션',
         search: '검색',
@@ -1577,4 +1578,44 @@ export const ko: Messages = {
     '모든 API 프로세스에 같은 제한이 적용됩니다. 제한을 끄려면 0을 입력하세요.',
   mediaUploadsPerHour: '사용자당 시간별 업로드 수',
   mediaFreeSpaceMb: '남겨 둘 여유 저장 공간(MB)',
+
+  // core-privacy
+  privacySettings: '개인정보 보호',
+  privacyPolicy: '개인정보 처리방침',
+  privacyPolicyPage: '개인정보 처리방침 페이지',
+  privacyCommentCookies:
+    '댓글 작성자의 정보를 브라우저에 저장하는 동의 항목을 표시합니다. 동의한 경우에만 저장합니다.',
+  privacyExport: '개인정보 내보내기',
+  privacyErase: '개인정보 삭제',
+  privacyRequestHelp:
+    '해당 이메일 주소로 확인 요청을 보냅니다. 본인이 확인한 뒤 개인정보를 내보내거나 삭제할 수 있습니다.',
+  privacySendRequest: '요청 보내기',
+  privacySent: '확인 메일을 보냈습니다.',
+  privacyConfirmed:
+    '요청을 확인했습니다. 사이트 관리자가 이제 처리할 수 있습니다.',
+  privacyErased: '개인정보를 삭제했습니다.',
+  privacyDownload: '개인정보 내려받기',
+  privacyRetained:
+    '발행된 콘텐츠, 업로드한 파일, 기존 주소는 유지됩니다. 개인정보가 포함되어 있다면 별도로 검토해 주세요.',
+  privacyNoRequests: '개인정보 요청이 없습니다.',
+  privacyEraseConfirm:
+    '이 사람의 개인정보를 삭제하고 로그인 권한을 해제하시겠습니까? 되돌릴 수 없습니다.',
+  privacyOpenLink: '메일에 있는 확인 링크를 열어 주세요.',
+  privacyConfirmTitle: '개인정보 요청 확인',
+  privacyConfirmHelp:
+    '메일에 안내된 개인정보 내보내기 또는 삭제를 본인이 요청했는지 확인해 주세요.',
+  privacyConfirm: '요청 확인',
+  privacyRateRule: '방문자별 개인정보 요청',
+  privacyCommentFeed: '댓글 구독',
+  privacyMenuOrder: '페이지 순서',
+  privacyMediaTitle: '제목',
+  privacyMediaDescription: '설명',
+  privacyStatus: (status: string) =>
+    (
+      ({
+        pending: '확인 대기',
+        confirmed: '확인 완료',
+        completed: '처리 완료',
+      }) as Record<string, string>
+    )[status] ?? status,
 };

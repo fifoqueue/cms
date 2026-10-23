@@ -132,6 +132,7 @@ export const BLOCKS = {
       link: flag(true),
     },
   },
+  'privacy-policy-link': { attrs: {} },
   navigation: {
     attrs: {
       location: choice(['primary', 'footer'], 'primary'),

@@ -1,3 +1,4 @@
+import type { PrivacyService } from '#api/domain/privacy/privacy-service';
 import type { ArchivePathsService } from '#api/domain/permalinks/archive-paths';
 import type { TaxonomyTypeService } from '#api/domain/taxonomy/taxonomy-types';
 import type { RoleService } from '#api/domain/users/role-service';
@@ -55,6 +56,7 @@ import type { ClientResolver } from '#api/http/client-identity';
  * so route files under `routes/api` read them from the handler context (`({ site }) => ...`).
  */
 export type ApiServices = {
+  privacy: PrivacyService;
   auth: AuthService;
   sso: SsoService;
   clients: ClientResolver;

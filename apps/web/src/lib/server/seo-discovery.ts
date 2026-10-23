@@ -18,7 +18,13 @@ import { Errors } from '#lib/server/errors.js';
 import { contentMarkdown, markdownInline } from '#lib/server/markdown.js';
 import { FEED_PATH, markdownPath } from '#lib/seo/paths.js';
 
-export const SITEMAP_KINDS = ['content', 'category', 'tag'] as const;
+export const SITEMAP_KINDS = [
+  'content',
+  'category',
+  'tag',
+  'author',
+  'taxonomy',
+] as const;
 export type SitemapKind = (typeof SITEMAP_KINDS)[number];
 
 /** sitemaps.org limit on sitemaps per index; each chunk holds one API page (≤ 1,000 URLs). */
@@ -180,10 +186,10 @@ export const sitemapChunkCount = (kind: SitemapKind, total: number) =>
 /** Sitemap index over every chunk of every kind; fails rather than truncating. */
 export const sitemapIndex = (
   origin: string,
-  totals: Record<SitemapKind, number>,
+  totals: Partial<Record<SitemapKind, number>>,
 ) => {
   const counts = SITEMAP_KINDS.map((kind) =>
-    sitemapChunkCount(kind, totals[kind]),
+    sitemapChunkCount(kind, totals[kind] ?? 0),
   );
   // Checked before any list is allocated; a non-numeric count fails the same way.
   if (!(counts.reduce((sum, count) => sum + count, 0) <= SITEMAP_INDEX_LIMIT))

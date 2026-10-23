@@ -1,4 +1,8 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { FsMediaStorage } from '#api/infra/fs-media-storage';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
 import { MediaService } from '#api/domain/media/media-service';
 import type { DomainError } from '#api/shared/errors';
@@ -23,6 +27,23 @@ const codeOf = async (promise: Promise<unknown>) =>
 const PNG = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 1, 2,
 ]);
+
+test('filesystem uploads release the space lock after each successful commit', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'cms-media-test-'));
+  try {
+    const storage = new FsMediaStorage(root);
+    for (const key of ['first.png', 'second.png']) {
+      expect(await storage.commit([{ key, bytes: PNG }], 0)).toBe('stored');
+      expect(await readdir(root)).not.toContain('.space-lock');
+      const file = await storage.read(key);
+      expect(
+        new Uint8Array(await new Response(file!.body).arrayBuffer()),
+      ).toEqual(PNG);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 const setup = () => {
   const repository = new MemoryMediaRepository();

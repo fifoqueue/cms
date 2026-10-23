@@ -66,7 +66,7 @@ export class FsMediaStorage implements MediaStorage {
     for (;;) {
       try {
         await mkdir(this.spaceLock);
-        return;
+        return true;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
         const modified = await stat(this.spaceLock).then(
