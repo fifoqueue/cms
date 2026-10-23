@@ -148,7 +148,7 @@ export class MenuService {
           [url, title] = [
             term.taxonomy === 'category' || term.taxonomy === 'tag'
               ? archivePath(bases, term.taxonomy, term.slug)
-              : `/taxonomy/${term.taxonomy}/${term.slug}`,
+              : `/taxonomy/${encodeURIComponent(term.taxonomy)}/${encodeURIComponent(term.slug)}`,
             term.name,
           ];
           break;

@@ -17,7 +17,7 @@ import type {
   PublicComment,
   PublicCommentPage,
 } from '@cms/sdk';
-import { PAGINATION_MAX_PAGE } from '@cms/sdk';
+import { COMMENT_AUTHOR_NAME_MAX, PAGINATION_MAX_PAGE } from '@cms/sdk';
 import { can } from '@cms/sdk/capabilities';
 import type { CommentDraft, PluginComment } from '@cms/sdk/plugin';
 import { z } from 'zod';
@@ -28,10 +28,16 @@ import type {
   CommentRepository,
   CommentTarget,
 } from '#api/domain/comments/ports';
+import type { ContentLocks } from '#api/domain/content/content-locks';
 import type { ContentTypeService } from '#api/domain/content/content-types';
 import { templates } from '#api/domain/email/templates';
 import type { EmailService } from '#api/domain/email/email-service';
-import type { Clock, HookDispatcher, IdGenerator } from '#api/domain/ports';
+import type {
+  Clock,
+  HookDispatcher,
+  IdGenerator,
+  Signer,
+} from '#api/domain/ports';
 import type {
   Attempt,
   ProtectionService,
@@ -52,6 +58,13 @@ const draftSchema = z.object({
   status: z.enum(['pending', 'approved', 'spam']),
 });
 
+/** Profile names may exceed the comment column; cut on a code point, never mid-surrogate. */
+const authorName = (name: string) =>
+  name
+    .slice(0, COMMENT_AUTHOR_NAME_MAX)
+    .replace(/[\uD800-\uDBFF]$/, '')
+    .trim();
+
 const links = (text: string) => (text.match(/https?:\/\//gi) ?? []).length;
 
 const toPlugin = (record: CommentRecord): PluginComment => ({
@@ -67,11 +80,12 @@ const toPlugin = (record: CommentRecord): PluginComment => ({
 });
 
 const toAdmin = (
-  record: CommentRecord & { contentTitle: string },
+  record: CommentRecord & { contentTitle: string; parentAuthor: string | null },
 ): AdminComment => ({
   id: record.id,
   contentId: record.contentId,
   contentTitle: record.contentTitle,
+  parentAuthor: record.parentAuthor,
   parentId: record.parentId,
   userId: record.userId,
   authorName: record.authorName,
@@ -85,6 +99,9 @@ const toAdmin = (
 
 export interface CommentServiceDeps {
   repository: CommentRepository;
+  locks: Pick<ContentLocks, 'unlocked'>;
+  signer: Signer;
+  digest: (value: string) => string;
   settings: SettingsRepository;
   types: Pick<ContentTypeService, 'list'>;
   protection: Pick<ProtectionService, 'check'>;
@@ -122,9 +139,16 @@ export class CommentService {
   async publicPage(
     contentId: string,
     page: number,
+    proofs: readonly string[] = [],
+    actor: Actor | null = null,
+    pendingProof = '',
   ): Promise<PublicCommentPage> {
     const target = await this.deps.repository.target(contentId);
-    if (!target) throw notFound(Errors.ContentNotFound);
+    if (
+      !target ||
+      (target.protected && !(await this.deps.locks.unlocked(target.id, proofs)))
+    )
+      throw notFound(Errors.ContentNotFound);
     const settings = await this.discussion();
     const current =
       Number.isSafeInteger(page) && page > 0
@@ -136,8 +160,17 @@ export class CommentService {
       settings.pageSize,
       settings.threadDepth,
     );
+    const ownPending = await this.pending(pendingProof, target.id);
+    const viewer = actor ? await this.deps.users.get(actor.id) : null;
     return {
-      items: items.map((item) => this.toPublic(item, target, item.depth)),
+      items: items.map((item) =>
+        this.toPublic(item, target, item.depth, settings),
+      ),
+      requireLogin: settings.requireLogin,
+      viewer: viewer ? { name: viewer.name } : null,
+      ownPending: ownPending
+        ? this.toPublic(ownPending, target, 0, settings)
+        : null,
       total,
       count: target.commentCount,
       page: current,
@@ -155,15 +188,35 @@ export class CommentService {
   async submit(
     input: unknown,
     attempt: Omit<Attempt, 'action' | 'account'>,
+    proofs: readonly string[] = [],
+    actor: Actor | null = null,
   ): Promise<CommentSubmitted> {
-    const data = parseInput(commentInputSchema, input);
+    const user = actor ? await this.deps.users.get(actor.id) : null;
+    if (actor && !user) throw notFound(Errors.UserNotFound);
+    const data = user
+      ? parseInput(commentInputSchema, {
+          ...parseInput(
+            commentInputSchema.omit({ authorName: true, authorEmail: true }),
+            input,
+          ),
+          authorName: authorName(user.name),
+          authorEmail: user.email,
+        })
+      : parseInput(commentInputSchema, input);
     const protectedAttempt = { ...attempt, action: 'comment' as const };
     await this.deps.protection.check(protectedAttempt);
-    if (data.website) return { status: 'pending', comment: null };
+    if (data.website)
+      return { status: 'pending', comment: null, page: 1, pendingProof: null };
 
     const target = await this.deps.repository.target(data.contentId);
-    if (!target) throw notFound(Errors.ContentNotFound);
+    if (
+      !target ||
+      (target.protected && !(await this.deps.locks.unlocked(target.id, proofs)))
+    )
+      throw notFound(Errors.ContentNotFound);
     const settings = await this.discussion();
+    if (settings.requireLogin && !user)
+      throw forbidden(Errors.CommentLoginRequired);
     if (!(await this.open(target, settings)))
       throw forbidden(Errors.CommentsClosed);
     const depth = await this.replyDepth(data.parentId, target, settings);
@@ -188,7 +241,7 @@ export class CommentService {
     const record: CommentRecord = {
       ...draft,
       id: this.deps.ids.next(),
-      userId: null,
+      userId: user?.id ?? null,
       body,
       status,
       createdAt: now,
@@ -197,12 +250,29 @@ export class CommentService {
     await this.deps.repository.insert(record);
     void this.deps.hooks.emit('comment.created', toPlugin(record));
     void this.notify(record, target, settings).catch(() => undefined);
-    return status === 'approved'
-      ? {
-          status: 'approved',
-          comment: this.toPublic(record, target, depth),
-        }
-      : { status: 'pending', comment: null };
+    let root = record;
+    for (
+      let level = 0;
+      root.parentId && level < settings.threadDepth;
+      level += 1
+    )
+      root = (await this.deps.repository.findById(root.parentId)) ?? root;
+    const page = await this.deps.repository.pageOf(root, settings.pageSize);
+    const expires = this.deps.clock.now().getTime() + DAY;
+    const payload = `comment:${record.contentId}:${record.id}:${expires}`;
+    return {
+      status: status === 'approved' ? 'approved' : 'pending',
+      comment:
+        status === 'approved'
+          ? this.toPublic(record, target, depth, settings)
+          : null,
+      page,
+      // Spam gets the same receipt shape, but a receipt can only reveal a pending comment.
+      pendingProof:
+        status === 'approved'
+          ? null
+          : `${record.id}.${expires}.${this.deps.signer.sign(payload)}`,
+    };
   }
 
   /** Newest approved comments on public entries, for the recent comments widget. */
@@ -253,7 +323,7 @@ export class CommentService {
       contentId: parent.contentId,
       parentId: parent.id,
       userId: user.id,
-      authorName: user.name,
+      authorName: authorName(user.name),
       authorEmail: user.email,
       authorUrl: '',
       body,
@@ -379,6 +449,7 @@ export class CommentService {
     record: CommentRecord,
     target: CommentTarget,
     depth: number,
+    settings: DiscussionSettings,
   ): PublicComment {
     return publicCommentSchema.parse({
       id: record.id,
@@ -387,9 +458,34 @@ export class CommentService {
       authorName: record.authorName,
       authorUrl: record.authorUrl || null,
       byAuthor: record.userId !== null && record.userId === target.authorId,
+      avatarUrl: settings.showAvatars
+        ? `https://www.gravatar.com/avatar/${this.deps.digest(record.authorEmail.trim().toLowerCase())}?d=${settings.avatarDefault}&s=96`
+        : null,
+      pending: record.status === 'pending',
       body: record.body,
       createdAt: record.createdAt.toISOString(),
     });
+  }
+
+  private async pending(proof: string, contentId: string) {
+    if (proof.length > 512) return null;
+    const [id, expires, signature, extra] = proof.split('.');
+    if (
+      !id ||
+      !signature ||
+      extra !== undefined ||
+      !Number.isSafeInteger(Number(expires)) ||
+      Number(expires) <= this.deps.clock.now().getTime() ||
+      !this.deps.signer.verify(
+        `comment:${contentId}:${id}:${expires}`,
+        signature,
+      )
+    )
+      return null;
+    const record = await this.deps.repository.findById(id);
+    return record?.contentId === contentId && record.status === 'pending'
+      ? record
+      : null;
   }
 
   /** Mail about a new comment: moderators when it waits, the entry's author when it is shown. */

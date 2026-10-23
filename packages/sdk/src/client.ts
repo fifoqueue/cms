@@ -143,8 +143,8 @@ export { CmsApiError } from '#sdk/transport';
 export type { ClientOptions, Request } from '#sdk/transport';
 
 /** Read-only access to published content. Needs no credentials. */
-export const createContentClient = (options: ClientOptions) => {
-  const request = createTransport(options);
+export const createContentClient = (options: ClientOptions, token?: string) => {
+  const request = createTransport(options, token);
   return {
     ...captchaClient(request),
     ...publicTypesClient(request),

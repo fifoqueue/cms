@@ -1,4 +1,5 @@
 import { contentApi } from '#lib/server/api.js';
+import { SESSION_COOKIE } from '#lib/server/session.js';
 import { commentAction } from '#lib/server/comments.js';
 import { entryPage } from '#lib/server/content-page.js';
 import { notFoundFrom } from '#lib/server/errors.js';
@@ -13,8 +14,9 @@ import type { Actions, PageServerLoad } from './$types';
  * shows the static front page (Settings → Reading) or lists posts, or articles with
  * `?type=article`; search covers every searchable type.
  */
-export const load: PageServerLoad = async ({ fetch, url, cookies }) => {
-  const api = contentApi(fetch);
+export const load: PageServerLoad = async (event) => {
+  const { fetch, url, cookies } = event;
+  const api = contentApi(fetch, cookies.get(SESSION_COOKIE));
   const page = pageParam(url);
   const reading = await api.reading().catch(() => null);
   const pageSize = reading?.postsPerPage ?? 10;
@@ -38,7 +40,7 @@ export const load: PageServerLoad = async ({ fetch, url, cookies }) => {
       .catch(notFoundFrom);
     return entryPage(
       api,
-      url,
+      event,
       content,
       types,
       loadSlots(api, { path: '/', contentId: content.id }),

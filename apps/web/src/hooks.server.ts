@@ -9,6 +9,7 @@ import {
   installationApi,
 } from '#lib/server/api.js';
 import { frontendSecret, pairFrontend } from '#lib/server/frontend-secret.js';
+import { RETURN_PARAM } from '#lib/server/return-path.js';
 import { SESSION_COOKIE, endSession } from '#lib/server/session.js';
 
 const OPEN_ADMIN_PATHS = [
@@ -71,7 +72,8 @@ const robotsHeader: Handle = async ({ event, resolve }) => {
 };
 
 /** Cookies that make a public page differ per visitor (sessions, unlocked entries, previews). */
-const PERSONAL_COOKIE = /^(cms_session|cms_unlock_|cms_theme_preview)/;
+const PERSONAL_COOKIE =
+  /^(cms_session|cms_unlock_|cms_theme_preview|cms_pending_|cms_commenter)/;
 
 /** Settings → Reading `cacheSeconds`, re-read at most once a minute. */
 let caching = { seconds: 0, until: 0 };
@@ -94,6 +96,15 @@ const cacheSeconds = async (fetch: typeof globalThis.fetch) => {
  */
 const publicCache: Handle = async ({ event, resolve }) => {
   const response = await resolve(event);
+  if (event.cookies.getAll().some(({ name }) => PERSONAL_COOKIE.test(name))) {
+    const headers = new Headers(response.headers);
+    headers.set('cache-control', 'private, no-store');
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  }
   if (
     (event.request.method !== 'GET' && event.request.method !== 'HEAD') ||
     isAdmin(event.url.pathname) ||
@@ -161,9 +172,14 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
         status: 303,
         location: '/admin/login',
       });
+    // Only a page visit can be repeated after signing in; a form post cannot.
+    const back =
+      event.request.method === 'GET' && event.url.pathname !== '/admin'
+        ? `?${new URLSearchParams({ [RETURN_PARAM]: `${event.url.pathname}${event.url.search}` })}`
+        : '';
     return new Response(null, {
       status: 303,
-      headers: { location: '/admin/login' },
+      headers: { location: `/admin/login${back}` },
     });
   }
   return resolve(event);

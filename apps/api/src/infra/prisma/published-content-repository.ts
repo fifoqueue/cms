@@ -113,6 +113,14 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
     return this.find({ id });
   }
 
+  async privateById(id: string) {
+    const row = await this.db.content.findFirst({
+      where: { id, status: 'private', trashedAt: null },
+      select: columns,
+    });
+    return row ? toRecord(row) : null;
+  }
+
   bySlug(slug: string) {
     return this.find({ slug });
   }

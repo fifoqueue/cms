@@ -69,6 +69,7 @@ export const en = {
       ({
         'content.create': 'Create own drafts',
         'content.publish': 'Publish own content',
+        'content.readPrivate': 'Read private content',
         'content.editOthers': 'Edit others’ content',
         'taxonomy.manage': 'Manage taxonomy',
         'media.upload': 'Upload media',
@@ -1200,4 +1201,78 @@ export const en = {
   revisionRestoreConfirm:
     'Restore this version? Unsaved changes in the editor are lost.',
   seoTabs: 'SEO settings',
+  // admin-screens
+  rowQuickEdit: 'Quick Edit',
+  rowQuickEditOf: (title: string) => `Quick edit “${title}” inline`,
+  rowTrash: 'Trash',
+  contentMonth: 'Month',
+  allAuthors: 'All authors',
+  quickEditPasswordKept: 'Leave blank to keep the current password',
+  navPosts: 'Posts',
+  navPages: 'Pages',
+  navArticles: 'Articles',
+  navAllOf: (plural: string) => `All ${plural}`,
+  navPluginsFailed: (count: number) =>
+    count === 1 ? '1 plugin failed' : `${count} plugins failed`,
+  dashboardApproved: (count: number) =>
+    count === 1 ? '1 approved comment' : `${count} approved comments`,
+  dashboardHealth: 'Site Health status',
+  dashboardHealthGood: 'Good',
+  dashboardHealthRecommended: 'Should be improved',
+  dashboardHealthCritical: 'Needs attention',
+  dashboardHealthCounts: (critical: number, recommended: number) =>
+    `${critical} critical issues, ${recommended} recommended improvements`,
+  dashboardActivity: 'Activity',
+  dashboardPublishingSoon: 'Publishing soon',
+  dashboardRecentlyPublished: 'Recently published',
+  dashboardRecentComments: 'Recent comments',
+  dashboardNoActivity: 'No activity yet.',
+  ssoLinked: 'Linked',
+  ssoNotLinked: 'Not linked',
+  ssoLinkHelp: (provider: string) =>
+    `Link an account at ${provider} to sign in to this account with it. Your password keeps working.`,
+  ssoUnavailable: 'Single sign-on is not available on this site.',
+  ssoProvider: 'Provider',
+  ssoAccountId: 'Account ID',
+  ssoLinkedOn: 'Linked on',
+  ssoAssigned:
+    'The site operator has also assigned a single sign-on account to you.',
+  ssoLinkOther: 'Link a different account',
+  ssoLinkWith: (provider: string) => `Link ${provider}`,
+  ssoUnlink: 'Unlink',
+  ssoUnlinkConfirm: 'Stop signing in with this single sign-on account?',
+  ssoBackToAccount: 'Back to account',
+  ssoBackToSignIn: 'Back to sign in',
+  pluginStatusActive: 'Active',
+  pluginStatusInactive: 'Inactive',
+  pluginStatusFailed: 'Failed',
+  menuFindContent: 'Search pages and posts',
+  menuMostRecent: 'Most recent',
+  menuSearchResults: 'Search results',
+  menuNoResults: 'No results',
+  // core-comments
+  commentLoginRequired: 'Log in to leave a comment.',
+  commentSignedIn: (name: string) => `Logged in as ${name}.`,
+  commentRemember:
+    'Save my name, email, and website in this browser for the next time I comment.',
+  discussionRequireLogin: 'Users must be registered and logged in to comment',
+  discussionAvatars: 'Show avatars',
+  discussionAvatarDefault: 'Default avatar',
+  avatarStyle: (style: string) =>
+    (
+      ({
+        mp: 'Mystery person',
+        identicon: 'Identicon',
+        monsterid: 'MonsterID',
+        wavatar: 'Wavatar',
+        retro: 'Retro',
+        robohash: 'Robohash',
+        blank: 'Blank',
+      }) as Record<string, string>
+    )[style] ?? style,
+  commentNotSpam: 'Not spam',
+  commentInResponseTo: 'In response to',
+  commentInReplyTo: (name: string) => `In reply to ${name}`,
+  commentsForEntry: (title: string) => `Comments on: ${title}`,
+  commentsAllEntries: 'All entries',
 } as const;

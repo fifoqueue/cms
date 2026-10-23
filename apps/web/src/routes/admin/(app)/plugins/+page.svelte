@@ -32,6 +32,11 @@
     inactive: 'secondary',
     failed: 'destructive',
   };
+  const statusNames = $derived<Record<PluginStatus, string>>({
+    active: m.pluginStatusActive,
+    inactive: m.pluginStatusInactive,
+    failed: m.pluginStatusFailed,
+  });
 
   const confirmRemove: SubmitFunction = ({ cancel }) => {
     if (!confirm(m.pluginRemoveConfirm)) cancel();
@@ -78,7 +83,9 @@
         <span class="text-sm font-normal text-muted-foreground"
           >{plugin.version}</span
         >
-        <Badge variant={STATUS[plugin.status]}>{plugin.status}</Badge>
+        <Badge variant={STATUS[plugin.status]}
+          >{statusNames[plugin.status]}</Badge
+        >
       </CardTitle>
       <CardDescription>{plugin.description || plugin.id}</CardDescription>
       <CardAction class="flex gap-2">

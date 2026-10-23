@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
+  import { deserialize, enhance } from '$app/forms';
   import { MENU_LOCATIONS } from '@cms/sdk';
   import type { MenuItem } from '@cms/sdk';
   import {
@@ -7,6 +7,7 @@
     ArrowLeft,
     ArrowRight,
     ArrowUp,
+    Search,
     Trash2,
   } from '@lucide/svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
@@ -34,7 +35,8 @@
     NativeSelect,
     NativeSelectOption,
   } from '#lib/components/ui/native-select/index.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { typeLabel, useI18n } from '#lib/i18n/index.js';
+  import { SvelteMap } from 'svelte/reactivity';
   import type { PageProps } from './$types';
 
   let { data, form }: PageProps = $props();
@@ -65,9 +67,41 @@
   let term = $state('');
   let archive = $state('');
 
+  /** Search results of the content picker; null shows the most recent entries. */
+  let found = $state<{ id: string; title: string; type: string }[] | null>(
+    null,
+  );
+  let query = $state('');
+  let searching = $state(false);
+  /** Titles of entries picked from search results, kept after a new search. */
+  const picked = new SvelteMap<string, string>();
+
+  const find = async () => {
+    searching = true;
+    try {
+      const body = new FormData();
+      body.set('q', query);
+      const response = await fetch('?/find', {
+        method: 'POST',
+        body,
+        headers: { accept: 'application/json', 'x-sveltekit-action': 'true' },
+      });
+      const result = deserialize(await response.text());
+      found =
+        result.type === 'success'
+          ? ((result.data?.found as typeof found) ?? [])
+          : [];
+      contentId = '';
+    } finally {
+      searching = false;
+    }
+  };
+
   const titles = $derived(
     new Map([
       ...data.content.map((entry) => [`content:${entry.id}`, entry.title]),
+      ...data.titles.map((entry) => [`content:${entry.id}`, entry.title]),
+      ...[...picked].map(([id, title]) => [`content:${id}`, title]),
       ...data.categories.map((entry) => [`category:${entry.id}`, entry.name]),
       ...data.tags.map((entry) => [`tag:${entry.id}`, entry.name]),
       ...data.archives.map((entry) => [`archive:${entry.key}`, entry.name]),
@@ -110,6 +144,8 @@
   };
 
   const addItem = () => {
+    const choice = found?.find((entry) => entry.id === contentId);
+    if (kind === 'content' && choice) picked.set(choice.id, choice.title);
     const [taxonomy, termId] = term.split(':') as ['category' | 'tag', string];
     const row: MenuRow = {
       id: crypto.randomUUID(),
@@ -324,12 +360,46 @@
             </div>
             {#if kind === 'content'}
               <div class="grid gap-2">
-                <Label for="item-content">{m.menuKindContent}</Label>
+                <Label for="item-find">{m.menuFindContent}</Label>
+                <div class="flex gap-2">
+                  <Input
+                    id="item-find"
+                    type="search"
+                    maxlength={200}
+                    class="w-48"
+                    bind:value={query}
+                    onkeydown={(event) => {
+                      // Enter searches instead of saving the menus.
+                      if (event.key !== 'Enter') return;
+                      event.preventDefault();
+                      void find();
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    aria-label={m.search}
+                    disabled={searching}
+                    onclick={find}><Search class="size-4" /></Button
+                  >
+                </div>
+              </div>
+              <div class="grid gap-2">
+                <Label for="item-content"
+                  >{found ? m.menuSearchResults : m.menuMostRecent}</Label
+                >
                 <NativeSelect id="item-content" bind:value={contentId}>
-                  <NativeSelectOption value="">{m.noChoice}</NativeSelectOption>
-                  {#each data.content as entry (entry.id)}
+                  <NativeSelectOption value=""
+                    >{found && !found.length
+                      ? m.menuNoResults
+                      : m.noChoice}</NativeSelectOption
+                  >
+                  {#each found ?? data.content as entry (entry.id)}
                     <NativeSelectOption value={entry.id}
-                      >{entry.title}</NativeSelectOption
+                      >{entry.title}{'type' in entry
+                        ? ` (${typeLabel(m, String(entry.type))})`
+                        : ''}</NativeSelectOption
                     >
                   {/each}
                 </NativeSelect>

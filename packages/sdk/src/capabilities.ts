@@ -21,6 +21,8 @@ export const CAPABILITIES = [
   'content.publish',
   /** Edit, publish and delete entries of other users, and change authors. */
   'content.editOthers',
+  /** Read private entries on the site. */
+  'content.readPrivate',
   'taxonomy.manage',
   'media.upload',
   /** Edit and delete media uploaded by others. */
@@ -49,6 +51,7 @@ const author: readonly Capability[] = [
 const editor: readonly Capability[] = [
   ...author,
   'content.editOthers',
+  'content.readPrivate',
   'taxonomy.manage',
   'media.manage',
   'comments.moderate',

@@ -50,6 +50,8 @@ export const Errors = {
     'Contact an administrator to change your email address.',
 
   ContentNotFound: 'Content not found',
+  ContentChanged:
+    'This entry was changed since you opened it. Reload the page and try again.',
   ContentPathMissing: 'Content has no current path',
   SlugConflict: 'Slug is already in use',
   SlugInUse: (slug: string) => `Slug "${slug}" is already in use`,
@@ -73,6 +75,7 @@ export const Errors = {
   ContentTypeExists: 'A content type with this key exists',
   ContentTypeNotFound: 'Content type not found',
   ContentTypeInUse: 'Entries of this type exist; delete or change them first',
+  CommentLoginRequired: 'You must be logged in to post a comment',
   CommentNotFound: 'Comment not found',
   CommentsClosed: 'Comments are closed for this entry',
   CommentReplyInvalid: 'The comment you are replying to is not available',

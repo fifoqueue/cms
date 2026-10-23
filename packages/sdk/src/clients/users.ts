@@ -14,6 +14,8 @@ import type {
 export const authorOptionSchema = z.object({
   id: z.string(),
   name: z.string(),
+  /** Public author slug, for the `author` list filter. */
+  slug: z.string(),
 });
 
 export type AuthorOption = z.output<typeof authorOptionSchema>;

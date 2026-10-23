@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import type { CommentSection } from '#lib/server/comments.js';
   import Captcha from '#lib/security/Captcha.svelte';
@@ -32,7 +33,23 @@
         failure?.captcha === true),
   );
 
-  let replyTo = $state<{ id: string; name: string } | null>(null);
+  let selectedReply = $state<{ id: string; name: string } | null | undefined>(
+    undefined,
+  );
+  const replyTo = $derived(
+    selectedReply === undefined
+      ? typed('parentId')
+        ? { id: typed('parentId'), name: typed('parentName') }
+        : null
+      : selectedReply,
+  );
+  const shown = $derived(
+    comments.ownPending
+      ? [...comments.items, comments.ownPending]
+      : comments.items,
+  );
+  const remembered = (key: 'authorName' | 'authorEmail' | 'authorUrl') =>
+    failure ? typed(key) : (comments.remembered?.[key] ?? '');
   const pages = $derived(Math.ceil(comments.total / comments.pageSize));
 </script>
 
@@ -47,15 +64,26 @@
     </p>
   {/if}
 
-  {#if comments.items.length}
+  {#if shown.length}
     <ol class="space-y-6">
-      {#each comments.items as comment (comment.id)}
+      {#each shown as comment (comment.id)}
         <li
           id="comment-{comment.id}"
           class="space-y-2"
           style:margin-inline-start="{comment.depth * 1.5}rem"
         >
           <p class="text-sm">
+            {#if comment.avatarUrl}
+              <img
+                src={comment.avatarUrl}
+                alt=""
+                width="48"
+                height="48"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+                class="mr-2 inline-block size-12 rounded-full"
+              />
+            {/if}
             {#if comment.authorUrl}
               <!-- eslint-disable svelte/no-navigation-without-resolve -- a commenter's own website -->
               <a
@@ -78,13 +106,16 @@
               ></span
             >
           </p>
+          {#if comment.pending}<p class="text-sm text-muted-foreground">
+              {m.commentAwaitingModeration}
+            </p>{/if}
           <p class="whitespace-pre-line">{comment.body}</p>
-          {#if comments.open && comment.depth + 1 < comments.threadDepth}
+          {#if !comment.pending && comments.open && (!comments.requireLogin || comments.viewer) && comment.depth + 1 < comments.threadDepth}
             <button
               type="button"
               class="text-sm text-primary hover:underline"
               onclick={() =>
-                (replyTo = { id: comment.id, name: comment.authorName })}
+                (selectedReply = { id: comment.id, name: comment.authorName })}
               >{m.commentReply}</button
             >
           {/if}
@@ -111,11 +142,18 @@
     </nav>
   {/if}
 
-  {#if comments.open}
+  {#if comments.open && comments.requireLogin && !comments.viewer}
+    <p>
+      <a
+        href={resolve('/admin/(auth)/login')}
+        class="text-primary hover:underline">{m.commentLoginRequired}</a
+      >
+    </p>
+  {:else if comments.open}
     <!-- Not enhanced: a captcha widget must render fresh after each attempt. -->
     <form
       method="POST"
-      action="?/comment"
+      action="?/comment&cpage={comments.page}"
       class="space-y-4 rounded-lg border bg-card p-6"
     >
       <h3 class="font-semibold">
@@ -125,11 +163,12 @@
         <button
           type="button"
           class="text-sm text-muted-foreground hover:underline"
-          onclick={() => (replyTo = null)}>{m.cancel}</button
+          onclick={() => (selectedReply = null)}>{m.cancel}</button
         >
       {/if}
       <input type="hidden" name="contentId" value={contentId} />
       <input type="hidden" name="parentId" value={replyTo?.id ?? ''} />
+      <input type="hidden" name="parentName" value={replyTo?.name ?? ''} />
       <!-- People never see this field; automated senders fill it in. -->
       <div class="absolute -left-[9999px]" aria-hidden="true">
         <label
@@ -143,42 +182,55 @@
       {#if failure && typeof failure.message === 'string'}
         <p class="text-sm text-destructive" role="alert">{failure.message}</p>
       {/if}
-      <div class="grid gap-4 sm:grid-cols-2">
-        <label class="grid gap-1 text-sm"
-          >{m.commentName}
-          <input
-            name="authorName"
-            required
-            maxlength={100}
-            autocomplete="name"
-            value={typed('authorName')}
-            class="h-9 rounded-md border bg-background px-3"
-          />
-        </label>
-        <label class="grid gap-1 text-sm"
-          >{m.commentEmail}
-          <input
-            name="authorEmail"
-            type="email"
-            required
-            maxlength={191}
-            autocomplete="email"
-            value={typed('authorEmail')}
-            class="h-9 rounded-md border bg-background px-3"
-          />
-        </label>
-        <label class="grid gap-1 text-sm sm:col-span-2"
-          >{m.commentWebsite}
-          <input
-            name="authorUrl"
-            type="url"
-            maxlength={255}
-            autocomplete="url"
-            value={typed('authorUrl')}
-            class="h-9 rounded-md border bg-background px-3"
-          />
-        </label>
-      </div>
+      {#if comments.viewer}
+        <p class="text-sm">{m.commentSignedIn(comments.viewer.name)}</p>
+      {:else}
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="grid gap-1 text-sm"
+            >{m.commentName}
+            <input
+              name="authorName"
+              required
+              maxlength={100}
+              autocomplete="name"
+              value={remembered('authorName')}
+              class="h-9 rounded-md border bg-background px-3"
+            />
+          </label>
+          <label class="grid gap-1 text-sm"
+            >{m.commentEmail}
+            <input
+              name="authorEmail"
+              type="email"
+              required
+              maxlength={191}
+              autocomplete="email"
+              value={remembered('authorEmail')}
+              class="h-9 rounded-md border bg-background px-3"
+            />
+          </label>
+          <label class="grid gap-1 text-sm sm:col-span-2"
+            >{m.commentWebsite}
+            <input
+              name="authorUrl"
+              type="url"
+              maxlength={255}
+              autocomplete="url"
+              value={remembered('authorUrl')}
+              class="h-9 rounded-md border bg-background px-3"
+            />
+          </label>
+        </div>
+        <label class="flex items-center gap-2 text-sm"
+          ><input
+            type="checkbox"
+            name="remember"
+            checked={failure
+              ? failure.remember === true
+              : !!comments.remembered}
+          />{m.commentRemember}</label
+        >
+      {/if}
       <label class="grid gap-1 text-sm"
         >{m.commentBody}
         <textarea

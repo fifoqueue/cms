@@ -21,6 +21,8 @@ export const Errors = {
   BlocksInvalid: 'The blocks could not be read',
   TemplateNameInvalid: 'Use lowercase letters, numbers and dashes for the slug',
   ThemeFileTooLarge: 'Theme archives can be at most 2 MB',
+  QuickEditAutosave:
+    'This entry has unsaved changes from the editor. Open it in the editor to save or discard them first.',
 } as const;
 
 export interface FormIssue {

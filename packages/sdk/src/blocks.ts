@@ -6,6 +6,7 @@
  * editor share one definition. Pure and browser-safe.
  */
 import { Errors } from '#sdk/errors';
+import { CONTENT_SLUG } from '#sdk/slugs';
 
 export type BlockAttr =
   | { type: 'text'; max: number; default: string; pattern?: RegExp }
@@ -142,9 +143,9 @@ export const BLOCKS = {
     attrs: {
       inherit: flag(true),
       type: { type: 'text', max: 32, default: '', pattern: SLUG },
-      category: { type: 'text', max: 191, default: '', pattern: SLUG },
-      tag: { type: 'text', max: 191, default: '', pattern: SLUG },
-      author: { type: 'text', max: 191, default: '', pattern: SLUG },
+      category: { type: 'text', max: 191, default: '', pattern: CONTENT_SLUG },
+      tag: { type: 'text', max: 191, default: '', pattern: CONTENT_SLUG },
+      author: { type: 'text', max: 191, default: '', pattern: CONTENT_SLUG },
       count: { type: 'number', min: 1, max: 100, default: 6 },
       layout: choice(['list', 'grid'], 'list'),
       columns: { type: 'number', min: 1, max: 4, default: 3 },
@@ -216,9 +217,11 @@ export interface BlockInput {
 /** Hard limits that keep a template cheap to validate and render. */
 export const BLOCK_LIMITS = { depth: 16, nodes: 1000 } as const;
 
-/** WordPress template hierarchy names, optionally narrowed by a slug or type (`single-article`). */
-export const TEMPLATE_NAME =
-  /^(index|home|front-page|singular|single|page|archive|taxonomy|category|tag|author|date|search|404)(-[a-z0-9]+(?:-[a-z0-9]+)*)?$/;
+/** WordPress template hierarchy names, optionally narrowed by a (Unicode) slug or type (`single-article`, `page-소식`). */
+export const TEMPLATE_NAME = new RegExp(
+  `^(index|home|front-page|singular|single|page|archive|taxonomy|category|tag|author|date|search|404)(-${CONTENT_SLUG.source.slice(1, -1)})?$`,
+  'u',
+);
 
 export interface BlockIssue {
   path: string;
