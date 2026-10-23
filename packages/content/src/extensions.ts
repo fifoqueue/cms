@@ -18,7 +18,11 @@ import {
   Pullquote,
   Spacer,
   ContentTable,
+  PluginBlock,
 } from '#content/blocks';
+
+/** The admin editor extends this node with a placeholder view; the schema stays shared. */
+export { PluginBlock };
 import type { ContentDocument } from '@cms/sdk';
 import { Errors } from '#content/errors';
 
@@ -81,6 +85,7 @@ export const contentExtensions = [
   TableKit.configure({ table: false }),
   ContentTable,
   Embed,
+  PluginBlock,
 ];
 
 const schema = getSchema(contentExtensions);

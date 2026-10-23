@@ -23,7 +23,7 @@ import type {
   PublishedRecord,
 } from '#api/domain/content/published-content-repository';
 import type { ContentLocks } from '#api/domain/content/content-locks';
-import type { Embeds } from '#api/domain/content/embeds';
+import type { HtmlExpander } from '#api/domain/content/embeds';
 import type { FieldService } from '#api/domain/content/fields';
 import type { ContentTypeService } from '#api/domain/content/content-types';
 import type { HookDispatcher } from '#api/domain/ports';
@@ -172,7 +172,7 @@ export class PublicContentService {
     private readonly hooks: HookDispatcher,
     private readonly locks: ContentLocks,
     /** Served-HTML expansion: embeds, responsive images. */
-    private readonly embeds: Pick<Embeds, 'expand'>,
+    private readonly embeds: HtmlExpander,
     private readonly fields: Pick<FieldService, 'present'>,
     private readonly types: Pick<ContentTypeService, 'list'>,
     private readonly search?: Pick<SearchService, 'find'>,
@@ -276,7 +276,18 @@ export class PublicContentService {
   private async present(content: PublicContent): Promise<PublicContent> {
     const filtered = await this.hooks.applyFilter(
       'content.public',
-      { ...content, html: await this.embeds.expand(content.html) },
+      {
+        ...content,
+        html: await this.embeds.expand(content.html, {
+          content: {
+            id: content.id,
+            type: content.type,
+            slug: content.slug,
+            path: content.path,
+            title: content.title,
+          },
+        }),
+      },
       isPublicContent,
     );
     // Plugins may decorate display content, but cannot move an entry or override crawler policy.

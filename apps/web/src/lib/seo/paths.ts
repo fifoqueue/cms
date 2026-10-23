@@ -22,6 +22,10 @@ export const feedPath = (target?: FeedTarget) =>
     ? `${FEED_PATH}?${target.kind}=${encodeURIComponent(target.slug)}`
     : FEED_PATH;
 
+/** The oEmbed endpoint for an entry's absolute URL. */
+export const oembedPath = (url: string) =>
+  `/oembed?url=${encodeURIComponent(url)}&format=json`;
+
 /** Stable Markdown alias of a content entry, independent of its permalink format. */
 export const markdownPath = (slug: string) => `/${encodeURIComponent(slug)}.md`;
 

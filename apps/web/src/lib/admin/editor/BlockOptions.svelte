@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
-  import type { AdminMedia, MediaKind } from '@cms/sdk';
+  import type { AdminMedia, MediaKind, PluginBlockInfo } from '@cms/sdk';
+  import { loadPluginBlocks } from '#lib/admin/editor/plugin-blocks.js';
   import { Popover } from 'bits-ui';
   import { tick } from 'svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
@@ -18,6 +19,8 @@
   } from '#lib/admin/editor/blocks.js';
 
   let { editor, revision }: { editor: Editor; revision: number } = $props();
+  let pluginBlocks = $state<PluginBlockInfo[]>([]);
+  void loadPluginBlocks().then((list) => (pluginBlocks = list));
   const i18n = useI18n();
   const m = $derived(i18n.m);
   const targets = $derived(revision >= 0 ? blockTargets(editor) : []);
@@ -91,6 +94,79 @@
         <p class="font-medium">
           {m.contentBlockSettings(m.contentBlockName(type))}
         </p>
+        {#if type === 'pluginBlock'}
+          {@const info = pluginBlocks.find(
+            (entry) => entry.block === target.node.attrs.block,
+          )}
+          {@const stored = (target.node.attrs.attrs ?? {}) as Record<
+            string,
+            string | number | boolean
+          >}
+          {#if info}
+            <p class="font-medium">{info.title}</p>
+            {#if info.description}<p class="text-muted-foreground">
+                {info.description}
+              </p>{/if}
+            {#each info.attributes as field (field.key)}
+              {@const value = stored[field.key] ?? field.default}
+              {#if field.type === 'boolean'}
+                <label class="flex items-center gap-2"
+                  ><input
+                    type="checkbox"
+                    checked={value === true}
+                    onchange={(event) =>
+                      update(target, {
+                        attrs: {
+                          ...stored,
+                          [field.key]: event.currentTarget.checked,
+                        },
+                      })}
+                  />{field.label}</label
+                >
+              {:else if field.type === 'select'}
+                <label class="grid gap-1"
+                  >{field.label}<NativeSelect
+                    value={String(value ?? '')}
+                    onchange={(event) =>
+                      update(target, {
+                        attrs: {
+                          ...stored,
+                          [field.key]: event.currentTarget.value,
+                        },
+                      })}
+                  >
+                    {#each field.options as option (option)}<NativeSelectOption
+                        value={option}>{option}</NativeSelectOption
+                      >{/each}
+                  </NativeSelect></label
+                >
+              {:else}
+                <label class="grid gap-1"
+                  >{field.label}<Input
+                    type={field.type === 'number' ? 'number' : 'text'}
+                    step="any"
+                    value={value ?? ''}
+                    oninput={(event) =>
+                      update(target, {
+                        attrs: {
+                          ...stored,
+                          [field.key]:
+                            field.type === 'number'
+                              ? Number(event.currentTarget.value)
+                              : event.currentTarget.value.slice(0, 5000),
+                        },
+                      })}
+                  /></label
+                >
+              {/if}
+              {#if field.description}<p class="text-xs text-muted-foreground">
+                  {field.description}
+                </p>{/if}
+            {/each}
+          {:else}
+            <p class="text-muted-foreground">{m.contentPluginBlockInactive}</p>
+          {/if}
+        {/if}
         {#if type === 'video' || type === 'file' || type === 'gallery'}
           <Popover.Close
             type="button"

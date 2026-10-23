@@ -311,3 +311,44 @@ export const ContentTable = Table.extend({
       : (output as DOMOutputSpec);
   },
 }).configure({ resizable: false, HTMLAttributes: { class: 'cms-table' } });
+
+/** Stored attributes of a plugin block, from its `data-attrs` JSON; anything else is none. */
+const pluginAttrs = (element: HTMLElement) => {
+  try {
+    const value: unknown = JSON.parse(
+      element.getAttribute('data-attrs') ?? '{}',
+    );
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? value
+      : {};
+  } catch {
+    return {};
+  }
+};
+
+/**
+ * A plugin's dynamic block (`plugin:<id>:<key>` with its attributes). Stored as an empty
+ * marker; the API replaces it with the plugin's output when content is served, and keeps it
+ * untouched while the plugin is inactive.
+ */
+export const PluginBlock = Node.create({
+  name: 'pluginBlock',
+  group: 'block',
+  atom: true,
+  addAttributes: () => ({
+    block: {
+      default: null,
+      parseHTML: (element) => element.getAttribute('data-plugin-block'),
+    },
+    attrs: { default: {}, parseHTML: pluginAttrs },
+  }),
+  parseHTML: () => [{ tag: 'div[data-plugin-block]' }],
+  renderHTML: ({ node }) => [
+    'div',
+    {
+      class: 'cms-plugin-block',
+      'data-plugin-block': node.attrs.block ?? '',
+      'data-attrs': JSON.stringify(node.attrs.attrs ?? {}),
+    },
+  ],
+});

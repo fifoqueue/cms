@@ -13,6 +13,7 @@ import type { AdminMedia } from '#sdk/media';
 import type { Capability } from '#sdk/capabilities';
 import type {
   AdminBlock,
+  PluginBlockField,
   PluginManifest,
   SettingValue,
   SettingValues,
@@ -138,6 +139,37 @@ export interface EmbedRegistrar {
   register(provider: EmbedProvider): Unsubscribe;
 }
 
+/** What a plugin block is rendered for: the entry being served. */
+export interface BlockRenderContext {
+  content: {
+    id: string;
+    type: string;
+    slug: string;
+    path: string;
+    title: string;
+  } | null;
+}
+
+/**
+ * A block authors insert in the editor (WordPress `register_block_type` with a render
+ * callback). `attributes` are declared like settings, plus `select`; the editor builds the form.
+ */
+export interface BlockDefinition {
+  title: string;
+  description?: string;
+  attributes?: PluginBlockField[];
+  /**
+   * Returns escaped HTML for the stored attributes (defaults applied). Runs when content is
+   * served, with a time limit; failures render nothing.
+   */
+  render(attrs: SettingValues, context: BlockRenderContext): Awaitable<string>;
+}
+
+export interface BlockRegistrar {
+  /** `key` is kebab-case; the block is stored as `plugin:<plugin id>:<key>`. */
+  register(key: string, block: BlockDefinition): Unsubscribe;
+}
+
 export interface TaskRegistrar {
   /**
    * Runs `task` every `intervalMs` (at least one minute) in one API instance at a time.
@@ -236,6 +268,7 @@ export interface PluginContext {
   readonly slots: SlotRegistrar;
   readonly widgets: WidgetRegistrar;
   readonly embeds: EmbedRegistrar;
+  readonly blocks: BlockRegistrar;
   readonly tasks: TaskRegistrar;
   readonly admin: AdminPageRegistrar & DashboardWidgetRegistrar;
   readonly routes: RouteRegistrar;

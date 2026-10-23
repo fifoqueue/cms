@@ -128,6 +128,7 @@ const app = await createApiApp({
     comments: {} as ApiServices['comments'],
     search: {} as ApiServices['search'],
     pluginPages: {} as ApiServices['pluginPages'],
+    pluginBlocks: {} as ApiServices['pluginBlocks'],
     dashboardWidgets: {} as ApiServices['dashboardWidgets'],
     webhooks: {} as ApiServices['webhooks'],
     siteHealth: {} as ApiServices['siteHealth'],

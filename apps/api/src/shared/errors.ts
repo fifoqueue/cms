@@ -227,6 +227,10 @@ export const Errors = {
   InstallConfigCorrupt:
     '설정 파일이 손상되었습니다. 기존 설정을 복구해 주세요.',
   // site-theme
+  PluginBlockInvalid: (key: string) =>
+    `Invalid plugin block "${key}": use a kebab-case key, a title and valid attributes`,
+  PluginBlockAttrsInvalid: (title: string) =>
+    `The settings of the "${title}" block are not valid`,
   SiteImageInvalid: 'Choose an image from the media library.',
   ThemeScreenshotInvalid:
     'The theme screenshot must be a PNG or WebP image of at most 512 KB.',

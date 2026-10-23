@@ -7,6 +7,7 @@ import { PluginRouteRegistry } from '#api/plugin-runtime/route-registry';
 import { SlotRegistry } from '#api/plugin-runtime/slot-registry';
 import { WidgetRegistry } from '#api/plugin-runtime/widget-registry';
 import { EmbedRegistry } from '#api/plugin-runtime/embed-registry';
+import { BlockRegistry } from '#api/plugin-runtime/block-registry';
 import { AdminPageRegistry } from '#api/plugin-runtime/admin-page-registry';
 import { DashboardWidgetRegistry } from '#api/plugin-runtime/dashboard-widget-registry';
 import type { TaskScheduler } from '#api/plugin-runtime/ports';
@@ -46,6 +47,7 @@ export const createRuntime = ({
   const slots = new SlotRegistry({ timeoutMs, logger });
   const widgets = new WidgetRegistry({ timeoutMs, logger });
   const embeds = new EmbedRegistry({ timeoutMs, logger });
+  const blocks = new BlockRegistry({ timeoutMs, logger });
   const pages = new AdminPageRegistry({ timeoutMs, logger });
   const dashboardWidgets = new DashboardWidgetRegistry({ timeoutMs, logger });
   /** Registered plugin tasks by name; tests run them directly. */
@@ -63,6 +65,7 @@ export const createRuntime = ({
     slots,
     widgets,
     embeds,
+    blocks,
     scheduler,
     pages,
     dashboardWidgets,
@@ -93,6 +96,7 @@ export const createRuntime = ({
     slots,
     widgets,
     embeds,
+    blocks,
     pages,
     dashboardWidgets,
     tasks,

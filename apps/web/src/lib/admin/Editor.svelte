@@ -4,7 +4,7 @@
   import type { EditorView } from '@tiptap/pm/view';
   import { contentExtensions } from '@cms/content';
   import { CONTENT_ALIGNMENTS, IMAGE_SIZES } from '@cms/sdk';
-  import type { AdminMedia, ContentDocument } from '@cms/sdk';
+  import type { AdminMedia, ContentDocument, PluginBlockInfo } from '@cms/sdk';
   import {
     Bold,
     Code,
@@ -25,6 +25,10 @@
     SquarePlay,
   } from '@lucide/svelte';
   import BlockInserter from '#lib/admin/editor/BlockInserter.svelte';
+  import {
+    loadPluginBlocks,
+    pluginBlockView,
+  } from '#lib/admin/editor/plugin-blocks.js';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import type { MediaChoice } from '#lib/admin/MediaPicker.svelte';
   import { uploadFile } from '#lib/admin/upload.js';
@@ -131,10 +135,27 @@
     return true;
   };
 
+  /** Active plugin blocks; until they load, plugin blocks show as inactive. */
+  let pluginBlocks = $state<PluginBlockInfo[]>([]);
+  const pluginBlock = pluginBlockView(
+    (block) => pluginBlocks.find((entry) => entry.block === block)?.title,
+    () => m.contentPluginBlockInactive,
+  );
+
   onMount(() => {
+    void loadPluginBlocks().then((list) => {
+      pluginBlocks = list;
+      pluginBlock.refresh();
+    });
     const instance = new Editor({
       element,
-      extensions: contentExtensions,
+      // The shared schema; only the plugin block gets an editor placeholder.
+      extensions: [
+        ...contentExtensions.filter(
+          (extension) => extension.name !== 'pluginBlock',
+        ),
+        pluginBlock.extension,
+      ],
       content: value,
       editorProps: {
         attributes: {

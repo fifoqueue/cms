@@ -86,6 +86,7 @@ import {
   publicContentSummarySchema,
 } from '#sdk/content';
 import type {
+  PluginBlockInfo,
   PluginInfo,
   PluginPage,
   PluginPageSummary,
@@ -95,6 +96,7 @@ import type {
 } from '#sdk/plugins';
 import {
   adminPluginSchema,
+  pluginBlockInfoSchema,
   pluginPageResultSchema,
   pluginPageSchema,
   pluginPageSummarySchema,
@@ -533,6 +535,11 @@ export const createAdminClient = (options: ClientOptions, token: string) => {
       resetStyles: (id: string) =>
         request<void>('DELETE', `${themePath(id)}/styles`),
     },
+    /** Blocks of active plugins the editor can insert. */
+    pluginBlocks: () =>
+      request<PluginBlockInfo[]>('GET', '/api/v1/admin/plugin-blocks', {
+        response: z.array(pluginBlockInfoSchema),
+      }),
     plugins: {
       list: () =>
         request<PluginInfo[]>('GET', '/api/v1/admin/plugins', {
