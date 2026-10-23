@@ -26,7 +26,6 @@ import {
   userRecord,
 } from '#test/support/memory';
 import { MemoryCommentRepository } from '#test/support/memory-comments';
-import { MemoryRevisionRepository } from '#test/support/memory-revisions';
 import {
   MemoryRateLimitStore,
   plainSecretBox,
@@ -55,7 +54,7 @@ const setup = () => {
     ids,
     clock,
     users: noUsers,
-    revisions: new MemoryRevisionRepository(),
+    revisions: repository.revisions,
     hasher: plainHasher,
     types,
     fields: testFields(),

@@ -41,21 +41,41 @@ export class MemoryUserDirectory implements UserDirectory {
       : null;
   }
 
-  async update(changes: UserChanges) {
-    const current = this.users.rows.get(changes.id)!;
-    if (changes.role !== 'administrator')
-      this.assertOtherAdministrator(changes.id);
-    this.users.rows.set(changes.id, { ...current, ...changes });
+  /** User writes run one at a time, like the Prisma adapter's `users.lock` (taken before content). */
+  private writing: Promise<unknown> = Promise.resolve();
+  private exclusive<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.writing.then(task, task);
+    this.writing = run.catch(() => undefined);
+    return run;
   }
 
-  async delete(id: string, reassignTo: string | null) {
-    this.assertOtherAdministrator(id);
-    for (const row of this.content.rows.values())
-      if (row.authorId === id) {
-        if (reassignTo) row.authorId = reassignTo;
-        else await this.content.delete(row.id);
-      }
-    this.users.rows.delete(id);
+  update(changes: UserChanges) {
+    return this.exclusive(async () => {
+      const current = this.users.rows.get(changes.id)!;
+      if (changes.role !== 'administrator')
+        this.assertOtherAdministrator(changes.id);
+      this.users.rows.set(changes.id, { ...current, ...changes });
+    });
+  }
+
+  setRole(id: string, role: string) {
+    return this.exclusive(async () => {
+      const current = this.users.rows.get(id)!;
+      if (role !== 'administrator') this.assertOtherAdministrator(id);
+      this.users.rows.set(id, { ...current, role });
+    });
+  }
+
+  delete(id: string, reassignTo: string | null) {
+    return this.exclusive(async () => {
+      this.assertOtherAdministrator(id);
+      for (const row of [...this.content.rows.values()])
+        if (row.authorId === id) {
+          if (reassignTo) row.authorId = reassignTo;
+          else await this.content.delete(row.id);
+        }
+      this.users.rows.delete(id);
+    });
   }
 
   private assertOtherAdministrator(id: string) {

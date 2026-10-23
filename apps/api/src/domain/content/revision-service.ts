@@ -119,19 +119,18 @@ export class RevisionService {
     });
   }
 
-  /** The actor's autosave when it is newer than the saved entry. */
+  /** The actor's autosave when it is newer than the entry's last saved text. */
   async pendingAutosave(
     contentId: string,
     actor: Actor,
   ): Promise<ContentRevision | null> {
     const record = await this.editable(contentId, actor);
-    const autosave = await this.deps.revisions.findAutosave(
+    const autosave = await this.deps.revisions.pendingAutosave(
       contentId,
       actor.id,
+      record.updatedAt,
     );
-    return autosave && autosave.createdAt > record.updatedAt
-      ? toRevision(autosave)
-      : null;
+    return autosave && toRevision(autosave);
   }
 
   private async editable(contentId: string, actor: Actor) {

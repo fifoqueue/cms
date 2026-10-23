@@ -42,7 +42,6 @@ import {
   sequentialIds,
   noUsers,
 } from '#test/support/memory';
-import { MemoryRevisionRepository } from '#test/support/memory-revisions';
 import { Embeds, vimeo, youtube } from '#api/domain/content/embeds';
 import { MemoryPublishedContentRepository } from '#test/support/memory-published';
 import { MemorySeoSettingsRepository } from '#test/support/memory-seo';
@@ -85,7 +84,7 @@ const setup = () => {
     listener.on(name, (entry) => void events.push(`${name}:${entry.slug}`));
   }
   const clock = fixedClock();
-  const revisions = new MemoryRevisionRepository();
+  const revisions = repository.revisions;
   const service = new ContentService({
     repository,
     renderer: tiptapRenderer,
@@ -558,9 +557,7 @@ describe('ContentService', () => {
   });
 
   test('partial edits keep unsaved editor text: refused while an autosave is pending, never discarding one', async () => {
-    const { service, revisions, repository, clock } = setup();
-    repository.autosaves = revisions;
-    revisions.saves = { savedAt: (id) => repository.rows.get(id)?.updatedAt };
+    const { service, revisions, clock } = setup();
     const history = new RevisionService({
       content: service,
       revisions,
@@ -604,6 +601,59 @@ describe('ContentService', () => {
     expect(renamed.title).toBe('Renamed');
     expect((await history.pendingAutosave(entry.id, ADMIN))?.document).toEqual(
       unsaved.document,
+    );
+
+    // A partial save and an autosave overlapping: the autosave is never lost.
+    await revisions.clearAutosave(entry.id, ADMIN.id);
+    const latest = await service.get(entry.id, ADMIN);
+    await Promise.allSettled([
+      quick(latest.updatedAt),
+      history.autosave(entry.id, unsaved, ADMIN),
+    ]);
+    expect(await history.pendingAutosave(entry.id, ADMIN)).not.toBeNull();
+  });
+
+  test('scheduled publishing advances the version and keeps unsaved editor text pending', async () => {
+    const { service, repository, clock } = setup();
+    const history = new RevisionService({
+      content: service,
+      revisions: repository.revisions,
+      renderer: tiptapRenderer,
+      ids: sequentialIds(),
+      clock,
+    });
+    clock.set('2026-03-01T00:00:00.000Z');
+    const entry = await service.create(
+      input({ status: 'scheduled', publishedAt: '2026-03-01T00:00:00.500Z' }),
+      ADMIN,
+    );
+    // Same clock as the save: the version must still move forward.
+    const edited = await service.update(
+      entry.id,
+      input({ status: 'scheduled', publishedAt: '2026-03-01T00:00:00.500Z' }),
+      ADMIN,
+    );
+    await history.autosave(
+      entry.id,
+      { title: 'Draft', excerpt: '', document: input().document },
+      ADMIN,
+    );
+    clock.set('2026-03-01T00:00:01.000Z');
+    await service.publishDue();
+    const published = await service.get(entry.id, ADMIN);
+    expect(published.status).toBe('published');
+    expect(published.updatedAt > edited.updatedAt).toBe(true);
+    expect(
+      await codeOf(
+        service.update(
+          entry.id,
+          input({ status: 'published', expectedUpdatedAt: edited.updatedAt }),
+          ADMIN,
+        ),
+      ),
+    ).toBe('conflict');
+    expect((await history.pendingAutosave(entry.id, ADMIN))?.title).toBe(
+      'Draft',
     );
   });
 
@@ -1205,7 +1255,7 @@ describe('content types and fields', () => {
       ids: sequentialIds(),
       clock: fixedClock(),
       users: noUsers,
-      revisions: new MemoryRevisionRepository(),
+      revisions: repository.revisions,
       hasher: plainHasher,
       types,
       fields,

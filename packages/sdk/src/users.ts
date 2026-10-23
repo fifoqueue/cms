@@ -43,6 +43,9 @@ export const userUpdateSchema = z.object({
 
 export type UserUpdateInput = z.input<typeof userUpdateSchema>;
 
+/** Changing only a user's role (bulk role changes). */
+export const userRoleSchema = z.object({ role: roleSchema });
+
 /** What every signed-in user may change about themselves (not their role). */
 export const profileUpdateSchema = z.object({
   email,

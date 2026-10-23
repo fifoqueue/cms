@@ -19,7 +19,6 @@ import {
   userRecord,
 } from '#test/support/memory';
 import { MemoryCommentRepository } from '#test/support/memory-comments';
-import { MemoryRevisionRepository } from '#test/support/memory-revisions';
 import { MemoryTaxonomyRepository } from '#test/support/memory-taxonomy';
 import { MemoryUserDirectory } from '#test/support/memory-users';
 import { MemoryUsers } from '#test/support/sso-memory';
@@ -38,7 +37,7 @@ const site = async () => {
     ids,
     clock,
     users: noUsers,
-    revisions: new MemoryRevisionRepository(),
+    revisions: content.revisions,
     hasher: plainHasher,
     types: testTypes(),
     fields: testFields(),
