@@ -32,6 +32,8 @@ export interface FormIssue {
 
 export interface FormFailure {
   message: string;
+  /** The API's error code, so the screen can show catalog text in the reader's language. */
+  code?: string;
   issues?: FormIssue[];
   /** The API wants a solved captcha before it accepts the attempt. */
   captcha?: boolean;
@@ -59,6 +61,7 @@ export const failFrom = <Extra extends object = Record<never, never>>(
   if (caught instanceof CmsApiError && caught.status < 500) {
     const failure: FormFailure = {
       message: caught.message,
+      code: caught.code,
       issues: safeIssues(caught.issues),
       ...(caught.code === CAPTCHA_REQUIRED && { captcha: true }),
     };

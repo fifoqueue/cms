@@ -251,6 +251,33 @@
     });
   };
 
+  // One tab stop for the whole toolbar; arrow keys, Home and End move between buttons.
+  let focused = $state(0);
+  const moveFocus = (event: KeyboardEvent) => {
+    const buttons = [
+      ...(event.currentTarget as HTMLElement).querySelectorAll('button'),
+    ];
+    const last = buttons.length - 1;
+    const next =
+      event.key === 'ArrowRight'
+        ? focused === last
+          ? 0
+          : focused + 1
+        : event.key === 'ArrowLeft'
+          ? focused === 0
+            ? last
+            : focused - 1
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? last
+              : null;
+    if (next === null) return;
+    event.preventDefault();
+    focused = next;
+    buttons[next]?.focus();
+  };
+
   interface Tool {
     label: string;
     icon: Component;
@@ -349,11 +376,15 @@
     class="flex flex-wrap gap-1 border-b p-1"
     role="toolbar"
     aria-label={m.editorToolbar}
+    tabindex="-1"
+    onkeydown={moveFocus}
   >
     {#each tools as tool, index (index)}
       {@const Icon = tool.icon}
       <button
         type="button"
+        tabindex={index === focused ? 0 : -1}
+        onfocus={() => (focused = index)}
         title={tool.label}
         aria-label={tool.label}
         aria-pressed={tool.active?.()}

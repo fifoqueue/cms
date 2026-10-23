@@ -30,6 +30,7 @@
   import { documentText, seoFormValues } from '#lib/admin/seo.js';
   import { flattenTree } from '#lib/admin/taxonomy-tree.js';
   import { editorBackup } from '#lib/admin/editor-backup.js';
+  import { errorMessage } from '#lib/admin/form-errors.js';
   import { confirmLeave } from '#lib/admin/unsaved.js';
   import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
@@ -491,13 +492,10 @@
         return;
       }
       if (outcome.type === 'failure') {
-        const message = outcome.data?.message;
         saveError =
           outcome.status === 409
             ? m.entryConflict
-            : typeof message === 'string'
-              ? message
-              : m.saveFailed;
+            : errorMessage(m, i18n.language, outcome.data ?? {});
       } else {
         // Before `update`: a new entry's redirect must not ask about the text it just saved.
         savedText = kept = sent.text;

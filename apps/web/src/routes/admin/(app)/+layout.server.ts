@@ -57,6 +57,7 @@ export const load: LayoutServerLoad = async (event) => {
       .filter(({ key }) => key !== 'category' && key !== 'tag')
       .map(({ key, name }) => ({ key, name })),
     counts: { comments, plugins },
+    siteTitle: site.title,
     /** The user's chosen language, else the site's. */
     language: locale || site.locale,
   };

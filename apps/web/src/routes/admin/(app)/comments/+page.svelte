@@ -52,8 +52,12 @@
   const view = $derived(data.filter.status);
   const removable = $derived(view === 'spam' || view === 'trash');
 
-  const confirmDelete: SubmitFunction = ({ formData, cancel }) => {
-    if (formData.get('action') === 'delete' && !confirm(m.confirmDelete))
+  const confirmDelete: SubmitFunction = ({ formData, action, cancel }) => {
+    if (
+      (formData.get('action') === 'delete' ||
+        action.search.includes('/empty')) &&
+      !confirm(m.confirmDelete)
+    )
       cancel();
     return ({ update }) => {
       selected = [];
@@ -121,6 +125,17 @@
 {/if}
 
 <FormMessage {form} />
+{#if form && 'undo' in form && form.undo}
+  <form method="POST" action="?/bulk" use:enhance={confirmDelete}>
+    {#each form.undo.ids as id (id)}<input
+        type="hidden"
+        name="ids"
+        value={id}
+      />{/each}
+    <input type="hidden" name="action" value={form.undo.action} />
+    <Button type="submit" variant="outline" size="sm">{m.undo}</Button>
+  </form>
+{/if}
 
 <form
   method="POST"
@@ -158,6 +173,32 @@
       size="sm"
       disabled={!selected.length}>{m.apply}</Button
     >
+    <!-- In a status view every selected comment had that status, so Undo can return them. -->
+    <input type="hidden" name="previous" value={view ?? ''} />
+    <label class="ml-2 flex items-center gap-2 text-sm">
+      <input
+        type="checkbox"
+        checked={!!data.comments.items.length &&
+          selected.length === data.comments.items.length}
+        onchange={(event) =>
+          (selected = event.currentTarget.checked
+            ? data.comments.items.map(({ id }) => id)
+            : [])}
+      />
+      {m.selectAll}
+    </label>
+    {#if removable && data.counts[view!]}
+      <Button
+        type="submit"
+        formaction="?/empty"
+        variant="destructive"
+        size="sm"
+        class="ml-auto"
+        name="status"
+        value={view}
+        >{view === 'spam' ? m.commentEmptySpam : m.commentEmptyTrash}</Button
+      >
+    {/if}
   </div>
   {#each data.comments.items as item (item.id)}
     <input
@@ -202,6 +243,16 @@
               )}
               class="hover:underline">{item.contentTitle}</a
             >
+            ·
+            <!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() plus a query -->
+            <a
+              href={`${resolve('/admin/(app)/comments/view/[id]', {
+                id: item.contentId,
+              })}?comment=${encodeURIComponent(item.id)}`}
+              target="_blank"
+              class="hover:underline">{m.viewOnSite}</a
+            >
+            <!-- eslint-enable svelte/no-navigation-without-resolve -->
           </p>
           {#if item.parentId}<p class="text-xs text-muted-foreground">
               {m.commentInReplyTo(item.parentAuthor ?? item.parentId)}
@@ -214,6 +265,7 @@
           <form method="POST" action="?/bulk" use:enhance={confirmDelete}>
             <input type="hidden" name="ids" value={item.id} />
             <input type="hidden" name="action" value={action} />
+            <input type="hidden" name="previous" value={item.status} />
             <Button type="submit" variant="ghost" size="sm"
               >{action === 'approve'
                 ? m.commentApprove

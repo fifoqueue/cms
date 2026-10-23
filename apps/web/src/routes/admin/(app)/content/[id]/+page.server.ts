@@ -65,7 +65,11 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
-    redirect(303, '/admin/content');
+    // The list says so and offers Undo (restore from the Trash).
+    redirect(
+      303,
+      `/admin/content?notice=entryTrashed&undo=${encodeURIComponent(event.params.id)}`,
+    );
   },
   restore: async (event) => {
     try {
