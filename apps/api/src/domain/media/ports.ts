@@ -49,7 +49,10 @@ export interface MediaRepository {
   list(
     criteria: MediaCriteria,
   ): Promise<{ items: MediaRecord[]; total: number }>;
-  update(id: string, changes: { alt: string; caption: string }): Promise<void>;
+  update(
+    id: string,
+    changes: { alt?: string; caption?: string },
+  ): Promise<void>;
   /** Public projections of the given images that exist. */
   publicImages(ids: readonly string[]): Promise<Map<string, PublicImage>>;
   /** Also removes its usage links and featured-image references. */

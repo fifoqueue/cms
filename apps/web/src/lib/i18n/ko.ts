@@ -1170,6 +1170,15 @@ export const ko: Messages = {
   saveFailed: '저장하지 못했습니다. 변경 사항은 편집기에 그대로 있습니다.',
   revisionRestoreConfirm:
     '이 버전으로 복원할까요? 편집기에서 저장하지 않은 변경 사항은 사라집니다.',
+  entryConflict:
+    '이 글을 연 뒤 다른 사람이 먼저 저장해서 변경 사항을 저장하지 않았습니다. 변경 사항을 복사한 뒤 페이지를 새로 고치고 다시 적용하세요.',
+  previewInvalid: '미리 보려면 제목을 입력하세요.',
+  mediaWrongKind: (name: string) =>
+    `${name}: 여기에는 이 형식의 파일을 사용할 수 없습니다.`,
+  mediaAltLocal:
+    '이번 삽입에만 사용됩니다. 이 파일의 라이브러리 대체 텍스트는 바꿀 수 없습니다.',
+  mediaAltNotSaved: (reason: string) =>
+    `대체 텍스트를 라이브러리에 저장하지 못했습니다(${reason}). 여기에서만 쓰려면 버튼을 다시 누르세요.`,
   seoTabs: '검색 엔진 최적화 설정',
   // admin-screens
   rowQuickEdit: '빠른 편집',

@@ -35,12 +35,13 @@ export const actions: Actions = {
     const { input, values, failure } = readContentForm(formData, model.fields);
     if (failure) return failure;
     let id: string;
+    let status: string;
     try {
-      ({ id } = await adminFor(event).content.create(input));
+      ({ id, status } = await adminFor(event).content.create(input));
     } catch (caught) {
       return failFrom(caught, { values });
     }
     // `saved` lets the editor say what the save did.
-    redirect(303, `/admin/content/${id}?saved=${input.status}`);
+    redirect(303, `/admin/content/${id}?saved=${status}`);
   },
 };

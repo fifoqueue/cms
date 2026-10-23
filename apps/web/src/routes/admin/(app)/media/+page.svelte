@@ -108,8 +108,15 @@
     <ul class="mx-auto mt-3 max-w-md space-y-1 text-left" aria-live="polite">
       {#each uploads as item, index (index)}
         <li class="flex items-center gap-3">
-          <span class="min-w-0 flex-1 truncate">{item.name}</span>
-          <progress class="w-32" max="1" value={item.progress}></progress>
+          <span id="upload-{index}" class="min-w-0 flex-1 truncate"
+            >{item.name}</span
+          >
+          <progress
+            class="w-32"
+            max="1"
+            value={item.progress}
+            aria-labelledby="upload-{index}"
+          ></progress>
         </li>
       {/each}
     </ul>

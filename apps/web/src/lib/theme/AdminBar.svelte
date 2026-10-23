@@ -12,6 +12,7 @@
   } from '@lucide/svelte';
   import type { Capability, Role } from '@cms/sdk';
   import { can } from '@cms/sdk/capabilities';
+  import { clearBackups } from '#lib/admin/editor-backup.js';
   import { useI18n } from '#lib/i18n/index.js';
 
   interface Props {
@@ -94,7 +95,12 @@
       >
         <UserRound class="size-4" />{m.navAccount}</a
       >
-      <form method="POST" action={resolve('/admin/logout')}>
+      <!-- Signing out drops this tab's editor backups. -->
+      <form
+        method="POST"
+        action={resolve('/admin/logout')}
+        onsubmit={() => clearBackups()}
+      >
         <button
           type="submit"
           class="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-white/10 hover:text-white"

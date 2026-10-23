@@ -1,7 +1,13 @@
-import { redirect } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 import { autosaveInputSchema, can } from '@cms/sdk';
 import { fieldImages, readContentForm } from '#lib/server/content-form.js';
-import { failFrom, jsonField, notFoundFrom, text } from '#lib/server/errors.js';
+import {
+  Errors,
+  failFrom,
+  jsonField,
+  notFoundFrom,
+  text,
+} from '#lib/server/errors.js';
 import { loadSeoContext } from '#lib/server/seo-admin.js';
 import { adminFor } from '#lib/server/session.js';
 import { loadTermChoices } from '#lib/server/taxonomy-admin.js';
@@ -80,16 +86,27 @@ export const actions: Actions = {
   /** Opens the site's rendering of the editor's current text (the form targets a new tab). */
   preview: async (event) => {
     const form = await event.request.formData();
-    const current = autosaveInputSchema.safeParse({
-      title: text(form, 'title'),
-      excerpt: text(form, 'excerpt'),
-      document: jsonField(form, 'document'),
-    });
+    // Without the editor's fields the saved text is previewed; sent text must be valid.
+    const sent = form.has('document')
+      ? autosaveInputSchema.safeParse({
+          title: text(form, 'title'),
+          excerpt: text(form, 'excerpt'),
+          document: jsonField(form, 'document'),
+        })
+      : null;
+    if (sent && !sent.success)
+      return fail(400, {
+        message: Errors.FormInvalid,
+        issues: sent.error.issues.map(({ path, message }) => ({
+          path: path.map(String).join('.'),
+          message,
+        })),
+      });
     let token: string;
     try {
       // Kept as an autosave first: the preview renders the newest autosave.
-      if (current.success)
-        await adminFor(event).content.autosave(event.params.id, current.data);
+      if (sent?.success)
+        await adminFor(event).content.autosave(event.params.id, sent.data);
       ({ token } = await adminFor(event).content.preview(event.params.id));
     } catch (caught) {
       return failFrom(caught);

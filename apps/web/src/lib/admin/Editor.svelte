@@ -75,34 +75,49 @@
     },
   });
 
+  const isImage = (file: File) => file.type.startsWith('image/');
+  /** Where pending uploads go; every transaction maps them, so edits meanwhile keep them in place. */
+  let markers: { pos: number }[] = [];
+
   /** Uploads dropped or pasted image files and inserts them at `position`. */
   const uploadInto = (view: EditorView, files: File[], position: number) => {
-    const images = files.filter((file) => file.type.startsWith('image/'));
+    const images = files.filter(isImage);
     if (!images.length) return false;
+    const marker = { pos: position };
+    markers.push(marker);
     void (async () => {
       uploadErrors = [];
-      uploading = images.length;
-      let at = position;
+      uploading += images.length;
       for (const file of images) {
         const result = await uploadFile(file);
         uploading--;
-        if (!('media' in result)) {
+        // The server decides the kind from the file's bytes, not the browser's type.
+        if (!('media' in result) || result.media.kind !== 'image') {
           uploadErrors = [
             ...uploadErrors,
-            m.mediaUploadFailed(file.name, result.error),
+            'media' in result
+              ? m.mediaWrongKind(file.name)
+              : m.mediaUploadFailed(file.name, result.error),
           ];
           continue;
         }
         const media = result.media;
-        const node = imageNode(media, {
-          alt: media.alt,
-          variant: media.variants.find((variant) => variant.name === 'large'),
-        });
-        if (!editor || view.isDestroyed) return;
-        const size = editor.state.doc.content.size;
-        editor.chain().insertContentAt(Math.min(at, size), node).run();
-        at = editor.state.selection.to;
+        if (!editor || view.isDestroyed) break;
+        // Mapping moves the marker past each inserted image, so the next one follows it.
+        editor
+          .chain()
+          .insertContentAt(
+            marker.pos,
+            imageNode(media, {
+              alt: media.alt,
+              variant: media.variants.find(
+                (variant) => variant.name === 'large',
+              ),
+            }),
+          )
+          .run();
       }
+      markers = markers.filter((other) => other !== marker);
     })();
     return true;
   };
@@ -132,14 +147,19 @@
           event.preventDefault();
           return true;
         },
-        handlePaste: (view, event) =>
-          uploadInto(
-            view,
-            [...(event.clipboardData?.files ?? [])],
-            view.state.selection.from,
-          ),
+        handlePaste: (view, event) => {
+          const files = [...(event.clipboardData?.files ?? [])];
+          if (!files.some(isImage)) return false;
+          // Pasting replaces the selection, as it does for text.
+          view.dispatch(view.state.tr.deleteSelection());
+          return uploadInto(view, files, view.state.selection.from);
+        },
       },
-      onTransaction: () => revision++,
+      onTransaction: ({ transaction }) => {
+        revision++;
+        for (const marker of markers)
+          marker.pos = transaction.mapping.map(marker.pos);
+      },
       onUpdate: ({ editor: current }) =>
         (value = current.getJSON() as ContentDocument),
     });

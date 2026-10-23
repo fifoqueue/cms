@@ -1200,6 +1200,15 @@ export const en = {
   saveFailed: 'Could not save. Your changes are still in the editor.',
   revisionRestoreConfirm:
     'Restore this version? Unsaved changes in the editor are lost.',
+  entryConflict:
+    'Someone else saved this entry after you opened it, so your changes were not saved. Copy your changes, reload the page, and apply them again.',
+  previewInvalid: 'Enter a title before previewing.',
+  mediaWrongKind: (name: string) =>
+    `${name}: this kind of file cannot be used here.`,
+  mediaAltLocal:
+    'Used for this insertion only. You cannot change the library text of this file.',
+  mediaAltNotSaved: (reason: string) =>
+    `The alternative text could not be saved to the library (${reason}). Press the button again to use it here only.`,
   seoTabs: 'SEO settings',
   // admin-screens
   rowQuickEdit: 'Quick Edit',

@@ -4,7 +4,7 @@
   import { resolve } from '$app/paths';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
-  import { Eye, ExternalLink, RotateCcw, Trash2 } from '@lucide/svelte';
+  import { ExternalLink, RotateCcw, Trash2 } from '@lucide/svelte';
   import ContentForm from '#lib/admin/ContentForm.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';
@@ -55,10 +55,6 @@
         target="_blank"><ExternalLink class="size-4" /> {m.view}</Button
       >
     {/if}
-    <!-- The preview form is in the editor, which sends its current text. -->
-    <Button type="submit" variant="outline" form="content-preview"
-      ><Eye class="size-4" /> {m.preview}</Button
-    >
     {#if data.entry.trashedAt}
       <form method="POST" action="?/restore" use:enhance>
         <Button type="submit" variant="outline"
@@ -101,6 +97,7 @@
 {#key `${data.entry.id}:${data.useAutosave}:${restored}`}
   <ContentForm
     entry={data.entry}
+    userId={data.user.id}
     fieldImages={data.fieldImages}
     canManageTerms={data.canManageTerms}
     created={page.url.searchParams.get('saved')}

@@ -9,7 +9,11 @@
 </script>
 
 <script lang="ts">
+  import { deserialize } from '$app/forms';
+  import { page as current } from '$app/state';
   import type { AdminMedia, MediaKind, Paginated } from '@cms/sdk';
+  import { can } from '@cms/sdk/capabilities';
+  import type { Capability } from '@cms/sdk/capabilities';
   import { Upload } from '@lucide/svelte';
   import { uploadFile } from '#lib/admin/upload.js';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -32,6 +36,15 @@
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
+  // The admin layout provides the signed-in user; the API checks the permission again.
+  const user = $derived(
+    current.data.user as
+      | { id: string; role: string; capabilities?: readonly Capability[] }
+      | undefined,
+  );
+  /** Whether the user may change the library's text of a file (its uploader, or `media.manage`). */
+  const editable = (media: AdminMedia) =>
+    !!user && (media.uploaderId === user.id || can(user, 'media.manage'));
 
   let dialog: HTMLDialogElement;
   let items = $state<AdminMedia[]>([]);
@@ -45,6 +58,8 @@
   let selected = $state<AdminMedia | null>(null);
   let alt = $state('');
   let size = $state('');
+  // After a failed library write, the next press uses the alt text here only.
+  let localOnly = $state(false);
 
   const load = async (next: number) => {
     busy = true;
@@ -73,25 +88,53 @@
   const select = (media: AdminMedia) => {
     selected = media;
     alt = media.alt;
+    localOnly = false;
     size = media.variants.some((variant) => variant.name === 'large')
       ? 'large'
       : '';
   };
 
-  const pick = (media: AdminMedia) => {
-    dialog.close();
-    const text = media.kind === 'image' ? alt.trim() : media.alt;
-    // Like WordPress, alt text typed here is also kept in the library for the next use.
-    if (text !== media.alt) {
-      const body = new FormData();
-      body.set('alt', text);
-      body.set('caption', media.caption);
-      void fetch(`/admin/media/${encodeURIComponent(media.id)}?/save`, {
+  /** Saves the alt text to the library; resolves to an error message, or null when saved. */
+  const saveAlt = async (media: AdminMedia, text: string) => {
+    const body = new FormData();
+    body.set('alt', text);
+    const response = await fetch(
+      `/admin/media/${encodeURIComponent(media.id)}?/save`,
+      {
         method: 'POST',
         body,
         headers: { 'x-sveltekit-action': 'true' },
-      }).catch(() => null);
+      },
+    ).catch(() => null);
+    try {
+      const outcome = deserialize(await (response?.text() ?? ''));
+      if (outcome.type === 'success') return null;
+      if (outcome.type === 'redirect') return m.sessionExpiredTitle;
+      const message =
+        outcome.type === 'failure' ? outcome.data?.message : undefined;
+      return typeof message === 'string'
+        ? message
+        : String(response?.status ?? '');
+    } catch {
+      return String(response?.status ?? m.saveFailed);
     }
+  };
+
+  const pick = async (media: AdminMedia) => {
+    const text = media.kind === 'image' ? alt.trim() : media.alt;
+    // Like WordPress, alt text typed here is also kept in the library for the next use.
+    if (text !== media.alt && editable(media) && !localOnly) {
+      busy = true;
+      const failure = await saveAlt(media, text);
+      busy = false;
+      if (failure) {
+        errors = [m.mediaAltNotSaved(failure)];
+        localOnly = true;
+        return;
+      }
+      media.alt = text;
+    }
+    dialog.close();
     onpick(media, {
       alt: text,
       variant: media.variants.find((variant) => variant.name === size),
@@ -99,7 +142,8 @@
   };
 
   const upload = async (files: FileList | null | undefined) => {
-    if (!files?.length) return;
+    // One batch at a time: progress rows belong to the batch that shows them.
+    if (!files?.length || uploads.length) return;
     errors = [];
     uploads = [...files].map((file) => ({ name: file.name, progress: 0 }));
     let last: AdminMedia | null = null;
@@ -107,8 +151,12 @@
       const result = await uploadFile(file, (fraction) => {
         uploads[index]!.progress = fraction;
       });
-      if ('media' in result) last = result.media;
-      else errors = [...errors, m.mediaUploadFailed(file.name, result.error)];
+      // The server decides the kind from the file's bytes, not its name.
+      if (!('media' in result))
+        errors = [...errors, m.mediaUploadFailed(file.name, result.error)];
+      else if (result.media.kind !== kind)
+        errors = [...errors, m.mediaWrongKind(file.name)];
+      else last = result.media;
     }
     uploads = [];
     await load(1);
@@ -168,6 +216,7 @@
               ? 'audio/*'
               : undefined}
           class="sr-only"
+          disabled={uploads.length > 0}
           onchange={(event) => {
             void upload(event.currentTarget.files);
             event.currentTarget.value = '';
@@ -191,8 +240,15 @@
     <ul class="space-y-1 border-b p-3 text-sm" aria-live="polite">
       {#each uploads as upload, index (index)}
         <li class="flex items-center gap-3">
-          <span class="min-w-0 flex-1 truncate">{upload.name}</span>
-          <progress class="w-32" max="1" value={upload.progress}></progress>
+          <span id="picker-upload-{index}" class="min-w-0 flex-1 truncate"
+            >{upload.name}</span
+          >
+          <progress
+            class="w-32"
+            max="1"
+            value={upload.progress}
+            aria-labelledby="picker-upload-{index}"
+          ></progress>
         </li>
       {/each}
     </ul>
@@ -219,7 +275,7 @@
                 onclick={() => select(media)}
                 ondblclick={() => {
                   select(media);
-                  pick(media);
+                  void pick(media);
                 }}
               >
                 {#if media.kind === 'image'}
@@ -266,7 +322,8 @@
           </p>
         {/if}
         {#if selected.kind === 'image'}
-          <label class="grid gap-1">
+          <!-- Without library rights the alt text can only be used in the body. -->
+          <label class="grid gap-1" hidden={!editable(selected) && !sizes}>
             {m.mediaAlt}
             <Input
               maxlength={500}
@@ -275,10 +332,12 @@
                 // Enter inserts instead of submitting the form around the picker.
                 if (event.key !== 'Enter') return;
                 event.preventDefault();
-                if (selected) pick(selected);
+                if (selected) void pick(selected);
               }}
             />
-            <span class="text-xs text-muted-foreground">{m.mediaAltHelp}</span>
+            <span class="text-xs text-muted-foreground"
+              >{editable(selected) ? m.mediaAltHelp : m.mediaAltLocal}</span
+            >
           </label>
           {#if sizes}
             <label class="grid gap-1">
@@ -302,7 +361,10 @@
             </label>
           {/if}
         {/if}
-        <Button class="w-full" onclick={() => selected && pick(selected)}
+        <Button
+          class="w-full"
+          disabled={busy}
+          onclick={() => selected && void pick(selected)}
           >{sizes ? m.insert : m.mediaSelect}</Button
         >
       {/if}

@@ -88,6 +88,8 @@ export const readContentForm = (
       ? values.featuredMediaId || null
       : undefined,
     password,
+    // The version the editor loaded; the API refuses the save if it changed since.
+    expectedUpdatedAt: text(form, 'updatedAt') || undefined,
   });
   if (result.success) return { input: result.data, values };
   const issues = result.error.issues.map(({ path, message }) => ({

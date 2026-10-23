@@ -5,6 +5,7 @@
   import type { SubmitFunction } from '$app/forms';
   import {
     DEFAULT_ENTRY_SEO,
+    autosaveInputSchema,
     contentDocumentSchema,
     renderPermalink,
   } from '@cms/sdk';
@@ -28,6 +29,7 @@
   import type { SeoPreviewContext } from '#lib/admin/seo.js';
   import { documentText, seoFormValues } from '#lib/admin/seo.js';
   import { flattenTree } from '#lib/admin/taxonomy-tree.js';
+  import { editorBackup } from '#lib/admin/editor-backup.js';
   import { confirmLeave } from '#lib/admin/unsaved.js';
   import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
@@ -73,6 +75,8 @@
     canPublish: boolean;
     /** Whether the user may add categories and tags. */
     canManageTerms?: boolean;
+    /** The signed-in user; browser backups belong to this account. */
+    userId: string;
     /** Author of a new entry: the signed-in user. */
     defaultAuthorId?: string;
     /** Thumbnail addresses of the saved image fields, by field key. */
@@ -95,6 +99,7 @@
     authors,
     canPublish,
     canManageTerms = false,
+    userId,
     defaultAuthorId = '',
     fieldImages = {},
     created = null,
@@ -313,7 +318,7 @@
       } else if (!tag) tagError = m.termUnknown(name);
       if (tag && !chosenTags.some((option) => option.id === tag.id)) {
         chosenTags.push(tag);
-        touched = true;
+        touch();
       }
     }
   };
@@ -330,26 +335,24 @@
     addedCategories.add(category.id);
     categoryList.push(category);
     categoryName = '';
-    touched = true;
+    touch();
   };
 
-  // Unsaved changes: the text against what was last saved, plus any other field touched.
+  // Unsaved changes: the text against what was last saved, plus a count of other edits. A save
+  // marks clean only what it sent, so edits made while it runs stay unsaved.
   const snapshot = () => JSON.stringify([title, excerpt, body]);
   let savedText = untrack(snapshot);
-  let touched = $state(false);
+  let edits = $state(0);
+  let savedEdits = 0;
+  const touch = () => edits++;
   let saving = $state(false);
-  const isDirty = () => !saving && (touched || snapshot() !== savedText);
+  const isDirty = () => edits !== savedEdits || snapshot() !== savedText;
   confirmLeave(isDirty, () => m.unsavedLeave);
 
-  // A browser copy of the text survives an expired session, a crash or a closed tab.
-  const backupKey = untrack(() => `cms-editor:${entry?.id ?? `new:${type}`}`);
-  const storage = () => {
-    try {
-      return sessionStorage;
-    } catch {
-      return null;
-    }
-  };
+  // A browser copy of the text survives an expired session, a crash or a reload.
+  const backupStore = untrack(() =>
+    editorBackup(userId, entry?.id ?? `new:${type}`),
+  );
   let backup = $state<{
     title: string;
     excerpt: string;
@@ -358,18 +361,14 @@
   $effect(() => {
     const text = snapshot();
     const timer = setTimeout(() => {
-      try {
-        if (text !== savedText) storage()?.setItem(backupKey, text);
-      } catch {
-        // Full or blocked storage: the editor still holds the text.
-      }
+      if (text !== savedText) backupStore.write(text);
     }, 1000);
     return () => clearTimeout(timer);
   });
   onMount(() => {
+    const raw = backupStore.read();
+    if (!raw || raw === savedText) return;
     try {
-      const raw = storage()?.getItem(backupKey);
-      if (!raw || raw === savedText) return;
       const [savedTitle, savedExcerpt, document] = JSON.parse(raw) as unknown[];
       const parsed = contentDocumentSchema.safeParse(document);
       if (
@@ -395,11 +394,7 @@
   };
   const dismissBackup = () => {
     backup = null;
-    try {
-      storage()?.removeItem(backupKey);
-    } catch {
-      // Nothing to clean up.
-    }
+    backupStore.remove();
   };
 
   let expiredDialog: HTMLDialogElement;
@@ -407,27 +402,51 @@
     if (!expiredDialog.open) expiredDialog.showModal();
   };
 
-  // Autosave: every 30 seconds while the text differs from what was last kept.
+  // Autosave: every 30 seconds while the text differs from what was last kept. Autosaves and
+  // previews run one after another, so an older autosave never lands after a preview's text.
   let autosaveState = $state<{ ok: boolean; at: Date } | null>(null);
   let kept = savedText;
-  const timer = setInterval(async () => {
+  let queue: Promise<unknown> = Promise.resolve();
+  const autosave = () => {
     if (!entry) return;
-    const current = snapshot();
-    if (current === kept) return;
-    const response = await fetch(`/admin/content/${entry.id}/autosave`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title, excerpt, document: body }),
-    }).catch(() => null);
-    // An expired session answers with the sign-in page.
-    if (response?.redirected) sessionExpired();
-    const ok = !!response?.ok && !response.redirected;
-    autosaveState = { ok, at: new Date() };
-    if (ok) kept = current;
-  }, 30_000);
+    const id = entry.id;
+    queue = queue.then(async () => {
+      const current = snapshot();
+      if (current === kept) return;
+      const response = await fetch(`/admin/content/${id}/autosave`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ title, excerpt, document: body }),
+      }).catch(() => null);
+      // An expired session answers with the sign-in page.
+      if (response?.redirected) sessionExpired();
+      const ok = !!response?.ok && !response.redirected;
+      autosaveState = { ok, at: new Date() };
+      if (ok) kept = current;
+    });
+  };
+  const timer = setInterval(autosave, 30_000);
   onDestroy(() => clearInterval(timer));
 
-  /** The result of the last save: what was asked for and what the entry was before. */
+  let previewForm = $state<HTMLFormElement>();
+  /** Opens the preview tab at once (popup rules), then sends the text after pending autosaves. */
+  const preview = () => {
+    if (!entry || !previewForm) return;
+    if (
+      !autosaveInputSchema.safeParse({ title, excerpt, document: body }).success
+    ) {
+      saveError = m.previewInvalid;
+      return;
+    }
+    saveError = '';
+    const target = `cms-preview-${entry.id}`;
+    window.open('about:blank', target);
+    const form = previewForm;
+    form.target = target;
+    queue = queue.then(() => form.submit());
+  };
+
+  /** The result of the last save: the saved status and what the entry was before. */
   let result = $state<{ status: string; previous?: string } | null>(
     untrack(() => (created ? { status: created } : null)),
   );
@@ -449,10 +468,9 @@
   );
 
   let formElement: HTMLFormElement;
-  const submit: SubmitFunction = ({ formData }) => {
-    const status = String(formData.get('status') ?? '');
+  const submit: SubmitFunction = () => {
     const previous = entry?.status;
-    const sent = snapshot();
+    const sent = { text: snapshot(), edits, draftStatus };
     saving = true;
     saveError = '';
     return async ({ result: outcome, update }) => {
@@ -471,19 +489,29 @@
       }
       if (outcome.type === 'failure') {
         const message = outcome.data?.message;
-        saveError = typeof message === 'string' ? message : m.saveFailed;
+        saveError =
+          outcome.status === 409
+            ? m.entryConflict
+            : typeof message === 'string'
+              ? message
+              : m.saveFailed;
       } else {
-        savedText = kept = sent;
-        touched = false;
-        result = { status, previous };
-        try {
-          storage()?.removeItem(backupKey);
-        } catch {
-          // Nothing to clean up.
-        }
+        // Before `update`: a new entry's redirect must not ask about the text it just saved.
+        savedText = kept = sent.text;
+        savedEdits = sent.edits;
+        if (edits === sent.edits && snapshot() === sent.text)
+          backupStore.remove();
       }
       await update({ reset: false });
       saving = false;
+      if (outcome.type !== 'success' || !entry) return;
+      // What the server stored, which can differ from the button (a past date publishes).
+      result = { status: entry.status, previous };
+      if (
+        draftStatus === sent.draftStatus &&
+        (entry.status === 'draft' || entry.status === 'pending')
+      )
+        draftStatus = entry.status;
     };
   };
 
@@ -550,8 +578,8 @@
   method="POST"
   action="?/save"
   use:enhance={submit}
-  oninput={() => (touched = true)}
-  onchange={() => (touched = true)}
+  oninput={touch}
+  onchange={touch}
   class="grid gap-6 pb-20 lg:grid-cols-[minmax(0,1fr)_18rem] lg:pb-0"
 >
   <!-- First submit button: what Enter in a field saves. -->
@@ -575,6 +603,12 @@
         bind:value={title}
       />
       <input type="hidden" name="slug" value={slug} />
+      <!-- The version this form edits: the API refuses the save when someone saved since. -->
+      {#if entry}<input
+          type="hidden"
+          name="updatedAt"
+          value={entry.updatedAt}
+        />{/if}
       {#if entry && path && !editingSlug}
         {@const address = `${seo.siteUrl.replace(/\/$/, '')}${path}`}
         <p class="flex flex-wrap items-center gap-2 text-sm">
@@ -730,7 +764,7 @@
                       size="sm"
                       onclick={() => {
                         imageFields[field.key] = null;
-                        touched = true;
+                        touch();
                       }}>{m.mediaRemoveFeatured}</Button
                     >
                   {/if}
@@ -769,7 +803,7 @@
               media.variants.find((variant) => variant.name === 'thumbnail')
                 ?.url ?? media.url,
           };
-          touched = true;
+          touch();
         }}
       />
     {/if}
@@ -809,11 +843,8 @@
             >
           {/if}
           {#if entry}
-            <Button
-              type="submit"
-              variant="outline"
-              size="sm"
-              form="content-preview">{m.preview}</Button
+            <Button variant="outline" size="sm" onclick={preview}
+              >{m.preview}</Button
             >
           {/if}
         </div>
@@ -1012,7 +1043,7 @@
               size="sm"
               onclick={() => {
                 featured = null;
-                touched = true;
+                touch();
               }}>{m.mediaRemoveFeatured}</Button
             >
           {/if}
@@ -1027,7 +1058,7 @@
                   ?.url ?? media.url,
               alt: choice.alt,
             };
-            touched = true;
+            touch();
           }}
         />
       </CardContent>
@@ -1164,7 +1195,7 @@
                         chosenTags = chosenTags.filter(
                           (option) => option.id !== tag.id,
                         );
-                        touched = true;
+                        touch();
                       }}><X class="size-3" /></button
                     >
                   </Badge>
@@ -1234,10 +1265,10 @@
 </form>
 
 {#if entry}
-  <!-- Not enhanced: the browser follows the redirect into the new tab. The current text is
-       autosaved first, so the preview shows it. -->
+  <!-- Not enhanced: the browser follows the redirect into the preview tab. The action autosaves
+       the current text first, so the preview shows it. -->
   <form
-    id="content-preview"
+    bind:this={previewForm}
     method="POST"
     action="?/preview"
     target="_blank"

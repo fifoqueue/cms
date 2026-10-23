@@ -256,7 +256,7 @@ manifest의 `requires: { cms?: '<semver 범위>', plugins?: { '<id>': '<범위>'
 9. 슬러그 `admin`은 관리자 경로와 겹치므로 공개 콘텐츠에 쓰지 않습니다.
 10. **사용자용 문구**: 화면·도움말·알림에서 제품 내부 동작이나 구현·개발 환경을 해명하는 문구를 쓰지 마세요. 예를 들어 “Docker 내부 값”, “개발용 기본값”, “설정 파일을 직접 편집할 필요 없음” 같은 설명은 노출하지 않습니다. 사용자가 입력하거나 수행할 일, 결과, 오류 해결에 필요한 안내만 간결하게 제공합니다. 개발·운영 세부사항은 개발자 문서에 둡니다.
 11. **문구 카탈로그**: 관리자·테마 화면의 문구는 `#lib/i18n`(en, ko; 같은 키·같은 매개변수)에서 가져옵니다. 폼 action은 알림으로 카탈로그 키(`{ notice: 'saved' }`)를 돌려줍니다. 공개 테마는 사이트 언어(`site.locale`), 관리자 화면은 사용자 언어(없으면 사이트 언어)를 씁니다.
-12. **저장하지 않은 변경**: 편집 화면(콘텐츠·메뉴·위젯·사이트 편집기)은 `confirmLeave`(`#lib/admin/unsaved.js`)로 떠나기 전에 묻습니다. 세션이 만료된 상태의 enhance 폼 요청(`x-sveltekit-action`)에는 `hooks.server.ts`가 303 대신 `/admin/login`으로 가는 action `redirect` 결과를 돌려주므로, 콘텐츠 편집기는 이를 가로채 입력을 유지하고 다시 로그인하도록 안내합니다(본문은 `sessionStorage`에도 백업).
+12. **저장하지 않은 변경**: 편집 화면(콘텐츠·메뉴·위젯·사이트 편집기)은 `confirmLeave`(`#lib/admin/unsaved.js`)로 떠나기 전에 묻습니다. 세션이 만료된 상태의 enhance 폼 요청(`x-sveltekit-action`)에는 `hooks.server.ts`가 303 대신 `/admin/login`으로 가는 action `redirect` 결과를 돌려주므로, 콘텐츠 편집기는 이를 가로채 입력을 유지하고 다시 로그인하도록 안내합니다(본문은 `sessionStorage`에도 백업). 백업(`#lib/admin/editor-backup.js`)은 사용자 id와 글별로 저장되고 24시간 뒤 만료되며, 저장 성공·로그아웃·다른 계정 로그인 시 지워집니다. 편집기 저장은 `expectedUpdatedAt`을 보내므로 그사이 다른 사람이 저장했으면 덮어쓰지 않고 충돌을 알립니다.
 
 ### 6.1 Public and admin DTO boundaries
 
@@ -312,7 +312,7 @@ manifest의 `requires: { cms?: '<semver 범위>', plugins?: { '<id>': '<범위>'
 - Content updates accept `expectedUpdatedAt` (the `updatedAt` the client read): a stale value is refused with `conflict` under the write lock, so partial editors such as Quick Edit never overwrite a newer body. Omitting `extraTermIds` keeps custom terms; an explicit `publishedAt` replaces the stored date. Admin lists accept `orderBy` (`updatedAt` default, `publishedAt`) and `order` (`desc` default, `asc`).
 - Password-protected entries serve an empty body and excerpt until the visitor sends a signed unlock proof (httpOnly cookie on the web). Unlock attempts use the same visitor proof, atomic rate limit and captcha path as other public security actions. Search text is not stored for locked bodies.
 - Editor documents are limited to depth 100 and 10,000 JSON nodes; category/tag assignments are limited to 100 each. Media uploads stream through the web process, stop at `MEDIA_MAX_MB`, and image transforms run one at a time with a 40-megapixel decode limit.
-- Media: uploads are sniffed by content, images get metadata stripped and WebP sizes; files live under `MEDIA_DIR` and are served through the web `/media/…` proxy. Content keeps media links for usage and the featured image.
+- Media: `PUT /api/v1/admin/media/:id` changes only the sent `alt`/`caption` (omitted fields keep their text). Uploads are sniffed by content, images get metadata stripped and WebP sizes; files live under `MEDIA_DIR` and are served through the web `/media/…` proxy. Content keeps media links for usage and the featured image.
 - Content types and custom fields are core settings. Field values are validated against definitions; only public fields reach public DTOs (single reads only).
 
 ### 6.6 Reading, menus and widgets
