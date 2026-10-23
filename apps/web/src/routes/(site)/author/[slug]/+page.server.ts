@@ -1,5 +1,7 @@
+import { redirect } from '@sveltejs/kit';
 import { contentApi } from '#lib/server/api.js';
 import { notFoundFrom } from '#lib/server/errors.js';
+import { listingPath } from '#lib/seo/paths.js';
 import { listView, pageParam } from '#lib/server/public-view.js';
 import { loadSlots } from '#lib/server/slots.js';
 import { withTemplateData } from '#lib/server/theme-queries.js';
@@ -16,6 +18,9 @@ export const load: PageServerLoad = async ({ fetch, url, params, parent }) => {
   });
   posts.catch(() => undefined);
   const author = await api.author(params.slug).catch(notFoundFrom);
+  const canonicalPath = listingPath({ kind: 'author', slug: author.slug });
+  if (url.pathname !== canonicalPath)
+    redirect(308, `${canonicalPath}${url.search}`);
   return withTemplateData(api, parent, {
     kind: 'author' as const,
     author: { name: author.name, slug: author.slug, bio: author.bio },

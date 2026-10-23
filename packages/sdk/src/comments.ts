@@ -3,6 +3,7 @@ import { Errors } from '#sdk/errors';
 import { PAGINATION_MAX_PAGE } from '#sdk/common';
 
 export const COMMENT_PENDING_HEADER = 'x-cms-comment-pending';
+export const COMMENTER_PROOF_HEADER = 'x-cms-commenter-proof';
 export const AVATAR_DEFAULTS = [
   'mp',
   'identicon',
@@ -141,6 +142,8 @@ export const commentSubmittedSchema = z.strictObject({
   comment: publicCommentSchema.nullable(),
   page: z.number().int().positive().default(1),
   pendingProof: z.string().nullable().default(null),
+  /** Signed proof tied to this anonymous comment; it is recognized only after the comment is approved. */
+  commenterProof: z.string().nullable().default(null),
 });
 
 export type CommentSubmitted = z.output<typeof commentSubmittedSchema>;

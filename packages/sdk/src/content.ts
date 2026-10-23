@@ -93,6 +93,7 @@ export const contentInputSchema = z.object({
     .string()
     .trim()
     .toLowerCase()
+    .normalize('NFC')
     .max(191)
     .regex(CONTENT_SLUG)
     .refine(
@@ -145,6 +146,7 @@ const termSlugFilterSchema = z
   .string()
   .trim()
   .toLowerCase()
+  .normalize('NFC')
   .max(191)
   .regex(CONTENT_SLUG)
   .optional();
