@@ -6,6 +6,7 @@ import type { AuthService } from '#api/domain/auth/auth-service';
 import type { SsoService } from '#api/domain/auth/sso-service';
 import type { ContentService } from '#api/domain/content/content-service';
 import type { ReadingService } from '#api/domain/site/reading-service';
+import type { WritingService } from '#api/domain/site/writing-service';
 import type { MenuService } from '#api/domain/appearance/menu-service';
 import type { WidgetService } from '#api/domain/appearance/widget-service';
 import type { CommentService } from '#api/domain/comments/comment-service';
@@ -60,6 +61,7 @@ export type ApiServices = {
   permalinkResolver: PermalinkResolver;
   adminContent: ContentService;
   reading: ReadingService;
+  writing: WritingService;
   menus: MenuService;
   widgets: WidgetService;
   comments: CommentService;

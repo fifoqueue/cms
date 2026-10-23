@@ -26,7 +26,20 @@ export class MemoryMediaRepository implements MediaRepository {
     return this.rows.has(id);
   }
 
-  async list({ kind, search, page, pageSize }: MediaCriteria) {
+  /** Entries that show each file, standing in for `content_media` rows. */
+  readonly entries = new Map<
+    string,
+    { id: string; title: string; type: string }[]
+  >();
+
+  async list({
+    kind,
+    search,
+    uploaded,
+    unattached,
+    page,
+    pageSize,
+  }: MediaCriteria) {
     const prefix = {
       image: 'image/',
       audio: 'audio/',
@@ -36,6 +49,12 @@ export class MemoryMediaRepository implements MediaRepository {
     const items = [...this.rows.values()]
       .filter((row) => !kind || row.mime.startsWith(prefix[kind]))
       .filter((row) => !search || row.filename.includes(search))
+      .filter(
+        (row) =>
+          !uploaded ||
+          (row.createdAt >= uploaded.start && row.createdAt < uploaded.end),
+      )
+      .filter((row) => !unattached || !this.usages.get(row.id))
       .reverse();
     return {
       items: items
@@ -43,6 +62,18 @@ export class MemoryMediaRepository implements MediaRepository {
         .map((row) => this.toRecord(row)),
       total: items.length,
     };
+  }
+
+  /** Insertion order stands in for upload time, as in `list`. */
+  async neighbors(id: string) {
+    const ids = [...this.rows.keys()].reverse();
+    const index = ids.indexOf(id);
+    if (index < 0) return { newer: null, older: null };
+    return { newer: ids[index - 1] ?? null, older: ids[index + 1] ?? null };
+  }
+
+  async usedIn(id: string, limit: number) {
+    return (this.entries.get(id) ?? []).slice(0, limit);
   }
 
   async publicImages(ids: readonly string[]) {

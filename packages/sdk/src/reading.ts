@@ -31,6 +31,8 @@ export const readingSettingsSchema = z.object({
   dateFormat: z.enum(DATE_FORMATS).default('long'),
   /** Dates on the site show in this zone. Permalinks always use UTC. */
   timeZone: timeZoneSchema.default('UTC'),
+  /** First day of a week in calendars: 0 Sunday … 6 Saturday (WordPress "Week Starts On"). */
+  weekStartsOn: z.number().int().min(0).max(6).default(1),
   /** Seconds a CDN or proxy may keep public pages for anonymous visitors; 0 turns it off. */
   cacheSeconds: z.number().int().min(0).max(3600).default(0),
 });

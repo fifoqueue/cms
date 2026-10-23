@@ -78,13 +78,19 @@
 
   const isImage = (file: File) => file.type.startsWith('image/');
   /** Where pending uploads go; every transaction maps them, so edits meanwhile keep them in place. */
-  let markers: { pos: number }[] = [];
+  let markers: { from: number; to: number }[] = [];
 
   /** Uploads dropped or pasted image files and inserts them at `position`. */
-  const uploadInto = (view: EditorView, files: File[], position: number) => {
+  /** `from`–`to` (a pasted-over selection) is replaced only once an image is ready. */
+  const uploadInto = (
+    view: EditorView,
+    files: File[],
+    from: number,
+    to = from,
+  ) => {
     const images = files.filter(isImage);
     if (!images.length) return false;
-    const marker = { pos: position };
+    const marker = { from, to };
     markers.push(marker);
     void (async () => {
       uploadErrors = [];
@@ -108,7 +114,7 @@
         editor
           .chain()
           .insertContentAt(
-            marker.pos,
+            { from: marker.from, to: marker.to },
             imageNode(media, {
               alt: media.alt,
               variant: media.variants.find(
@@ -117,6 +123,8 @@
             }),
           )
           .run();
+        // Later images follow the first one instead of replacing anything.
+        marker.from = marker.to;
       }
       markers = markers.filter((other) => other !== marker);
     })();
@@ -151,15 +159,17 @@
         handlePaste: (view, event) => {
           const files = [...(event.clipboardData?.files ?? [])];
           if (!files.some(isImage)) return false;
-          // Pasting replaces the selection, as it does for text.
-          view.dispatch(view.state.tr.deleteSelection());
-          return uploadInto(view, files, view.state.selection.from);
+          // Pasting replaces the selection, as it does for text, once the upload succeeds.
+          const { from, to } = view.state.selection;
+          return uploadInto(view, files, from, to);
         },
       },
       onTransaction: ({ transaction }) => {
         revision++;
-        for (const marker of markers)
-          marker.pos = transaction.mapping.map(marker.pos);
+        for (const marker of markers) {
+          marker.from = transaction.mapping.map(marker.from);
+          marker.to = transaction.mapping.map(marker.to);
+        }
       },
       onUpdate: ({ editor: current }) =>
         (value = current.getJSON() as ContentDocument),
@@ -265,6 +275,33 @@
       width,
       height: Math.round((width * full.height) / full.width),
     });
+  };
+
+  // One tab stop for the whole toolbar; arrow keys, Home and End move between buttons.
+  let focused = $state(0);
+  const moveFocus = (event: KeyboardEvent) => {
+    const buttons = [
+      ...(event.currentTarget as HTMLElement).querySelectorAll('button'),
+    ];
+    const last = buttons.length - 1;
+    const next =
+      event.key === 'ArrowRight'
+        ? focused === last
+          ? 0
+          : focused + 1
+        : event.key === 'ArrowLeft'
+          ? focused === 0
+            ? last
+            : focused - 1
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? last
+              : null;
+    if (next === null) return;
+    event.preventDefault();
+    focused = next;
+    buttons[next]?.focus();
   };
 
   interface Tool {
@@ -373,11 +410,15 @@
     class="flex flex-wrap gap-1 border-b p-1"
     role="toolbar"
     aria-label={m.editorToolbar}
+    tabindex="-1"
+    onkeydown={moveFocus}
   >
     {#each tools as tool, index (index)}
       {@const Icon = tool.icon}
       <button
         type="button"
+        tabindex={index === focused ? 0 : -1}
+        onfocus={() => (focused = index)}
         title={tool.label}
         aria-label={tool.label}
         aria-pressed={tool.active?.()}

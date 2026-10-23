@@ -1,10 +1,20 @@
 <script lang="ts">
+  import { enhance } from '$app/forms';
+  import type { SubmitFunction } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { MEDIA_KINDS } from '@cms/sdk';
   import type { MediaKind } from '@cms/sdk';
-  import { FileText, Film, Music, Search, Upload } from '@lucide/svelte';
+  import {
+    FileText,
+    Film,
+    LayoutGrid,
+    List,
+    Music,
+    Search,
+    Upload,
+  } from '@lucide/svelte';
   import ScreenOptions from '#lib/admin/ScreenOptions.svelte';
   import { uploadFile } from '#lib/admin/upload.js';
   import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';
@@ -14,7 +24,7 @@
   import type { Messages } from '#lib/i18n/index.js';
   import type { PageProps } from './$types';
 
-  let { data }: PageProps = $props();
+  let { data, form }: PageProps = $props();
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
@@ -43,6 +53,20 @@
       if (value !== undefined) params.set(key, String(value));
     return `?${params}` as const;
   };
+
+  let selected = $state<string[]>([]);
+  const confirmDelete: SubmitFunction = ({ cancel }) => {
+    if (!confirm(m.confirmDelete)) {
+      cancel();
+      return;
+    }
+    return async ({ update }) => {
+      selected = [];
+      await update();
+    };
+  };
+  const date = (value: string) =>
+    new Date(value).toLocaleDateString(i18n.language);
 
   const upload = async (files: FileList | null | undefined) => {
     if (!files?.length || uploads.length) return;
@@ -150,12 +174,51 @@
       class="filter">{kindLabel(m, kind)}</a
     >
   {/each}
-  <form method="GET" role="search" class="ml-auto flex gap-2">
+  <span class="ml-auto flex gap-1">
+    <a
+      href={resolve(`/admin/(app)/media${query({ view: undefined })}`)}
+      aria-current={data.filter.view !== 'list'}
+      class="filter"
+      title={m.mediaGridView}
+      ><LayoutGrid class="size-4" /><span class="sr-only"
+        >{m.mediaGridView}</span
+      ></a
+    >
+    <a
+      href={resolve(`/admin/(app)/media${query({ view: 'list' })}`)}
+      aria-current={data.filter.view === 'list'}
+      class="filter"
+      title={m.mediaListView}
+      ><List class="size-4" /><span class="sr-only">{m.mediaListView}</span></a
+    >
+  </span>
+  <form method="GET" role="search" class="flex flex-wrap items-center gap-2">
     {#if data.filter.kind}<input
         type="hidden"
         name="kind"
         value={data.filter.kind}
       />{/if}
+    {#if data.filter.view}<input
+        type="hidden"
+        name="view"
+        value={data.filter.view}
+      />{/if}
+    <Input
+      name="month"
+      type="month"
+      aria-label={m.mediaMonth}
+      value={data.filter.month ?? ''}
+      class="h-8 w-40"
+    />
+    <label class="flex items-center gap-1.5">
+      <input
+        type="checkbox"
+        name="unattached"
+        value="1"
+        checked={!!data.filter.unattached}
+      />
+      {m.mediaUnattached}
+    </label>
     <Input
       name="q"
       type="search"
@@ -170,41 +233,145 @@
   </form>
 </div>
 
+{#if form && 'deleted' in form}
+  <Alert role="status">
+    <AlertTitle
+      >{m.mediaDeleted(form.deleted)}{form.kept
+        ? ` ${m.mediaKept(form.kept)}`
+        : ''}</AlertTitle
+    >
+  </Alert>
+{/if}
+
 {#if data.media.items.length}
-  <ul class="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-    {#each data.media.items as media (media.id)}
-      {@const thumb =
-        media.variants.find((variant) => variant.name === 'thumbnail')?.url ??
-        media.url}
-      <li>
-        <a
-          href={resolve('/admin/(app)/media/[id]', { id: media.id })}
-          class="block overflow-hidden rounded-md border bg-background hover:opacity-80"
-          title={media.filename}
-        >
-          {#if media.kind === 'image'}
-            <img
-              src={thumb}
-              alt={media.alt || media.filename}
-              loading="lazy"
-              class="aspect-square w-full object-cover"
-            />
-          {:else}
-            <span
-              class="flex aspect-square flex-col items-center justify-center gap-2 p-2 text-center text-xs break-all text-muted-foreground"
+  <form
+    method="POST"
+    action="?/delete"
+    use:enhance={confirmDelete}
+    class="flex flex-wrap items-center gap-3 text-sm"
+  >
+    <label class="flex items-center gap-2">
+      <input
+        type="checkbox"
+        checked={selected.length === data.media.items.length}
+        onchange={(event) =>
+          (selected = event.currentTarget.checked
+            ? data.media.items.map(({ id }) => id)
+            : [])}
+      />
+      {m.selectAll}
+    </label>
+    {#each selected as id (id)}<input
+        type="hidden"
+        name="ids"
+        value={id}
+      />{/each}
+    <Button
+      type="submit"
+      variant="destructive"
+      size="sm"
+      disabled={!selected.length}>{m.deletePermanently}</Button
+    >
+  </form>
+  {#if data.filter.view === 'list'}
+    <div class="overflow-x-auto rounded-md border bg-background">
+      <table class="w-full text-sm">
+        <thead class="border-b text-left text-muted-foreground">
+          <tr>
+            <th scope="col" class="w-8 p-2"
+              ><span class="sr-only">{m.selectAll}</span></th
             >
-              {#if media.kind === 'video'}<Film
-                  class="size-8"
-                />{:else if media.kind === 'audio'}<Music
-                  class="size-8"
-                />{:else}<FileText class="size-8" />{/if}
-              {media.filename}
-            </span>
-          {/if}
-        </a>
-      </li>
-    {/each}
-  </ul>
+            <th scope="col" class="p-2">{m.mediaFile}</th>
+            <th scope="col" class="p-2">{m.fieldAuthor}</th>
+            <th scope="col" class="p-2">{m.mediaUsedColumn}</th>
+            <th scope="col" class="p-2">{m.mediaUploadedOn}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each data.media.items as media (media.id)}
+            {@const thumb =
+              media.variants.find((variant) => variant.name === 'thumbnail')
+                ?.url ?? media.url}
+            <tr class="border-b last:border-0">
+              <td class="p-2"
+                ><input
+                  type="checkbox"
+                  value={media.id}
+                  bind:group={selected}
+                  aria-label={m.selectItem(media.filename)}
+                /></td
+              >
+              <td class="p-2">
+                <a
+                  href={resolve('/admin/(app)/media/[id]', { id: media.id })}
+                  class="flex items-center gap-3 hover:underline"
+                >
+                  {#if media.kind === 'image'}<img
+                      src={thumb}
+                      alt=""
+                      loading="lazy"
+                      class="size-10 rounded object-cover"
+                    />{:else}<FileText
+                      class="size-10 p-2 text-muted-foreground"
+                    />{/if}
+                  <span class="break-all">{media.filename}</span>
+                </a>
+              </td>
+              <td class="p-2">{media.uploaderName || m.none}</td>
+              <td class="p-2"
+                >{media.usageCount
+                  ? m.mediaUsed(media.usageCount)
+                  : m.mediaUnattached}</td
+              >
+              <td class="p-2 whitespace-nowrap">{date(media.createdAt)}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  {:else}
+    <ul class="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+      {#each data.media.items as media (media.id)}
+        {@const thumb =
+          media.variants.find((variant) => variant.name === 'thumbnail')?.url ??
+          media.url}
+        <li class="relative">
+          <input
+            type="checkbox"
+            value={media.id}
+            bind:group={selected}
+            aria-label={m.selectItem(media.filename)}
+            class="absolute top-2 left-2 z-10 size-4"
+          />
+          <a
+            href={resolve('/admin/(app)/media/[id]', { id: media.id })}
+            class="block overflow-hidden rounded-md border bg-background hover:opacity-80"
+            title={media.filename}
+          >
+            {#if media.kind === 'image'}
+              <img
+                src={thumb}
+                alt={media.alt || media.filename}
+                loading="lazy"
+                class="aspect-square w-full object-cover"
+              />
+            {:else}
+              <span
+                class="flex aspect-square flex-col items-center justify-center gap-2 p-2 text-center text-xs break-all text-muted-foreground"
+              >
+                {#if media.kind === 'video'}<Film
+                    class="size-8"
+                  />{:else if media.kind === 'audio'}<Music
+                    class="size-8"
+                  />{:else}<FileText class="size-8" />{/if}
+                {media.filename}
+              </span>
+            {/if}
+          </a>
+        </li>
+      {/each}
+    </ul>
+  {/if}
 {:else}
   <p class="text-sm text-muted-foreground">{m.mediaEmpty}</p>
 {/if}

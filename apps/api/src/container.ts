@@ -12,6 +12,7 @@ import { ResponsiveImages } from '#api/domain/content/responsive-images';
 import { EmbedRegistry } from '#api/plugin-runtime/embed-registry';
 import { MediaService } from '#api/domain/media/media-service';
 import { ReadingService } from '#api/domain/site/reading-service';
+import { WritingService } from '#api/domain/site/writing-service';
 import { MenuService } from '#api/domain/appearance/menu-service';
 import { ContentTypeService } from '#api/domain/content/content-types';
 import { FieldService } from '#api/domain/content/fields';
@@ -294,6 +295,7 @@ export const createContainer = async (
     mediaRepository.publicImages(ids),
   );
   const reading = new ReadingService(settingsRepository, publishedRepository);
+  const writing = new WritingService(settingsRepository);
   const menus = new MenuService({
     archives: archivePaths,
     settings: settingsRepository,
@@ -625,6 +627,7 @@ export const createContainer = async (
       ),
       adminContent: content,
       reading,
+      writing,
       menus,
       widgets,
       comments,

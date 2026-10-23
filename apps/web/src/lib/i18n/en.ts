@@ -1382,6 +1382,60 @@ export const en = {
     'Restore this version? The title, excerpt and body are replaced; the current text stays in the revisions.',
   diffRemoved: 'Removed',
   diffAdded: 'Added',
+  // editor-media wave 3
+  adminToolbar: 'Toolbar',
+  topNew: 'New',
+  newUser: 'User',
+  commentsAwaiting: (count: number) =>
+    count === 1
+      ? '1 comment awaiting moderation'
+      : `${count} comments awaiting moderation`,
+  collapseMenu: 'Collapse menu',
+  expandMenu: 'Expand menu',
+  errorGeneric: 'Something went wrong. Please try again.',
+  errorInvalidInput: 'Please check the highlighted values.',
+  errorUnauthorized: 'Please sign in again.',
+  errorForbidden: 'You are not allowed to do this.',
+  errorNotFound: 'It no longer exists.',
+  errorConflict:
+    'This conflicts with something that already exists or was changed meanwhile.',
+  errorRateLimited: 'Too many attempts. Please wait a moment and try again.',
+  errorTooLarge: 'This is too large.',
+  errorCaptchaRequired: 'Please complete the verification.',
+  errorFieldInvalid: 'Please enter a valid value.',
+  entryTrashed: 'Moved to the Trash.',
+  undo: 'Undo',
+  viewOnSite: 'View on site',
+  commentEmptySpam: 'Empty Spam',
+  commentEmptyTrash: 'Empty Trash',
+  commentNoticeApproved: 'Comment approved.',
+  commentNoticeUnapproved: 'Comment unapproved.',
+  commentNoticeSpam: 'Comment marked as spam.',
+  commentNoticeTrash: 'Comment moved to the Trash.',
+  commentNoticeDeleted: 'Comment deleted permanently.',
+  commentNoticeEmptied: 'Emptied.',
+  mediaGridView: 'Grid view',
+  mediaListView: 'List view',
+  mediaMonth: 'Uploaded in month',
+  mediaUnattached: 'Unattached',
+  mediaFile: 'File',
+  mediaUsedColumn: 'Used in',
+  mediaDeleted: (count: number) =>
+    count === 1 ? '1 file deleted.' : `${count} files deleted.`,
+  mediaKept: (count: number) =>
+    count === 1
+      ? '1 file was kept because it is in use or not yours.'
+      : `${count} files were kept because they are in use or not yours.`,
+  mediaCropHelp:
+    'Drag the box or its corner. With the box focused, arrow keys move it and Shift with arrow keys resizes it.',
+  mediaAspect: 'Aspect ratio',
+  mediaAspectFree: 'Free',
+  mediaAspectOriginal: 'Original',
+  settingsDates: 'Date and time',
+  weekStartsOn: 'Week starts on',
+  settingsWriting: 'Writing',
+  writingDefaultCategory: 'Default post category',
+  writingDefaultStatus: 'Default status of new entries',
   // core-content
   contentInsertBlock: 'Add block',
   contentSearchBlocks: 'Search blocks',

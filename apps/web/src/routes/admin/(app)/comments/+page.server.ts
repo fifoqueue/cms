@@ -55,6 +55,22 @@ export const load: PageServerLoad = async (event) => {
   };
 };
 
+const NOTICES = {
+  approve: 'commentNoticeApproved',
+  unapprove: 'commentNoticeUnapproved',
+  spam: 'commentNoticeSpam',
+  trash: 'commentNoticeTrash',
+  delete: 'commentNoticeDeleted',
+} as const satisfies Record<(typeof COMMENT_BULK_ACTIONS)[number], string>;
+
+/** The action that returns a comment to a status. */
+const UNDO = {
+  approved: 'approve',
+  pending: 'unapprove',
+  spam: 'spam',
+  trash: 'trash',
+} as const satisfies Record<CommentStatus, string>;
+
 export const actions: Actions = {
   /** One action for every selected comment (or the single comment of a row button). */
   bulk: async (event) => {
@@ -69,7 +85,42 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
-    return { notice: 'saved' };
+    // Undo puts the comments back where they were, when that status is known.
+    const previous = COMMENT_STATUSES.find(
+      (option) => option === text(form, 'previous'),
+    );
+    return {
+      notice: NOTICES[action],
+      undo:
+        previous && action !== 'delete'
+          ? { ids, action: UNDO[previous] }
+          : undefined,
+    };
+  },
+  /** Deletes every comment in the spam or trash view (WordPress "Empty Spam/Trash"). */
+  empty: async (event) => {
+    const form = await event.request.formData();
+    const status = text(form, 'status');
+    if (status !== 'spam' && status !== 'trash') return {};
+    const admin = adminFor(event);
+    try {
+      // Bounded: at most 100 pages of 100 per request.
+      for (let round = 0; round < 100; round++) {
+        const { items } = await admin.comments.list({
+          status,
+          page: 1,
+          pageSize: 100,
+        });
+        if (!items.length) break;
+        await admin.comments.bulk({
+          ids: items.map(({ id }) => id),
+          action: 'delete',
+        });
+      }
+    } catch (caught) {
+      return failFrom(caught);
+    }
+    return { notice: 'commentNoticeEmptied' };
   },
   reply: async (event) => {
     const form = await event.request.formData();

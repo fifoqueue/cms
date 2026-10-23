@@ -33,6 +33,8 @@
   }
 
   let { kind = 'image', sizes = false, onpick }: Props = $props();
+  // Several pickers share a page; their element ids must not collide.
+  const uid = $props.id();
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
@@ -240,14 +242,14 @@
     <ul class="space-y-1 border-b p-3 text-sm" aria-live="polite">
       {#each uploads as upload, index (index)}
         <li class="flex items-center gap-3">
-          <span id="picker-upload-{index}" class="min-w-0 flex-1 truncate"
+          <span id="{uid}-upload-{index}" class="min-w-0 flex-1 truncate"
             >{upload.name}</span
           >
           <progress
             class="w-32"
             max="1"
             value={upload.progress}
-            aria-labelledby="picker-upload-{index}"
+            aria-labelledby="{uid}-upload-{index}"
           ></progress>
         </li>
       {/each}

@@ -1,9 +1,14 @@
 import { pageSchema } from '#sdk/transport';
 import type { ClientOptions, Query, Request } from '#sdk/transport';
-import { MEDIA_FILENAME_HEADER, adminMediaSchema } from '#sdk/media';
+import {
+  MEDIA_FILENAME_HEADER,
+  adminMediaSchema,
+  mediaContextSchema,
+} from '#sdk/media';
 import type {
   AdminMedia,
   ImageEditInput,
+  MediaContext,
   MediaListQuery,
   MediaUpdateInput,
 } from '#sdk/media';
@@ -20,6 +25,11 @@ export const mediaAdminClient = (request: Request) => {
       }),
     get: (id: string) =>
       request<AdminMedia>('GET', path(id), { response: adminMediaSchema }),
+    /** Neighbouring files and the entries that show this one. */
+    context: (id: string) =>
+      request<MediaContext>('GET', `${path(id)}/context`, {
+        response: mediaContextSchema,
+      }),
     /** Sends the raw file; the API decides its type from the bytes. */
     upload: (file: BodyInit, filename: string) =>
       request<AdminMedia>('POST', '/api/v1/admin/media', {

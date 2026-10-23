@@ -124,6 +124,27 @@ describe('media library', () => {
     expect(await media.file('../config.json')).toBeNull();
   });
 
+  test('the library filters by month and attachment and lists where a file is used', async () => {
+    const { media, repository } = setup();
+    const first = await media.upload(PNG, 'a.png', author);
+    const second = await media.upload(PNG, 'b.png', author);
+    repository.usages.set(first.id, 1);
+    repository.entries.set(first.id, [
+      { id: 'c1', title: 'Post', type: 'post' },
+    ]);
+    const month = first.createdAt.slice(0, 7);
+
+    const unattached = await media.list({ unattached: 'true' }, author);
+    expect(unattached.items.map(({ id }) => id)).toEqual([second.id]);
+    expect((await media.list({ month }, author)).total).toBe(2);
+    expect((await media.list({ month: '1999-01' }, author)).total).toBe(0);
+    expect(await media.context(first.id, author)).toEqual({
+      newerId: second.id,
+      olderId: null,
+      usedIn: [{ id: 'c1', title: 'Post', type: 'post' }],
+    });
+  });
+
   test('only the uploader or managers change a file, and used files need force', async () => {
     const { media, repository, storage } = setup();
     const image = await media.upload(PNG, 'cat.png', author);
