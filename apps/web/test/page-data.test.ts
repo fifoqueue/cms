@@ -587,6 +587,8 @@ describe('admin form failures', () => {
         parentId: '',
       },
       message: 'Slug already in use',
+      // The error code lets the screen show catalog text in the reader's language.
+      code: 'conflict',
       issues: [{ path: 'slug', message: 'Taken' }],
     });
     expect(JSON.stringify(data)).not.toContain(TOKEN);

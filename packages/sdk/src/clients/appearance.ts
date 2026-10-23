@@ -7,6 +7,8 @@ import type {
   PublicMenuItem,
 } from '#sdk/menus';
 import { publicReadingSchema, readingSettingsSchema } from '#sdk/reading';
+import { writingSettingsSchema } from '#sdk/writing';
+import type { WritingSettings, WritingSettingsInput } from '#sdk/writing';
 import type {
   PublicReading,
   ReadingSettings,
@@ -52,6 +54,18 @@ export const publicAppearanceClient = (request: Request) => ({
 
 /** Reading needs `settings.manage`; menus and widgets `appearance.manage`. */
 export const appearanceAdminClient = (request: Request) => ({
+  /** Every writer reads the defaults; saving them needs `settings.manage`. */
+  writing: {
+    get: () =>
+      request<WritingSettings>('GET', '/api/v1/admin/writing', {
+        response: writingSettingsSchema,
+      }),
+    update: (input: WritingSettingsInput) =>
+      request<WritingSettings>('PUT', '/api/v1/admin/writing', {
+        json: input,
+        response: writingSettingsSchema,
+      }),
+  },
   reading: {
     get: () =>
       request<ReadingSettings>('GET', '/api/v1/admin/reading', {

@@ -19,6 +19,7 @@ export * from '#sdk/security';
 export * from '#sdk/email';
 export * from '#sdk/media';
 export * from '#sdk/reading';
+export * from '#sdk/writing';
 export * from '#sdk/layout';
 export * from '#sdk/menus';
 export * from '#sdk/widgets';

@@ -1358,4 +1358,9 @@ export const ko: Messages = {
   mediaAspect: '가로세로 비율',
   mediaAspectFree: '자유',
   mediaAspectOriginal: '원본',
+  settingsDates: '날짜와 시간',
+  weekStartsOn: '한 주의 시작 요일',
+  settingsWriting: '쓰기',
+  writingDefaultCategory: '기본 글 카테고리',
+  writingDefaultStatus: '새 글의 기본 상태',
 };

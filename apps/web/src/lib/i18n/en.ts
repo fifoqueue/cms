@@ -1398,4 +1398,9 @@ export const en = {
   mediaAspect: 'Aspect ratio',
   mediaAspectFree: 'Free',
   mediaAspectOriginal: 'Original',
+  settingsDates: 'Date and time',
+  weekStartsOn: 'Week starts on',
+  settingsWriting: 'Writing',
+  writingDefaultCategory: 'Default post category',
+  writingDefaultStatus: 'Default status of new entries',
 } as const;

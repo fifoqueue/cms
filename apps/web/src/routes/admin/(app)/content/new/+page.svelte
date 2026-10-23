@@ -33,5 +33,6 @@
   canPublish={data.canPublish}
   canManageTerms={data.canManageTerms}
   userId={data.authorId}
+  defaults={data.defaults}
   defaultAuthorId={data.authorId}
 />

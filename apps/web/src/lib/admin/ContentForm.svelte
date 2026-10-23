@@ -82,6 +82,8 @@
     defaultAuthorId?: string;
     /** Thumbnail addresses of the saved image fields, by field key. */
     fieldImages?: Record<string, string>;
+    /** Settings → Writing: what a new entry starts with. */
+    defaults?: { categoryId: string | null; status: 'draft' | 'pending' };
     /** Saved versions of the entry, for the "Browse" link. */
     revisionCount?: number;
     /** Status a new entry was just created with (shown as the save result). */
@@ -106,6 +108,7 @@
     defaultAuthorId = '',
     fieldImages = {},
     revisionCount = 0,
+    defaults,
     created = null,
   }: Props = $props();
 
@@ -133,7 +136,10 @@
     title: values?.title ?? draft?.title ?? entry?.title ?? '',
     slug: values?.slug ?? entry?.slug ?? '',
     excerpt: values?.excerpt ?? draft?.excerpt ?? entry?.excerpt ?? '',
-    status: (values?.status ?? entry?.status ?? 'draft') as ContentStatus,
+    status: (values?.status ??
+      entry?.status ??
+      defaults?.status ??
+      'draft') as ContentStatus,
     publishedAt: localTime(values?.publishedAt || entry?.publishedAt),
     sticky: values?.sticky ?? entry?.sticky ?? false,
     allowComments: values?.allowComments ?? entry?.allowComments ?? true,
@@ -144,7 +150,9 @@
       entry?.document ??
       EMPTY,
     categoryIds: new Set(
-      values?.categoryIds ?? entry?.categories.map(({ id }) => id) ?? [],
+      values?.categoryIds ??
+        entry?.categories.map(({ id }) => id) ??
+        (defaults?.categoryId ? [defaults.categoryId] : []),
     ),
     tagIds: new Set(values?.tagIds ?? entry?.tags.map(({ id }) => id) ?? []),
     seo: values?.seo ?? seoFormValues(entry?.seo ?? DEFAULT_ENTRY_SEO),

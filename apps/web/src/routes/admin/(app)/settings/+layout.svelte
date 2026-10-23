@@ -16,6 +16,10 @@
       label: (m: Messages) => m.settingsGeneral,
     },
     {
+      route: '/admin/(app)/settings/writing',
+      label: (m: Messages) => m.settingsWriting,
+    },
+    {
       route: '/admin/(app)/settings/reading',
       label: (m: Messages) => m.settingsReading,
     },
