@@ -77,6 +77,13 @@ export interface ContentWrite extends Omit<
   tagIds: string[];
 }
 
+/** Conditions a content update must still meet when it is written. */
+export interface ContentWriteGuard {
+  expectedUpdatedAt?: Date;
+  /** A user whose pending autosave of the entry refuses the write. */
+  autosaveOf?: string;
+}
+
 export interface ContentCriteria {
   taxonomy?: string;
   term?: string;
@@ -127,13 +134,14 @@ export interface ContentRepository {
   insert(record: ContentWrite): Promise<ContentRecord>;
   /**
    * Replaces fields/assignments and moves the path atomically, retaining all previously public URLs.
-   * `record.publishedAt` is written as given (the service resolves an omitted date). With
-   * `expectedUpdatedAt`, throws `conflict` and changes nothing unless the stored entry still has
-   * that `updatedAt`; the check runs under the same lock as the write.
+   * `record.publishedAt` is written as given (the service resolves an omitted date). Throws
+   * `conflict` and changes nothing when `guard.expectedUpdatedAt` differs from the stored
+   * `updatedAt`, or when `guard.autosaveOf` has an autosave newer than the stored entry. Both
+   * checks run under the content write lock, which autosaves take too (`RevisionRepository`).
    */
   update(
     record: ContentWrite,
-    expectedUpdatedAt?: Date,
+    guard?: ContentWriteGuard,
   ): Promise<ContentRecord>;
   /** Also removes its term assignments, paths and revisions. */
   delete(id: string): Promise<void>;

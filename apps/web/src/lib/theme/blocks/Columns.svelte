@@ -42,7 +42,10 @@
           ? `flex-basis: ${column.attrs.width}%`
           : undefined}
       >
-        <Blocks blocks={column.children} />
+        <Blocks
+          blocks={column.children}
+          within={block.children.indexOf(column)}
+        />
       </div>
     {/if}
   {/each}

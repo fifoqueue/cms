@@ -1,6 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { COMMENT_BULK_ACTIONS } from '@cms/sdk';
 import { can } from '@cms/sdk/capabilities';
+import { mapBounded } from '#lib/server/bulk.js';
 import { failFrom, text } from '#lib/server/errors.js';
 import { adminFor } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
@@ -49,19 +50,18 @@ export const load: PageServerLoad = async (event) => {
     approved,
     health,
   ] = await Promise.all([
-    Promise.all(
-      model.types.map(async (type) => ({
-        key: type.key,
-        name: type.pluralName,
-        count: await total(
-          admin.content.list({
-            type: type.key,
-            status: 'published',
-            pageSize: 1,
-          }),
-        ),
-      })),
-    ),
+    // One count per type, a few at a time; At a Glance lists the first 20 types.
+    mapBounded(model.types.slice(0, 20), async (type) => ({
+      key: type.key,
+      name: type.pluralName,
+      count: await total(
+        admin.content.list({
+          type: type.key,
+          status: 'published',
+          pageSize: 1,
+        }),
+      ),
+    })),
     total(admin.content.list({ status: 'draft', pageSize: 1 })),
     total(admin.content.list({ status: 'pending', pageSize: 1 })),
     total(admin.content.list({ status: 'scheduled', pageSize: 1 })),

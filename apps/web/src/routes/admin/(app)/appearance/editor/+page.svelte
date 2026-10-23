@@ -79,12 +79,29 @@
   let canvasBlocks = $state<Block[] | undefined>();
   type CanvasData = Pick<
     typeof data.canvas,
-    'queries' | 'terms' | 'months' | 'adjacent'
+    | 'queries'
+    | 'terms'
+    | 'months'
+    | 'adjacent'
+    | 'pageTree'
+    | 'recentComments'
+    | 'postAuthor'
+    | 'calendar'
   >;
   let canvasData = $state<CanvasData | undefined>();
   let previewError = $state<{ message?: string } | undefined>();
   let mobile = $state(false);
+  /** Path key of the block selected in the editor; only digits and dots. */
+  let selectedBlock = $state<string | null>(null);
 
+  const DATA_BLOCKS = new Set<string>([
+    'categories',
+    'tag-cloud',
+    'post-navigation',
+    'page-list',
+    'post-author',
+    'calendar',
+  ]);
   /** Changes whenever the data the edited blocks show changes (lists, terms, months, neighbours). */
   const dataSignature = $derived(
     JSON.stringify(
@@ -99,11 +116,11 @@
             ]
           : block.name === 'archives'
             ? [`archives:${block.attrs.months}`]
-            : block.name === 'categories' ||
-                block.name === 'tag-cloud' ||
-                block.name === 'post-navigation'
-              ? [block.name]
-              : [],
+            : block.name === 'latest-comments'
+              ? [`comments:${block.attrs.comments}`]
+              : DATA_BLOCKS.has(block.name)
+                ? [block.name]
+                : [],
       ),
     ),
   );
@@ -142,8 +159,10 @@
       );
       body.set('blocks', JSON.stringify(blocks));
       // The published sample entry, for its previous and next entries.
-      if (data.previewPage?.kind === 'content')
+      if (data.previewPage?.kind === 'content') {
         body.set('contentId', data.previewPage.content.id);
+        body.set('author', data.previewPage.content.author?.slug ?? '');
+      }
 
       try {
         const response = await fetch('?/preview', {
@@ -188,7 +207,13 @@
     'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm hover:bg-muted aria-[current=page]:bg-muted aria-[current=page]:font-medium';
 </script>
 
-<svelte:head><title>{m.navEditor} · {editor.name}</title></svelte:head>
+<svelte:head>
+  <title>{m.navEditor} · {editor.name}</title>
+  {#if selectedBlock}
+    <!-- eslint-disable-next-line svelte/no-at-html-tags -- the key is a block path of digits and dots -->
+    {@html `<style>.cms-editor-canvas [data-block-path="${selectedBlock.replace(/[^\d.]/g, '')}"] > * { outline: 2px solid #3b82f6; outline-offset: 2px; }</style>`}
+  {/if}
+</svelte:head>
 
 <div class="flex flex-wrap items-center justify-between gap-4">
   <div class="space-y-1">
@@ -224,7 +249,7 @@
 </div>
 <FormMessage {form} />
 
-<div class="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
+<div class="grid gap-6 xl:grid-cols-[15rem_minmax(0,1fr)]">
   <nav aria-label={m.navEditor} class="space-y-5">
     <div class="space-y-1">
       <!-- eslint-disable svelte/no-navigation-without-resolve -- query strings on this page -->
@@ -533,38 +558,56 @@
                   dirty = changed;
                   canvasBlocks = tree;
                 }}
-              />
-              <div class="flex items-center justify-between gap-2">
-                <span class="font-medium">{m.editorLivePreview}</span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  aria-pressed={mobile}
-                  onclick={() => (mobile = !mobile)}
-                  >{m.editorMobilePreview}</Button
-                >
-              </div>
-              <div class="overflow-auto rounded border bg-muted p-2">
-                <FormMessage form={previewError} />
-                <div
-                  class="cms-site mx-auto min-h-64 bg-background text-foreground"
-                  style={`${themeStyle(data.canvas.theme)}; width: ${mobile ? '375px' : '100%'}; max-width: 100%`}
-                  inert
-                >
-                  {#if data.previewPage}
-                    <TemplateView
-                      data={{
-                        ...data.canvas,
-                        ...canvasData,
+                onselect={(key) => (selectedBlock = key)}
+              >
+                {#snippet canvas(select)}
+                  <div class="mb-2 flex items-center justify-between gap-2">
+                    <span class="text-sm font-medium"
+                      >{m.editorLivePreview}</span
+                    >
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-pressed={mobile}
+                      onclick={() => (mobile = !mobile)}
+                      >{m.editorMobilePreview}</Button
+                    >
+                  </div>
+                  <div class="overflow-auto rounded border bg-muted p-2">
+                    <FormMessage form={previewError} />
+                    <!-- Clicking selects the block under the pointer; List View offers the same by keyboard. -->
+                    <div
+                      class="cms-site cms-editor-canvas mx-auto min-h-64 cursor-default bg-background text-foreground"
+                      style={`${themeStyle(data.canvas.theme)}; width: ${mobile ? '375px' : '100%'}; max-width: 100%`}
+                      onclickcapture={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const target = (event.target as Element).closest(
+                          '[data-block-path]',
+                        );
+                        const key = target?.getAttribute('data-block-path');
+                        if (key) select(key.split('.').map(Number));
                       }}
-                      page={data.previewPage}
-                      previewBlocks={canvasBlocks ?? item.blocks}
-                    />
-                  {:else}
-                    <p class="p-4 text-muted-foreground">{m.noPosts}</p>
-                  {/if}
-                </div>
-              </div>
+                      onsubmitcapture={(event) => event.preventDefault()}
+                    >
+                      {#if data.previewPage}
+                        <TemplateView
+                          data={{
+                            ...data.canvas,
+                            ...canvasData,
+                          }}
+                          page={data.previewPage}
+                          previewBlocks={canvasBlocks ?? item.blocks}
+                          editable
+                        />
+                      {:else}
+                        <p class="p-4 text-muted-foreground">{m.noPosts}</p>
+                      {/if}
+                    </div>
+                  </div>
+                {/snippet}
+              </BlockTreeEditor>
               <div class="flex flex-wrap items-center gap-3 border-t pt-4">
                 <Button type="submit">{m.save}</Button>
                 {#if dirty}

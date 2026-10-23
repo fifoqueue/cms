@@ -134,6 +134,12 @@ export const contentInputSchema = z.object({
    * the update is refused with `conflict` and nothing changes.
    */
   expectedUpdatedAt: z.iso.datetime({ offset: true }).optional(),
+  /**
+   * Updates only, for partial editors that copy the stored body (Quick Edit, Bulk Edit): the
+   * save is refused with `conflict` while the user has a pending autosave of the entry, and
+   * never discards one, so unsaved editor text survives.
+   */
+  preserveAutosave: z.boolean().optional(),
 });
 
 /** What clients send when creating or replacing content. */
@@ -275,6 +281,8 @@ export const publicContentSchema = z.strictObject({
   tags: z.array(strictTermSummarySchema),
   /** The author's public name and archive slug; never their id or email. */
   author: z.strictObject({ name: z.string(), slug: z.string() }).nullable(),
+  /** The parent page (page hierarchy); null or absent for top-level entries. */
+  parentId: z.string().nullable().optional(),
   sticky: z.boolean(),
   /** Approved comments. */
   commentCount: z.number().int(),
@@ -324,6 +332,15 @@ export const publicMonthSchema = z.strictObject({
 });
 
 export type PublicMonth = z.output<typeof publicMonthSchema>;
+
+/** A recent approved comment on a public, unprotected entry. */
+export const publicRecentCommentSchema = z.strictObject({
+  author: z.string(),
+  title: z.string(),
+  path: z.string(),
+});
+
+export type PublicRecentComment = z.output<typeof publicRecentCommentSchema>;
 
 export const monthsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(60).default(12),
@@ -388,6 +405,8 @@ export const publicAuthorSchema = z.object({
   name: z.string(),
   slug: z.string(),
   bio: z.string(),
+  /** Gravatar image while Settings → Discussion shows avatars; never the email address. */
+  avatarUrl: z.url().nullable().default(null),
 });
 
 export type PublicAuthor = z.output<typeof publicAuthorSchema>;

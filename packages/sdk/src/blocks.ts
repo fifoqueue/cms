@@ -65,6 +65,16 @@ export const SOCIAL_SERVICES = [
 
 const link = { type: 'text' as const, max: 2048, default: '', pattern: LINK };
 
+/** An image from the media library (`/media/…`); themes cannot point at other files. */
+export const MEDIA_IMAGE = /^\/media\/(?!.*\.\.)[\w./-]+$/;
+
+const mediaImage = {
+  type: 'text' as const,
+  max: 512,
+  default: '',
+  pattern: MEDIA_IMAGE,
+};
+
 export const BLOCKS = {
   group: {
     attrs: {
@@ -259,6 +269,53 @@ export const BLOCKS = {
   },
   /** A sign-in link, or a sign-out button for signed-in visitors. */
   loginout: { attrs: {} },
+  image: {
+    attrs: {
+      src: mediaImage,
+      alt: { type: 'text', max: 300, default: '' },
+      caption: { type: 'text', max: 300, default: '' },
+      link,
+      align: choice(ALIGN, 'center'),
+      /** Display width in pixels; 0 fills the column. */
+      width: { type: 'number', min: 0, max: 2000, default: 0 },
+      rounded: flag(false),
+    },
+  },
+  /** An image with a colour overlay and blocks on top (WordPress Cover). */
+  cover: {
+    attrs: {
+      src: mediaImage,
+      overlayColor: { type: 'color', default: 'contrast' },
+      /** Overlay opacity in percent. */
+      dim: { type: 'number', min: 0, max: 100, default: 50 },
+      minHeight: choice(['small', 'medium', 'large'], 'medium'),
+      align: choice(ALIGN, 'center'),
+    },
+    children: 'any',
+  },
+  /** An image beside blocks (WordPress Media & Text). */
+  'media-text': {
+    attrs: {
+      src: mediaImage,
+      alt: { type: 'text', max: 300, default: '' },
+      mediaPosition: choice(['left', 'right'], 'left'),
+      /** Percent of the row the image takes. */
+      mediaWidth: { type: 'number', min: 20, max: 80, default: 50 },
+    },
+    children: 'any',
+  },
+  /** The entry's author: avatar (when shown in Settings → Discussion), name and bio. */
+  'post-author': { attrs: { showAvatar: flag(true), showBio: flag(true) } },
+  /** A link to the entry, for query loops. */
+  'read-more': { attrs: { text: { type: 'text', max: 100, default: '' } } },
+  /** Published pages as a tree (page parents). */
+  'page-list': { attrs: {} },
+  /** Newest approved comments on public entries. */
+  'latest-comments': {
+    attrs: { comments: { type: 'number', min: 1, max: 20, default: 5 } },
+  },
+  /** A month of posts by day: the archive's month, otherwise the current one (UTC). */
+  calendar: { attrs: {} },
 } as const satisfies Record<string, BlockSpec>;
 
 export type BlockName = keyof typeof BLOCKS;

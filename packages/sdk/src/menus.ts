@@ -113,5 +113,14 @@ export const publicMenuItemSchema: z.ZodType<PublicMenuItem> = z.object({
   children: z.array(z.lazy(() => publicMenuItemSchema)),
 });
 
+/** A published entry a saved menu links to, as the menu editor labels it. */
+export const menuTargetSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  type: z.string(),
+});
+
+export type MenuTarget = z.output<typeof menuTargetSchema>;
+
 /** A location's menu with every target resolved; null when none is assigned. */
 export const publicMenuSchema = z.array(publicMenuItemSchema).nullable();

@@ -180,6 +180,7 @@ const templates = (variant: Variant): Record<string, BlockInput[]> => ({
       block('post-content'),
       block('post-fields'),
       block('post-terms', { taxonomy: 'tag' }),
+      block('post-author'),
       block('post-navigation'),
       block('comments'),
     ],

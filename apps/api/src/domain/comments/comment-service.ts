@@ -275,6 +275,17 @@ export class CommentService {
     };
   }
 
+  /** The Gravatar image of an email address while avatars are shown, else null. */
+  async avatar(email: string): Promise<string | null> {
+    return this.avatarUrl(email, await this.discussion());
+  }
+
+  private avatarUrl(email: string, settings: DiscussionSettings) {
+    return settings.showAvatars
+      ? `https://www.gravatar.com/avatar/${this.deps.digest(email.trim().toLowerCase())}?d=${settings.avatarDefault}&s=96`
+      : null;
+  }
+
   /** Newest approved comments on public entries, for the recent comments widget. */
   recent(limit: number) {
     return this.deps.repository.recent(limit);
@@ -458,9 +469,7 @@ export class CommentService {
       authorName: record.authorName,
       authorUrl: record.authorUrl || null,
       byAuthor: record.userId !== null && record.userId === target.authorId,
-      avatarUrl: settings.showAvatars
-        ? `https://www.gravatar.com/avatar/${this.deps.digest(record.authorEmail.trim().toLowerCase())}?d=${settings.avatarDefault}&s=96`
-        : null,
+      avatarUrl: this.avatarUrl(record.authorEmail, settings),
       pending: record.status === 'pending',
       body: record.body,
       createdAt: record.createdAt.toISOString(),

@@ -25,6 +25,8 @@ export interface PublishedRecord {
   categories: TermSummary[];
   tags: TermSummary[];
   author: { name: string; slug: string } | null;
+  /** Parent page; null for top-level entries. */
+  parentId?: string | null;
   sticky: boolean;
   /** Approved comments. */
   commentCount: number;

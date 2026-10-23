@@ -227,8 +227,13 @@
   );
   /** What Enter and Ctrl+S save: a draft stays a draft, a live entry is updated. */
   const defaultStatus = $derived(isLive ? primaryStatus : draftStatus);
+  // The minute input cannot show seconds: an untouched date resends the stored time exactly.
   const publishedAt = $derived(
-    publishAt ? new Date(publishAt).toISOString() : '',
+    !publishAt
+      ? ''
+      : entry?.publishedAt && publishAt === localTime(entry.publishedAt)
+        ? entry.publishedAt
+        : new Date(publishAt).toISOString(),
   );
 
   const bodyText = $derived(documentText(body).text);

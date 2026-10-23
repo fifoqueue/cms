@@ -32,6 +32,8 @@ export const readQuickEdit = (entry: ContentEntry, form: FormData) => {
         ? (entry.publishedAt ?? undefined)
         : undefined),
     expectedUpdatedAt: text(form, 'updatedAt'),
+    // The API refuses while the user has unsaved editor text, atomically with the save.
+    preserveAutosave: true,
     sticky: form.has('sticky'),
     allowComments: form.has('allowComments'),
     password: text(form, 'password') || undefined,

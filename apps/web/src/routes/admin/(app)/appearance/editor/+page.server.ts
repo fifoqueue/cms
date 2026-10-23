@@ -9,7 +9,7 @@ import {
   themeView,
   widgetsView,
 } from '#lib/server/public-view.js';
-import { loadThemeData } from '#lib/server/theme-queries.js';
+import { contextOf, loadThemeData } from '#lib/server/theme-queries.js';
 import type { ThemePage } from '#lib/theme/template.js';
 import { TEMPLATE_NAME } from '@cms/sdk';
 import type { ThemeEditor, ThemeStylesInput } from '@cms/sdk';
@@ -95,7 +95,7 @@ export const load: PageServerLoad = async (event) => {
   const blocks = await loadThemeData(
     api,
     layout.theme,
-    previewPage?.kind === 'content' ? previewPage.content.id : null,
+    previewPage ? contextOf(previewPage) : undefined,
   );
 
   return {
@@ -150,6 +150,7 @@ export const actions: Actions = {
 
       // The public neighbour lookup answers for published entries only.
       const contentId = text(form, 'contentId');
+      const author = text(form, 'author');
       return await loadThemeData(
         api,
         {
@@ -160,7 +161,10 @@ export const actions: Actions = {
               : part,
           ),
         },
-        contentId || null,
+        {
+          entry: contentId ? { id: contentId, author: author || null } : null,
+          month: null,
+        },
       );
     } catch (caught) {
       return failFrom(caught);

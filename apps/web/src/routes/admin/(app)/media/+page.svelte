@@ -15,6 +15,7 @@
     Search,
     Upload,
   } from '@lucide/svelte';
+  import ScreenOptions from '#lib/admin/ScreenOptions.svelte';
   import { uploadFile } from '#lib/admin/upload.js';
   import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -109,6 +110,8 @@
     />
   </label>
 </div>
+
+<ScreenOptions screen="media" hidden={[]} perPage={data.screen.perPage} />
 
 <div
   role="region"

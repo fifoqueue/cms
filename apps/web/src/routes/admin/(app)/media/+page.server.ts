@@ -1,6 +1,7 @@
 import { MEDIA_KINDS } from '@cms/sdk';
 import type { MediaKind } from '@cms/sdk';
 import { CmsApiError } from '@cms/sdk/client';
+import { readScreenOptions } from '#lib/server/screen-options.js';
 import { adminFor, requireCapability } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -15,6 +16,7 @@ export const load: PageServerLoad = async (event) => {
   const unattached = params.get('unattached') === '1' || undefined;
   const view = params.get('view') === 'list' ? 'list' : undefined;
   const page = Math.max(1, Math.trunc(Number(params.get('page'))) || 1);
+  const screen = readScreenOptions(event.cookies, 'media', [], 48);
   return {
     filter: {
       kind,
@@ -23,13 +25,14 @@ export const load: PageServerLoad = async (event) => {
       unattached: unattached && ('1' as const),
       view,
     },
+    screen,
     media: await adminFor(event).media.list({
       kind,
       search,
       month,
       unattached: unattached && 'true',
       page,
-      pageSize: 48,
+      pageSize: screen.perPage,
     }),
   };
 };

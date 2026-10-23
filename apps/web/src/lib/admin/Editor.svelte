@@ -3,7 +3,7 @@
   import type { ChainedCommands } from '@tiptap/core';
   import type { EditorView } from '@tiptap/pm/view';
   import { contentExtensions } from '@cms/content';
-  import { IMAGE_SIZES } from '@cms/sdk';
+  import { CONTENT_ALIGNMENTS, IMAGE_SIZES } from '@cms/sdk';
   import type { AdminMedia, ContentDocument } from '@cms/sdk';
   import {
     Bold,
@@ -24,6 +24,7 @@
     Undo,
     SquarePlay,
   } from '@lucide/svelte';
+  import BlockInserter from '#lib/admin/editor/BlockInserter.svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import type { MediaChoice } from '#lib/admin/MediaPicker.svelte';
   import { uploadFile } from '#lib/admin/upload.js';
@@ -188,9 +189,17 @@
     );
   };
 
+  /** Whether the picker swaps the selected image's file instead of inserting one. */
+  let replacing = false;
+
   /** Inserts a library image; the media id keeps usage tracking accurate. */
-  const insertImage = (media: AdminMedia, choice: MediaChoice) =>
-    run((chain) => chain.insertContent(imageNode(media, choice)));
+  const insertImage = (media: AdminMedia, choice: MediaChoice) => {
+    const node = imageNode(media, choice);
+    // Replacing keeps the caption, alignment and link of the selected image.
+    if (replacing) setImage(node.attrs);
+    else run((chain) => chain.insertContent(node));
+    replacing = false;
+  };
 
   const insertEmbed = () => {
     const url = embedUrl.trim();
@@ -214,6 +223,13 @@
   /** Updates the selected image without moving focus out of the settings field. */
   const setImage = (attributes: Record<string, unknown>) =>
     editor?.chain().updateAttributes('image', attributes).run();
+
+  /** Enter returns to the text instead of submitting the content form. */
+  const returnToText = (event: KeyboardEvent) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    editor?.commands.focus();
+  };
 
   /** Size of the selected image's file, read from the loaded picture. */
   const natural = () => {
@@ -352,7 +368,14 @@
       active: () => isActive('codeBlock'),
       action: () => run((c) => c.toggleCodeBlock()),
     },
-    { label: m.editorImage, icon: Image, action: () => picker.open() },
+    {
+      label: m.editorImage,
+      icon: Image,
+      action: () => {
+        replacing = false;
+        picker.open();
+      },
+    },
     { label: m.mediaAudio, icon: Music, action: () => audioPicker.open() },
     {
       label: m.editorTable,
@@ -372,6 +395,7 @@
 </script>
 
 <div class="rounded-md border bg-background">
+  <BlockInserter {editor} />
   <div
     class="flex flex-wrap gap-1 border-b p-1"
     role="toolbar"
@@ -440,12 +464,7 @@
           maxlength={500}
           value={image.alt ?? ''}
           oninput={(event) => setImage({ alt: event.currentTarget.value })}
-          onkeydown={(event) => {
-            // Enter returns to the text instead of submitting the content form.
-            if (event.key !== 'Enter') return;
-            event.preventDefault();
-            editor?.commands.focus();
-          }}
+          onkeydown={returnToText}
         />
       </label>
       <label class="grid gap-1">
@@ -462,6 +481,58 @@
           <NativeSelectOption value="">{m.sizeFull}</NativeSelectOption>
         </NativeSelect>
       </label>
+      <label class="grid gap-1">
+        {m.contentAlignment}
+        <NativeSelect
+          class="h-8"
+          value={image.align ?? 'center'}
+          onchange={(event) => setImage({ align: event.currentTarget.value })}
+        >
+          {#each CONTENT_ALIGNMENTS as align (align)}<NativeSelectOption
+              value={align}>{m.contentAlignmentName(align)}</NativeSelectOption
+            >{/each}
+        </NativeSelect>
+      </label>
+      <label class="grid min-w-48 flex-1 gap-1">
+        {m.contentCaption}
+        <Input
+          class="h-8"
+          maxlength={2000}
+          value={image.caption ?? ''}
+          oninput={(event) => setImage({ caption: event.currentTarget.value })}
+          onkeydown={returnToText}
+        />
+      </label>
+      <label class="grid min-w-48 flex-1 gap-1">
+        {m.contentLink}
+        <Input
+          class="h-8"
+          type="url"
+          maxlength={2048}
+          placeholder="https://"
+          value={image.href ?? ''}
+          oninput={(event) =>
+            setImage({ href: event.currentTarget.value.trim() || null })}
+          onkeydown={returnToText}
+        />
+      </label>
+      <label class="flex h-8 items-center gap-2">
+        <input
+          type="checkbox"
+          checked={image.newTab === true}
+          onchange={(event) =>
+            setImage({ newTab: event.currentTarget.checked })}
+        />{m.contentNewTab}
+      </label>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onclick={() => {
+          replacing = true;
+          picker.open();
+        }}>{m.mediaChoose}</Button
+      >
     </div>
   {/if}
   <div bind:this={element}></div>

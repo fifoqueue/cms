@@ -25,3 +25,27 @@ export const safeHttpsUrl = (value: unknown): string | null => {
     return null;
   }
 };
+
+/** Navigation URLs: HTTP(S), mailto, and site-relative references; never scheme-relative URLs. */
+export const safeLinkHref = (value: unknown): string | null => {
+  if (
+    typeof value !== 'string' ||
+    !value ||
+    value.length > 2048 ||
+    /[\\\s\p{Cc}]/u.test(value)
+  )
+    return null;
+  if (value.startsWith('//')) return null;
+  try {
+    const url = new URL(value, 'https://cms.invalid/');
+    if (
+      url.username ||
+      url.password ||
+      !['http:', 'https:', 'mailto:'].includes(url.protocol)
+    )
+      return null;
+    return value;
+  } catch {
+    return null;
+  }
+};

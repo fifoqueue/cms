@@ -285,6 +285,7 @@ export class PublicContentService {
       id: content.id,
       slug: content.slug,
       path: content.path,
+      parentId: content.parentId,
       seo: content.seo,
     });
   }
@@ -303,6 +304,7 @@ export class PublicContentService {
       id: content.id,
       slug: content.slug,
       path: content.path,
+      parentId: content.parentId,
       seo: content.seo,
     });
   }

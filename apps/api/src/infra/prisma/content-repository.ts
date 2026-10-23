@@ -5,6 +5,7 @@ import type {
   ContentRepository,
   ContentSummaryRecord,
   ContentWrite,
+  ContentWriteGuard,
 } from '#api/domain/content/content-repository';
 import { checkContentParent } from '#api/domain/content/hierarchy';
 import { checkTermKinds } from '#api/domain/content/term-assignment';
@@ -194,13 +195,27 @@ export class PrismaContentRepository implements ContentRepository {
     );
   }
 
-  async update(record: ContentWrite, expectedUpdatedAt?: Date) {
+  async update(record: ContentWrite, guard: ContentWriteGuard = {}) {
     return this.write(record, async (tx, next, current) => {
       if (
-        expectedUpdatedAt &&
-        current?.updatedAt.getTime() !== expectedUpdatedAt.getTime()
+        guard.expectedUpdatedAt &&
+        current?.updatedAt.getTime() !== guard.expectedUpdatedAt.getTime()
       )
         throw conflict(Errors.ContentChanged);
+      // Autosaves are written under the same lock, so none can appear before this write commits.
+      if (
+        guard.autosaveOf &&
+        current &&
+        (await tx.contentRevision.count({
+          where: {
+            contentId: record.id,
+            authorId: guard.autosaveOf,
+            kind: 'autosave',
+            createdAt: { gt: current.updatedAt },
+          },
+        }))
+      )
+        throw conflict(Errors.ContentAutosavePending);
       const { id, ...data } = toRow(next);
       return tx.content.update({
         where: { id },
@@ -333,7 +348,15 @@ export class PrismaContentRepository implements ContentRepository {
               throw invalidInput(Errors.MediaNotFound, [
                 { path: 'featuredMediaId', message: Errors.MediaNotFound },
               ]);
-            const row = await save(tx, record, current);
+            // The version (`updatedAt`) strictly advances, so equal clocks never share one.
+            const next =
+              current && record.updatedAt <= current.updatedAt
+                ? {
+                    ...record,
+                    updatedAt: new Date(current.updatedAt.getTime() + 1),
+                  }
+                : record;
+            const row = await save(tx, next, current);
             await tx.contentMedia.deleteMany({ where: { contentId: row.id } });
             if (media.size)
               await tx.contentMedia.createMany({
