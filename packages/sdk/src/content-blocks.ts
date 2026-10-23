@@ -90,6 +90,15 @@ export const contentAttributeSchemas = {
   paragraph: z.strictObject({ textAlign }).partial(),
   heading: z.strictObject({ level: legacy, textAlign }).partial(),
   embed: z.strictObject({ url: legacy }).partial(),
+  /** A synced pattern by id; the API puts the pattern's published body in its place. */
+  patternRef: z
+    .strictObject({
+      ref: z
+        .string()
+        .regex(/^[A-Za-z0-9-]{1,36}$/)
+        .nullable(),
+    })
+    .partial(),
   codeBlock: z.strictObject({ language: legacy }).partial(),
   orderedList: z.strictObject({ start: legacy, type: legacy }).partial(),
   link: z

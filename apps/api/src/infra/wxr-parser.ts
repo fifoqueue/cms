@@ -99,6 +99,12 @@ const item = (node: Node): WxrItem => {
     categories: slugs('category'),
     tags: slugs('post_tag'),
     comments: list(node['wp:comment']).map(comment),
+    meta: Object.fromEntries(
+      list(node['wp:postmeta']).map((meta) => [
+        str(meta['wp:meta_key']),
+        str(meta['wp:meta_value']),
+      ]),
+    ),
   };
 };
 

@@ -12,7 +12,9 @@ import type { ContentService } from '#api/domain/content/content-service';
 import type { ContentTypeService } from '#api/domain/content/content-types';
 import type { Clock, IdGenerator } from '#api/domain/ports';
 import type { TaxonomyService } from '#api/domain/taxonomy/taxonomy-service';
+import { fromWordPressHtml } from '#api/domain/tools/wxr';
 import type { WxrComment, WxrParser, WxrTerm } from '#api/domain/tools/wxr';
+import type { PatternService } from '#api/domain/content/pattern-service';
 import type { UserDirectory } from '#api/domain/users/user-directory';
 import { DomainError, Errors } from '#api/shared/errors';
 
@@ -70,6 +72,8 @@ export class ImportService {
       users: Pick<UserDirectory, 'list'>;
       ids: IdGenerator;
       clock: Clock;
+      /** Imported `wp_block` items become patterns. */
+      patterns?: Pick<PatternService, 'create'>;
     },
   ) {}
 
@@ -104,7 +108,32 @@ export class ImportService {
       (await this.deps.types.list()).map((type) => type.key),
     );
 
+    // Patterns first, so entries can point at their new ids.
+    const patterns = new Map<string, string>();
     for (const item of document.items) {
+      if (item.type !== 'wp_block' || !this.deps.patterns) continue;
+      const title = item.title.trim().slice(0, 191) || 'Pattern';
+      try {
+        const pattern = await this.deps.patterns.create(
+          {
+            title,
+            document: this.deps.html.parse(
+              fromWordPressHtml(item.html, patterns),
+            ),
+            synced: item.meta?.wp_pattern_sync_status !== 'unsynced',
+            status: item.status === 'publish' ? 'published' : 'draft',
+          },
+          actor,
+        );
+        patterns.set(item.id, pattern.id);
+      } catch (error) {
+        if (!(error instanceof DomainError)) throw error;
+        result.skipped.push({ title, reason: error.message });
+      }
+    }
+
+    for (const item of document.items) {
+      if (item.type === 'wp_block' && this.deps.patterns) continue;
       const status = STATUSES[item.status];
       if (!status || !types.has(item.type)) {
         result.skipped.push({
@@ -121,7 +150,7 @@ export class ImportService {
       const title = item.title.trim() || item.slug || 'Untitled';
       let document: ContentInput['document'];
       try {
-        document = this.deps.html.parse(item.html);
+        document = this.deps.html.parse(fromWordPressHtml(item.html, patterns));
       } catch (error) {
         // A body the schema cannot hold skips that entry only (nothing is written for it).
         if (!(error instanceof DomainError)) throw error;

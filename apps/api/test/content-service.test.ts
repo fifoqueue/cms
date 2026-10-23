@@ -86,6 +86,8 @@ const setup = () => {
   }
   const clock = fixedClock();
   const revisions = new MemoryRevisionRepository();
+  /** Settings → Writing's default category. */
+  const writing = { category: null as string | null };
   const service = new ContentService({
     repository,
     renderer: tiptapRenderer,
@@ -97,6 +99,7 @@ const setup = () => {
     hasher: plainHasher,
     types: testTypes(),
     fields: testFields(),
+    defaultCategory: async () => writing.category,
   });
   const published = new MemoryPublishedContentRepository(repository);
   const protectedActions: string[] = [];
@@ -120,6 +123,7 @@ const setup = () => {
     repository,
     revisions,
     protectedActions,
+    writing,
   };
 };
 
@@ -832,6 +836,22 @@ const doc = (...texts: string[]): ContentInput['document'] => ({
 });
 
 describe('content taxonomy and search', () => {
+  test('a post saved without a category gets the default one; pages and chosen categories do not', async () => {
+    const { service, taxonomy, writing } = setup();
+    const fallback = await taxonomy.create('category', { name: 'General' });
+    const chosen = await taxonomy.create('category', { name: 'News' });
+    writing.category = fallback.id;
+    const post = await service.create(input(), ADMIN);
+    expect(post.categories.map(({ id }) => id)).toEqual([fallback.id]);
+    const picked = await service.create(
+      input({ categoryIds: [chosen.id] }),
+      ADMIN,
+    );
+    expect(picked.categories.map(({ id }) => id)).toEqual([chosen.id]);
+    const page = await service.create(input({ type: 'page' }), ADMIN);
+    expect(page.categories).toEqual([]);
+  });
+
   const seed = async () => {
     const context = setup();
     const { taxonomy } = context;

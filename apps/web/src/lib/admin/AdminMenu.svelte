@@ -201,6 +201,11 @@
             label: (m) => m.appearanceWidgets,
             capability: 'appearance.manage',
           },
+          {
+            href: resolve('/admin/(app)/patterns'),
+            label: (m) => m.patternsTitle,
+            capability: 'content.create',
+          },
         ],
       },
       {

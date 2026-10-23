@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { Path } from '$app/types';
+  import { resolve } from '$app/paths';
   import { enhance } from '$app/forms';
   import { page } from '$app/state';
   import { useI18n } from '#lib/i18n/index.js';
@@ -55,6 +57,30 @@
         <!-- eslint-disable-next-line svelte/no-at-html-tags -- rendered by the API from a schema-validated document -->
         {@html entry.html}
       </div>
+      {#if entry.pages.total > 1}
+        <!-- Parts of an entry split by page breaks (WordPress "Pages: 1 2 3"). -->
+        <nav
+          aria-label={m.themePages}
+          class="flex flex-wrap items-center gap-2 text-sm"
+        >
+          <span class="text-muted-foreground">{m.themePages}</span>
+          {#each { length: entry.pages.total } as _, index (index)}
+            {@const part = index + 1}
+            {#if part === entry.pages.current}
+              <span aria-current="page" class="font-semibold">{part}</span>
+            {:else}
+              <a
+                class="underline"
+                href={resolve(
+                  (part > 1
+                    ? `${entry.path}?page=${part}`
+                    : entry.path) as Path,
+                )}>{part}</a
+              >
+            {/if}
+          {/each}
+        </nav>
+      {/if}
     {/if}
     <SlotOutlet fragments={slots?.['content.after'] ?? []} />
   </div>

@@ -13,6 +13,7 @@ import { EmbedRegistry } from '#api/plugin-runtime/embed-registry';
 import { MediaService } from '#api/domain/media/media-service';
 import { ReadingService } from '#api/domain/site/reading-service';
 import { WritingService } from '#api/domain/site/writing-service';
+import { PatternService } from '#api/domain/content/pattern-service';
 import { MenuService } from '#api/domain/appearance/menu-service';
 import { ContentTypeService } from '#api/domain/content/content-types';
 import { FieldService } from '#api/domain/content/fields';
@@ -217,6 +218,12 @@ export const createContainer = async (
 
   const contentRepository = new PrismaContentRepository(db);
   const settingsRepository = new PrismaSettingsRepository(db);
+  const patterns = new PatternService({
+    settings: settingsRepository,
+    renderer: tiptapRenderer,
+    ids: uuidV7,
+    clock: systemClock,
+  });
   const taxonomyRepository = new PrismaTaxonomyRepository(db);
   const taxonomyTypes = new TaxonomyTypeService(
     settingsRepository,
@@ -241,10 +248,10 @@ export const createContainer = async (
   const responsiveImages = new ResponsiveImages((ids) =>
     mediaRepository.publicImages(ids),
   );
-  /** Body HTML as served: players for embeds, then responsive images. */
+  /** Body HTML as served: synced patterns, players for embeds, then responsive images. */
   const served = {
     expand: async (html: string) =>
-      responsiveImages.expand(await embeds.expand(html)),
+      responsiveImages.expand(await embeds.expand(await patterns.expand(html))),
   };
   const signer = hmacSigner(
     secretKey(config.CMS_SECRET_KEY, join(API_DIRECTORY, 'data/secret.key')),
@@ -412,6 +419,11 @@ export const createContainer = async (
     hasher: bunPasswordHasher,
     types: contentTypes,
     fields,
+    defaultCategory: async () => {
+      const id = (await writing.get()).defaultCategoryId;
+      const term = id && (await taxonomyRepository.findById(id, 'all'));
+      return term && term.taxonomy === 'category' ? term.id : null;
+    },
   });
   const contentRevisions = new RevisionService({
     content,
@@ -567,9 +579,11 @@ export const createContainer = async (
     users: directory,
     ids: uuidV7,
     clock: systemClock,
+    patterns,
   });
   const exporter = new ExportService({
     content: contentRepository,
+    patterns: () => patterns.exportable(),
     terms: taxonomyRepository,
     comments: commentRepository,
     users: directory,
@@ -628,6 +642,7 @@ export const createContainer = async (
       adminContent: content,
       reading,
       writing,
+      patterns,
       menus,
       widgets,
       comments,

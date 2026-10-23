@@ -47,6 +47,8 @@ export interface WxrItem {
   categories: string[];
   tags: string[];
   comments: WxrComment[];
+  /** `wp:postmeta` pairs the CMS reads or writes (`wp_pattern_sync_status`). */
+  meta?: Record<string, string>;
 }
 
 export interface WxrDocument {
@@ -159,6 +161,10 @@ export const wxrItemStart = (
     tag('wp:post_password', cdata(item.password)),
     tag('wp:is_sticky', item.sticky ? '1' : '0'),
     ...terms,
+    ...Object.entries(item.meta ?? {}).map(
+      ([key, value]) =>
+        `<wp:postmeta>${tag('wp:meta_key', cdata(key))}${tag('wp:meta_value', cdata(value))}</wp:postmeta>`,
+    ),
   ].join('');
 };
 
@@ -181,3 +187,35 @@ export const buildWxr = (document: WxrDocument): string => {
     wxrFooter,
   ].join('');
 };
+
+// Body markers the editor stores, and how WordPress writes the same things.
+const MORE = '<div class="cms-more" data-cms-more="true"></div>';
+const NEXT_PAGE = '<div class="cms-nextpage" data-cms-nextpage="true"></div>';
+const PATTERN =
+  /<div class="cms-pattern" data-cms-pattern="([A-Za-z0-9-]{1,36})"><\/div>/g;
+
+/** Stored body HTML as WordPress writes it: `<!--more-->`, `<!--nextpage-->`, `wp:block` references. */
+export const toWordPressHtml = (html: string) =>
+  html
+    .replaceAll(MORE, '<!--more-->')
+    .replaceAll(NEXT_PAGE, '<!--nextpage-->')
+    .replace(PATTERN, '<!-- wp:block {"ref":"$1"} /-->');
+
+/**
+ * WordPress markers as the editor's elements before the HTML is parsed. Pattern references use
+ * the ids the import gave the file's patterns; unknown ones are dropped.
+ */
+export const fromWordPressHtml = (
+  html: string,
+  patterns: ReadonlyMap<string, string>,
+) =>
+  html
+    .replace(/<!--more(?:\s[^>]*)?-->/g, '<div data-cms-more="true"></div>')
+    .replace(/<!--nextpage-->/g, '<div data-cms-nextpage="true"></div>')
+    .replace(
+      /<!--\s*wp:block\s+\{\s*"ref"\s*:\s*"?([\w-]{1,36})"?\s*\}\s*\/-->/g,
+      (_, ref: string) => {
+        const id = patterns.get(ref);
+        return id ? `<div data-cms-pattern="${id}"></div>` : '';
+      },
+    );
