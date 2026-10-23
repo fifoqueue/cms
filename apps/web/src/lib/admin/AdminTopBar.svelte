@@ -10,7 +10,6 @@
     UserRound,
   } from '@lucide/svelte';
   import { onMount } from 'svelte';
-  import { clearBackups } from '#lib/admin/editor-backup.js';
   import { typeLabel, useI18n } from '#lib/i18n/index.js';
 
   interface Props {
@@ -144,11 +143,7 @@
         >
       </li>
       <li>
-        <form
-          method="POST"
-          action={resolve('/admin/logout')}
-          onsubmit={() => clearBackups()}
-        >
+        <form method="POST" action={resolve('/admin/logout')}>
           <button type="submit" class="{item} w-full text-left"
             >{m.signOut}</button
           >

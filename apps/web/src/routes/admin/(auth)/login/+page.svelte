@@ -1,5 +1,8 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import { page } from '$app/state';
+  import { onMount } from 'svelte';
+  import { clearBackups } from '#lib/admin/editor-backup.js';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
@@ -19,6 +22,11 @@
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
+
+  // After a completed sign-out, nothing typed in this tab stays in its storage.
+  onMount(() => {
+    if (page.url.searchParams.has('signedOut')) clearBackups();
+  });
   const showCaptcha = $derived(
     data.captcha.provider !== 'none' &&
       (data.captcha.always.includes('login') ||

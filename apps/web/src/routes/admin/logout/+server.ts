@@ -8,5 +8,6 @@ export const POST: RequestHandler = async ({ fetch, locals, cookies }) => {
     .logout()
     .catch(() => undefined);
   endSession(cookies);
-  redirect(303, '/admin/login');
+  // The sign-in page clears this tab's editor backups only after a completed sign-out.
+  redirect(303, '/admin/login?signedOut');
 };

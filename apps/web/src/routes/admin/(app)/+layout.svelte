@@ -13,7 +13,7 @@
   import AdminMenu from '#lib/admin/AdminMenu.svelte';
   import AdminTopBar from '#lib/admin/AdminTopBar.svelte';
   import FlashNotice from '#lib/admin/FlashNotice.svelte';
-  import { claimBackups, clearBackups } from '#lib/admin/editor-backup.js';
+  import { claimBackups } from '#lib/admin/editor-backup.js';
   import ColorModeToggle from '#lib/admin/ColorModeToggle.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import { provideI18n } from '#lib/i18n/index.js';
@@ -105,11 +105,7 @@
           <ExternalLink class="size-4" />
           {i18n.m.viewSite}
         </a>
-        <form
-          method="POST"
-          action="/admin/logout"
-          onsubmit={() => clearBackups()}
-        >
+        <form method="POST" action="/admin/logout">
           <Button
             type="submit"
             variant="ghost"

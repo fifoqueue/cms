@@ -31,8 +31,15 @@ test("a shared tab never offers one account's unsaved text to another", () => {
   expect(storage.length).toBe(1); // Only B's owner marker remains.
   expect(editorBackup('a', 'new:post', storage).read()).toBeNull();
 
+  // A form still open from A cannot write A's text back once B owns the tab.
+  const stale = editorBackup('a', 'entry-1', storage);
+  claimBackups('b', storage);
+  stale.write('LATE A');
+  expect(storage.length).toBe(1);
+
   // Signing out removes every backup.
   editorBackup('b', 'entry-1', storage).write('B text');
+  expect(storage.length).toBe(2);
   clearBackups(storage);
   expect(storage.length).toBe(0);
 });

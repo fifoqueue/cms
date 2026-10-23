@@ -1,5 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { autosaveInputSchema, can } from '@cms/sdk';
+import { CmsApiError } from '@cms/sdk/client';
 import { fieldImages, readContentForm } from '#lib/server/content-form.js';
 import {
   Errors,
@@ -43,6 +44,23 @@ export const load: PageServerLoad = async (event) => {
   };
 };
 
+/** Whether a refused save lost to someone else's newer save (not, say, a taken slug). */
+const isStale = async (
+  event: Parameters<typeof adminFor>[0] & { params: { id: string } },
+  caught: unknown,
+  expected: string | undefined,
+) =>
+  caught instanceof CmsApiError &&
+  caught.status === 409 &&
+  !!expected &&
+  (await adminFor(event)
+    .content.get(event.params.id)
+    .then(
+      (entry) =>
+        new Date(entry.updatedAt).getTime() !== new Date(expected).getTime(),
+      () => false,
+    ));
+
 export const actions: Actions = {
   save: async (event) => {
     const [formData, model] = await Promise.all([
@@ -51,13 +69,19 @@ export const actions: Actions = {
     ]);
     const { input, values, failure } = readContentForm(formData, model.fields);
     if (failure) return failure;
+    let saved;
     try {
-      await adminFor(event).content.update(event.params.id, input);
+      saved = await adminFor(event).content.update(event.params.id, input);
     } catch (caught) {
-      return failFrom(caught, { values });
+      return failFrom(caught, {
+        values,
+        ...((await isStale(event, caught, input.expectedUpdatedAt)) && {
+          stale: true,
+        }),
+      });
     }
-    // The editor shows what the save did next to its buttons.
-    return { saved: true };
+    // The editor shows what the save did and adopts this version (and only this one).
+    return { saved: true, version: saved.updatedAt, status: saved.status };
   },
   trash: async (event) => {
     try {

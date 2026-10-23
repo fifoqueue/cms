@@ -20,19 +20,22 @@
 
 <h1 class="text-2xl font-semibold">{m.contentNewTitle}</h1>
 <FormMessage {form} />
-<ContentForm
-  {type}
-  values={form && 'values' in form ? form.values : undefined}
-  parentPages={data.parentPages}
-  extraTaxonomies={data.extraTaxonomies}
-  categories={data.categories}
-  tags={data.tags}
-  seo={data.seo}
-  model={data.model}
-  authors={data.authors}
-  canPublish={data.canPublish}
-  canManageTerms={data.canManageTerms}
-  userId={data.authorId}
-  defaults={data.defaults}
-  defaultAuthorId={data.authorId}
-/>
+<!-- A different account gets a fresh form (its backups belong to that account). -->
+{#key data.authorId}
+  <ContentForm
+    {type}
+    values={form && 'values' in form ? form.values : undefined}
+    parentPages={data.parentPages}
+    extraTaxonomies={data.extraTaxonomies}
+    categories={data.categories}
+    tags={data.tags}
+    seo={data.seo}
+    model={data.model}
+    authors={data.authors}
+    canPublish={data.canPublish}
+    canManageTerms={data.canManageTerms}
+    userId={data.authorId}
+    defaults={data.defaults}
+    defaultAuthorId={data.authorId}
+  />
+{/key}
