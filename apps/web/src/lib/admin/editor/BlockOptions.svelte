@@ -3,7 +3,7 @@
   import type { AdminMedia, MediaKind, PluginBlockInfo } from '@cms/sdk';
   import { loadPluginBlocks } from '#lib/admin/editor/plugin-blocks.js';
   import { Popover } from 'bits-ui';
-  import { tick } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import { Input } from '#lib/components/ui/input/index.js';
@@ -20,7 +20,9 @@
 
   let { editor, revision }: { editor: Editor; revision: number } = $props();
   let pluginBlocks = $state<PluginBlockInfo[]>([]);
-  void loadPluginBlocks().then((list) => (pluginBlocks = list));
+  onMount(() => {
+    void loadPluginBlocks().then((list) => (pluginBlocks = list));
+  });
   const i18n = useI18n();
   const m = $derived(i18n.m);
   const targets = $derived(revision >= 0 ? blockTargets(editor) : []);

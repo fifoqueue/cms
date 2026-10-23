@@ -25,6 +25,8 @@
    */
   interface Props {
     blocks: Block[];
+    /** The save form lives outside the canvas, whose rendered blocks may contain forms. */
+    form: string;
     /** Palette slugs for color settings. */
     colors: { slug: string; name: string }[];
     /** Template part slugs for the template-part block. */
@@ -36,7 +38,8 @@
     canvas: Snippet<[(path: BlockPath) => void, string | null]>;
   }
 
-  let { blocks, colors, parts, onchange, onselect, canvas }: Props = $props();
+  let { blocks, form, colors, parts, onchange, onselect, canvas }: Props =
+    $props();
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
@@ -119,7 +122,7 @@
   }}
 />
 
-<input type="hidden" name="blocks" value={json} />
+<input type="hidden" name="blocks" value={json} {form} />
 
 <!-- Canvas beside a sidebar (List View above the settings); List View moves left on wide screens. -->
 <div

@@ -2,12 +2,33 @@ import { expect, test } from 'bun:test';
 import type { Cookies } from '@sveltejs/kit';
 import { eachBounded, readSelection } from '#lib/server/bulk.js';
 import { readScreenOptions } from '#lib/server/screen-options.js';
+import { loadPluginBlocks } from '#lib/admin/editor/plugin-blocks.js';
 
 const form = (ids: string[]) => {
   const data = new FormData();
   for (const id of ids) data.append('ids', id);
   return data;
 };
+
+test('plugin block choices refresh after activation between editor visits', async () => {
+  const original = globalThis.fetch;
+  let blocks: unknown[] = [];
+  globalThis.fetch = (async () => Response.json(blocks)) as typeof fetch;
+  try {
+    expect(await loadPluginBlocks()).toEqual([]);
+    blocks = [
+      {
+        block: 'plugin:sample:notice',
+        title: 'Notice',
+        description: '',
+        attributes: [],
+      },
+    ];
+    expect(await loadPluginBlocks()).toEqual(blocks);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
 
 test('bulk selections are capped up front and invalid ids are reported, never dropped', async () => {
   const over = readSelection(
