@@ -54,6 +54,44 @@ const webUrl = (value: string | undefined) =>
 /** Separated from the text around it, so paragraphs form around the block. */
 const block = (html: string) => `\n\n${html}\n\n`;
 
+/** Tag and comment spans stay verbatim; quoted attributes may contain `>` or shortcode text. */
+const htmlTags = (html: string) => {
+  const spans: number[] = [];
+  for (let start = html.indexOf('<'); start !== -1;) {
+    if (!/[A-Za-z!/?]/.test(html[start + 1] ?? '')) {
+      start = html.indexOf('<', start + 1);
+      continue;
+    }
+    let end = start + 1;
+    if (html.startsWith('<!--', start)) {
+      const closing = html.indexOf('-->', start + 4);
+      end = closing === -1 ? html.length : closing + 3;
+    } else {
+      let quote = '';
+      while (end < html.length) {
+        const char = html[end++]!;
+        if (quote) {
+          if (char === quote) quote = '';
+        } else if (char === '"' || char === "'") quote = char;
+        else if (char === '>') break;
+      }
+    }
+    spans.push(start, end);
+    start = html.indexOf('<', end);
+  }
+  return (offset: number) => {
+    let low = 0;
+    let high = spans.length / 2;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (spans[middle * 2]! <= offset) low = middle + 1;
+      else high = middle;
+    }
+    const end = low ? spans[low * 2 - 1]! : -1;
+    return offset < end ? end : -1;
+  };
+};
+
 const embed = (url: string) =>
   block(
     `<figure data-embed-url="${escape(url)}" class="embed"><a href="${escape(url)}">${escape(url)}</a></figure>`,
@@ -117,6 +155,7 @@ export const classicHtml = (
     throw invalidInput(Errors.ImportContentLimit);
   const endings = { caption: /\[\/caption\]/gi, embed: /\[\/embed\]/gi };
   const opening = /\[(caption|gallery|embed|audio|video)\b/gi;
+  const tagEnd = htmlTags(html);
   const unclosed = new Set<string>();
   let work = 0;
   const charge = () => {
@@ -126,6 +165,11 @@ export const classicHtml = (
     (function* () {
       let offset = 0;
       for (let match; (match = opening.exec(html));) {
+        const protectedEnd = tagEnd(match.index);
+        if (protectedEnd !== -1) {
+          opening.lastIndex = protectedEnd;
+          continue;
+        }
         charge();
         yield html.slice(offset, match.index);
         const end = html.indexOf(']', opening.lastIndex);
@@ -144,9 +188,17 @@ export const classicHtml = (
           const closing = `[/${kind}]`;
           const ending = endings[kind];
           ending.lastIndex = offset;
-          const close = unclosed.has(kind)
-            ? -1
-            : (ending.exec(html)?.index ?? -1);
+          let close = -1;
+          if (!unclosed.has(kind)) {
+            for (let found; (found = ending.exec(html));) {
+              const protectedEnd = tagEnd(found.index);
+              if (protectedEnd === -1) {
+                close = found.index;
+                break;
+              }
+              ending.lastIndex = protectedEnd;
+            }
+          }
           if (close === -1) unclosed.add(kind);
           else {
             const inner = html.slice(offset, close);
@@ -214,12 +266,14 @@ export const classicHtml = (
     })(),
   );
   // Auto-embeds share the work/output budgets with explicit shortcodes.
+  const convertedTagEnd = htmlTags(converted);
   const linked = bounded(
     (function* () {
       let offset = 0;
       for (const match of converted.matchAll(
         /^[ \t]*(https?:\/\/[^\s<>"]+)[ \t]*$/gim,
       )) {
+        if (convertedTagEnd(match.index) !== -1) continue;
         charge();
         yield converted.slice(offset, match.index);
         const address = match[1]!;
