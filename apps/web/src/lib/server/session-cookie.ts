@@ -4,6 +4,9 @@ import type { SessionGrant } from '@cms/sdk';
 export const SESSION_COOKIE = '__Host-cms_session';
 export const LEGACY_SESSION_COOKIE = 'cms_session';
 
+const signedOutName = (url: URL) =>
+  url.protocol === 'https:' ? '__Host-cms_signed_out' : 'cms_signed_out';
+
 const options = (secure: boolean) => ({
   path: '/',
   httpOnly: true,
@@ -13,6 +16,21 @@ const options = (secure: boolean) => ({
 
 const nameFor = (url: URL) =>
   url.protocol === 'https:' ? SESSION_COOKIE : LEGACY_SESSION_COOKIE;
+
+/** A completed sign-out authorizes the next login view to clear local editor backups. */
+export const markSignedOut = (cookies: Cookies, url: URL) =>
+  cookies.set(signedOutName(url), '1', {
+    ...options(url.protocol === 'https:'),
+    maxAge: 60,
+  });
+
+/** HTTPS ignores domain-injected legacy markers; creation and deletion use the same scheme. */
+export const takeSignedOut = (cookies: Cookies, url: URL) => {
+  const name = signedOutName(url);
+  const signedOut = cookies.get(name) === '1';
+  if (signedOut) cookies.delete(name, options(url.protocol === 'https:'));
+  return signedOut;
+};
 
 /** HTTPS trusts only the host-bound name; HTTP keeps its separate development session. */
 export const sessionToken = (cookies: Pick<Cookies, 'get'>, url: URL) =>

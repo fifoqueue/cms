@@ -6,6 +6,8 @@ import {
   endSession,
   sessionToken,
   startSession,
+  markSignedOut,
+  takeSignedOut,
 } from '#lib/server/session-cookie.js';
 import {
   consumeSsoTransaction,
@@ -41,6 +43,26 @@ const grant = {
 } as never;
 
 describe('session cookie', () => {
+  test('logout markers are host-bound on HTTPS and usable on ordinary HTTP', () => {
+    const https = new URL('https://cms.example.test/members/sign-in');
+    const secure = cookies({ cms_signed_out: '1' });
+    expect(takeSignedOut(secure.api, https)).toBe(false);
+    markSignedOut(secure.api, https);
+    expect(secure.options.get('__Host-cms_signed_out')).toMatchObject({
+      secure: true,
+      path: '/',
+      httpOnly: true,
+      maxAge: 60,
+    });
+    expect(takeSignedOut(secure.api, https)).toBe(true);
+    expect(takeSignedOut(secure.api, https)).toBe(false);
+
+    const http = new URL('http://cms.internal/members/sign-in');
+    const plain = cookies();
+    markSignedOut(plain.api, http);
+    expect(plain.options.get('cms_signed_out')?.secure).toBe(false);
+    expect(takeSignedOut(plain.api, http)).toBe(true);
+  });
   test('HTTPS uses a host-bound cookie while HTTP localhost keeps the development cookie', () => {
     const secure = cookies();
     startSession(secure.api, grant, new URL('https://cms.example/admin'));

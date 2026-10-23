@@ -3,8 +3,7 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { authApi, contentApi } from '#lib/server/api.js';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { RETURN_PARAM, returnPath } from '#lib/server/return-path.js';
-import { startSession } from '#lib/server/session-cookie.js';
-import { takeSignedOut } from '#lib/server/session.js';
+import { startSession, takeSignedOut } from '#lib/server/session-cookie.js';
 import { rememberSsoTransaction, ssoApi } from '#lib/server/sso.js';
 import { clientProof, visitorOf } from '#lib/server/visitor.js';
 
@@ -42,7 +41,7 @@ export const loginPage = async (
     captcha,
     membership,
     back,
-    signedOut: takeSignedOut(event.cookies),
+    signedOut: takeSignedOut(event.cookies, event.url),
   };
 };
 
