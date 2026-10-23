@@ -3,7 +3,10 @@
   import { formatMonth } from '#lib/theme/format.js';
   import { useScope } from '#lib/theme/scope.js';
 
-  /** A month by day (UTC, like the date archives); days with posts link to the month archive. */
+  /**
+   * A month by day (UTC, like the date archives); days with posts link to the month archive
+   * (there are no day archives), and the nearest months with posts are linked below.
+   */
   const scope = useScope();
   const calendar = $derived(scope().calendar);
   const locale = $derived(scope().site.locale);
@@ -28,6 +31,11 @@
       }
     }),
   );
+  const monthPath = ({ year, month }: { year: number; month: number }) =>
+    resolve('/(site)/date/[year]/[[month]]', {
+      year: String(year),
+      month: String(month).padStart(2, '0'),
+    });
   const weeks = $derived.by(() => {
     if (!calendar) return [];
     const first = new Date(
@@ -67,10 +75,7 @@
             <td class="py-1">
               {#if day && calendar.days[day]}
                 <a
-                  href={resolve('/(site)/date/[year]/[[month]]', {
-                    year: String(calendar.year),
-                    month: String(calendar.month).padStart(2, '0'),
-                  })}
+                  href={monthPath(calendar)}
                   class="font-semibold text-primary hover:underline">{day}</a
                 >
               {:else if day}{day}{/if}
@@ -79,5 +84,30 @@
         </tr>
       {/each}
     </tbody>
+    {#if calendar.previous || calendar.next}
+      <tfoot>
+        <tr>
+          <td colspan="3" class="pt-2 text-left">
+            {#if calendar.previous}
+              <a href={monthPath(calendar.previous)} class="hover:underline"
+                >« {formatMonth(
+                  calendar.previous.year,
+                  calendar.previous.month,
+                  locale,
+                )}</a
+              >
+            {/if}
+          </td>
+          <td></td>
+          <td colspan="3" class="pt-2 text-right">
+            {#if calendar.next}
+              <a href={monthPath(calendar.next)} class="hover:underline"
+                >{formatMonth(calendar.next.year, calendar.next.month, locale)} »</a
+              >
+            {/if}
+          </td>
+        </tr>
+      </tfoot>
+    {/if}
   </table>
 {/if}

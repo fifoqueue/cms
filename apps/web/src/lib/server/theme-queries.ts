@@ -36,6 +36,11 @@ export interface BlockData {
   queries: Record<string, PostList>;
   terms: { category: TermItem[] | null; tag: TermItem[] | null };
   months: { year: number; month: number; count: number }[] | null;
+  /**
+   * The limits `months` and `recentComments` were requested with: a shorter answer can be
+   * complete, so reuse depends on what was asked, not on how much came back.
+   */
+  limits: { months: number; comments: number };
   adjacent: { previous: EntryLink | null; next: EntryLink | null } | null;
   /** Published pages in tree order (`page-list`). */
   pageTree: (EntryLink & { depth: number })[] | null;
@@ -53,6 +58,9 @@ export interface BlockData {
     year: number;
     month: number;
     days: Record<number, number>;
+    /** The nearest months with posts before and after (WordPress calendar links). */
+    previous: { year: number; month: number } | null;
+    next: { year: number; month: number } | null;
   } | null;
 }
 
@@ -63,6 +71,9 @@ export interface BlockContext {
   /** The month a calendar shows; the current UTC month by default. */
   month: { year: number; month: number } | null;
 }
+
+/** Months of posts the calendar looks through for its previous and next links. */
+const CALENDAR_MONTHS = 60;
 
 const NO_CONTEXT: BlockContext = { entry: null, month: null };
 
@@ -130,7 +141,7 @@ const link = (entry: { title: string; path: string } | null) =>
 type Shared = Partial<
   Pick<
     BlockData,
-    'queries' | 'terms' | 'months' | 'pageTree' | 'recentComments'
+    'queries' | 'terms' | 'months' | 'pageTree' | 'recentComments' | 'limits'
   >
 >;
 
@@ -256,7 +267,7 @@ export const loadBlockData = async (
     needs.tag ? terms('tag') : (known.terms?.tag ?? null),
     !needs.months
       ? (known.months ?? null)
-      : known.months && known.months.length >= needs.months
+      : known.months && (known.limits?.months ?? 0) >= needs.months
         ? known.months
         : api.months(needs.months).then(
             (list) =>
@@ -281,7 +292,7 @@ export const loadBlockData = async (
         )),
     !needs.comments
       ? (known.recentComments ?? null)
-      : known.recentComments && known.recentComments.length >= needs.comments
+      : known.recentComments && (known.limits?.comments ?? 0) >= needs.comments
         ? known.recentComments
         : api.recentComments(needs.comments).then(
             (list) =>
@@ -295,15 +306,31 @@ export const loadBlockData = async (
         )
       : null,
     needs.calendar
-      ? api
-          .list({ type: 'post', ...month, pageSize: 100 })
-          .then(({ items }) => {
+      ? Promise.all([
+          api.list({ type: 'post', ...month, pageSize: 100 }),
+          // Newest first; months further back than this get no "previous" link.
+          api.months(CALENDAR_MONTHS).catch(() => []),
+        ])
+          .then(([{ items }, listed]) => {
             const days: Record<number, number> = {};
             for (const { publishedAt } of items) {
               const day = new Date(publishedAt).getUTCDate();
               days[day] = (days[day] ?? 0) + 1;
             }
-            return { ...month, days };
+            const order = ({ year, month }: { year: number; month: number }) =>
+              year * 12 + month;
+            const near = (entry: (typeof listed)[number] | undefined) =>
+              entry ? { year: entry.year, month: entry.month } : null;
+            return {
+              ...month,
+              days,
+              previous: near(
+                listed.find((entry) => order(entry) < order(month)),
+              ),
+              next: near(
+                listed.findLast((entry) => order(entry) > order(month)),
+              ),
+            };
           })
           .catch(() => null)
       : null,
@@ -312,6 +339,20 @@ export const loadBlockData = async (
     queries: { ...known.queries, ...Object.fromEntries(lists) },
     terms: { category, tag },
     months,
+    limits: {
+      months:
+        months === known.months
+          ? (known.limits?.months ?? 0)
+          : months
+            ? needs.months
+            : 0,
+      comments:
+        recentComments === known.recentComments
+          ? (known.limits?.comments ?? 0)
+          : recentComments
+            ? needs.comments
+            : 0,
+    },
     adjacent,
     pageTree,
     recentComments,

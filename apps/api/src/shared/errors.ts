@@ -225,6 +225,8 @@ export const Errors = {
     '설정 파일이 손상되었습니다. 기존 설정을 복구해 주세요.',
   // site-theme
   SiteImageInvalid: 'Choose an image from the media library.',
+  ThemeScreenshotInvalid:
+    'The theme screenshot must be a PNG or WebP image of at most 512 KB.',
 } as const;
 
 export const invalidInput = (message: string, issues?: unknown) =>

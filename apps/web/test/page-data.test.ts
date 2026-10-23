@@ -426,7 +426,10 @@ describe('public page data', () => {
   });
 
   test('block data shared by the error template and the page, and archive slots, load once', async () => {
-    const footer = [{ name: 'latest-posts', attrs: { count: 5 } }];
+    const footer = [
+      { name: 'latest-posts', attrs: { count: 5 } },
+      { name: 'archives', attrs: { months: 12 } },
+    ];
     const shared = {
       ...theme,
       templates: {
@@ -454,7 +457,10 @@ describe('public page data', () => {
           })
         : url.pathname === '/api/v1/adjacent'
           ? json({ previous: null, next: null })
-          : undefined;
+          : url.pathname === '/api/v1/months'
+            ? // Fewer months than asked for is still the complete answer.
+              json([{ year: 2026, month: 1, count: 1 }])
+            : undefined;
     const layout = await loadSiteLayout(publicEvent('/'));
     const withLayout = (path: string) =>
       ({
@@ -468,6 +474,9 @@ describe('public page data', () => {
         url.searchParams.get('pageSize') === '5',
     );
     expect(latest).toHaveLength(1);
+    expect(
+      calls.filter(({ url }) => url.pathname === '/api/v1/months'),
+    ).toHaveLength(1);
     expect(entry).toMatchObject({ adjacent: { previous: null, next: null } });
 
     calls = [];
