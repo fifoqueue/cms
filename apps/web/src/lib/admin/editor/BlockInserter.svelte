@@ -8,11 +8,16 @@
   import BlockOptions from '#lib/admin/editor/BlockOptions.svelte';
   import { mediaNode } from '#lib/admin/editor/blocks.js';
   import { loadPluginBlocks } from '#lib/admin/editor/plugin-blocks.js';
+  import { patternContent } from '#lib/admin/editor/patterns.js';
+  import type { PatternChoice } from '#lib/admin/editor/patterns.js';
   import { Input } from '#lib/components/ui/input/index.js';
   import { useI18n } from '#lib/i18n/index.js';
   import '#lib/theme/site.css';
 
-  let { editor }: { editor: Editor | null } = $props();
+  let {
+    editor,
+    patterns = [],
+  }: { editor: Editor | null; patterns?: PatternChoice[] } = $props();
   const i18n = useI18n();
   const m = $derived(i18n.m);
   let open = $state(false);
@@ -45,6 +50,8 @@
     'spacer',
     'codeBlock',
     'embed',
+    'more',
+    'pageBreak',
   ];
   /** Blocks of active plugins, inserted as the shared `pluginBlock` node. */
   let pluginBlocks = $state<PluginBlockInfo[]>([]);
@@ -52,6 +59,17 @@
   const name = (type: string) =>
     pluginBlocks.find((entry) => entry.block === type)?.title ??
     m.contentBlockName(type);
+  const patternMatches = $derived(
+    patterns.filter((pattern) =>
+      pattern.title.toLowerCase().includes(search.trim().toLowerCase()),
+    ),
+  );
+  const insertPattern = (pattern: PatternChoice) => {
+    chosen = true;
+    open = false;
+    search = '';
+    insert(patternContent(pattern));
+  };
   const matches = $derived(
     [...blocks, ...pluginBlocks.map((entry) => entry.block)].filter((type) =>
       `${name(type)} ${type}`
@@ -89,7 +107,7 @@
     };
   });
 
-  const insert = (content: JSONContent) =>
+  const insert = (content: JSONContent | JSONContent[]) =>
     editor?.chain().focus().insertContent(content).run();
   const pick = (media: AdminMedia) => {
     if (media.kind !== mediaKind) return;
@@ -218,6 +236,23 @@
         {#if !matches.length}<p class="p-3 text-sm text-muted-foreground">
             {m.contentNoBlocks}
           </p>{/if}
+        {#if patternMatches.length}
+          <h3 class="mt-3 px-1 text-xs font-medium text-muted-foreground">
+            {m.patternsTitle}
+          </h3>
+          <ul class="mt-1 grid max-h-40 gap-1 overflow-y-auto">
+            {#each patternMatches as pattern (pattern.id)}<li>
+                <button
+                  type="button"
+                  class="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+                  onclick={() => insertPattern(pattern)}
+                  >{pattern.title}{pattern.synced
+                    ? ` · ${m.patternSyncedShort}`
+                    : ''}</button
+                >
+              </li>{/each}
+          </ul>
+        {/if}
       </Popover.Content>
     </Popover.Portal>
   </Popover.Root>

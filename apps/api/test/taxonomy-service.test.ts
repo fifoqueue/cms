@@ -31,7 +31,6 @@ import {
   sequentialIds,
   noUsers,
 } from '#test/support/memory';
-import { MemoryRevisionRepository } from '#test/support/memory-revisions';
 import { MemoryPublishedContentRepository } from '#test/support/memory-published';
 import { MemoryTaxonomyRepository } from '#test/support/memory-taxonomy';
 import {
@@ -67,7 +66,7 @@ const setup = (customTaxonomies = false) => {
     ids,
     clock,
     users: noUsers,
-    revisions: new MemoryRevisionRepository(),
+    revisions: content.revisions,
     hasher: plainHasher,
     types: testTypes(),
     fields: testFields(),

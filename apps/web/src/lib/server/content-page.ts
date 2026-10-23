@@ -2,7 +2,10 @@ import type { RequestEvent } from '@sveltejs/kit';
 import type { PublicContent, PublicContentType, SlotMap } from '@cms/sdk';
 import type { ContentClient } from '@cms/sdk/client';
 import { loadComments } from '#lib/server/comments.js';
-import { contentView } from '#lib/server/public-view.js';
+import { error } from '@sveltejs/kit';
+import { PAGE_BREAK_HTML } from '@cms/content/breaks';
+import { Errors } from '#lib/server/errors.js';
+import { contentView, pageParam } from '#lib/server/public-view.js';
 import type { BlockData } from '#lib/server/theme-queries.js';
 import type { ThemePage } from '#lib/theme/template.js';
 
@@ -20,7 +23,16 @@ export const entryPage = async (
   templateData: (page: ThemePage) => Promise<BlockData>,
   path = content.path,
 ) => {
-  const view = { ...contentView(content), path };
+  // `?page=N` shows the N-th part of an entry split by page breaks; each part is its own page.
+  const parts = content.html.split(PAGE_BREAK_HTML);
+  const current = pageParam(event.url);
+  if (current > parts.length) error(404, Errors.NotFound);
+  const view = {
+    ...contentView(content),
+    path,
+    html: parts[current - 1]!,
+    pages: { current, total: parts.length },
+  };
   const captcha = api.captcha().catch(() => null);
   const [definitions, comments, unlockCaptcha, blocks, loadedSlots] =
     await Promise.all([

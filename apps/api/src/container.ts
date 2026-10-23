@@ -15,6 +15,7 @@ import { EmbedRegistry } from '#api/plugin-runtime/embed-registry';
 import { MediaService } from '#api/domain/media/media-service';
 import { ReadingService } from '#api/domain/site/reading-service';
 import { WritingService } from '#api/domain/site/writing-service';
+import { PatternService } from '#api/domain/content/pattern-service';
 import { MenuService } from '#api/domain/appearance/menu-service';
 import { ContentTypeService } from '#api/domain/content/content-types';
 import { FieldService } from '#api/domain/content/fields';
@@ -221,6 +222,14 @@ export const createContainer = async (
 
   const contentRepository = new PrismaContentRepository(db);
   const settingsRepository = new PrismaSettingsRepository(db);
+  const blockRegistry = new BlockRegistry({ timeoutMs, logger });
+  const patterns = new PatternService({
+    settings: settingsRepository,
+    renderer: tiptapRenderer,
+    ids: uuidV7,
+    clock: systemClock,
+    blocks: blockRegistry,
+  });
   const taxonomyRepository = new PrismaTaxonomyRepository(db);
   const taxonomyTypes = new TaxonomyTypeService(
     settingsRepository,
@@ -245,12 +254,17 @@ export const createContainer = async (
   const responsiveImages = new ResponsiveImages((ids) =>
     mediaRepository.publicImages(ids),
   );
-  const blockRegistry = new BlockRegistry({ timeoutMs, logger });
-  /** Body HTML as served: players for embeds, plugin blocks, then responsive images. */
+  /**
+   * Body HTML as served: synced patterns first (so blocks inside them are expanded too), then
+   * players for embeds, plugin blocks and responsive images.
+   */
   const served: HtmlExpander = {
     expand: async (html, context) =>
       responsiveImages.expand(
-        await blockRegistry.expand(await embeds.expand(html), context),
+        await blockRegistry.expand(
+          await embeds.expand(await patterns.expand(html)),
+          context,
+        ),
       ),
   };
   const signer = hmacSigner(
@@ -426,6 +440,11 @@ export const createContainer = async (
     types: contentTypes,
     fields,
     blocks: blockRegistry,
+    defaultCategory: async () => {
+      const id = (await writing.get()).defaultCategoryId;
+      const term = id && (await taxonomyRepository.findById(id, 'all'));
+      return term && term.taxonomy === 'category' ? term.id : null;
+    },
   });
   const contentRevisions = new RevisionService({
     content,
@@ -586,9 +605,11 @@ export const createContainer = async (
     menus,
     accounts: userAdmin,
     tokens: randomTokenIssuer,
+    patterns,
   });
   const exporter = new ExportService({
     content: contentRepository,
+    patterns: () => patterns.exportable(),
     terms: taxonomyRepository,
     comments: commentRepository,
     users: directory,
@@ -647,6 +668,7 @@ export const createContainer = async (
       adminContent: content,
       reading,
       writing,
+      patterns,
       menus,
       widgets,
       comments,

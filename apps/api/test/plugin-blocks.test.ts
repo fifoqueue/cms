@@ -15,7 +15,6 @@ import {
   testFields,
   testTypes,
 } from '#test/support/memory';
-import { MemoryRevisionRepository } from '#test/support/memory-revisions';
 import { createRuntime } from '#test/support/runtime';
 
 const blocksPlugin = definePlugin({
@@ -69,7 +68,7 @@ test('plugin blocks render through isolation, are checked on save and survive th
     ids: sequentialIds(),
     clock: fixedClock(),
     users: noUsers,
-    revisions: new MemoryRevisionRepository(),
+    revisions: repository.revisions,
     hasher: plainHasher,
     types: testTypes(),
     fields: testFields(),

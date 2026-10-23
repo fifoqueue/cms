@@ -22,6 +22,10 @@ export const Errors = {
   TemplateNameInvalid: 'Use lowercase letters, numbers and dashes for the slug',
   ThemeFileTooLarge: 'Theme archives can be at most 2 MB',
   BulkItemFailed: 'This item could not be changed. Try again later.',
+  BulkItemInvalid: 'This selection is not valid.',
+  BulkTooMany: (limit: number) =>
+    `Select at most ${limit} items at a time; nothing was changed.`,
+  PluginActivationFailed: 'The plugin could not be activated.',
   ReassignToDeleted:
     'Choose someone who is not being deleted to receive the content.',
   PasswordOrInvite: 'Enter a password or send an invitation.',

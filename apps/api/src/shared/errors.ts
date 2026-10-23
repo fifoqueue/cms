@@ -27,6 +27,8 @@ export class DomainError extends Error {
 export const Errors = {
   AuthenticationRequired: 'Authentication required',
   Forbidden: 'You do not have permission to do this',
+  PatternNotFound: 'Pattern not found',
+  PatternLimit: 'A site can keep at most 500 patterns',
   TooManyAttempts: 'Too many attempts. Please wait a while and try again.',
   CaptchaRequired: 'Please confirm that you are not a robot.',
   CaptchaInvalid: 'The robot check failed. Please try again.',

@@ -257,3 +257,27 @@ test('WordPress core block HTML keeps its structure and attributes through impor
   expect(html).toContain('<caption>Table caption</caption>');
   expect(parseHtml(html)).toEqual(document);
 });
+
+const doc = (...content: unknown[]) =>
+  ({ type: 'doc', content }) as Parameters<typeof renderDocument>[0];
+
+test('teaser, page breaks and pattern references render as markers, breaks only at the top level', () => {
+  const html = renderDocument(
+    doc(
+      { type: 'more' },
+      { type: 'patternRef', attrs: { ref: 'pattern-1' } },
+      { type: 'pageBreak' },
+    ),
+  );
+  expect(html).toBe(
+    '<div class="cms-more" data-cms-more="true"></div><div class="cms-pattern" data-cms-pattern="pattern-1"></div><div class="cms-nextpage" data-cms-nextpage="true"></div>',
+  );
+  expect(() =>
+    renderDocument(
+      doc({ type: 'blockquote', content: [{ type: 'pageBreak' }] }),
+    ),
+  ).toThrow();
+  expect(() =>
+    renderDocument(doc({ type: 'patternRef', attrs: { ref: '"><script>' } })),
+  ).toThrow();
+});

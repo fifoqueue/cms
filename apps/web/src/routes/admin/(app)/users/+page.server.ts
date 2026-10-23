@@ -1,7 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import { authApi } from '#lib/server/api.js';
 import type { Capability } from '@cms/sdk';
-import { eachBounded, formIds } from '#lib/server/bulk.js';
+import { eachBounded, readSelection } from '#lib/server/bulk.js';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { adminFor, requireCapability } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
@@ -118,37 +118,33 @@ export const actions: Actions = {
     requireCapability(event.locals, 'users.manage');
     const form = await event.request.formData();
     const self = event.locals.user!.id;
-    const ids = formIds(form).filter((id) => id !== self);
+    const selection = readSelection(form);
+    if (selection.failure) return selection.failure;
+    // The signed-in user is never changed in bulk (their row has no checkbox).
+    const ids = selection.ids.filter((id) => id !== self);
     const action = text(form, 'action');
     const admin = adminFor(event);
-    if (!ids.length) return {};
     if (action === 'delete') {
       const reassignTo = text(form, 'reassignTo') || undefined;
       if (reassignTo && ids.includes(reassignTo))
         return fail(400, { message: Errors.ReassignToDeleted });
       return {
-        bulk: await eachBounded(ids, (id) =>
-          admin.users.remove(id, reassignTo),
+        bulk: await eachBounded(
+          ids,
+          (id) => admin.users.remove(id, reassignTo),
+          selection.invalid,
         ),
       };
     }
     const role = text(form, 'role');
     if (action !== 'role' || !role) return {};
-    const users = new Map(
-      (await admin.users.list()).map((user) => [user.id, user]),
-    );
+    // Role only: profile fields stay as currently stored, whatever was edited meanwhile.
     return {
-      bulk: await eachBounded(ids, async (id) => {
-        const user = users.get(id);
-        if (!user) return Errors.NotFound;
-        await admin.users.update(id, {
-          email: user.email,
-          name: user.name,
-          slug: user.slug,
-          bio: user.bio,
-          role,
-        });
-      }),
+      bulk: await eachBounded(
+        ids,
+        (id) => admin.users.setRole(id, role),
+        selection.invalid,
+      ),
     };
   },
 };

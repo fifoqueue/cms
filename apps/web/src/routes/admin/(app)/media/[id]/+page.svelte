@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
   import { can } from '@cms/sdk/capabilities';
@@ -51,6 +52,16 @@
     height: data.media.height ?? 1,
   });
   let aspect = $state('');
+  // Previous/Next reuse this page: a new attachment starts without the old one's crop.
+  let cropFor = untrack(() => data.media.id);
+  $effect(() => {
+    const { id, width, height } = media;
+    if (id === cropFor) return;
+    cropFor = id;
+    cropping = false;
+    aspect = '';
+    crop = { left: 0, top: 0, width: width ?? 1, height: height ?? 1 };
+  });
   const ratio = $derived(
     aspect === 'original' && media.width && media.height
       ? media.width / media.height

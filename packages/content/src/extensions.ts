@@ -25,6 +25,7 @@ import {
 export { PluginBlock };
 import type { ContentDocument } from '@cms/sdk';
 import { Errors } from '#content/errors';
+import { DocumentNode, More, PageBreak, PatternRef } from '#content/breaks';
 
 /**
  * An embedded page (video, post) by URL. Stored and rendered as a plain link inside a marked
@@ -58,7 +59,9 @@ export const Embed = Node.create({
 });
 
 export const contentExtensions = [
+  DocumentNode,
   StarterKit.configure({
+    document: false,
     heading: { levels: [2, 3, 4] },
     link: {
       openOnClick: false,
@@ -85,6 +88,9 @@ export const contentExtensions = [
   TableKit.configure({ table: false }),
   ContentTable,
   Embed,
+  More,
+  PageBreak,
+  PatternRef,
   PluginBlock,
 ];
 

@@ -61,10 +61,14 @@ export interface MediaRepository {
   neighbors(
     id: string,
   ): Promise<{ newer: string | null; older: string | null }>;
-  /** Entries that show the file, newest first, at most `limit`. */
+  /**
+   * Entries that show the file, newest first, at most `limit`. `publishedOnly` keeps only
+   * published entries that are not in the trash (for accounts that cannot list content).
+   */
   usedIn(
     id: string,
     limit: number,
+    publishedOnly: boolean,
   ): Promise<{ id: string; title: string; type: string }[]>;
   /** Public projections of the given images that exist. */
   publicImages(ids: readonly string[]): Promise<Map<string, PublicImage>>;

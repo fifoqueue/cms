@@ -376,7 +376,11 @@ const describe = (
       };
     case 'content': {
       const { content } = page;
-      const base = content.seo.title || content.title;
+      // Every part of a split entry is canonical to itself, like WordPress.
+      const { current, total } = content.pages;
+      const partPath = (part: number) =>
+        part > 1 ? `${content.path}?page=${part}` : content.path;
+      const base = paged(content.seo.title || content.title, current);
       const description =
         content.seo.description || content.excerpt || site.description;
       // An explicit SEO image wins; otherwise the featured image, when the site has an address.
@@ -396,8 +400,12 @@ const describe = (
         description,
         socialTitle: content.seo.socialTitle || base,
         socialDescription: content.seo.socialDescription || description,
-        path: content.path,
-        canonical: content.seo.canonicalUrl || absolute(content.path),
+        path: partPath(current),
+        canonical:
+          (current === 1 && content.seo.canonicalUrl) ||
+          absolute(partPath(current)),
+        prev: current > 1 ? partPath(current - 1) : undefined,
+        next: current < total ? partPath(current + 1) : undefined,
         index: !content.seo.noIndex,
         follow: !content.seo.noFollow,
         type: 'WebPage',

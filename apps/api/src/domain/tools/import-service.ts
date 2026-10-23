@@ -24,6 +24,8 @@ import type { ContentService } from '#api/domain/content/content-service';
 import type { ContentTypeService } from '#api/domain/content/content-types';
 import type { Clock, IdGenerator } from '#api/domain/ports';
 import type { TaxonomyService } from '#api/domain/taxonomy/taxonomy-service';
+import { fromWordPressHtml } from '#api/domain/tools/wxr';
+import type { PatternService } from '#api/domain/content/pattern-service';
 import type {
   WxrAuthor,
   WxrComment,
@@ -147,6 +149,8 @@ export class ImportService {
       users: Pick<UserDirectory, 'list'>;
       ids: IdGenerator;
       clock: Clock;
+      /** Imported `wp_block` items become patterns. */
+      patterns?: Pick<PatternService, 'create'>;
       /** Old addresses of imported entries. */
       redirects?: RedirectWriter;
       menus?: Pick<MenuService, 'get' | 'update'>;
@@ -206,10 +210,41 @@ export class ImportService {
     const created = new Map<string, string>();
     const featured = new Map<string, number>();
 
+    // Patterns first, so entries can point at their new ids.
+    const patterns = new Map<string, string>();
+    for (const item of document.items) {
+      if (item.type !== 'wp_block' || !this.deps.patterns) continue;
+      const title = item.title.trim().slice(0, 191) || 'Pattern';
+      try {
+        const pattern = await this.deps.patterns.create(
+          {
+            title,
+            document: this.deps.html.parse(
+              classicHtml(
+                fromWordPressHtml(item.html, patterns),
+                item.id,
+                library,
+              ),
+            ),
+            synced: item.meta?.wp_pattern_sync_status !== 'unsynced',
+            status: item.status === 'publish' ? 'published' : 'draft',
+          },
+          actor,
+        );
+        patterns.set(item.id, pattern.id);
+      } catch (error) {
+        if (!(error instanceof DomainError)) throw error;
+        result.skipped.push({ title, reason: error.message });
+      }
+    }
+
     for (const item of entriesParentsFirst(
       document.items.filter(
         // Attachments without a file and unknown types are reported as skipped.
-        (item) => !attachments.has(item.id) && item.type !== 'nav_menu_item',
+        (item) =>
+          !attachments.has(item.id) &&
+          item.type !== 'nav_menu_item' &&
+          !(item.type === 'wp_block' && this.deps.patterns),
       ),
     )) {
       const status = STATUSES[item.status];
@@ -229,7 +264,7 @@ export class ImportService {
       let document: ContentInput['document'];
       try {
         document = this.deps.html.parse(
-          classicHtml(item.html, item.id, library),
+          classicHtml(fromWordPressHtml(item.html, patterns), item.id, library),
         );
       } catch (error) {
         // A body the schema cannot hold skips that entry only (nothing is written for it).

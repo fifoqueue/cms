@@ -17,7 +17,7 @@ export class RoleService {
   constructor(
     private readonly settings: SettingsRepository,
     /** Users, so a deleted role's members can be moved first. */
-    private readonly users?: Pick<UserDirectory, 'list' | 'update'>,
+    private readonly users?: Pick<UserDirectory, 'list' | 'setRole'>,
   ) {}
 
   async list(): Promise<RoleDefinition[]> {
@@ -75,10 +75,7 @@ export class RoleService {
         { path: 'reassignTo', message: Errors.RoleUnknown },
       ]);
     for (const user of (await this.users?.list()) ?? [])
-      if (user.role === key) {
-        const { contentCount: _count, createdAt: _created, ...changes } = user;
-        await this.users!.update({ ...changes, role: reassignTo });
-      }
+      if (user.role === key) await this.users!.setRole(user.id, reassignTo);
     await this.settings.set(`role.${key}`, null);
   }
 }

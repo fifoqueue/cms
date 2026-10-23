@@ -18,6 +18,28 @@ export const startSession = (cookies: Cookies, grant: SessionGrant) =>
 export const endSession = (cookies: Cookies) =>
   cookies.delete(SESSION_COOKIE, { path: '/' });
 
+/**
+ * Set by the sign-out endpoint for the next sign-in page view, which then clears the tab's
+ * editor backups. A server-set, short-lived cookie: a crafted link cannot trigger the cleanup.
+ */
+const SIGNED_OUT_COOKIE = 'cms_signed_out';
+const SIGNED_OUT_PATH = '/admin/login';
+
+export const markSignedOut = (cookies: Cookies) =>
+  cookies.set(SIGNED_OUT_COOKIE, '1', {
+    path: SIGNED_OUT_PATH,
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 60,
+  });
+
+/** Whether this view follows a completed sign-out; the marker is used up. */
+export const takeSignedOut = (cookies: Cookies) => {
+  const signedOut = cookies.get(SIGNED_OUT_COOKIE) === '1';
+  if (signedOut) cookies.delete(SIGNED_OUT_COOKIE, { path: SIGNED_OUT_PATH });
+  return signedOut;
+};
+
 /** Admin API client for the signed-in user. `hooks.server.ts` guarantees the session on admin routes. */
 export const adminFor = ({
   fetch,

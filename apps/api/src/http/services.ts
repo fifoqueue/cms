@@ -7,6 +7,7 @@ import type { SsoService } from '#api/domain/auth/sso-service';
 import type { ContentService } from '#api/domain/content/content-service';
 import type { ReadingService } from '#api/domain/site/reading-service';
 import type { WritingService } from '#api/domain/site/writing-service';
+import type { PatternService } from '#api/domain/content/pattern-service';
 import type { MenuService } from '#api/domain/appearance/menu-service';
 import type { WidgetService } from '#api/domain/appearance/widget-service';
 import type { CommentService } from '#api/domain/comments/comment-service';
@@ -64,6 +65,7 @@ export type ApiServices = {
   adminContent: ContentService;
   reading: ReadingService;
   writing: WritingService;
+  patterns: PatternService;
   menus: MenuService;
   widgets: WidgetService;
   comments: CommentService;

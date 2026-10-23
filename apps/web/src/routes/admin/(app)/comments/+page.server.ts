@@ -1,6 +1,7 @@
 import { COMMENT_BULK_ACTIONS, COMMENT_STATUSES } from '@cms/sdk';
 import type { CommentStatus } from '@cms/sdk';
 import { failFrom, text } from '#lib/server/errors.js';
+import { clampPage } from '#lib/server/page-range.js';
 import { readScreenOptions } from '#lib/server/screen-options.js';
 import { adminFor, requireCapability } from '#lib/server/session.js';
 import { COMMENT_COLUMNS } from '#lib/admin/screen-options.js';
@@ -32,6 +33,7 @@ export const load: PageServerLoad = async (event) => {
     }),
     admin.comments.counts(),
   ]);
+  clampPage(event.url, comments);
   return {
     filter: { status, q: search, contentId },
     counts,
@@ -120,7 +122,16 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
-    return { notice: 'commentNoticeEmptied' };
+    // The request is bounded; when comments remain, say so instead of "Emptied".
+    const remaining = await admin.comments
+      .list({ status, page: 1, pageSize: 1 })
+      .then(
+        ({ total }) => total,
+        () => 0,
+      );
+    return {
+      notice: remaining ? 'commentNoticePartlyEmptied' : 'commentNoticeEmptied',
+    };
   },
   reply: async (event) => {
     const form = await event.request.formData();

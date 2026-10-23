@@ -52,9 +52,12 @@ export class PreviewService {
     )
       throw notFound(Errors.PreviewInvalid);
     const record = await this.deps.content.require(contentId);
-    const autosave = await this.deps.revisions.findAutosave(contentId, userId);
     const text =
-      autosave && autosave.createdAt > record.updatedAt ? autosave : record;
+      (await this.deps.revisions.pendingAutosave(
+        contentId,
+        userId,
+        record.updatedAt,
+      )) ?? record;
     return publicContentSchema.parse({
       id: record.id,
       type: record.type,

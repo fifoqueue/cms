@@ -1,7 +1,12 @@
 import { expect, test } from 'bun:test';
 import { blockLines, lineDiff, sideBySide } from '#lib/admin/diff.js';
 
-const labels = { image: 'Image', audio: 'Audio', embed: 'Embed' };
+const labels = {
+  image: 'Image',
+  audio: 'Audio',
+  embed: 'Embed',
+  pattern: 'Pattern',
+};
 const text = (value: string) => ({ type: 'text', text: value });
 
 test('revisions compare readable blocks side by side', () => {

@@ -131,9 +131,14 @@ export class PrismaMediaRepository implements MediaRepository {
     return { newer: newer?.id ?? null, older: older?.id ?? null };
   }
 
-  async usedIn(id: string, limit: number) {
+  async usedIn(id: string, limit: number, publishedOnly: boolean) {
     const rows = await this.db.contentMedia.findMany({
-      where: { mediaId: id },
+      where: {
+        mediaId: id,
+        ...(publishedOnly && {
+          content: { status: 'published', trashedAt: null },
+        }),
+      },
       select: { content: { select: { id: true, title: true, type: true } } },
       orderBy: { content: { updatedAt: 'desc' } },
       take: limit,

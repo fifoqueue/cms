@@ -87,6 +87,14 @@ export class PrismaUserDirectory implements UserDirectory {
     );
   }
 
+  async setRole(id: string, role: string) {
+    await this.db.$transaction(async (tx) => {
+      await lockSetting(tx, LOCK_KEY);
+      if (role !== 'administrator') await assertOtherAdministrator(tx, id);
+      await tx.user.update({ where: { id }, data: { role } });
+    });
+  }
+
   async delete(id: string, reassignTo: string | null) {
     await this.db.$transaction(async (tx) => {
       await lockPermalinks(tx);

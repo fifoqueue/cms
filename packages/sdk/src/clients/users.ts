@@ -42,6 +42,9 @@ export const usersClient = (request: Request) => {
         json: input,
         response: adminUserSummarySchema,
       }),
+    /** Changes only the role; profile fields stay as stored. */
+    setRole: (id: string, role: string) =>
+      request<void>('PUT', `${path(id)}/role`, { json: { role } }),
     /** Signs the user out of every session; API tokens keep working. */
     signOutEverywhere: (id: string) =>
       request<void>('DELETE', `${path(id)}/sessions`),

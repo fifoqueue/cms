@@ -1,6 +1,7 @@
 import { MEDIA_KINDS } from '@cms/sdk';
 import type { MediaKind } from '@cms/sdk';
 import { CmsApiError } from '@cms/sdk/client';
+import { clampPage } from '#lib/server/page-range.js';
 import { readScreenOptions } from '#lib/server/screen-options.js';
 import { adminFor, requireCapability } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
@@ -17,6 +18,15 @@ export const load: PageServerLoad = async (event) => {
   const view = params.get('view') === 'list' ? 'list' : undefined;
   const page = Math.max(1, Math.trunc(Number(params.get('page'))) || 1);
   const screen = readScreenOptions(event.cookies, 'media', [], 48);
+  const media = await adminFor(event).media.list({
+    kind,
+    search,
+    month,
+    unattached: unattached && 'true',
+    page,
+    pageSize: screen.perPage,
+  });
+  clampPage(event.url, media);
   return {
     filter: {
       kind,
@@ -26,14 +36,7 @@ export const load: PageServerLoad = async (event) => {
       view,
     },
     screen,
-    media: await adminFor(event).media.list({
-      kind,
-      search,
-      month,
-      unattached: unattached && 'true',
-      page,
-      pageSize: screen.perPage,
-    }),
+    media,
   };
 };
 

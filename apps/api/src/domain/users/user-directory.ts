@@ -26,6 +26,11 @@ export interface UserDirectory {
    */
   update(changes: UserChanges): Promise<void>;
   /**
+   * Changes only the role, keeping every profile field as currently stored. Throws `conflict`
+   * when it would leave no administrator; checked under the same lock as `update`.
+   */
+  setRole(id: string, role: string): Promise<void>;
+  /**
    * Deletes the user with their sessions and sign-in links. Their content moves to `reassignTo`
    * or is deleted with them. Throws `conflict` when no administrator would remain.
    */
