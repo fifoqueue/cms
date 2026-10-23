@@ -81,3 +81,19 @@ export const mediaIdsOf = (document: ContentDocument): string[] => {
   }
   return [...ids];
 };
+
+/**
+ * The text before a top-level "more" break (WordPress `<!--more-->`), the entry's teaser in
+ * lists; null without one. At most 1000 characters.
+ */
+export const teaserOf = (document: ContentDocument): string | null => {
+  const index = (document.content ?? []).findIndex(
+    (node) => (node as { type?: unknown }).type === 'more',
+  );
+  if (index < 0) return null;
+  const text = plainText({
+    ...document,
+    content: (document.content ?? []).slice(0, index),
+  }).trim();
+  return text.length > 1000 ? `${text.slice(0, 999).trimEnd()}…` : text;
+};

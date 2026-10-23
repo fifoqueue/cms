@@ -10,7 +10,8 @@
     ".": "./src/extensions.ts",
     "./render": "./src/render.ts",
     "./urls": "./src/urls.ts",
-    "./parse": "./src/parse.ts"
+    "./parse": "./src/parse.ts",
+    "./breaks": "./src/breaks.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p ."

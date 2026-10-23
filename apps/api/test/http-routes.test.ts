@@ -123,6 +123,7 @@ const app = await createApiApp({
     media: {} as ApiServices['media'],
     reading: {} as ApiServices['reading'],
     writing: {} as ApiServices['writing'],
+    patterns: {} as ApiServices['patterns'],
     menus: {} as ApiServices['menus'],
     widgets: {} as ApiServices['widgets'],
     comments: {} as ApiServices['comments'],

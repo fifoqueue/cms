@@ -1,3 +1,4 @@
+import { redirect } from '@sveltejs/kit';
 import {
   CONTENT_ORDERS,
   CONTENT_STATUSES,
@@ -164,7 +165,20 @@ const rowAction =
   };
 
 export const actions: Actions = {
-  trash: rowAction('trash', 'movedToTrash'),
+  /** The notice and its Undo (restore) travel in the address, shown by `FlashNotice`. */
+  trash: async (event) => {
+    const id = text(await event.request.formData(), 'id');
+    try {
+      await adminFor(event).content.trash(id);
+    } catch (caught) {
+      return failFrom(caught);
+    }
+    const params = new URLSearchParams(event.url.search);
+    params.delete('/trash');
+    params.set('notice', 'entryTrashed');
+    params.set('undo', id);
+    redirect(303, `${event.url.pathname}?${params}`);
+  },
   restore: rowAction('restore', 'restored'),
   delete: rowAction('remove', 'deleted'),
   /** Quick Edit: replaces the list fields and keeps everything else of the entry. */

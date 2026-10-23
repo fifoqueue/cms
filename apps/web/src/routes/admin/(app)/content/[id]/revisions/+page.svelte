@@ -39,6 +39,7 @@
     image: m.editorImage,
     audio: m.mediaAudio,
     embed: m.insertEmbed,
+    pattern: m.patternsTitle,
   });
   const fields = $derived(
     data.from && data.to

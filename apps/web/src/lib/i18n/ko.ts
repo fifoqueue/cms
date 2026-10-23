@@ -1460,6 +1460,8 @@ export const ko: Messages = {
         spacer: '여백',
         codeBlock: '코드',
         embed: '임베드',
+        more: '더 보기(요약 구분)',
+        pageBreak: '페이지 나누기',
       }) as Record<string, string>
     )[type] ?? type,
   contentAlignmentName: (align: string) =>
@@ -1502,6 +1504,26 @@ export const ko: Messages = {
   themeDetails: '테마 상세',
   themeDetailsOf: (name: string) => `테마 상세: ${name}`,
   themeLivePreview: '실시간 미리보기',
+  // editor-media wave 4
+  themePages: '페이지:',
+  contentMoreBreak: '— 더 보기 — (위 내용이 목록의 요약이 됩니다)',
+  contentPageBreak: '— 페이지 나누기 —',
+  contentSyncedPattern: (title: string) =>
+    title ? `동기화 패턴: ${title}` : '동기화 패턴',
+  patternsTitle: '패턴',
+  patternCreate: '패턴 만들기',
+  patternCreateHelp:
+    '선택한 블록을 다른 글에 넣을 수 있는 패턴으로 저장합니다.',
+  patternSynced: '동기화: 패턴을 고치면 이 패턴을 쓰는 모든 글에 반영됩니다',
+  patternSyncedShort: '동기화',
+  patternCreateFailed: '패턴을 저장하지 못했습니다.',
+  patternAdd: '패턴 추가',
+  patternEdit: '패턴 편집',
+  patternNone:
+    '아직 패턴이 없습니다. 편집기에서 블록을 선택하고 “패턴 만들기”를 고르세요.',
+  patternDraftHelp: '임시 패턴은 사이트에 표시되지 않습니다.',
+  patternUsage:
+    '동기화 패턴은 이를 쓰는 모든 글에 현재 발행된 버전으로 표시됩니다.',
 
   // admin-screens wave 3
   columnModified: '최근 수정',

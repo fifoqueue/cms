@@ -1504,6 +1504,8 @@ export const en = {
         spacer: 'Spacer',
         codeBlock: 'Code',
         embed: 'Embed',
+        more: 'More (teaser break)',
+        pageBreak: 'Page break',
       }) as Record<string, string>
     )[type] ?? type,
   contentAlignmentName: (align: string) =>
@@ -1549,6 +1551,26 @@ export const en = {
   themeDetails: 'Theme details',
   themeDetailsOf: (name: string) => `Theme details: ${name}`,
   themeLivePreview: 'Live Preview',
+  // editor-media wave 4
+  themePages: 'Pages:',
+  contentMoreBreak: '— More — (the text above is the teaser in lists)',
+  contentPageBreak: '— Page break —',
+  contentSyncedPattern: (title: string) =>
+    title ? `Synced pattern: ${title}` : 'Synced pattern',
+  patternsTitle: 'Patterns',
+  patternCreate: 'Create pattern',
+  patternCreateHelp:
+    'Saves the selected blocks as a pattern you can insert into other entries.',
+  patternSynced: 'Synced: editing the pattern updates every entry that uses it',
+  patternSyncedShort: 'Synced',
+  patternCreateFailed: 'The pattern could not be saved.',
+  patternAdd: 'Add pattern',
+  patternEdit: 'Edit pattern',
+  patternNone:
+    'No patterns yet. Select blocks in the editor and choose “Create pattern”.',
+  patternDraftHelp: 'Draft patterns are not shown on the site.',
+  patternUsage:
+    'Synced patterns show their current published version in every entry that uses them.',
 
   // admin-screens wave 3
   columnModified: 'Last modified',

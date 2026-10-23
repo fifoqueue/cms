@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { MenusSettings } from '@cms/sdk';
 import { ContentService } from '#api/domain/content/content-service';
+import { PatternService } from '#api/domain/content/pattern-service';
 import { TaxonomyService } from '#api/domain/taxonomy/taxonomy-service';
 import { ExportService } from '#api/domain/tools/export-service';
 import { ImportService } from '#api/domain/tools/import-service';
@@ -20,6 +21,7 @@ import {
   userRecord,
 } from '#test/support/memory';
 import { MemoryCommentRepository } from '#test/support/memory-comments';
+import { MemorySeoSettingsRepository } from '#test/support/memory-seo';
 import { MemoryRevisionRepository } from '#test/support/memory-revisions';
 import { MemoryTaxonomyRepository } from '#test/support/memory-taxonomy';
 import { MemoryUserDirectory } from '#test/support/memory-users';
@@ -45,6 +47,12 @@ const site = async () => {
     fields: testFields(),
   });
   const comments = new MemoryCommentRepository(content);
+  const patterns = new PatternService({
+    settings: new MemorySeoSettingsRepository(),
+    renderer: tiptapRenderer,
+    ids,
+    clock,
+  });
   const users = new MemoryUsers();
   await users.insert(userRecord({ id: ADMIN.id, email: 'admin@example.com' }));
   const directory = new MemoryUserDirectory(users, content);
@@ -57,6 +65,7 @@ const site = async () => {
     service,
     taxonomy,
     comments,
+    patterns,
     importer: new ImportService({
       parser: fastXmlWxrParser,
       html: tiptapHtmlParser,
@@ -67,6 +76,7 @@ const site = async () => {
       users: directory,
       ids,
       clock,
+      patterns,
       redirects: content.permalinks,
       menus: {
         get: async () => menus,
@@ -82,6 +92,7 @@ const site = async () => {
       terms,
       comments,
       users: directory,
+      patterns: () => patterns.exportable(),
       site: async () => ({ title: 'Site', siteUrl: 'https://example.com' }),
     }),
   };
@@ -193,6 +204,121 @@ test('a WXR export imports into another site with terms, entries and threaded co
     ['Stay safe', 0],
     ['Thanks', 1],
   ]);
+});
+
+test('patterns, teaser and page breaks survive a WXR round trip, and synced edits show everywhere', async () => {
+  const source = await site();
+  const paragraph = (text: string) => ({
+    type: 'paragraph',
+    content: [{ type: 'text', text }],
+  });
+  const pattern = await source.patterns.create(
+    {
+      title: 'Signup',
+      document: { type: 'doc', content: [paragraph('Join us')] },
+    },
+    ADMIN,
+  );
+  await source.service.create(
+    {
+      type: 'post',
+      title: 'Long read',
+      status: 'published',
+      document: {
+        type: 'doc',
+        content: [
+          paragraph('Teaser text'),
+          { type: 'more' },
+          paragraph('Rest'),
+          { type: 'pageBreak' },
+          { type: 'patternRef', attrs: { ref: pattern.id } },
+        ],
+      },
+    },
+    ADMIN,
+  );
+  const [entry] = [...source.content.rows.values()];
+  // The teaser is the summary; the served body shows the pattern's current text.
+  expect(entry?.summary).toBe('Teaser text');
+  await source.patterns.update(
+    pattern.id,
+    {
+      title: 'Signup',
+      document: { type: 'doc', content: [paragraph('Join today')] },
+    },
+    ADMIN,
+  );
+  expect(await source.patterns.expand(entry!.html)).toContain('Join today');
+
+  const xml = await source.exporter.exportWxr(ADMIN);
+  expect(xml).toContain('<!--more-->');
+  expect(xml).toContain('<!--nextpage-->');
+
+  const target = await site();
+  await target.importer.importWxr(xml, ADMIN);
+  const [copy] = await target.patterns.list(ADMIN);
+  const imported = [...target.content.rows.values()][0]!;
+  expect(imported.document.content?.map((node) => node.type)).toEqual([
+    'paragraph',
+    'more',
+    'paragraph',
+    'pageBreak',
+    'patternRef',
+  ]);
+  expect(
+    (imported.document.content?.[4]?.attrs as { ref?: string } | undefined)
+      ?.ref,
+  ).toBe(copy!.id);
+  expect(await target.patterns.expand(imported.html)).toContain('Join today');
+});
+
+test('pattern references expand only to published patterns, without cycles', async () => {
+  const { patterns } = await site();
+  const ref = (id: string) => ({ type: 'patternRef', attrs: { ref: id } });
+  const draft = await patterns.create(
+    {
+      title: 'Draft',
+      status: 'draft',
+      document: {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Secret' }] },
+        ],
+      },
+    },
+    ADMIN,
+  );
+  const loop = await patterns.create(
+    {
+      title: 'Loop',
+      document: { type: 'doc', content: [{ type: 'paragraph' }] },
+    },
+    ADMIN,
+  );
+  await patterns.update(
+    loop.id,
+    {
+      title: 'Loop',
+      document: { type: 'doc', content: [ref(loop.id), ref(draft.id)] },
+    },
+    ADMIN,
+  );
+  const html = `<div class="cms-pattern" data-cms-pattern="${loop.id}"></div>`;
+  expect(await patterns.expand(html)).toBe('');
+  // A contributor can neither publish a pattern nor change someone else's.
+  const contributor = { id: 'c', role: 'contributor' };
+  await expect(
+    patterns.create(
+      {
+        title: 'X',
+        document: { type: 'doc', content: [{ type: 'paragraph' }] },
+      },
+      contributor,
+    ),
+  ).rejects.toMatchObject({ code: 'forbidden' });
+  await expect(patterns.remove(loop.id, contributor)).rejects.toMatchObject({
+    code: 'forbidden',
+  });
 });
 
 test('WordPress-only items are reported, and files with a DTD are refused', async () => {

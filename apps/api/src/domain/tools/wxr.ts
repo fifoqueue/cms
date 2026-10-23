@@ -57,7 +57,7 @@ export interface WxrItem {
   menuOrder?: number;
   /** Attachments: the file's URL (`wp:attachment_url`). */
   attachmentUrl?: string;
-  /** `wp:postmeta` values this importer reads (`_thumbnail_id`, `_menu_item_*`). */
+  /** `wp:postmeta` values this importer reads or writes (`_thumbnail_id`, `_menu_item_*`, `wp_pattern_sync_status`). */
   meta?: Record<string, string>;
   /** Navigation menus (`nav_menu` terms) a menu item belongs to: slug and name. */
   menus?: { slug: string; name: string }[];
@@ -177,6 +177,10 @@ export const wxrItemStart = (
     tag('wp:post_password', cdata(item.password)),
     tag('wp:is_sticky', item.sticky ? '1' : '0'),
     ...terms,
+    ...Object.entries(item.meta ?? {}).map(
+      ([key, value]) =>
+        `<wp:postmeta>${tag('wp:meta_key', cdata(key))}${tag('wp:meta_value', cdata(value))}</wp:postmeta>`,
+    ),
   ].join('');
 };
 
@@ -199,3 +203,39 @@ export const buildWxr = (document: WxrDocument): string => {
     wxrFooter,
   ].join('');
 };
+
+// Body markers the editor stores, and how WordPress writes the same things.
+const MORE = '<div class="cms-more" data-cms-more="true"></div>';
+const NEXT_PAGE = '<div class="cms-nextpage" data-cms-nextpage="true"></div>';
+const PATTERN =
+  /<div class="cms-pattern" data-cms-pattern="([A-Za-z0-9-]{1,36})"><\/div>/g;
+
+/** Stored body HTML as WordPress writes it: `<!--more-->`, `<!--nextpage-->`, `wp:block` references. */
+export const toWordPressHtml = (html: string) =>
+  html
+    .replaceAll(MORE, '<!--more-->')
+    .replaceAll(NEXT_PAGE, '<!--nextpage-->')
+    .replace(PATTERN, '<!-- wp:block {"ref":"$1"} /-->');
+
+/**
+ * WordPress markers as the editor's elements before the HTML is parsed. Pattern references use
+ * the ids the import gave the file's patterns; unknown ones are dropped.
+ */
+export const fromWordPressHtml = (
+  html: string,
+  patterns: ReadonlyMap<string, string>,
+) =>
+  html
+    // Blank lines around each marker keep classic-content paragraphs from wrapping it.
+    .replace(
+      /<!--more(?:\s[^>]*)?-->/g,
+      '\n\n<div data-cms-more="true"></div>\n\n',
+    )
+    .replace(/<!--nextpage-->/g, '\n\n<div data-cms-nextpage="true"></div>\n\n')
+    .replace(
+      /<!--\s*wp:block\s+\{\s*"ref"\s*:\s*"?([\w-]{1,36})"?\s*\}\s*\/-->/g,
+      (_, ref: string) => {
+        const id = patterns.get(ref);
+        return id ? `\n\n<div data-cms-pattern="${id}"></div>\n\n` : '';
+      },
+    );

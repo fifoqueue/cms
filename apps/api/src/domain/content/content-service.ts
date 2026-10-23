@@ -31,6 +31,7 @@ import type { RevisionRepository } from '#api/domain/content/revisions';
 import type { ContentTypeService } from '#api/domain/content/content-types';
 import { fieldMediaIds } from '#api/domain/content/fields';
 import type { FieldService } from '#api/domain/content/fields';
+import { teaserOf } from '#api/domain/content/plain-text';
 import { slugify, uniqueSlug } from '#api/domain/content/slug';
 import type { Clock, HookDispatcher, IdGenerator } from '#api/domain/ports';
 import {
@@ -53,6 +54,8 @@ export interface ContentServiceDeps {
   hasher: PasswordHasher;
   types: Pick<ContentTypeService, 'require'>;
   fields: Pick<FieldService, 'validate' | 'forType'>;
+  /** Settings → Writing: the existing category a post saved without one gets (WordPress). */
+  defaultCategory?: () => Promise<string | null>;
 }
 
 /** Revisions kept per entry; older ones are pruned on save. */
@@ -254,7 +257,7 @@ export class ContentService {
       document: data.document,
       html: this.deps.renderer.render(data.document),
       searchText: locked ? '' : text,
-      summary: locked ? '' : summarize(text),
+      summary: locked ? '' : (teaserOf(data.document) ?? summarize(text)),
       status: data.status,
       sticky: data.sticky,
       allowComments: data.allowComments,
@@ -273,7 +276,9 @@ export class ContentService {
         ),
       ],
       categoryIds: type.supports.categories
-        ? [...new Set(data.categoryIds)]
+        ? data.categoryIds.length || data.type !== 'post'
+          ? [...new Set(data.categoryIds)]
+          : await this.defaultCategories()
         : [],
       tagIds: type.supports.tags ? [...new Set(data.tagIds)] : [],
       featuredMediaId,
@@ -286,6 +291,11 @@ export class ContentService {
         ]),
       ],
     } satisfies Partial<ContentWrite>;
+  }
+
+  private async defaultCategories() {
+    const id = await this.deps.defaultCategory?.();
+    return id ? [id] : [];
   }
 
   /**
