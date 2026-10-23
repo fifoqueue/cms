@@ -10,6 +10,7 @@
     CardTitle,
   } from '#lib/components/ui/card/index.js';
   import { Input } from '#lib/components/ui/input/index.js';
+  import { IMPORT_AUTHOR_MODES } from '@cms/sdk';
   import { useI18n } from '#lib/i18n/index.js';
   import type { PageProps } from './$types';
 
@@ -52,7 +53,7 @@
           await update();
         };
       }}
-      class="flex flex-wrap items-center gap-2"
+      class="grid gap-3"
     >
       <Input
         type="file"
@@ -61,9 +62,26 @@
         required
         class="w-auto max-w-sm"
       />
-      <Button type="submit" disabled={busy}
-        >{busy ? m.importRunning : m.importStart}</Button
-      >
+      <fieldset class="grid gap-1.5">
+        <legend class="font-medium">{m.importAuthors}</legend>
+        <p class="text-muted-foreground">{m.importAuthorsHelp}</p>
+        {#each IMPORT_AUTHOR_MODES as mode (mode)}
+          <label class="flex items-center gap-2">
+            <input
+              type="radio"
+              name="authors"
+              value={mode}
+              checked={mode === 'me'}
+            />
+            {m.importAuthorMode(mode)}
+          </label>
+        {/each}
+      </fieldset>
+      <div>
+        <Button type="submit" disabled={busy}
+          >{busy ? m.importRunning : m.importStart}</Button
+        >
+      </div>
     </form>
     {#if result}
       <p>
@@ -73,6 +91,23 @@
           result.comments,
         )}
       </p>
+      <p>{m.importMoreSummary(result.users, result.menus, result.redirects)}</p>
+      {#if result.attachments.length}
+        <details>
+          <summary class="cursor-pointer">
+            {m.importAttachments(result.attachments.length)}
+          </summary>
+          <p class="mt-2 text-muted-foreground">{m.importAttachmentsHelp}</p>
+          <ul class="mt-2 list-disc pl-5 break-all">
+            {#each result.attachments as file (file.url)}
+              <li>
+                {file.title || file.url} — {file.url}{#if file.featured}
+                  ({m.importFeatured(file.featured)}){/if}
+              </li>
+            {/each}
+          </ul>
+        </details>
+      {/if}
       {#if result.skipped.length}
         <details>
           <summary class="cursor-pointer">

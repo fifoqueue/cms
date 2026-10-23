@@ -571,6 +571,10 @@ export const createContainer = async (
     users: directory,
     ids: uuidV7,
     clock: systemClock,
+    redirects: permalinkRepository,
+    menus,
+    accounts: userAdmin,
+    tokens: randomTokenIssuer,
   });
   const exporter = new ExportService({
     content: contentRepository,

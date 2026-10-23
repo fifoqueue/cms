@@ -14,7 +14,11 @@ import type {
   PathPlan,
   StoredPath,
 } from '#api/domain/permalinks/path-plan';
-import type { PermalinkRepository } from '#api/domain/permalinks/permalink-repository';
+import type {
+  PermalinkRepository,
+  RedirectWriter,
+} from '#api/domain/permalinks/permalink-repository';
+import { permalinkPathIssue } from '@cms/sdk';
 import { guardUnique } from '#api/infra/prisma/client';
 import type { Database } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
@@ -258,8 +262,32 @@ export const assignContentPath = async (
   return decodePath(current.path);
 };
 
-export class PrismaPermalinkRepository implements PermalinkRepository {
+export class PrismaPermalinkRepository
+  implements PermalinkRepository, RedirectWriter
+{
   constructor(private readonly db: Database) {}
+
+  async addRedirect(contentId: string, path: string) {
+    if (permalinkPathIssue(path)) return false;
+    return this.db.$transaction(async (tx) => {
+      await lockPermalinks(tx);
+      try {
+        await checkArchivePaths(tx, [path]);
+      } catch {
+        return false;
+      }
+      if ((await findOwners(tx, [path])).has(path)) return false;
+      await tx.contentPath.create({
+        data: {
+          pathHash: pathHash(path),
+          path: encoder.encode(path),
+          contentId,
+          currentFor: null,
+        },
+      });
+      return true;
+    });
+  }
 
   readSettings() {
     return readSettings(this.db);

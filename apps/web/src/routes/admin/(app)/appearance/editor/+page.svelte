@@ -88,7 +88,7 @@
     | 'adjacent'
     | 'pageTree'
     | 'recentComments'
-    | 'postAuthor'
+    | 'authors'
     | 'calendar'
   >;
   let canvasData = $state<CanvasData | undefined>();

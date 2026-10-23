@@ -7,6 +7,8 @@ export interface WxrAuthor {
 }
 
 export interface WxrTerm {
+  /** WordPress term id (`wp:term_id`), for menu items that link to terms. */
+  id?: string;
   slug: string;
   name: string;
   description: string;
@@ -47,11 +49,25 @@ export interface WxrItem {
   categories: string[];
   tags: string[];
   comments: WxrComment[];
+  /** The entry's public URL on the old site (`link`). */
+  link?: string;
+  /** WordPress id of the parent entry (`wp:post_parent`), `0`/empty for none. */
+  parentId?: string;
+  /** `wp:menu_order`. */
+  menuOrder?: number;
+  /** Attachments: the file's URL (`wp:attachment_url`). */
+  attachmentUrl?: string;
+  /** `wp:postmeta` values this importer reads (`_thumbnail_id`, `_menu_item_*`). */
+  meta?: Record<string, string>;
+  /** Navigation menus (`nav_menu` terms) a menu item belongs to: slug and name. */
+  menus?: { slug: string; name: string }[];
 }
 
 export interface WxrDocument {
   title: string;
   link: string;
+  /** `wp:base_site_url`: old URLs on this origin can become redirects. */
+  baseUrl?: string;
   authors: WxrAuthor[];
   categories: WxrTerm[];
   tags: WxrTerm[];
@@ -146,6 +162,7 @@ export const wxrItemStart = (
   return [
     '<item>',
     tag('title', cdata(item.title)),
+    ...(item.link ? [tag('link', text(item.link))] : []),
     tag('dc:creator', cdata(item.author)),
     `<guid isPermaLink="false">${text(item.id)}</guid>`,
     tag('content:encoded', cdata(item.html)),
@@ -156,6 +173,7 @@ export const wxrItemStart = (
     tag('wp:post_name', cdata(item.slug)),
     tag('wp:status', cdata(item.status)),
     tag('wp:post_type', cdata(item.type)),
+    tag('wp:post_parent', text(item.parentId || '0')),
     tag('wp:post_password', cdata(item.password)),
     tag('wp:is_sticky', item.sticky ? '1' : '0'),
     ...terms,

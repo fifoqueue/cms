@@ -23,7 +23,7 @@ export interface SiteScope {
   adjacent: BlockData['adjacent'];
   pageTree: BlockData['pageTree'];
   recentComments: BlockData['recentComments'];
-  postAuthor: BlockData['postAuthor'];
+  authors: BlockData['authors'];
   calendar: BlockData['calendar'];
   theme: ThemeView;
   site: SiteView;
