@@ -96,6 +96,17 @@ test('a WXR export imports into another site with terms, entries and threaded co
             type: 'paragraph',
             content: [{ type: 'text', text: 'Heavy rain' }],
           },
+          {
+            type: 'video',
+            attrs: {
+              src: 'https://example.com/movie.mp4',
+              caption: 'Storm footage',
+            },
+          },
+          {
+            type: 'file',
+            attrs: { src: 'https://example.com/report.pdf', name: 'Report' },
+          },
         ],
       },
     },
@@ -145,6 +156,13 @@ test('a WXR export imports into another site with terms, entries and threaded co
     tags: [{ name: 'Rain & <Snow>' }],
   });
   expect(entry.html).toContain('Heavy rain');
+  expect(entry.document.content?.map((node) => node.type)).toEqual([
+    'paragraph',
+    'video',
+    'file',
+  ]);
+  expect(entry.html).toContain('Storm footage');
+  expect(entry.html).toContain('https://example.com/report.pdf');
   const [importedLocal] = (await target.taxonomy.list('category')).filter(
     (term) => term.slug === 'local',
   );

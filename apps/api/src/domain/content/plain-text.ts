@@ -38,7 +38,7 @@ export const summarize = (text: string, words = 55): string => {
     : clipped;
 };
 
-/** Ids of library media the document shows (`image` nodes with a `mediaId`). */
+/** Ids of library media the document shows (`image`, `audio`, `video` and `file` nodes with a `mediaId`). */
 export const mediaIdsOf = (document: ContentDocument): string[] => {
   const ids = new Set<string>();
   const stack: unknown[] = [document];
@@ -48,7 +48,10 @@ export const mediaIdsOf = (document: ContentDocument): string[] => {
     if (typeof node !== 'object' || node === null) continue;
     const { type, attrs, content } = node as Record<string, unknown>;
     const mediaId = (attrs as { mediaId?: unknown } | undefined)?.mediaId;
-    if ((type === 'image' || type === 'audio') && typeof mediaId === 'string')
+    if (
+      ['image', 'audio', 'video', 'file'].includes(String(type)) &&
+      typeof mediaId === 'string'
+    )
       ids.add(mediaId);
     if (Array.isArray(content))
       for (let index = content.length - 1; index >= 0; index -= 1)

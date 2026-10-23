@@ -23,6 +23,7 @@
     Undo,
     SquarePlay,
   } from '@lucide/svelte';
+  import BlockInserter from '#lib/admin/editor/BlockInserter.svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import { Input } from '#lib/components/ui/input/index.js';
@@ -217,6 +218,7 @@
 </script>
 
 <div class="rounded-md border bg-background">
+  <BlockInserter {editor} />
   <div
     class="flex flex-wrap gap-1 border-b p-1"
     role="toolbar"
