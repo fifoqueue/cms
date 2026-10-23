@@ -38,6 +38,7 @@ import { PrismaPublishedContentRepository } from '#api/infra/prisma/published-co
 import { PrismaRateLimitStore } from '#api/infra/prisma/rate-limit-store';
 import { PrismaRevisionRepository } from '#api/infra/prisma/revision-repository';
 import { PrismaSearchSource } from '#api/infra/prisma/search-source';
+import { PrismaSettingsTransactions } from '#api/infra/prisma/settings-transactions';
 import { PrismaSettingsRepository } from '#api/infra/prisma/settings-repository';
 import { PrismaTaskLeases } from '#api/infra/prisma/task-leases';
 import { PrismaTaxonomyRepository } from '#api/infra/prisma/taxonomy-repository';
@@ -691,11 +692,157 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     SLOW,
   );
 
+  test.each(['update', 'remove'] as const)(
+    'a paused contributor %s cannot change a pattern published by another transaction',
+    async (operation) => {
+      const settings = new PrismaSettingsRepository(db);
+      const transactions = new PrismaSettingsTransactions(db);
+      const deps = {
+        settings,
+        transactions,
+        catalog: new PrismaPatternCatalog(db),
+        renderer: tiptapRenderer,
+        ids: uuidV7,
+        clock: systemClock,
+      };
+      const publisher = new PatternService(deps);
+      const contributor = { id: 'contributor', role: 'contributor' };
+      const input = {
+        title: 'Reviewed interleaving',
+        status: 'draft',
+        document: paragraph('Contributor draft'),
+      };
+      const pattern = await publisher.create(input, contributor);
+      const entered = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      const staleSettings = {
+        get: settings.get.bind(settings),
+        list: settings.list.bind(settings),
+        // This also reproduces the old check-then-set implementation at its unsafe write seam.
+        set: async (key: string, value: unknown) => {
+          entered.resolve();
+          await resume.promise;
+          await settings.set(key, value);
+        },
+      };
+      const writer = new PatternService({
+        ...deps,
+        settings: staleSettings,
+        transactions: {
+          run: async (lock, task) => {
+            entered.resolve();
+            await resume.promise;
+            return new PrismaSettingsTransactions(db).run(lock, task);
+          },
+        },
+      });
+      const mutation =
+        operation === 'update'
+          ? writer.update(pattern.id, input, contributor)
+          : writer.remove(pattern.id, contributor);
+      const outcome = mutation.then(
+        () => null,
+        (error: unknown) => error,
+      );
+      try {
+        await entered.promise;
+        await publisher.update(
+          pattern.id,
+          {
+            ...input,
+            status: 'published',
+            document: paragraph('Approved by administrator'),
+          },
+          ADMIN,
+        );
+      } finally {
+        resume.resolve();
+      }
+      expect(await outcome).toMatchObject({ code: 'forbidden' });
+      expect(await publisher.get(pattern.id, ADMIN)).toMatchObject({
+        status: 'published',
+        document: paragraph('Approved by administrator'),
+      });
+      await publisher.remove(pattern.id, ADMIN);
+    },
+    SLOW,
+  );
+
+  test(
+    'independent pattern writers cannot both claim the last library slot',
+    async () => {
+      const settings = new PrismaSettingsRepository(db);
+      const deps = {
+        settings,
+        catalog: new PrismaPatternCatalog(db),
+        renderer: tiptapRenderer,
+        ids: uuidV7,
+        clock: systemClock,
+      };
+      const first = new PatternService({
+        ...deps,
+        transactions: new PrismaSettingsTransactions(db),
+      });
+      const second = new PatternService({
+        ...deps,
+        transactions: new PrismaSettingsTransactions(db),
+      });
+      const input = {
+        title: 'Last pattern slot',
+        status: 'draft',
+        document: paragraph('Quota'),
+      };
+      const existing = await settings.count('pattern.');
+      const rows = Array.from({ length: 499 - existing }, () => {
+        const id = uuidV7.next();
+        return {
+          key: `pattern.${id}`,
+          value: JSON.stringify({
+            ...input,
+            id,
+            synced: true,
+            authorId: ADMIN.id,
+            updatedAt: systemClock.now().toISOString(),
+            html: '<p>Quota</p>',
+          }),
+        };
+      });
+      const owned = rows.map(({ key }) => key);
+      try {
+        await db.setting.createMany({ data: rows });
+        const outcomes = await Promise.allSettled([
+          first.create(input, ADMIN),
+          second.create(input, ADMIN),
+        ]);
+        const saved = outcomes.flatMap((result) =>
+          result.status === 'fulfilled' ? [result.value] : [],
+        );
+        owned.push(...saved.map(({ id }) => `pattern.${id}`));
+        expect(saved).toHaveLength(1);
+        expect(
+          outcomes.find((result) => result.status === 'rejected'),
+        ).toMatchObject({
+          status: 'rejected',
+          reason: { code: 'invalid_input' },
+        });
+        expect(await settings.count('pattern.')).toBe(500);
+        await first.remove(saved[0]!.id, ADMIN);
+        const replacement = await second.create(input, ADMIN);
+        owned.push(`pattern.${replacement.id}`);
+        expect(await settings.count('pattern.')).toBe(500);
+      } finally {
+        await db.setting.deleteMany({ where: { key: { in: owned } } });
+      }
+    },
+    SLOW,
+  );
+
   test(
     'pattern catalogs page metadata and keep other writers drafts private',
     async () => {
       const patterns = new PatternService({
         settings: new PrismaSettingsRepository(db),
+        transactions: new PrismaSettingsTransactions(db),
         catalog: new PrismaPatternCatalog(db),
         renderer: tiptapRenderer,
         ids: uuidV7,
@@ -1200,6 +1347,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       });
       const patterns = new PatternService({
         settings: new PrismaSettingsRepository(db),
+        transactions: new PrismaSettingsTransactions(db),
         catalog: new PrismaPatternCatalog(db),
         renderer: tiptapRenderer,
         ids: uuidV7,

@@ -52,6 +52,7 @@ const site = async (accounts?: Pick<UserService, 'create'>) => {
   const settings = new MemorySettings();
   const patterns = new PatternService({
     settings,
+    transactions: settings,
     catalog: settings,
     renderer: tiptapRenderer,
     ids,
