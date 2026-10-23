@@ -259,7 +259,7 @@ manifest의 `requires: { cms?: '<semver 범위>', plugins?: { '<id>': '<범위>'
 
 ### 6.1 Public and admin DTO boundaries
 
-- `PublicContent` and `PublicContentListQuery` are separate contracts from `ContentEntry` and `ContentListQuery`. Public responses exclude editor documents, author IDs, draft status, and creation timestamps. Public queries always select published content, regardless of supplied extra query parameters.
+- `PublicContent` and `PublicContentListQuery` are separate contracts from `ContentEntry` and `ContentListQuery`. Public responses exclude editor documents, author IDs, draft status, and creation timestamps. Public lists always select published content, regardless of supplied extra query parameters. A signed-in canonical single-entry read may additionally return private content after `authorize(actor, 'content.readPrivate')`, using the same public projection and `private, no-store` caching policy.
 - Lists never carry bodies. `GET /api/v1/content` returns `PublicContentSummary` (`PublicContent` without `html`), read with a projection that does not fetch the body, and passed through the `content.publicSummary` filter. The admin list returns `AdminContentSummary` (no `document`/`html`). Single reads keep the full DTOs. Plugin `content.list` still returns `PublicContent` with `html`.
 - Public taxonomy DTOs expose published-content counts only. Admin taxonomy DTOs include editing timestamps and counts across publication states. Content embeds only `TermSummary` (`id`, `name`, `slug`), not full term records.
 - `PublicSiteDto` contains display settings only. `AdminUserDto`/`UserProfile` and `AdminPluginDto`/`PluginInfo` belong only to authenticated admin screens. Credentials, database configuration, session grants, and SSO transactions must never be returned from SvelteKit loads or form failures.
@@ -320,6 +320,12 @@ manifest의 `requires: { cms?: '<semver 범위>', plugins?: { '<id>': '<범위>'
 
 ### 6.7 Comments
 
+- Password-protected entries require the existing `x-cms-unlock` proofs for comment reads and submissions. Locked entries do not render comments; recent-comment widgets exclude protected entries.
+- Public comment submissions accept an optional bearer session. A verified user's `userId`, name and email come from the profile, never the submitted identity. Discussion `requireLogin` rejects anonymous submissions; moderators still use the moderation capability.
+- `GET /api/v1/comments` returns `viewer` (name only), `requireLogin`, and `ownPending`. `x-cms-comment-pending` carries a signed, entry-bound, 24-hour receipt; only that receipt's currently pending comment is shown. Spam/trash and other pending comments remain hidden. Comment responses use `private, no-store`.
+- Submission returns `{ status, comment, page, pendingProof }`; `page` identifies the top-level thread's page, including replies. The web keeps `cpage` and failed reply context, and stores the receipt in an httpOnly cookie. Commenter name/email/website are remembered for one year only after an explicit checkbox opt-in. All session, unlock, pending-receipt and commenter-preference responses use `private, no-store`.
+- Discussion `showAvatars` defaults off; when enabled `avatarDefault` selects the Gravatar style. Public comments expose only a SHA-256 avatar URL, never an email address. Admin comment DTOs include `parentAuthor` for reply context; moderation supports a `contentId` filter.
+
 - Comments are core: plain-text bodies, threaded up to the configured depth, paginated by top-level comment. Public DTOs never contain email addresses. `contents.comment_count` counts approved comments and is updated in the same transaction as every status change.
 - Submission order: validation, rate limit/captcha, honeypot (accepted silently, stored nowhere), open check (discussion on, type supports comments, entry allows them, age limit), reply check, block/hold words and link limit, moderation mode (`manual`, `known`, `auto`), `comment.beforeSave` filter (only `body` and `status` are taken), insert, hooks, notification mail (queued). Held and spam comments both answer `pending`.
 - Moderators (`comments.moderate`) approve, unapprove, mark spam, trash, delete, edit and reply (replying approves the parent). Deleting a comment moves its replies up. Spam and trash older than 30 days are purged by a task.
@@ -339,6 +345,9 @@ manifest의 `requires: { cms?: '<semver 범위>', plugins?: { '<id>': '<범위>'
 - Theme previews: `POST /api/v1/admin/themes/:id/preview` returns a signed 30-minute token; the web keeps it in the `cms_theme_preview` cookie and the public layout asks for that theme. Responses for visitors with session, unlock or preview cookies are never marked cacheable.
 
 ### 6.10 Extended authoring and addresses
+
+- Canonical single-entry reads accept an optional session. `content.readPrivate` is granted to administrators and editors and may be assigned to custom roles. Private reads remain absent from lists, feeds, sitemaps and Markdown; they use public fields, `noIndex`, and no shared or browser caching. Drafts and trash remain inaccessible through this path.
+- Content, term and author slugs accept Unicode letters/digits and combining marks. Generated slugs use NFC; supplied slugs and request paths are not normalized beyond their existing lowercase/percent-encoding rules. Path storage and lookups still compare canonical encoded bytes. Plugin, type and other system identifiers remain ASCII. WXR imports retain Unicode slugs and decode encoded term assignments consistently.
 
 - The site editor provides a live desktop/mobile preview using the public renderer. Unsaved independent query selections are resolved through a read-only form action; stale requests are cancelled. Singular templates preview published content. Reusable patterns use named template parts, including administrator-created parts; editing a part updates every reference.
 - Roles include `subscriber` and administrator-defined roles. Role definitions live in separate `role.<key>` settings; built-ins remain fixed. Authenticated profiles receive capabilities resolved on every request, including existing sessions and API tokens. Never trust capabilities from request bodies. Plugin `access: 'admin'` routes require `plugins.manage`.

@@ -86,7 +86,6 @@
           name="slug"
           required
           maxlength={191}
-          pattern="[a-z0-9]+(-[a-z0-9]+)*"
           value={data.user.slug}
           aria-describedby="slug-help"
         />

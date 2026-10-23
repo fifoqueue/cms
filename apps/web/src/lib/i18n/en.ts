@@ -69,6 +69,7 @@ export const en = {
       ({
         'content.create': 'Create own drafts',
         'content.publish': 'Publish own content',
+        'content.readPrivate': 'Read private content',
         'content.editOthers': 'Edit others’ content',
         'taxonomy.manage': 'Manage taxonomy',
         'media.upload': 'Upload media',
@@ -1123,4 +1124,30 @@ export const en = {
   seoTabSearch: 'Search',
   seoTabSocial: 'Social',
   seoTabAdvanced: 'Advanced',
+
+  // core-comments
+  commentLoginRequired: 'Log in to leave a comment.',
+  commentSignedIn: (name: string) => `Logged in as ${name}.`,
+  commentRemember:
+    'Save my name, email, and website in this browser for the next time I comment.',
+  discussionRequireLogin: 'Users must be registered and logged in to comment',
+  discussionAvatars: 'Show avatars',
+  discussionAvatarDefault: 'Default avatar',
+  avatarStyle: (style: string) =>
+    (
+      ({
+        mp: 'Mystery person',
+        identicon: 'Identicon',
+        monsterid: 'MonsterID',
+        wavatar: 'Wavatar',
+        retro: 'Retro',
+        robohash: 'Robohash',
+        blank: 'Blank',
+      }) as Record<string, string>
+    )[style] ?? style,
+  commentNotSpam: 'Not spam',
+  commentInResponseTo: 'In response to',
+  commentInReplyTo: (name: string) => `In reply to ${name}`,
+  commentsForEntry: (title: string) => `Comments on: ${title}`,
+  commentsAllEntries: 'All entries',
 } as const;

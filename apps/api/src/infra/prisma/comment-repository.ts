@@ -60,18 +60,38 @@ export class PrismaCommentRepository implements CommentRepository {
         title: true,
         publishedAt: true,
         allowComments: true,
+        passwordHash: true,
         authorId: true,
         commentCount: true,
         currentPath: { select: { path: true } },
       },
     });
     if (!row?.currentPath) return null;
-    const { currentPath, ...target } = row;
-    return { ...target, path: decodePath(currentPath.path) };
+    const { currentPath, passwordHash, ...target } = row;
+    return {
+      ...target,
+      protected: passwordHash !== null,
+      path: decodePath(currentPath.path),
+    };
   }
 
   findById(id: string) {
     return this.db.comment.findUnique({ where: { id }, select: ownColumns });
+  }
+
+  async pageOf(root: CommentRecord, pageSize: number) {
+    const before = await this.db.comment.count({
+      where: {
+        contentId: root.contentId,
+        status: 'approved',
+        parentId: null,
+        OR: [
+          { createdAt: { lt: root.createdAt } },
+          { createdAt: root.createdAt, id: { lt: root.id } },
+        ],
+      },
+    });
+    return Math.floor(before / pageSize) + 1;
   }
 
   async insert(record: CommentRecord) {
@@ -149,15 +169,20 @@ export class PrismaCommentRepository implements CommentRepository {
     if (skip >= total) return { items: [], total };
     const rows = await this.db.comment.findMany({
       where,
-      select: { ...ownColumns, content: { select: { title: true } } },
+      select: {
+        ...ownColumns,
+        content: { select: { title: true } },
+        parent: { select: { authorName: true } },
+      },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       skip,
       take: pageSize,
     });
     return {
-      items: rows.map(({ content, ...row }) => ({
+      items: rows.map(({ content, parent, ...row }) => ({
         ...row,
         contentTitle: content.title,
+        parentAuthor: parent?.authorName ?? null,
       })),
       total,
     };
@@ -265,7 +290,10 @@ export class PrismaCommentRepository implements CommentRepository {
 
   async recent(limit: number) {
     const rows = await this.db.comment.findMany({
-      where: { status: 'approved', content: PUBLIC_CONTENT },
+      where: {
+        status: 'approved',
+        content: { ...PUBLIC_CONTENT, passwordHash: null },
+      },
       select: {
         authorName: true,
         content: {

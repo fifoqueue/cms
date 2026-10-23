@@ -73,6 +73,7 @@ export const Errors = {
   ContentTypeExists: 'A content type with this key exists',
   ContentTypeNotFound: 'Content type not found',
   ContentTypeInUse: 'Entries of this type exist; delete or change them first',
+  CommentLoginRequired: 'You must be logged in to post a comment',
   CommentNotFound: 'Comment not found',
   CommentsClosed: 'Comments are closed for this entry',
   CommentReplyInvalid: 'The comment you are replying to is not available',

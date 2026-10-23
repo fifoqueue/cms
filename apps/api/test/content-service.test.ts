@@ -151,11 +151,58 @@ describe('ContentService', () => {
     expect(second.slug).toBe('hello-world-2');
   });
 
-  test('falls back to an id-based slug for titles without ASCII letters', async () => {
-    const { service } = setup();
+  test('Unicode slugs keep their encoded permalink identity', async () => {
+    const { service, publicContent, repository } = setup();
+    const entry = await service.create(
+      input({ title: '안녕하세요', status: 'published' }),
+      ADMIN,
+    );
+    expect(entry.slug).toBe('안녕하세요');
+    expect(entry.path).toBe(`/${encodeURIComponent('안녕하세요')}`);
+    const resolver = new PermalinkResolver(
+      repository.permalinks,
+      publicContent,
+    );
+    expect((await resolver.resolve({ path: entry.path })).content.id).toBe(
+      entry.id,
+    );
+    expect((await service.create(input({ title: '🌧️' }), ADMIN)).slug).toMatch(
+      /^post-[0-9a-f]+$/,
+    );
+  });
+
+  test('private site reads require resolved capabilities and never expose drafts or admin fields', async () => {
+    const { service, publicContent, repository } = setup();
+    const entry = await service.create(input({ status: 'private' }), ADMIN);
+    const resolver = new PermalinkResolver(
+      repository.permalinks,
+      publicContent,
+    );
+    expect(await codeOf(resolver.resolve({ path: entry.path }))).toBe(
+      'not_found',
+    );
     expect(
-      (await service.create(input({ title: '안녕하세요' }), ADMIN)).slug,
-    ).toMatch(/^post-[0-9a-f]+$/);
+      await codeOf(
+        resolver.resolve({ path: entry.path }, [], {
+          id: 'reader',
+          role: 'subscriber',
+        }),
+      ),
+    ).toBe('not_found');
+    const resolved = await resolver.resolve({ path: entry.path }, [], {
+      id: 'editor',
+      role: 'custom',
+      capabilities: ['content.readPrivate'],
+    });
+    expect(resolved.content.html).toContain('Body');
+    expect(resolved.content.seo.noIndex).toBe(true);
+    for (const key of ['document', 'authorId', 'status', 'passwordHash'])
+      expect(resolved.content).not.toHaveProperty(key);
+    expect((await publicContent.list({})).items).toEqual([]);
+    await service.update(entry.id, input({ status: 'draft' }), ADMIN);
+    expect(
+      await codeOf(resolver.resolve({ path: entry.path }, [], ADMIN)),
+    ).toBe('not_found');
   });
 
   test('rejects taken slugs, invalid input and documents outside the schema', async () => {

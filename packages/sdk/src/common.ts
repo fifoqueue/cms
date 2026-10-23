@@ -147,5 +147,9 @@ export const stringifyJson = (value: unknown): string => {
   return json;
 };
 
-/** Lowercase ASCII words joined by single dashes. Shared by slugs and plugin ids. */
+/** Unicode address segments, including combining marks; identifiers keep KEBAB_CASE. */
+export const CONTENT_SLUG =
+  /^[\p{L}\p{N}][\p{L}\p{N}\p{M}]*(?:-[\p{L}\p{N}][\p{L}\p{N}\p{M}]*)*$/u;
+
+/** Lowercase ASCII words joined by single dashes, for system identifiers. */
 export const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

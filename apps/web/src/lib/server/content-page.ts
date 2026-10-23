@@ -1,3 +1,4 @@
+import type { RequestEvent } from '@sveltejs/kit';
 import type { PublicContent, PublicContentType, SlotMap } from '@cms/sdk';
 import type { ContentClient } from '@cms/sdk/client';
 import { loadComments } from '#lib/server/comments.js';
@@ -9,14 +10,16 @@ import { contentView } from '#lib/server/public-view.js';
  */
 export const entryPage = async (
   api: ContentClient,
-  url: URL,
+  event: Pick<RequestEvent, 'url' | 'cookies'>,
   content: PublicContent,
   types: Promise<PublicContentType[]>,
   slots: Promise<SlotMap>,
   path = content.path,
 ) => {
   const captcha = api.captcha().catch(() => null);
-  const comments = loadComments(api, content.id, url, captcha);
+  const comments = content.protected
+    ? null
+    : loadComments(api, content.id, event, captcha);
   return {
     kind: 'content' as const,
     content: { ...contentView(content), path },
@@ -27,7 +30,7 @@ export const entryPage = async (
     comments: await comments,
     unlockCaptcha: content.protected ? await captcha : null,
     /** Set after a held comment was sent. */
-    moderation: url.searchParams.has('moderation'),
+    moderation: event.url.searchParams.has('moderation'),
     slots: await slots,
   };
 };

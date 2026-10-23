@@ -1,6 +1,7 @@
 import { resolveArchivePath } from '@cms/sdk';
 import { error, redirect } from '@sveltejs/kit';
 import { contentApi } from '#lib/server/api.js';
+import { SESSION_COOKIE } from '#lib/server/session.js';
 import { commentAction } from '#lib/server/comments.js';
 import { entryPage } from '#lib/server/content-page.js';
 import { Errors, notFoundFrom } from '#lib/server/errors.js';
@@ -17,8 +18,9 @@ import type { Actions, PageServerLoad } from './$types';
  * static front page (Settings → Reading), that page redirects to `/` and the posts page lists
  * the latest posts instead of its own body.
  */
-export const load: PageServerLoad = async ({ fetch, url, cookies, parent }) => {
-  const api = contentApi(fetch);
+export const load: PageServerLoad = async (event) => {
+  const { fetch, url, cookies, parent } = event;
+  const api = contentApi(fetch, cookies.get(SESSION_COOKIE));
   const layout = await parent();
   const archive = resolveArchivePath(layout.archives, url.pathname);
   if (archive) {
@@ -60,7 +62,7 @@ export const load: PageServerLoad = async ({ fetch, url, cookies, parent }) => {
       slots: await slots,
     };
   }
-  return entryPage(api, url, content, types, slots);
+  return entryPage(api, event, content, types, slots);
 };
 
 export const actions: Actions = {

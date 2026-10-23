@@ -258,16 +258,17 @@ export const createContainer = async (
     clock: systemClock,
     logger,
   });
+  const locks = new ContentLocks({
+    repository: publishedRepository,
+    hasher: bunPasswordHasher,
+    signer,
+    clock: systemClock,
+    protection,
+  });
   const publicContent = new PublicContentService(
     reader,
     hooks,
-    new ContentLocks({
-      repository: publishedRepository,
-      hasher: bunPasswordHasher,
-      signer,
-      clock: systemClock,
-      protection,
-    }),
+    locks,
     embeds,
     fields,
     contentTypes,
@@ -444,6 +445,9 @@ export const createContainer = async (
 
   const commentRepository = new PrismaCommentRepository(db);
   const comments = new CommentService({
+    locks,
+    signer,
+    digest: randomTokenIssuer.digest,
     roles,
     repository: commentRepository,
     settings: settingsRepository,

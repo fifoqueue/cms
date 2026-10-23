@@ -66,6 +66,7 @@ export const ko: Messages = {
       ({
         'content.create': '내 초안 작성',
         'content.publish': '내 글 발행',
+        'content.readPrivate': '비공개 글 읽기',
         'content.editOthers': '다른 사람의 글 편집',
         'taxonomy.manage': '분류 관리',
         'media.upload': '미디어 업로드',
@@ -1095,4 +1096,31 @@ export const ko: Messages = {
   seoTabSearch: '검색',
   seoTabSocial: '소셜',
   seoTabAdvanced: '고급',
+
+  // core-comments
+  commentLoginRequired: '로그인하고 댓글을 남겨 주세요.',
+  commentSignedIn: (name: string) => `${name}님으로 로그인했습니다.`,
+  commentRemember:
+    '다음에 댓글을 작성할 때 사용할 이름, 이메일, 웹사이트를 이 브라우저에 저장합니다.',
+  discussionRequireLogin:
+    '가입하고 로그인한 사용자만 댓글을 작성할 수 있습니다',
+  discussionAvatars: '아바타 표시',
+  discussionAvatarDefault: '기본 아바타',
+  avatarStyle: (style: string) =>
+    (
+      ({
+        mp: '기본 인물',
+        identicon: '기하학 무늬',
+        monsterid: '몬스터',
+        wavatar: '얼굴',
+        retro: '레트로',
+        robohash: '로봇',
+        blank: '빈 이미지',
+      }) as Record<string, string>
+    )[style] ?? style,
+  commentNotSpam: '스팸 해제',
+  commentInResponseTo: '댓글이 달린 글:',
+  commentInReplyTo: (name: string) => `${name}님의 댓글에 대한 답글`,
+  commentsForEntry: (title: string) => `댓글 목록: ${title}`,
+  commentsAllEntries: '모든 글',
 };

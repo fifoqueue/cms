@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { KEBAB_CASE } from '#sdk/common';
+import { CONTENT_SLUG, KEBAB_CASE } from '#sdk/common';
 import {
   adminEntrySeoSchema,
   publicEntrySeoSchema,
@@ -77,7 +77,7 @@ export type AdminTaxonomyTerm = z.output<typeof adminTaxonomyTermSchema>;
  */
 export const taxonomyInputSchema = z.object({
   name: z.string().trim().min(1).max(191),
-  slug: z.string().trim().toLowerCase().max(191).regex(KEBAB_CASE).optional(),
+  slug: z.string().trim().toLowerCase().max(191).regex(CONTENT_SLUG).optional(),
   description: z.string().trim().max(1000).default(''),
   parentId: z.string().trim().min(1).max(36).nullable().default(null),
   /** Omission preserves existing SEO on update. */
