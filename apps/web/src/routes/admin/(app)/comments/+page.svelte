@@ -7,6 +7,8 @@
   import type { CommentStatus } from '@cms/sdk';
   import { Search } from '@lucide/svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import ScreenOptions from '#lib/admin/ScreenOptions.svelte';
+  import { COMMENT_COLUMNS } from '#lib/admin/screen-options.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import { Input } from '#lib/components/ui/input/index.js';
@@ -66,6 +68,16 @@
 <svelte:head><title>{m.navComments}</title></svelte:head>
 
 <h1 class="text-2xl font-semibold">{m.navComments}</h1>
+
+<ScreenOptions
+  screen="comments"
+  columns={COMMENT_COLUMNS.map((key) => ({
+    key,
+    label: key === 'email' ? m.commentEmail : m.commentInResponseTo,
+  }))}
+  hidden={data.screen.hidden}
+  perPage={data.screen.perPage}
+/>
 
 <nav class="flex flex-wrap gap-2 text-sm" aria-label={m.columnStatus}>
   <a
@@ -188,20 +200,25 @@
         <div class="min-w-0 flex-1 space-y-1">
           <p class="text-sm">
             <span class="font-medium">{item.authorName}</span>
-            <span class="text-muted-foreground">· {item.authorEmail}</span>
-            {#if item.authorUrl}<span class="text-muted-foreground"
-                >· {item.authorUrl}</span
-              >{/if}
+            {#if !data.screen.hidden.includes('email')}
+              <span class="text-muted-foreground">· {item.authorEmail}</span>
+              {#if item.authorUrl}<span class="text-muted-foreground"
+                  >· {item.authorUrl}</span
+                >{/if}
+            {/if}
             <Badge variant="secondary">{statusName(m, item.status)}</Badge>
           </p>
           <p class="text-xs text-muted-foreground">
-            {date(item.createdAt)} · {m.commentInResponseTo}
-            <a
-              href={resolve(
-                `/admin/(app)/comments${query({ contentId: item.contentId, page: 1 })}`,
-              )}
-              class="hover:underline">{item.contentTitle}</a
-            >
+            {date(item.createdAt)}
+            {#if !data.screen.hidden.includes('response')}
+              · {m.commentInResponseTo}
+              <a
+                href={resolve(
+                  `/admin/(app)/comments${query({ contentId: item.contentId, page: 1 })}`,
+                )}
+                class="hover:underline">{item.contentTitle}</a
+              >
+            {/if}
           </p>
           {#if item.parentId}<p class="text-xs text-muted-foreground">
               {m.commentInReplyTo(item.parentAuthor ?? item.parentId)}

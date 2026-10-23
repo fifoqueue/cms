@@ -11,7 +11,9 @@ import type {
   ContentRecord,
   ContentRepository,
   ContentWrite,
+  ContentWriteGuard,
 } from '#api/domain/content/content-repository';
+import type { RevisionRepository } from '#api/domain/content/revisions';
 import { checkContentParent } from '#api/domain/content/hierarchy';
 import { checkTermKinds } from '#api/domain/content/term-assignment';
 import { compareTerms, withDescendants } from '#api/domain/taxonomy/hierarchy';
@@ -165,7 +167,11 @@ export class MemoryContentRepository implements ContentRepository {
       .map((row) => this.toRecord(row));
   }
 
-  async insert(record: ContentWrite) {
+  insert(record: ContentWrite) {
+    return this.serialized(() => this.add(record));
+  }
+
+  private async add(record: ContentWrite) {
     await checkContentParent(
       { id: record.id, type: record.type, parentId: record.parentId ?? null },
       async (id) => {
@@ -183,13 +189,38 @@ export class MemoryContentRepository implements ContentRepository {
     return this.toRecord(record);
   }
 
-  async update(record: ContentWrite, expectedUpdatedAt?: Date) {
+  /** Autosaves the `autosaveOf` guard consults (set when a test wires revisions in). */
+  autosaves?: { findAutosave: RevisionRepository['findAutosave'] };
+
+  /** Content writes run one at a time, like the Prisma adapter's write lock. */
+  private writing: Promise<unknown> = Promise.resolve();
+  private serialized<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.writing.then(task, task);
+    this.writing = run.catch(() => undefined);
+    return run;
+  }
+
+  update(record: ContentWrite, guard: ContentWriteGuard = {}) {
+    return this.serialized(() => this.write(record, guard));
+  }
+
+  private async write(input: ContentWrite, guard: ContentWriteGuard) {
+    const stored = this.rows.get(input.id);
+    // The version (`updatedAt`) strictly advances, so equal clocks never share one.
+    const record =
+      stored && input.updatedAt <= stored.updatedAt
+        ? { ...input, updatedAt: new Date(stored.updatedAt.getTime() + 1) }
+        : input;
     if (
-      expectedUpdatedAt &&
-      this.rows.get(record.id)?.updatedAt.getTime() !==
-        expectedUpdatedAt.getTime()
+      guard.expectedUpdatedAt &&
+      stored?.updatedAt.getTime() !== guard.expectedUpdatedAt.getTime()
     )
       throw conflict(Errors.ContentChanged);
+    const autosave =
+      guard.autosaveOf &&
+      (await this.autosaves?.findAutosave(record.id, guard.autosaveOf));
+    if (stored && autosave && autosave.createdAt > stored.updatedAt)
+      throw conflict(Errors.ContentAutosavePending);
     if (
       record.type !== 'page' &&
       [...this.rows.values()].some((row) => row.parentId === record.id)
@@ -214,7 +245,11 @@ export class MemoryContentRepository implements ContentRepository {
     return this.toRecord(record);
   }
 
-  async delete(id: string) {
+  delete(id: string) {
+    return this.serialized(() => this.erase(id));
+  }
+
+  private async erase(id: string) {
     const rows = structuredClone([...this.rows]);
     const paths = structuredClone([...this.permalinks.paths]);
     try {

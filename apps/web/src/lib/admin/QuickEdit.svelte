@@ -118,8 +118,8 @@
         <Input
           id="{id}-password"
           name="password"
-          type="text"
-          autocomplete="off"
+          type="password"
+          autocomplete="new-password"
           maxlength={200}
           placeholder={entry.protected ? m.quickEditPasswordKept : ''}
         />

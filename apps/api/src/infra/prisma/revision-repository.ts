@@ -5,6 +5,7 @@ import type {
   RevisionWrite,
 } from '#api/domain/content/revisions';
 import type { Database } from '#api/infra/prisma/client';
+import { lockPermalinks } from '#api/infra/prisma/permalink-repository';
 import type { ContentRevision } from '#api/infra/prisma/generated/client';
 
 type Row = ContentRevision & { author: { name: string } | null };
@@ -44,6 +45,18 @@ export class PrismaRevisionRepository implements RevisionRepository {
 
   async autosave(revision: RevisionWrite) {
     await this.db.$transaction(async (tx) => {
+      // Serialized with content writes, so a guarded save sees it or it sees the save.
+      await lockPermalinks(tx);
+      const saved = await tx.content.findUnique({
+        where: { id: revision.contentId },
+        select: { updatedAt: true },
+      });
+      // Dated after the last save even when that save committed while this one waited.
+      if (saved && revision.createdAt <= saved.updatedAt)
+        revision = {
+          ...revision,
+          createdAt: new Date(saved.updatedAt.getTime() + 1),
+        };
       await tx.contentRevision.deleteMany({
         where: {
           contentId: revision.contentId,

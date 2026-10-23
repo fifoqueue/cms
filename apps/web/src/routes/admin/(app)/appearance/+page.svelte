@@ -2,7 +2,7 @@
   import { resolve } from '$app/paths';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
-  import { ExternalLink, Paintbrush, Upload } from '@lucide/svelte';
+  import { ExternalLink, Info, Paintbrush, Upload, X } from '@lucide/svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import ThemePreview from '#lib/admin/ThemePreview.svelte';
   import { Badge } from '#lib/components/ui/badge/index.js';
@@ -32,6 +32,14 @@
         a.name.localeCompare(b.name),
     ),
   );
+
+  /** The theme whose details dialog is open. */
+  let details = $state<(typeof themes)[number] | null>(null);
+  let dialog: HTMLDialogElement;
+  const showDetails = (theme: (typeof themes)[number]) => {
+    details = theme;
+    dialog.showModal();
+  };
 
   const confirmRemove =
     (name: string): SubmitFunction =>
@@ -79,9 +87,23 @@
           </div>
         </CardHeader>
         <CardContent>
-          <ThemePreview palette={theme.palette} name={theme.name} />
+          <button
+            type="button"
+            class="block w-full rounded-md text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            aria-label={m.themeDetailsOf(theme.name)}
+            onclick={() => showDetails(theme)}
+          >
+            <ThemePreview palette={theme.palette} name={theme.name} />
+          </button>
         </CardContent>
         <CardFooter class="mt-auto flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onclick={() => showDetails(theme)}
+            ><Info class="size-4" /> {m.themeDetails}</Button
+          >
           <Button
             href={`${resolve('/admin/(app)/appearance/editor')}?theme=${encodeURIComponent(theme.id)}`}
             variant={theme.active ? 'default' : 'outline'}
@@ -94,12 +116,7 @@
               <input type="hidden" name="id" value={theme.id} />
               <Button type="submit" size="sm">{m.themeActivate}</Button>
             </form>
-            <form method="POST" action="?/preview">
-              <input type="hidden" name="id" value={theme.id} />
-              <Button type="submit" variant="outline" size="sm"
-                >{m.themePreview}</Button
-              >
-            </form>
+            {@render livePreview(theme.id)}
             {#if !theme.builtin}
               <form
                 method="POST"
@@ -120,6 +137,100 @@
     {/each}
   </div>
 </section>
+
+{#snippet livePreview(id: string)}
+  <!-- Not enhanced: the preview opens the site in a new tab. -->
+  <form method="POST" action="?/preview" target="_blank">
+    <input type="hidden" name="id" value={id} />
+    <Button type="submit" variant="outline" size="sm"
+      ><ExternalLink class="size-4" /> {m.themeLivePreview}</Button
+    >
+  </form>
+{/snippet}
+
+<dialog
+  bind:this={dialog}
+  aria-labelledby="theme-details-title"
+  class="m-auto w-[min(42rem,calc(100vw-2rem))] rounded-lg border bg-background p-0 text-foreground shadow-lg backdrop:bg-black/50"
+  onclose={() => (details = null)}
+>
+  {#if details}
+    <div class="grid gap-4 p-6">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h2 id="theme-details-title" class="text-lg font-semibold">
+            {details.name}
+            <span class="text-sm font-normal text-muted-foreground"
+              >{details.version}</span
+            >
+          </h2>
+          {#if details.author}<p class="text-sm text-muted-foreground">
+              {m.themeByAuthor(details.author)}
+            </p>{/if}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={m.close}
+          onclick={() => dialog.close()}><X class="size-4" /></Button
+        >
+      </div>
+      <ThemePreview palette={details.palette} name={details.name} />
+      <p class="text-sm">{details.description || details.id}</p>
+      <div class="flex flex-wrap gap-1">
+        {#if details.active}<Badge>{m.themeActive}</Badge>{/if}
+        {#if details.builtin}<Badge variant="secondary">{m.builtin}</Badge>{/if}
+        {#if details.customized}<Badge variant="outline"
+            >{m.editorCustomized}</Badge
+          >{/if}
+        <Badge variant="outline"
+          >{m.themeTemplateCount(details.templateCount)}</Badge
+        >
+      </div>
+      <div class="flex flex-wrap gap-2 border-t pt-4">
+        <Button
+          href={`${resolve('/admin/(app)/appearance/editor')}?theme=${encodeURIComponent(details.id)}`}
+          variant="outline"
+          size="sm"><Paintbrush class="size-4" /> {m.themeCustomize}</Button
+        >
+        {#if !details.active}
+          <form
+            method="POST"
+            action="?/activate"
+            use:enhance={() =>
+              async ({ update }) => {
+                dialog.close();
+                await update();
+              }}
+          >
+            <input type="hidden" name="id" value={details.id} />
+            <Button type="submit" size="sm">{m.themeActivate}</Button>
+          </form>
+          {@render livePreview(details.id)}
+          {#if !details.builtin}
+            <form
+              method="POST"
+              action="?/remove"
+              use:enhance={(input) => {
+                confirmRemove(details!.name)(input);
+                return async ({ update }) => {
+                  dialog.close();
+                  await update();
+                };
+              }}
+            >
+              <input type="hidden" name="id" value={details.id} />
+              <Button type="submit" variant="destructive" size="sm"
+                >{m.remove}</Button
+              >
+            </form>
+          {/if}
+        {/if}
+      </div>
+    </div>
+  {/if}
+</dialog>
 
 <Card>
   <CardHeader>

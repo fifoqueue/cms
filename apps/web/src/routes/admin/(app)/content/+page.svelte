@@ -9,7 +9,11 @@
   import { can } from '@cms/sdk/capabilities';
   import { Plus, Search } from '@lucide/svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import BulkEdit from '#lib/admin/BulkEdit.svelte';
+  import BulkReport from '#lib/admin/BulkReport.svelte';
   import QuickEdit from '#lib/admin/QuickEdit.svelte';
+  import ScreenOptions from '#lib/admin/ScreenOptions.svelte';
+  import { CONTENT_COLUMNS } from '#lib/admin/screen-options.js';
   import { flattenTree } from '#lib/admin/taxonomy-tree.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -98,7 +102,43 @@
   const listed = (count: number | null, current: boolean) =>
     current || count === null || count > 0;
 
+  /** Bulk Edit panel, opened by the "Edit" bulk action. */
+  let bulkEditing = $state(false);
+  const bulkEntries = $derived(
+    data.content.items.filter((item) => selected.includes(item.id)),
+  );
+  const bulkResult = $derived(
+    form && 'bulk' in form
+      ? (form.bulk as {
+          done: number;
+          failed: { id: string; message: string }[];
+        })
+      : null,
+  );
+  const titles = $derived(
+    new Map(data.content.items.map((item) => [item.id, item.title])),
+  );
+
+  const hidden = $derived(new Set<string>(data.screen.hidden));
+  const columnLabels = $derived({
+    author: m.columnAuthor,
+    categories: m.columnCategories,
+    tags: m.columnTags,
+    comments: m.navComments,
+    status: m.columnStatus,
+    date: m.columnDate,
+  });
+  /** Title and checkbox are always shown; colspan of full-width rows. */
+  const span = $derived(
+    2 + CONTENT_COLUMNS.filter((key) => !hidden.has(key)).length,
+  );
+
   const confirmBulk: SubmitFunction = ({ formData, cancel }) => {
+    if (formData.get('action') === 'edit') {
+      cancel();
+      bulkEditing = true;
+      return;
+    }
     if (formData.get('action') === 'delete' && !confirm(m.confirmDelete))
       cancel();
     return ({ update }) => {
@@ -140,6 +180,13 @@
     ><Plus class="size-4" /> {m.contentNew}</Button
   >
 </div>
+
+<ScreenOptions
+  screen="content"
+  columns={CONTENT_COLUMNS.map((key) => ({ key, label: columnLabels[key] }))}
+  hidden={data.screen.hidden}
+  perPage={data.screen.perPage}
+/>
 
 {#snippet count(value: number | null)}{#if value !== null}
     <span class="text-muted-foreground">({value})</span>{/if}{/snippet}
@@ -271,6 +318,7 @@
 </form>
 
 {#if !quickForm}<FormMessage {form} />{/if}
+<BulkReport result={bulkResult} names={titles} />
 
 <!-- The row checkboxes belong to this form through their `form` attribute, so rows can hold their own forms. -->
 <form
@@ -288,6 +336,7 @@
         >{m.deletePermanently}</NativeSelectOption
       >
     {:else}
+      <NativeSelectOption value="edit">{m.edit}</NativeSelectOption>
       <NativeSelectOption value="trash">{m.moveToTrash}</NativeSelectOption>
     {/if}
   </NativeSelect>
@@ -295,6 +344,20 @@
     >{m.apply}</Button
   >
 </form>
+
+{#if bulkEditing && bulkEntries.length}
+  <BulkEdit
+    entries={bulkEntries}
+    categories={categoryRows}
+    tags={tagOptions}
+    authors={data.authors}
+    canPublish={data.canPublish}
+    onclose={() => {
+      bulkEditing = false;
+      selected = [];
+    }}
+  />
+{/if}
 
 <div class="rounded-md border bg-background">
   <Table>
@@ -310,10 +373,20 @@
           />
         </TableHead>
         <TableHead>{m.columnTitle}</TableHead>
-        <TableHead class="hidden md:table-cell">{m.columnAuthor}</TableHead>
-        <TableHead class="hidden lg:table-cell">{m.columnCategories}</TableHead>
-        <TableHead>{m.columnStatus}</TableHead>
-        <TableHead>{m.columnDate}</TableHead>
+        {#if !hidden.has('author')}<TableHead class="hidden md:table-cell"
+            >{m.columnAuthor}</TableHead
+          >{/if}
+        {#if !hidden.has('categories')}<TableHead class="hidden lg:table-cell"
+            >{m.columnCategories}</TableHead
+          >{/if}
+        {#if !hidden.has('tags')}<TableHead class="hidden lg:table-cell"
+            >{m.columnTags}</TableHead
+          >{/if}
+        {#if !hidden.has('comments')}<TableHead
+            class="hidden text-right md:table-cell">{m.navComments}</TableHead
+          >{/if}
+        {#if !hidden.has('status')}<TableHead>{m.columnStatus}</TableHead>{/if}
+        {#if !hidden.has('date')}<TableHead>{m.columnDate}</TableHead>{/if}
       </TableRow>
     </TableHeader>
     <TableBody>
@@ -321,7 +394,7 @@
         {#if editing === item.id}
           {@const type = data.types.find((option) => option.key === item.type)}
           <TableRow>
-            <TableCell colspan={6} class="bg-muted/40 whitespace-normal">
+            <TableCell colspan={span} class="bg-muted/40 whitespace-normal">
               <QuickEdit
                 entry={item}
                 categories={type?.categories ? categoryRows : []}
@@ -437,37 +510,72 @@
                 {/if}
               </div>
             </TableCell>
-            <TableCell class="hidden align-top text-sm md:table-cell"
-              >{item.authorName}</TableCell
-            >
-            <TableCell class="hidden align-top text-sm lg:table-cell">
-              {#each item.categories as category, index (category.id)}{index
-                  ? ', '
-                  : ''}<a
-                  href={resolve(
-                    `/admin/(app)/content${query({ category: category.slug, page: 1 })}`,
-                  )}
-                  class="hover:underline">{category.name}</a
-                >{:else}<span class="text-muted-foreground">—</span>{/each}
-            </TableCell>
-            <TableCell class="align-top">
-              <Badge
-                variant={item.status === 'published' ? 'default' : 'secondary'}
-                >{statusLabel(m, item.status)}</Badge
+            {#if !hidden.has('author')}
+              <TableCell class="hidden align-top text-sm md:table-cell"
+                >{item.authorName}</TableCell
               >
-            </TableCell>
-            <TableCell class="align-top text-sm text-muted-foreground">
-              {#if item.trashedAt}
-                {m.trashedOn(date(item.trashedAt))}
-              {:else}
-                {date(item.publishedAt ?? item.updatedAt)}
-              {/if}
-            </TableCell>
+            {/if}
+            {#if !hidden.has('categories')}
+              <TableCell class="hidden align-top text-sm lg:table-cell">
+                {#each item.categories as category, index (category.id)}{index
+                    ? ', '
+                    : ''}<a
+                    href={resolve(
+                      `/admin/(app)/content${query({ category: category.slug, page: 1 })}`,
+                    )}
+                    class="hover:underline">{category.name}</a
+                  >{:else}<span class="text-muted-foreground">—</span>{/each}
+              </TableCell>
+            {/if}
+            {#if !hidden.has('tags')}
+              <TableCell class="hidden align-top text-sm lg:table-cell">
+                {#each item.tags as tag, index (tag.id)}{index ? ', ' : ''}<a
+                    href={resolve(
+                      `/admin/(app)/content${query({ tag: tag.slug, page: 1 })}`,
+                    )}
+                    class="hover:underline">{tag.name}</a
+                  >{:else}<span class="text-muted-foreground">—</span>{/each}
+              </TableCell>
+            {/if}
+            {#if !hidden.has('comments')}
+              <TableCell
+                class="hidden text-right align-top text-sm md:table-cell"
+              >
+                {#if item.commentCount}
+                  <a
+                    href={resolve(
+                      `/admin/(app)/comments?contentId=${encodeURIComponent(item.id)}`,
+                    )}
+                    class="hover:underline">{item.commentCount}</a
+                  >
+                {:else}<span class="text-muted-foreground">—</span>{/if}
+              </TableCell>
+            {/if}
+            {#if !hidden.has('status')}
+              <TableCell class="align-top">
+                <Badge
+                  variant={item.status === 'published'
+                    ? 'default'
+                    : 'secondary'}>{statusLabel(m, item.status)}</Badge
+                >
+              </TableCell>
+            {/if}
+            {#if !hidden.has('date')}
+              <TableCell class="align-top text-sm text-muted-foreground">
+                {#if item.trashedAt}
+                  {m.trashedOn(date(item.trashedAt))}
+                {:else}
+                  {date(item.publishedAt ?? item.updatedAt)}
+                {/if}
+              </TableCell>
+            {/if}
           </TableRow>
         {/if}
       {:else}
         <TableRow>
-          <TableCell colspan={6} class="py-10 text-center text-muted-foreground"
+          <TableCell
+            colspan={span}
+            class="py-10 text-center text-muted-foreground"
             >{trash
               ? m.emptyTrash
               : filtered

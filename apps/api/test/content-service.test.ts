@@ -500,6 +500,104 @@ describe('ContentService', () => {
       ADMIN,
     );
     expect(redated.publishedAt).toBe('2026-05-01T00:00:00.000Z');
+
+    // Seconds are honored too: no form heuristic in the API.
+    const seconds = await service.update(
+      entry.id,
+      input({
+        status: 'published',
+        document: body,
+        publishedAt: '2026-05-01T00:00:45.000Z',
+      }),
+      ADMIN,
+    );
+    expect(seconds.publishedAt).toBe('2026-05-01T00:00:45.000Z');
+
+    // Saves at the same clock value still advance the version.
+    const same = await service.update(
+      entry.id,
+      input({ status: 'published', title: 'Same clock' }),
+      ADMIN,
+    );
+    expect(same.updatedAt).not.toBe(seconds.updatedAt);
+    expect(
+      await codeOf(
+        service.update(
+          entry.id,
+          input({ status: 'published', expectedUpdatedAt: seconds.updatedAt }),
+          ADMIN,
+        ),
+      ),
+    ).toBe('conflict');
+
+    // Two overlapping writes from one version: exactly one wins.
+    const results = await Promise.allSettled(
+      ['Writer A', 'Writer B'].map((title) =>
+        service.update(
+          entry.id,
+          input({
+            status: 'published',
+            title,
+            expectedUpdatedAt: same.updatedAt,
+          }),
+          ADMIN,
+        ),
+      ),
+    );
+    expect(results.map((result) => result.status).sort()).toEqual([
+      'fulfilled',
+      'rejected',
+    ]);
+  });
+
+  test('partial edits keep unsaved editor text: refused while an autosave is pending, never discarding one', async () => {
+    const { service, revisions, repository, clock } = setup();
+    repository.autosaves = revisions;
+    revisions.saves = { savedAt: (id) => repository.rows.get(id)?.updatedAt };
+    const history = new RevisionService({
+      content: service,
+      revisions,
+      renderer: tiptapRenderer,
+      ids: sequentialIds(),
+      clock,
+    });
+    const entry = await service.create(input(), ADMIN);
+    const unsaved = {
+      title: 'Hello World',
+      excerpt: '',
+      document: {
+        type: 'doc' as const,
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'UNSAVED BODY' }],
+          },
+        ],
+      },
+    };
+    clock.set('2026-03-01T00:00:00.000Z');
+    await history.autosave(entry.id, unsaved, ADMIN);
+    const quick = (expectedUpdatedAt: string) =>
+      service.update(
+        entry.id,
+        input({ title: 'Renamed', expectedUpdatedAt, preserveAutosave: true }),
+        ADMIN,
+      );
+    expect(await codeOf(quick(entry.updatedAt))).toBe('conflict');
+    expect((await history.pendingAutosave(entry.id, ADMIN))?.title).toBe(
+      'Hello World',
+    );
+
+    // An autosave that raced a partial save (dated before it, written after) stays pending.
+    await revisions.clearAutosave(entry.id, ADMIN.id);
+    clock.set('2026-03-02T00:00:00.000Z');
+    const renamed = await quick(entry.updatedAt);
+    clock.set('2026-03-01T12:00:00.000Z');
+    await history.autosave(entry.id, unsaved, ADMIN);
+    expect(renamed.title).toBe('Renamed');
+    expect((await history.pendingAutosave(entry.id, ADMIN))?.document).toEqual(
+      unsaved.document,
+    );
   });
 
   test('the public API serves published content only', async () => {
@@ -539,6 +637,14 @@ describe('ContentService', () => {
     expect(await menus.publicMenu('primary')).toEqual([
       { label: 'Live', url: '/live', newTab: false, children: [] },
     ]);
+    // The menu editor's labels need only `appearance.manage` and name published targets only.
+    expect(
+      await menus.targets({
+        ...ADMIN,
+        role: 'designer',
+        capabilities: ['appearance.manage'],
+      }),
+    ).toEqual([{ id: live.id, title: 'Live', type: 'post' }]);
     expect(await codeOf(publicContent.getBySlug('draft'))).toBe('not_found');
     // Lists never carry bodies or editor documents; single reads do.
     expect(listed[0]).not.toHaveProperty('html');

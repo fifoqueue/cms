@@ -50,6 +50,8 @@ export const Errors = {
     'Contact an administrator to change your email address.',
 
   ContentNotFound: 'Content not found',
+  ContentAutosavePending:
+    'You have unsaved changes to this entry in the editor. Open it to save or discard them first.',
   ContentChanged:
     'This entry was changed since you opened it. Reload the page and try again.',
   ContentPathMissing: 'Content has no current path',

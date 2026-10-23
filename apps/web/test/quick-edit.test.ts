@@ -29,6 +29,7 @@ test('Quick Edit keeps what it does not show: custom terms and the scheduled dat
     extraTermIds: ['topic-1'],
     publishedAt: '2026-12-01T09:30:15.000Z',
     expectedUpdatedAt: '2026-10-01T00:00:00.000Z',
+    preserveAutosave: true,
   });
   expect(input).not.toHaveProperty('seo');
 });
