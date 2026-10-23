@@ -68,7 +68,7 @@ export class PrismaUserDirectory implements UserDirectory {
     return this.db.user.findFirst({
       // Users without public entries are not listed, so archives never enumerate accounts.
       where: { slug, contents: { some: PUBLIC_CONTENT } },
-      select: { name: true, slug: true, bio: true, email: true },
+      select: { name: true, slug: true, bio: true },
     });
   }
 

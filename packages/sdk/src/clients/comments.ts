@@ -2,6 +2,7 @@ import { unlockHeaders } from '#sdk/clients/content';
 import { visitorHeaders } from '#sdk/clients/security';
 import type { Visitor } from '#sdk/clients/security';
 import {
+  COMMENTER_PROOF_HEADER,
   COMMENT_PENDING_HEADER,
   adminCommentSchema,
   commentCountsSchema,
@@ -46,11 +47,18 @@ export const publicCommentsClient = (request: Request) => ({
       input: CommentInput,
       visitor?: Visitor,
       proofs: readonly string[] = [],
+      commenterProof?: string,
     ) =>
       request<CommentSubmitted>('POST', '/api/v1/comments', {
         json: input,
         response: commentSubmittedSchema,
-        headers: { ...visitorHeaders(visitor), ...unlockHeaders(proofs) },
+        headers: {
+          ...visitorHeaders(visitor),
+          ...unlockHeaders(proofs),
+          ...(commenterProof && {
+            [COMMENTER_PROOF_HEADER]: commenterProof,
+          }),
+        },
       }),
   },
 });

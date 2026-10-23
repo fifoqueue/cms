@@ -449,7 +449,7 @@ export const createContainer = async (
     ids: uuidV7,
     clock: systemClock,
     // `comments` is created below; the avatar is only read on requests.
-    avatar: (address) => comments.avatar(address),
+    avatar: (key) => comments.avatar(key),
     invitations: {
       available: () => email.enabled(),
       send: (user) => passwords.invite(user),

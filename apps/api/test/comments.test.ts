@@ -184,7 +184,10 @@ describe('CommentService', () => {
     );
     const avatars = await comments.publicPage(entry.id, 1);
     expect(avatars.items[0]?.avatarUrl).toBe(
-      `https://www.gravatar.com/avatar/${randomTokenIssuer.digest('ann@example.com')}?d=identicon&s=96`,
+      `https://www.gravatar.com/avatar/${randomTokenIssuer.digest(`comment:${sent.comment!.id}`)}?d=identicon&s=96`,
+    );
+    expect(avatars.items[0]?.avatarUrl).not.toContain(
+      randomTokenIssuer.digest('ann@example.com'),
     );
     expect(JSON.stringify(avatars)).not.toContain('example.com');
   });
@@ -319,9 +322,8 @@ describe('CommentService', () => {
     ).toMatchObject({ status: 'pending', comment: null, pendingProof: null });
     expect(store.rows.size).toBe(0);
 
-    expect((await comments.submit(comment(entry.id), visitor)).status).toBe(
-      'pending',
-    );
+    const firstSubmission = await comments.submit(comment(entry.id), visitor);
+    expect(firstSubmission.status).toBe('pending');
     const spam = await comments.submit(
       comment(entry.id, { body: 'Best CASINO' }),
       visitor,
@@ -332,13 +334,53 @@ describe('CommentService', () => {
     const [first] = (await comments.list({ status: 'pending' }, ADMIN)).items;
     await comments.bulk({ ids: [first!.id], action: 'approve' }, ADMIN);
     expect(repository.commentCounts.get(entry.id)).toBe(1);
-    // Known authors skip the queue, unless a hold word appears.
+    // An approved email alone is spoofable; only its signed commenter proof skips the queue.
     expect((await comments.submit(comment(entry.id), visitor)).status).toBe(
-      'approved',
+      'pending',
     );
     expect(
-      (await comments.submit(comment(entry.id, { body: 'refund?' }), visitor))
-        .status,
+      (
+        await comments.submit(
+          comment(entry.id),
+          visitor,
+          [],
+          null,
+          firstSubmission.commenterProof!,
+        )
+      ).status,
+    ).toBe('approved');
+    expect(
+      (
+        await comments.submit(
+          comment(entry.id),
+          visitor,
+          [],
+          null,
+          `${firstSubmission.commenterProof}forged`,
+        )
+      ).status,
+    ).toBe('pending');
+    expect(
+      (
+        await comments.submit(
+          comment(entry.id, { authorEmail: 'other@example.com' }),
+          visitor,
+          [],
+          null,
+          firstSubmission.commenterProof!,
+        )
+      ).status,
+    ).toBe('pending');
+    expect(
+      (
+        await comments.submit(
+          comment(entry.id, { body: 'refund?' }),
+          visitor,
+          [],
+          null,
+          firstSubmission.commenterProof!,
+        )
+      ).status,
     ).toBe('pending');
     expect(repository.commentCounts.get(entry.id)).toBe(2);
 
@@ -346,6 +388,9 @@ describe('CommentService', () => {
     const reply = await comments.submit(
       comment(entry.id, { parentId: first!.id, body: 'Agreed' }),
       visitor,
+      [],
+      null,
+      firstSubmission.commenterProof!,
     );
     await comments.remove(first!.id, ADMIN);
     const thread = await comments.publicPage(entry.id, 1);

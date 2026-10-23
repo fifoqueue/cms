@@ -49,6 +49,7 @@ import { parseInput } from '#api/shared/validation';
 
 const KEY = 'discussion';
 const DAY = 24 * 60 * 60 * 1000;
+const COMMENTER_LIFETIME = 365 * DAY;
 /** Spam and trashed comments are deleted after this long (WordPress empties them after 30 days). */
 export const COMMENT_PURGE_DAYS = 30;
 
@@ -190,6 +191,7 @@ export class CommentService {
     attempt: Omit<Attempt, 'action' | 'account'>,
     proofs: readonly string[] = [],
     actor: Actor | null = null,
+    commenterProof = '',
   ): Promise<CommentSubmitted> {
     const user = actor ? await this.deps.users.get(actor.id) : null;
     if (actor && !user) throw notFound(Errors.UserNotFound);
@@ -206,7 +208,13 @@ export class CommentService {
     const protectedAttempt = { ...attempt, action: 'comment' as const };
     await this.deps.protection.check(protectedAttempt);
     if (data.website)
-      return { status: 'pending', comment: null, page: 1, pendingProof: null };
+      return {
+        status: 'pending',
+        comment: null,
+        page: 1,
+        pendingProof: null,
+        commenterProof: null,
+      };
 
     const target = await this.deps.repository.target(data.contentId);
     if (
@@ -220,6 +228,14 @@ export class CommentService {
     if (!(await this.open(target, settings)))
       throw forbidden(Errors.CommentsClosed);
     const depth = await this.replyDepth(data.parentId, target, settings);
+    const recognized = !user
+      ? await this.knownCommenter(commenterProof, data.authorEmail)
+      : false;
+    const known =
+      settings.moderation === 'known' &&
+      (user
+        ? await this.deps.repository.hasApproved(data.authorEmail)
+        : recognized);
 
     const draft: CommentDraft = {
       contentId: target.id,
@@ -228,7 +244,7 @@ export class CommentService {
       authorEmail: data.authorEmail,
       authorUrl: data.authorUrl,
       body: data.body,
-      status: await this.initialStatus(data, settings),
+      status: this.initialStatus(data, settings, known),
     };
     const filtered = await this.deps.hooks.applyFilter(
       'comment.beforeSave',
@@ -272,17 +288,25 @@ export class CommentService {
         status === 'approved'
           ? null
           : `${record.id}.${expires}.${this.deps.signer.sign(payload)}`,
+      commenterProof: user
+        ? null
+        : recognized && status !== 'approved'
+          ? commenterProof
+          : this.commenterProof(record),
     };
   }
 
-  /** The Gravatar image of an email address while avatars are shown, else null. */
-  async avatar(email: string): Promise<string | null> {
-    return this.avatarUrl(email, await this.discussion());
+  /**
+   * The generated avatar for a public key (such as `author:<slug>`) while avatars are shown, else null.
+   * Keys are never email addresses, so public URLs carry no reusable email digest.
+   */
+  async avatar(key: string): Promise<string | null> {
+    return this.avatarUrl(key, await this.discussion());
   }
 
-  private avatarUrl(email: string, settings: DiscussionSettings) {
+  private avatarUrl(key: string, settings: DiscussionSettings) {
     return settings.showAvatars
-      ? `https://www.gravatar.com/avatar/${this.deps.digest(email.trim().toLowerCase())}?d=${settings.avatarDefault}&s=96`
+      ? `https://www.gravatar.com/avatar/${this.deps.digest(key)}?d=${settings.avatarDefault}&s=96`
       : null;
   }
 
@@ -431,7 +455,7 @@ export class CommentService {
     return depth;
   }
 
-  private async initialStatus(
+  private initialStatus(
     data: {
       authorName: string;
       authorEmail: string;
@@ -439,7 +463,8 @@ export class CommentService {
       body: string;
     },
     settings: DiscussionSettings,
-  ): Promise<CommentDraft['status']> {
+    known: boolean,
+  ): CommentDraft['status'] {
     const text = [data.authorName, data.authorEmail, data.authorUrl, data.body]
       .join('\n')
       .toLowerCase();
@@ -451,9 +476,7 @@ export class CommentService {
       return 'pending';
     if (settings.moderation === 'auto') return 'approved';
     if (settings.moderation === 'manual') return 'pending';
-    return (await this.deps.repository.hasApproved(data.authorEmail))
-      ? 'approved'
-      : 'pending';
+    return known ? 'approved' : 'pending';
   }
 
   private toPublic(
@@ -469,11 +492,34 @@ export class CommentService {
       authorName: record.authorName,
       authorUrl: record.authorUrl || null,
       byAuthor: record.userId !== null && record.userId === target.authorId,
-      avatarUrl: this.avatarUrl(record.authorEmail, settings),
+      avatarUrl: this.avatarUrl(`comment:${record.id}`, settings),
       pending: record.status === 'pending',
       body: record.body,
       createdAt: record.createdAt.toISOString(),
     });
+  }
+
+  /** A bearer proof whose referenced comment must still be approved for the same email. */
+  private async knownCommenter(proof: string, email: string) {
+    if (proof.length > 512) return false;
+    const [id, expires, signature, extra] = proof.split('.');
+    if (
+      !id ||
+      !signature ||
+      extra !== undefined ||
+      !Number.isSafeInteger(Number(expires)) ||
+      Number(expires) <= this.deps.clock.now().getTime() ||
+      !this.deps.signer.verify(`commenter:${id}:${email}:${expires}`, signature)
+    )
+      return false;
+    const comment = await this.deps.repository.findById(id);
+    return comment?.status === 'approved' && comment.authorEmail === email;
+  }
+
+  private commenterProof(comment: CommentRecord) {
+    const expires = this.deps.clock.now().getTime() + COMMENTER_LIFETIME;
+    const payload = `commenter:${comment.id}:${comment.authorEmail}:${expires}`;
+    return `${comment.id}.${expires}.${this.deps.signer.sign(payload)}`;
   }
 
   private async pending(proof: string, contentId: string) {

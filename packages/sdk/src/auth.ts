@@ -13,6 +13,7 @@ export const userSlugSchema = z
   .string()
   .trim()
   .toLowerCase()
+  .normalize('NFC')
   .min(1)
   .max(191)
   .regex(CONTENT_SLUG);

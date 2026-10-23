@@ -123,6 +123,7 @@ interface Call {
   method: string;
   url: URL;
   authorization: string | null;
+  commenterProof: string | null;
   body: string;
 }
 
@@ -137,6 +138,7 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     method: request.method,
     url: new URL(request.url),
     authorization: request.headers.get('authorization'),
+    commenterProof: request.headers.get('x-cms-commenter-proof'),
     body: await request.text(),
   };
   calls.push(call);
@@ -425,6 +427,27 @@ describe('public page data', () => {
     ).toMatchObject({ status: 502 });
   });
 
+  test('archive aliases redirect to the stored Unicode slug', async () => {
+    override = ({ url }) =>
+      url.pathname === '/api/v1/taxonomies/category/cafe'
+        ? json({
+            id: 'cafe',
+            taxonomy: 'category',
+            name: 'Café',
+            slug: 'café',
+            description: '',
+            parentId: null,
+            count: 1,
+            seo: publicSeo,
+          })
+        : undefined;
+    expect(
+      await loadCategory(
+        publicEvent('/category/cafe?ref=old', { slug: 'cafe' }),
+      ).catch((thrown: unknown) => thrown),
+    ).toMatchObject({ status: 308, location: '/category/caf%C3%A9?ref=old' });
+  });
+
   test('block data shared by the error template and the page, and archive slots, load once', async () => {
     const footer = [
       { name: 'latest-posts', attrs: { count: 5 } },
@@ -556,6 +579,57 @@ test('failed replies retain their parent and retry redirects to the returned com
   expect(
     await commentAction(event()).catch((error: unknown) => error),
   ).toMatchObject({ status: 303, location: '/hello?cpage=2#comment-reply' });
+});
+
+test('remembered commenters send and rotate only the signed proof cookie', async () => {
+  const set: { name: string; value: string }[] = [];
+  const base = adminEvent('/hello?/comment', {
+    contentId: 'id-hello',
+    authorName: 'Reader',
+    authorEmail: 'reader@example.com',
+    body: 'Hello',
+    remember: 'on',
+  });
+  const event = {
+    ...(base as object),
+    getClientAddress: () => '203.0.113.1',
+    cookies: {
+      get: (name: string) =>
+        name === 'cms_commenter_proof' ? 'old-signed-proof' : undefined,
+      getAll: () => [],
+      set: (name: string, value: string) => set.push({ name, value }),
+      delete: () => undefined,
+    },
+  } as Parameters<typeof commentAction>[0];
+  override = ({ url }) =>
+    url.pathname === '/api/v1/comments'
+      ? json({
+          status: 'approved',
+          page: 1,
+          pendingProof: null,
+          commenterProof: 'new-signed-proof',
+          comment: {
+            id: 'comment',
+            parentId: null,
+            depth: 0,
+            authorName: 'Reader',
+            authorUrl: null,
+            byAuthor: false,
+            avatarUrl: null,
+            pending: false,
+            body: 'Hello',
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+        })
+      : undefined;
+
+  await commentAction(event).catch(() => undefined);
+
+  expect(calls[0]?.commenterProof).toBe('old-signed-proof');
+  expect(set).toContainEqual({
+    name: 'cms_commenter_proof',
+    value: 'new-signed-proof',
+  });
 });
 
 describe('admin form failures', () => {

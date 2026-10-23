@@ -9,6 +9,9 @@ import { unlockProofs } from '#lib/server/unlock.js';
 import { SESSION_COOKIE } from '#lib/server/session.js';
 import { visitorOf } from '#lib/server/visitor.js';
 
+const COMMENTER_COOKIE = 'cms_commenter';
+const COMMENTER_PROOF_COOKIE = 'cms_commenter_proof';
+
 const commentView = (item: PublicComment) => ({
   id: item.id,
   parentId: item.parentId,
@@ -78,7 +81,7 @@ export const loadComments = async (
   let remembered = null;
   try {
     const saved = commenterSchema.safeParse(
-      JSON.parse(event.cookies.get('cms_commenter') ?? 'null'),
+      JSON.parse(event.cookies.get(COMMENTER_COOKIE) ?? 'null'),
     );
     if (saved.success) remembered = saved.data;
   } catch {
@@ -131,6 +134,7 @@ export const commentAction = async (event: RequestEvent) => {
       },
       visitorOf(event, form),
       unlockProofs(event.cookies),
+      event.cookies.get(COMMENTER_PROOF_COOKIE),
     );
   } catch (caught) {
     return failFrom(caught, typed);
@@ -143,12 +147,21 @@ export const commentAction = async (event: RequestEvent) => {
   };
   if (!event.cookies.get(SESSION_COOKIE) && typed.remember) {
     const saved = commenterSchema.safeParse(typed);
-    if (saved.success)
-      event.cookies.set('cms_commenter', JSON.stringify(saved.data), {
+    if (saved.success) {
+      event.cookies.set(COMMENTER_COOKIE, JSON.stringify(saved.data), {
         ...options,
         maxAge: 365 * 24 * 60 * 60,
       });
-  } else event.cookies.delete('cms_commenter', { path: '/' });
+      if (result.commenterProof)
+        event.cookies.set(COMMENTER_PROOF_COOKIE, result.commenterProof, {
+          ...options,
+          maxAge: 365 * 24 * 60 * 60,
+        });
+    }
+  } else {
+    event.cookies.delete(COMMENTER_COOKIE, { path: '/' });
+    event.cookies.delete(COMMENTER_PROOF_COOKIE, { path: '/' });
+  }
   if (result.pendingProof)
     event.cookies.set(
       `cms_pending_${text(form, 'contentId')}`,
