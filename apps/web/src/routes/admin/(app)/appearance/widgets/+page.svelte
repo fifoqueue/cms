@@ -2,8 +2,10 @@
   import { enhance } from '$app/forms';
   import { WIDGET_AREAS } from '@cms/sdk';
   import type { Widget, WidgetArea } from '@cms/sdk';
-  import { ArrowDown, ArrowUp, Trash2 } from '@lucide/svelte';
+  import { ArrowDown, ArrowUp, GripVertical, Trash2 } from '@lucide/svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import MediaPicker from '#lib/admin/MediaPicker.svelte';
+  import { confirmLeave } from '#lib/admin/unsaved.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
     Card,
@@ -28,6 +30,13 @@
 
   // svelte-ignore state_referenced_locally
   let areas = $state(structuredClone(data.widgets));
+  // What the server has; leaving with anything else asks first.
+  // svelte-ignore state_referenced_locally
+  let saved = JSON.stringify(data.widgets);
+  confirmLeave(
+    () => JSON.stringify(areas) !== saved,
+    () => m.unsavedLeave,
+  );
   let type = $state('recentPosts');
   let area = $state<WidgetArea>('sidebar');
 
@@ -40,6 +49,7 @@
     menu: m.widgetMenu,
     archives: m.widgetArchives,
     recentComments: m.widgetRecentComments,
+    image: m.widgetImage,
     ...Object.fromEntries(
       data.types.plugins.map((option) => [option.type, option.name]),
     ),
@@ -54,6 +64,27 @@
     [list[index], list[target]] = [list[target]!, list[index]!];
   };
 
+  /** Widget being dragged; the arrow and move buttons stay for keyboards. */
+  let dragging = $state<{ area: WidgetArea; index: number } | null>(null);
+  /** Drops the dragged widget in front of `index` in `to` (any area). */
+  const dropAt = (event: DragEvent, to: WidgetArea, index: number) => {
+    event.preventDefault();
+    if (!dragging) return;
+    const { area: from, index: start } = dragging;
+    dragging = null;
+    const [widget] = areas[from].splice(start, 1);
+    if (!widget) return;
+    areas[to].splice(
+      from === to && start < index ? index - 1 : index,
+      0,
+      widget,
+    );
+  };
+  const transfer = (from: WidgetArea, index: number, to: WidgetArea) => {
+    const [widget] = areas[from].splice(index, 1);
+    if (widget) areas[to].push(widget);
+  };
+
   const add = () => {
     const widget: Widget = {
       id: crypto.randomUUID(),
@@ -63,6 +94,9 @@
     };
     areas[area].push(widget);
   };
+
+  let picker: ReturnType<typeof MediaPicker>;
+  let picking: Widget | null = null;
 
   const setting = (
     widget: Widget,
@@ -80,9 +114,13 @@
 <form
   method="POST"
   action="?/save"
-  use:enhance={() =>
-    ({ update }) =>
-      update({ reset: false })}
+  use:enhance={() => {
+    const sent = JSON.stringify(areas);
+    return async ({ result, update }) => {
+      if (result.type === 'success') saved = sent;
+      await update({ reset: false });
+    };
+  }}
   class="grid gap-6"
 >
   <input type="hidden" name="widgets" value={JSON.stringify(areas)} />
@@ -119,12 +157,40 @@
       <CardHeader><CardTitle>{areaNames[name]}</CardTitle></CardHeader>
       <CardContent class="grid gap-3">
         {#each areas[name] as widget, index (widget.id)}
-          <div class="grid gap-3 rounded-md border bg-background p-3">
+          <div
+            class="grid gap-3 rounded-md border bg-background p-3 {dragging?.area ===
+              name && dragging.index === index
+              ? 'opacity-50'
+              : ''}"
+            role="group"
+            aria-label={names[widget.type] ?? widget.type}
+            draggable="true"
+            ondragstart={(event) => {
+              dragging = { area: name, index };
+              event.dataTransfer?.setData('text/plain', widget.id);
+            }}
+            ondragend={() => (dragging = null)}
+            ondragover={(event) => event.preventDefault()}
+            ondrop={(event) => dropAt(event, name, index)}
+          >
             <div class="flex flex-wrap items-center gap-2">
+              <GripVertical
+                class="size-4 shrink-0 cursor-grab text-muted-foreground"
+                aria-hidden="true"
+              />
               <span class="text-sm font-medium"
                 >{names[widget.type] ?? widget.type}</span
               >
-              <span class="ml-auto flex gap-1">
+              <span class="ml-auto flex flex-wrap gap-1">
+                {#each WIDGET_AREAS.filter((other) => other !== name) as other (other)}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onclick={() => transfer(name, index, other)}
+                    >{m.widgetMoveTo(areaNames[other])}</Button
+                  >
+                {/each}
                 <Button
                   type="button"
                   size="icon"
@@ -216,8 +282,55 @@
                     rows={4}
                     maxlength={5000}
                     value={String(widget.settings.text ?? '')}
+                    aria-describedby="text-help-{widget.id}"
                     oninput={(event) =>
                       setting(widget, 'text', event.currentTarget.value)}
+                  />
+                  <p
+                    id="text-help-{widget.id}"
+                    class="text-xs text-muted-foreground"
+                  >
+                    {m.widgetTextHelp}
+                  </p>
+                </div>
+              {:else if widget.type === 'image'}
+                <div class="flex flex-wrap items-center gap-3 sm:col-span-2">
+                  {#if widget.settings.src}
+                    <img
+                      src={String(widget.settings.src)}
+                      alt=""
+                      class="size-16 rounded-md border object-cover"
+                    />
+                  {/if}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onclick={() => {
+                      picking = widget;
+                      picker.open();
+                    }}>{m.mediaChoose}</Button
+                  >
+                </div>
+                <div class="grid gap-2">
+                  <Label for="alt-{widget.id}">{m.widgetImageAlt}</Label>
+                  <Input
+                    id="alt-{widget.id}"
+                    maxlength={300}
+                    value={String(widget.settings.alt ?? '')}
+                    oninput={(event) =>
+                      setting(widget, 'alt', event.currentTarget.value)}
+                  />
+                </div>
+                <div class="grid gap-2">
+                  <Label for="link-{widget.id}">{m.widgetImageLink}</Label>
+                  <Input
+                    id="link-{widget.id}"
+                    maxlength={2048}
+                    placeholder="https://"
+                    value={String(widget.settings.link ?? '')}
+                    oninput={(event) =>
+                      setting(widget, 'link', event.currentTarget.value)}
                   />
                 </div>
               {/if}
@@ -226,9 +339,28 @@
         {:else}
           <p class="text-sm text-muted-foreground">{m.widgetEmpty}</p>
         {/each}
+        <div
+          class="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground {dragging
+            ? ''
+            : 'hidden'}"
+          aria-hidden="true"
+          ondragover={(event) => event.preventDefault()}
+          ondrop={(event) => dropAt(event, name, areas[name].length)}
+        >
+          {m.widgetDropHere}
+        </div>
       </CardContent>
     </Card>
   {/each}
 
   <div><Button type="submit">{m.save}</Button></div>
 </form>
+
+<MediaPicker
+  bind:this={picker}
+  onpick={(media) => {
+    if (!picking) return;
+    setting(picking, 'src', media.url);
+    if (!picking.settings.alt) setting(picking, 'alt', media.alt);
+  }}
+/>

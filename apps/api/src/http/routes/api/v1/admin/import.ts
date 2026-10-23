@@ -7,11 +7,12 @@ import { session } from '#api/http/session';
 export const routes = (app: ApiApp) =>
   session(app).post(
     '',
-    async ({ importer, request, user }) =>
+    async ({ importer, request, user, query }) =>
       json(
         await importer.importWxr(
           await readText(request, 16 * 1024 * 1024),
           user,
+          query,
         ),
       ),
     { parse: 'none' },

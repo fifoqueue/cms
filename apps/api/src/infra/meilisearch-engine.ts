@@ -6,6 +6,7 @@ import type {
   SearchEngine,
   SearchQuery,
 } from '#api/domain/search/ports';
+import { publicFetch } from '#api/infra/egress-policy';
 import { Errors } from '#api/shared/errors';
 
 const TASK_TIMEOUT_MS = 120_000;
@@ -18,8 +19,28 @@ const SETTINGS = {
   pagination: { maxTotalHits: 10_000 },
 };
 
-const client = ({ host, apiKey }: SearchConnection) =>
-  new Meilisearch({ host, apiKey: apiKey || undefined, timeout: 10_000 });
+type HttpFetch = typeof publicFetch;
+
+const requestWith =
+  (fetcher: HttpFetch) =>
+  async (...args: Parameters<HttpFetch>) => {
+    const response = await fetcher(...args);
+    const text = await response.text();
+    if (!response.ok)
+      throw new Error(Errors.SearchRequestFailed(response.status));
+    return text ? (JSON.parse(text) as unknown) : undefined;
+  };
+
+const client = (
+  { host, apiKey }: SearchConnection,
+  request: ReturnType<typeof requestWith>,
+) =>
+  new Meilisearch({
+    host,
+    apiKey: apiKey || undefined,
+    timeout: 10_000,
+    httpClient: request,
+  });
 
 /** Waits for the task; a failed or canceled task throws. */
 const done = async (
@@ -60,62 +81,71 @@ const filters = ({
   return parts;
 };
 
-export const meilisearchEngine: SearchEngine = {
-  async version(connection) {
-    return (await client(connection).getVersion()).pkgVersion;
-  },
+export const createMeilisearchEngine = (
+  fetcher: HttpFetch = publicFetch,
+): SearchEngine => {
+  const request = requestWith(fetcher);
+  const connect = (connection: SearchConnection) => client(connection, request);
 
-  async rebuild(connection, batches) {
-    const meili = client(connection);
-    const next = `${connection.index}_next`;
-    await done(meili.deleteIndex(next), ['index_not_found']);
-    await done(meili.createIndex(next, { primaryKey: 'id' }));
-    await done(meili.index(next).updateSettings(SETTINGS));
-    for await (const documents of batches)
-      await done(meili.index(next).addDocuments(documents));
-    // Swapping needs both indexes; the first build starts from an empty one.
-    await done(meili.createIndex(connection.index, { primaryKey: 'id' }), [
-      'index_already_exists',
-    ]);
-    await done(
-      meili.swapIndexes([{ indexes: [connection.index, next], rename: false }]),
-    );
-    await done(meili.deleteIndex(next), ['index_not_found']);
-  },
+  return {
+    async version(connection) {
+      return (await connect(connection).getVersion()).pkgVersion;
+    },
 
-  async upsert(connection, documents) {
-    await done(
-      client(connection)
+    async rebuild(connection, batches) {
+      const meili = connect(connection);
+      const next = `${connection.index}_next`;
+      await done(meili.deleteIndex(next), ['index_not_found']);
+      await done(meili.createIndex(next, { primaryKey: 'id' }));
+      await done(meili.index(next).updateSettings(SETTINGS));
+      for await (const documents of batches)
+        await done(meili.index(next).addDocuments(documents));
+      // Swapping needs both indexes; the first build starts from an empty one.
+      await done(meili.createIndex(connection.index, { primaryKey: 'id' }), [
+        'index_already_exists',
+      ]);
+      await done(
+        meili.swapIndexes([
+          { indexes: [connection.index, next], rename: false },
+        ]),
+      );
+      await done(meili.deleteIndex(next), ['index_not_found']);
+    },
+
+    async upsert(connection, documents) {
+      await done(
+        connect(connection)
+          .index(connection.index)
+          .addDocuments([...documents] as SearchDocument[]),
+      );
+    },
+
+    async remove(connection, ids) {
+      await done(
+        connect(connection)
+          .index(connection.index)
+          .deleteDocuments([...ids]),
+      );
+    },
+
+    async search(connection, query) {
+      const result = await connect(connection)
         .index(connection.index)
-        .addDocuments([...documents] as SearchDocument[]),
-    );
-  },
+        .search(query.text, {
+          filter: filters(query),
+          page: query.page,
+          hitsPerPage: query.pageSize,
+          attributesToRetrieve: ['id'],
+        });
+      return {
+        ids: result.hits.map((hit) => String(hit.id)),
+        total: result.totalHits ?? 0,
+      };
+    },
 
-  async remove(connection, ids) {
-    await done(
-      client(connection)
-        .index(connection.index)
-        .deleteDocuments([...ids]),
-    );
-  },
-
-  async search(connection, query) {
-    const result = await client(connection)
-      .index(connection.index)
-      .search(query.text, {
-        filter: filters(query),
-        page: query.page,
-        hitsPerPage: query.pageSize,
-        attributesToRetrieve: ['id'],
-      });
-    return {
-      ids: result.hits.map((hit) => String(hit.id)),
-      total: result.totalHits ?? 0,
-    };
-  },
-
-  async count(connection) {
-    return (await client(connection).index(connection.index).getStats())
-      .numberOfDocuments;
-  },
+    async count(connection) {
+      return (await connect(connection).index(connection.index).getStats())
+        .numberOfDocuments;
+    },
+  };
 };

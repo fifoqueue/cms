@@ -1,4 +1,5 @@
 import type {
+  ContentOrder,
   PublicImage,
   AdminEntrySeo,
   ContentDocument,
@@ -77,6 +78,13 @@ export interface ContentWrite extends Omit<
   tagIds: string[];
 }
 
+/** Conditions a content update must still meet when it is written. */
+export interface ContentWriteGuard {
+  expectedUpdatedAt?: Date;
+  /** A user whose pending autosave of the entry refuses the write. */
+  autosaveOf?: string;
+}
+
 export interface ContentCriteria {
   taxonomy?: string;
   term?: string;
@@ -100,8 +108,9 @@ export interface ContentCriteria {
   month?: number;
   page: number;
   pageSize: number;
-  /** Newest first by this field. */
-  orderBy: 'publishedAt' | 'updatedAt';
+  /** Sort field (then id); newest first unless `order` is `asc`. */
+  orderBy: ContentOrder;
+  order?: 'asc' | 'desc';
 }
 
 /**
@@ -110,7 +119,7 @@ export interface ContentCriteria {
  */
 export interface ContentRepository {
   findById(id: string): Promise<ContentRecord | null>;
-  /** The subset of `slugs` already used by stored content, in one read. */
+  /** The subset of `slugs` already used by stored content, in one read, compared as the store's unique index compares them. */
   takenSlugs(slugs: readonly string[]): Promise<Set<string>>;
   /** `total` counts every item matching the criteria. */
   list(
@@ -124,8 +133,17 @@ export interface ContentRepository {
    * Content and its current path are saved atomically; path conflicts change neither.
    */
   insert(record: ContentWrite): Promise<ContentRecord>;
-  /** Replaces fields/assignments and moves the path atomically, retaining all previously public URLs. */
-  update(record: ContentWrite): Promise<ContentRecord>;
+  /**
+   * Replaces fields/assignments and moves the path atomically, retaining all previously public URLs.
+   * `record.publishedAt` is written as given (the service resolves an omitted date). Throws
+   * `conflict` and changes nothing when `guard.expectedUpdatedAt` differs from the stored
+   * `updatedAt`, or when `guard.autosaveOf` has an autosave newer than the stored entry. Both
+   * checks run under the content write lock, which autosaves take too (`RevisionRepository`).
+   */
+  update(
+    record: ContentWrite,
+    guard?: ContentWriteGuard,
+  ): Promise<ContentRecord>;
   /** Also removes its term assignments, paths and revisions. */
   delete(id: string): Promise<void>;
   /** Moves the entry to the trash (`at`) or back out of it (null). */

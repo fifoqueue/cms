@@ -72,9 +72,10 @@ export const adminMediaSchema = z.object({
 
 export type AdminMedia = z.output<typeof adminMediaSchema>;
 
+/** Omitted fields keep their stored text (a picker may change the alt text only). */
 export const mediaUpdateSchema = z.object({
-  alt: z.string().trim().max(500).default(''),
-  caption: z.string().trim().max(2000).default(''),
+  alt: z.string().trim().max(500).optional(),
+  caption: z.string().trim().max(2000).optional(),
 });
 
 export type MediaUpdateInput = z.input<typeof mediaUpdateSchema>;
@@ -87,11 +88,29 @@ export const mediaListQuerySchema = z.object({
     .max(200)
     .optional()
     .transform((value) => value || undefined),
+  /** `YYYY-MM`: uploaded in that month (UTC). */
+  month: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+    .optional(),
+  /** Only files that no entry shows. */
+  unattached: z.stringbool().optional(),
   page: z.coerce.number().int().min(1).max(PAGINATION_MAX_PAGE).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(30),
 });
 
 export type MediaListQuery = z.input<typeof mediaListQuerySchema>;
+
+/** Where a file sits in the library (newest first) and which entries show it. */
+export const mediaContextSchema = z.object({
+  newerId: z.string().nullable(),
+  olderId: z.string().nullable(),
+  usedIn: z.array(
+    z.object({ id: z.string(), title: z.string(), type: z.string() }),
+  ),
+});
+
+export type MediaContext = z.output<typeof mediaContextSchema>;
 
 /** A public image with its responsive sizes (`srcset` candidates, narrowest first). */
 export const publicImageSchema = z.strictObject({

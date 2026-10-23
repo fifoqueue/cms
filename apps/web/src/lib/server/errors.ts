@@ -21,6 +21,14 @@ export const Errors = {
   BlocksInvalid: 'The blocks could not be read',
   TemplateNameInvalid: 'Use lowercase letters, numbers and dashes for the slug',
   ThemeFileTooLarge: 'Theme archives can be at most 2 MB',
+  BulkItemFailed: 'This item could not be changed. Try again later.',
+  BulkItemInvalid: 'This selection is not valid.',
+  BulkTooMany: (limit: number) =>
+    `Select at most ${limit} items at a time; nothing was changed.`,
+  PluginActivationFailed: 'The plugin could not be activated.',
+  ReassignToDeleted:
+    'Choose someone who is not being deleted to receive the content.',
+  PasswordOrInvite: 'Enter a password or send an invitation.',
 } as const;
 
 export interface FormIssue {
@@ -30,6 +38,8 @@ export interface FormIssue {
 
 export interface FormFailure {
   message: string;
+  /** The API's error code, so the screen can show catalog text in the reader's language. */
+  code?: string;
   issues?: FormIssue[];
   /** The API wants a solved captcha before it accepts the attempt. */
   captcha?: boolean;
@@ -57,6 +67,7 @@ export const failFrom = <Extra extends object = Record<never, never>>(
   if (caught instanceof CmsApiError && caught.status < 500) {
     const failure: FormFailure = {
       message: caught.message,
+      code: caught.code,
       issues: safeIssues(caught.issues),
       ...(caught.code === CAPTCHA_REQUIRED && { captcha: true }),
     };

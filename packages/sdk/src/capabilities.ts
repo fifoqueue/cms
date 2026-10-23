@@ -21,6 +21,8 @@ export const CAPABILITIES = [
   'content.publish',
   /** Edit, publish and delete entries of other users, and change authors. */
   'content.editOthers',
+  /** Read private entries on the site. */
+  'content.readPrivate',
   'taxonomy.manage',
   'media.upload',
   /** Edit and delete media uploaded by others. */
@@ -33,6 +35,8 @@ export const CAPABILITIES = [
   'users.manage',
   /** Site, reading, discussion, SEO, permalinks, security, email and search settings. */
   'settings.manage',
+  /** Private-network destinations. Kept separate from ordinary service settings. */
+  'egress.manage',
   'plugins.manage',
   /** Import, export, webhooks and site health. */
   'tools.manage',
@@ -49,6 +53,7 @@ const author: readonly Capability[] = [
 const editor: readonly Capability[] = [
   ...author,
   'content.editOthers',
+  'content.readPrivate',
   'taxonomy.manage',
   'media.manage',
   'comments.moderate',

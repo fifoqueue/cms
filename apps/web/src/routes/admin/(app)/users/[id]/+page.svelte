@@ -75,7 +75,6 @@
           name="slug"
           required
           maxlength={191}
-          pattern="[a-z0-9]+(-[a-z0-9]+)*"
           value={target.slug}
           aria-describedby="slug-help"
         />
@@ -106,8 +105,30 @@
   </CardContent>
 </Card>
 
+<Card>
+  <CardHeader><CardTitle>{m.usersAccountManagement}</CardTitle></CardHeader>
+  <CardContent class="flex flex-wrap gap-2">
+    <form method="POST" action="?/reset" use:enhance>
+      <Button type="submit" variant="outline">{m.usersSendReset}</Button>
+    </form>
+    {#if !isSelf}
+      <form
+        method="POST"
+        action="?/signOut"
+        use:enhance={({ cancel }) => {
+          if (!confirm(m.usersSignOutConfirm(target.name))) cancel();
+        }}
+      >
+        <Button type="submit" variant="outline"
+          >{m.usersSignOutEverywhere}</Button
+        >
+      </form>
+    {/if}
+  </CardContent>
+</Card>
+
 {#if !isSelf}
-  <Card>
+  <Card id="delete">
     <CardHeader
       ><CardTitle>{m.usersDeleteTitle(target.name)}</CardTitle></CardHeader
     >

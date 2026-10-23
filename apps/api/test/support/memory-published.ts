@@ -12,11 +12,22 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
   constructor(private readonly content: MemoryContentRepository) {}
 
   async byId(id: string) {
-    return published(await this.content.findById(id));
+    return this.ancestry(published(await this.content.findById(id)));
+  }
+
+  async privateById(id: string) {
+    const record = await this.content.findById(id);
+    return record?.status === 'private' && !record.trashedAt
+      ? this.ancestry({
+          ...project(record),
+          html: record.html,
+          fields: record.fields,
+        })
+      : null;
   }
 
   async bySlug(slug: string) {
-    return published(await this.content.findBySlug(slug));
+    return this.ancestry(published(await this.content.findBySlug(slug)));
   }
 
   async summariesByIds(ids: readonly string[]) {
@@ -66,6 +77,21 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
       .slice(0, limit);
   }
 
+  async adjacent(id: string) {
+    const entry = await this.byId(id);
+    if (!entry?.publishedAt) return { previous: null, next: null };
+    const { items } = await this.summaries({
+      type: entry.type,
+      page: 1,
+      pageSize: 1e6,
+    });
+    const index = items.findIndex((item) => item.id === id);
+    return {
+      previous: items[index + 1] ?? null,
+      next: items[index - 1] ?? null,
+    };
+  }
+
   async summaries(criteria: PublishedCriteria) {
     const { items, total } = await this.content.list({
       ...criteria,
@@ -73,7 +99,21 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
       view: 'active',
       orderBy: 'publishedAt',
     });
-    return { items: items.map(project), total };
+    return {
+      items: items.map((item) => this.ancestry(project(item))!),
+      total,
+    };
+  }
+
+  /** Like the Prisma projection: a parent only while it is public and unlocked. */
+  private ancestry<T extends PublishedSummaryRecord | null>(record: T): T {
+    if (!record?.parentId) return record;
+    const parent = this.content.rows.get(record.parentId);
+    const open =
+      parent?.status === 'published' &&
+      !this.content.trashed.has(parent.id) &&
+      parent.passwordHash === null;
+    return open ? record : { ...record, parentId: null };
   }
 }
 
@@ -99,6 +139,7 @@ const project = (record: ContentSummaryRecord): PublishedSummaryRecord => ({
   categories: record.categories,
   tags: record.tags,
   author: { name: record.authorName, slug: record.authorSlug },
+  parentId: record.parentId ?? null,
   sticky: record.sticky,
   commentCount: record.commentCount,
   protected: record.passwordHash !== null,

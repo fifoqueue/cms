@@ -17,6 +17,7 @@ import {
   wxrItemEnd,
   wxrItemStart,
   wxrTermNames,
+  toWordPressHtml,
 } from '#api/domain/tools/wxr';
 import type { WxrComment, WxrItem, WxrTerm } from '#api/domain/tools/wxr';
 import type { UserDirectory } from '#api/domain/users/user-directory';
@@ -32,12 +33,14 @@ const STATUSES: Record<ContentStatus, string> = {
 const APPROVED = { approved: '1', pending: '0', spam: 'spam', trash: 'trash' };
 const PAGE = 100;
 
-const toItem = (record: ContentRecord): WxrItem => ({
+const toItem = (record: ContentRecord, origin: string): WxrItem => ({
   id: record.id,
+  link: origin ? `${origin}${record.path}` : '',
+  parentId: record.parentId ?? '',
   type: record.type,
   title: record.title,
   slug: record.slug,
-  html: record.html,
+  html: toWordPressHtml(record.html),
   excerpt: record.excerpt,
   status: STATUSES[record.status],
   publishedAt: record.publishedAt,
@@ -48,6 +51,32 @@ const toItem = (record: ContentRecord): WxrItem => ({
   categories: record.categories.map((term) => term.slug),
   tags: record.tags.map((term) => term.slug),
   comments: [],
+});
+
+/** A pattern as WordPress stores it: a `wp_block` post, unsynced ones marked in post meta. */
+const patternItem = (pattern: {
+  id: string;
+  title: string;
+  html: string;
+  synced: boolean;
+  status: string;
+}): WxrItem => ({
+  id: pattern.id,
+  type: 'wp_block',
+  title: pattern.title,
+  slug: '',
+  html: toWordPressHtml(pattern.html),
+  excerpt: '',
+  status: pattern.status === 'published' ? 'publish' : 'draft',
+  publishedAt: null,
+  author: '',
+  password: '',
+  sticky: false,
+  commentsOpen: false,
+  categories: [],
+  tags: [],
+  comments: [],
+  meta: pattern.synced ? {} : { wp_pattern_sync_status: 'unsynced' },
 });
 
 const toComment = (comment: CommentRecord): WxrComment => ({
@@ -89,6 +118,16 @@ export class ExportService {
       comments: Pick<CommentRepository, 'exportPage'>;
       users: Pick<UserDirectory, 'list'>;
       site: () => Promise<{ title: string; siteUrl: string }>;
+      /** Patterns, exported as WordPress `wp_block` items before the entries. */
+      patterns?: () => Promise<
+        {
+          id: string;
+          title: string;
+          html: string;
+          synced: boolean;
+          status: string;
+        }[]
+      >;
     },
   ) {}
 
@@ -131,13 +170,15 @@ export class ExportService {
   ): AsyncGenerator<string> {
     const names = wxrTermNames(header);
     yield wxrHeader(header);
+    for (const pattern of (await this.deps.patterns?.()) ?? [])
+      yield wxrItemStart(patternItem(pattern), header, names) + wxrItemEnd;
 
     let afterContent: string | null = null;
     for (;;) {
       const records = await this.deps.content.exportPage(afterContent, PAGE);
       if (!records.length) break;
       for (const record of records) {
-        yield wxrItemStart(toItem(record), header, names);
+        yield wxrItemStart(toItem(record, header.link), header, names);
         let afterComment: string | null = null;
         for (;;) {
           const comments = await this.deps.comments.exportPage(

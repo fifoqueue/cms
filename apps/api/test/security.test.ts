@@ -8,8 +8,10 @@ import type {
 import { AuthService } from '#api/domain/auth/auth-service';
 import { PasswordService } from '#api/domain/auth/password-service';
 import { EmailService } from '#api/domain/email/email-service';
+import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
 import { ProtectionService } from '#api/domain/security/protection-service';
 import { SecuritySettingsService } from '#api/domain/security/security-settings';
+import { aesSecretBox } from '#api/infra/secret-box';
 import type { DomainError } from '#api/shared/errors';
 import { fixedClock, sequentialIds, userRecord } from '#test/support/memory';
 import { MemorySeoSettingsRepository } from '#test/support/memory-seo';
@@ -218,15 +220,24 @@ describe('password reset', () => {
       tokenHash: 'old',
       userId: 'admin',
       identityId: null,
+      createdAt: new Date('2026-01-01'),
       expiresAt: new Date('2030-01-01'),
     });
     const settings = new MemorySeoSettingsRepository();
     const queue = new MemoryJobQueue();
+    const sealedJobs = new SealedJobs(
+      queue,
+      aesSecretBox('test-email-job-secret'),
+    );
+    const sent: string[] = [];
+    const secrets = aesSecretBox('test-email-job-secret');
     const email = new EmailService({
       settings,
-      secrets: plainSecretBox,
-      mailer: { send: async () => {} },
-      jobs: queue,
+      secrets,
+      mailer: {
+        send: async (_transport, message) => void sent.push(message.text),
+      },
+      sealedJobs,
     });
     await email.update({
       enabled: true,
@@ -239,6 +250,8 @@ describe('password reset', () => {
     });
     const passwordTokens = new MemoryPasswordTokens();
     let apiTokensRevoked = false;
+    let hashes = 0;
+    let issued = '';
     const passwords = new PasswordService({
       users,
       tokens: passwordTokens,
@@ -248,18 +261,26 @@ describe('password reset', () => {
         passwordTokens,
         () => (apiTokensRevoked = true),
       ),
-      issuer: tokens,
+      issuer: {
+        issue: () => (issued = 'reset-token-0123456789abcdef'),
+        digest: (token) => `digest:${token}`,
+      },
       hasher: {
-        hash: async (value) => `hash:${value}`,
+        hash: async (value) => {
+          hashes += 1;
+          return `hash:${value}`;
+        },
         verify: async () => true,
       },
       email,
+      sealedJobs,
       protection: new ProtectionService({
         settings: new SecuritySettingsService(settings, plainSecretBox),
         store: new MemoryRateLimitStore(),
         captcha: { verify: async () => true },
         clock,
       }),
+      limits: new MemoryRateLimitStore(),
       clock,
       site: async () => ({
         siteUrl: 'https://example.com',
@@ -270,19 +291,52 @@ describe('password reset', () => {
     const visitor = { client: null, address: null, captchaToken: null };
 
     await passwords.requestReset({ email: 'nobody@example.com' }, visitor);
-    expect(queue.rows.size).toBe(0);
+    const unknown = [...queue.rows.values()].at(-1)!;
+    expect(JSON.stringify(unknown.payload)).not.toContain('nobody@example.com');
+    await passwords.deliverResetRequest(unknown.payload);
     await passwords.requestReset({ email: 'Admin@Example.com' }, visitor);
-    const [job] = [...queue.rows.values()];
-    const token = /token=([^\s]+)/.exec(
-      (job!.payload as { text: string }).text,
-    )![1]!;
+    const request = [...queue.rows.values()].at(-1)!;
+    expect(JSON.stringify(request.payload)).not.toContain('admin@example.com');
+    await passwords.deliverResetRequest(request.payload);
+    const job = [...queue.rows.values()].at(-1)!;
+    expect(JSON.stringify(job.payload)).not.toContain(issued);
+    expect(hashes).toBe(0);
+    await email.deliver(job.payload);
+    expect(sent[0]).toContain(issued);
 
-    await passwords.reset({ token, password: 'new-password' });
+    // Jobs queued before encrypted envelopes were introduced still drain after an upgrade.
+    await email.deliver({
+      to: 'admin@example.com',
+      subject: 'Legacy',
+      text: 'Legacy body',
+    });
+    expect(sent).toHaveLength(2);
+
+    await passwords.reset({ token: issued, password: 'new-password' });
     expect(users.rows.get('admin')!.passwordHash).toBe('hash:new-password');
     expect(sessions.rows.size).toBe(0);
     expect(apiTokensRevoked).toBe(true);
     expect(
-      await codeOf(passwords.reset({ token, password: 'other-password' })),
+      await codeOf(
+        passwords.reset({ token: issued, password: 'other-password' }),
+      ),
     ).toBe('invalid_input');
+
+    // Administrators send resets without captcha or visitor limits, but only so many an hour.
+    expect(
+      await codeOf(
+        passwords.sendReset('admin', { id: 'editor', role: 'editor' }),
+      ),
+    ).toBe('forbidden');
+    const queued = queue.rows.size;
+    await passwords.sendReset('admin', { id: 'boss', role: 'administrator' });
+    expect(queue.rows.size).toBe(queued + 1);
+    for (let sent = 1; sent < 20; sent++)
+      await passwords.sendReset('admin', { id: 'boss', role: 'administrator' });
+    expect(
+      await codeOf(
+        passwords.sendReset('admin', { id: 'boss', role: 'administrator' }),
+      ),
+    ).toBe('rate_limited');
   });
 });

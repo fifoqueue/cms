@@ -231,5 +231,36 @@
     </CardContent>
   </Card>
 
+  <Card>
+    <CardHeader>
+      <CardTitle>{m.mediaAdmissionTitle}</CardTitle>
+      <CardDescription>{m.mediaAdmissionHelp}</CardDescription>
+    </CardHeader>
+    <CardContent class="grid gap-4 sm:grid-cols-2">
+      <div class="grid gap-2">
+        <Label for="media-uploads">{m.mediaUploadsPerHour}</Label>
+        <Input
+          id="media-uploads"
+          name="media.uploadsPerHour"
+          type="number"
+          min={0}
+          max={100000}
+          value={settings.media.uploadsPerHour}
+        />
+      </div>
+      <div class="grid gap-2">
+        <Label for="media-space">{m.mediaFreeSpaceMb}</Label>
+        <Input
+          id="media-space"
+          name="media.freeSpaceMb"
+          type="number"
+          min={0}
+          max={1048576}
+          value={settings.media.freeSpaceMb}
+        />
+      </div>
+    </CardContent>
+  </Card>
+
   <Button type="submit">{m.save}</Button>
 </form>

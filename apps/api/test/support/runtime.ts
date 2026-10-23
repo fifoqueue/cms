@@ -8,6 +8,7 @@ import { SlotRegistry } from '#api/plugin-runtime/slot-registry';
 import { WidgetRegistry } from '#api/plugin-runtime/widget-registry';
 import { EmbedRegistry } from '#api/plugin-runtime/embed-registry';
 import { AdminPageRegistry } from '#api/plugin-runtime/admin-page-registry';
+import { DashboardWidgetRegistry } from '#api/plugin-runtime/dashboard-widget-registry';
 import type { TaskScheduler } from '#api/plugin-runtime/ports';
 import { semverPolicy } from '#api/infra/system';
 import {
@@ -46,6 +47,7 @@ export const createRuntime = ({
   const widgets = new WidgetRegistry({ timeoutMs, logger });
   const embeds = new EmbedRegistry({ timeoutMs, logger });
   const pages = new AdminPageRegistry({ timeoutMs, logger });
+  const dashboardWidgets = new DashboardWidgetRegistry({ timeoutMs, logger });
   /** Registered plugin tasks by name; tests run them directly. */
   const tasks = new Map<string, Parameters<TaskScheduler['add']>[0]>();
   const scheduler: TaskScheduler = {
@@ -63,6 +65,7 @@ export const createRuntime = ({
     embeds,
     scheduler,
     pages,
+    dashboardWidgets,
     routes,
     data,
     settings,
@@ -91,6 +94,7 @@ export const createRuntime = ({
     widgets,
     embeds,
     pages,
+    dashboardWidgets,
     tasks,
     feeds,
     routes,

@@ -18,7 +18,12 @@ import type {
 } from '#api/domain/search/ports';
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import type { Logger } from '#api/shared/logger';
-import { invalidInput, messageOf, Errors } from '#api/shared/errors';
+import {
+  DomainError,
+  invalidInput,
+  messageOf,
+  Errors,
+} from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 
 const KEY = 'search';
@@ -68,6 +73,7 @@ export class SearchService {
       source: SearchSource;
       clock: Clock;
       logger: Logger;
+      checkDestination?: (url: string) => Promise<void>;
     },
   ) {}
 
@@ -85,6 +91,7 @@ export class SearchService {
       input,
     );
     const current = await this.stored();
+    if (settings.enabled) await this.deps.checkDestination?.(settings.host);
     await this.deps.settings.set(KEY, {
       settings,
       apiKey:
@@ -106,6 +113,7 @@ export class SearchService {
     try {
       return { version: await this.deps.engine.version(connection) };
     } catch (error) {
+      if (error instanceof DomainError) throw error;
       throw invalidInput(Errors.SearchUnavailable(messageOf(error)));
     }
   }

@@ -7,6 +7,8 @@
   import type { CommentStatus } from '@cms/sdk';
   import { Search } from '@lucide/svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import ScreenOptions from '#lib/admin/ScreenOptions.svelte';
+  import { COMMENT_COLUMNS } from '#lib/admin/screen-options.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import { Input } from '#lib/components/ui/input/index.js';
@@ -52,8 +54,12 @@
   const view = $derived(data.filter.status);
   const removable = $derived(view === 'spam' || view === 'trash');
 
-  const confirmDelete: SubmitFunction = ({ formData, cancel }) => {
-    if (formData.get('action') === 'delete' && !confirm(m.confirmDelete))
+  const confirmDelete: SubmitFunction = ({ formData, action, cancel }) => {
+    if (
+      (formData.get('action') === 'delete' ||
+        action.search.includes('/empty')) &&
+      !confirm(m.confirmDelete)
+    )
       cancel();
     return ({ update }) => {
       selected = [];
@@ -66,6 +72,16 @@
 <svelte:head><title>{m.navComments}</title></svelte:head>
 
 <h1 class="text-2xl font-semibold">{m.navComments}</h1>
+
+<ScreenOptions
+  screen="comments"
+  columns={COMMENT_COLUMNS.map((key) => ({
+    key,
+    label: key === 'email' ? m.commentEmail : m.commentInResponseTo,
+  }))}
+  hidden={data.screen.hidden}
+  perPage={data.screen.perPage}
+/>
 
 <nav class="flex flex-wrap gap-2 text-sm" aria-label={m.columnStatus}>
   <a
@@ -87,6 +103,11 @@
 
 <form method="GET" role="search" class="flex gap-2" aria-label={m.filter}>
   {#if view}<input type="hidden" name="status" value={view} />{/if}
+  {#if data.filter.contentId}<input
+      type="hidden"
+      name="contentId"
+      value={data.filter.contentId}
+    />{/if}
   <Input
     name="q"
     type="search"
@@ -101,7 +122,32 @@
   >
 </form>
 
+{#if data.filter.contentId}
+  <p class="text-sm">
+    {m.commentsForEntry(
+      data.comments.items[0]?.contentTitle ?? data.filter.contentId,
+    )}
+    <a
+      href={resolve(
+        `/admin/(app)/comments${query({ contentId: undefined, page: 1 })}`,
+      )}
+      class="text-primary hover:underline">{m.commentsAllEntries}</a
+    >
+  </p>
+{/if}
+
 <FormMessage {form} />
+{#if form && 'undo' in form && form.undo}
+  <form method="POST" action="?/bulk" use:enhance={confirmDelete}>
+    {#each form.undo.ids as id (id)}<input
+        type="hidden"
+        name="ids"
+        value={id}
+      />{/each}
+    <input type="hidden" name="action" value={form.undo.action} />
+    <Button type="submit" variant="outline" size="sm">{m.undo}</Button>
+  </form>
+{/if}
 
 <form
   method="POST"
@@ -115,10 +161,18 @@
       <NativeSelectOption value="approve">{m.commentApprove}</NativeSelectOption
       >
       <NativeSelectOption value="unapprove"
-        >{m.commentUnapprove}</NativeSelectOption
+        >{view === 'spam'
+          ? m.commentNotSpam
+          : view === 'trash'
+            ? m.restore
+            : m.commentUnapprove}</NativeSelectOption
       >
-      <NativeSelectOption value="spam">{m.commentMarkSpam}</NativeSelectOption>
-      <NativeSelectOption value="trash">{m.moveToTrash}</NativeSelectOption>
+      {#if view !== 'spam'}<NativeSelectOption value="spam"
+          >{m.commentMarkSpam}</NativeSelectOption
+        >{/if}
+      {#if view !== 'trash'}<NativeSelectOption value="trash"
+          >{m.moveToTrash}</NativeSelectOption
+        >{/if}
       {#if removable}
         <NativeSelectOption value="delete"
           >{m.deletePermanently}</NativeSelectOption
@@ -131,6 +185,32 @@
       size="sm"
       disabled={!selected.length}>{m.apply}</Button
     >
+    <!-- In a status view every selected comment had that status, so Undo can return them. -->
+    <input type="hidden" name="previous" value={view ?? ''} />
+    <label class="ml-2 flex items-center gap-2 text-sm">
+      <input
+        type="checkbox"
+        checked={!!data.comments.items.length &&
+          selected.length === data.comments.items.length}
+        onchange={(event) =>
+          (selected = event.currentTarget.checked
+            ? data.comments.items.map(({ id }) => id)
+            : [])}
+      />
+      {m.selectAll}
+    </label>
+    {#if removable && data.counts[view!]}
+      <Button
+        type="submit"
+        formaction="?/empty"
+        variant="destructive"
+        size="sm"
+        class="ml-auto"
+        name="status"
+        value={view}
+        >{view === 'spam' ? m.commentEmptySpam : m.commentEmptyTrash}</Button
+      >
+    {/if}
   </div>
   {#each data.comments.items as item (item.id)}
     <input
@@ -161,34 +241,57 @@
         <div class="min-w-0 flex-1 space-y-1">
           <p class="text-sm">
             <span class="font-medium">{item.authorName}</span>
-            <span class="text-muted-foreground">· {item.authorEmail}</span>
-            {#if item.authorUrl}<span class="text-muted-foreground"
-                >· {item.authorUrl}</span
-              >{/if}
+            {#if !data.screen.hidden.includes('email')}
+              <span class="text-muted-foreground">· {item.authorEmail}</span>
+              {#if item.authorUrl}<span class="text-muted-foreground"
+                  >· {item.authorUrl}</span
+                >{/if}
+            {/if}
             <Badge variant="secondary">{statusName(m, item.status)}</Badge>
           </p>
           <p class="text-xs text-muted-foreground">
-            {date(item.createdAt)} ·
+            {date(item.createdAt)}
+            {#if !data.screen.hidden.includes('response')}
+              · {m.commentInResponseTo}
+              <a
+                href={resolve(
+                  `/admin/(app)/comments${query({ contentId: item.contentId, page: 1 })}`,
+                )}
+                class="hover:underline">{item.contentTitle}</a
+              >
+            {/if}
+            ·
+            <!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() plus a query -->
             <a
-              href={resolve('/admin/(app)/content/[id]', {
+              href={`${resolve('/admin/(app)/comments/view/[id]', {
                 id: item.contentId,
-              })}
-              class="hover:underline">{item.contentTitle}</a
+              })}?comment=${encodeURIComponent(item.id)}`}
+              target="_blank"
+              class="hover:underline">{m.viewOnSite}</a
             >
+            <!-- eslint-enable svelte/no-navigation-without-resolve -->
           </p>
+          {#if item.parentId}<p class="text-xs text-muted-foreground">
+              {m.commentInReplyTo(item.parentAuthor ?? item.parentId)}
+            </p>{/if}
           <p class="text-sm whitespace-pre-line">{item.body}</p>
         </div>
       </div>
       <div class="flex flex-wrap gap-1">
-        {#each [item.status === 'approved' ? 'unapprove' : 'approve', 'spam', 'trash', ...(item.status === 'spam' || item.status === 'trash' ? ['delete'] : [])] as action (action)}
+        {#each item.status === 'spam' ? ['unapprove', 'trash', 'delete'] : item.status === 'trash' ? ['unapprove', 'delete'] : [item.status === 'approved' ? 'unapprove' : 'approve', 'spam', 'trash'] as action (action)}
           <form method="POST" action="?/bulk" use:enhance={confirmDelete}>
             <input type="hidden" name="ids" value={item.id} />
             <input type="hidden" name="action" value={action} />
+            <input type="hidden" name="previous" value={item.status} />
             <Button type="submit" variant="ghost" size="sm"
               >{action === 'approve'
                 ? m.commentApprove
                 : action === 'unapprove'
-                  ? m.commentUnapprove
+                  ? item.status === 'spam'
+                    ? m.commentNotSpam
+                    : item.status === 'trash'
+                      ? m.restore
+                      : m.commentUnapprove
                   : action === 'spam'
                     ? m.commentMarkSpam
                     : action === 'trash'

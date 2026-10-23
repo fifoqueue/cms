@@ -63,9 +63,25 @@ export interface JobQueue {
     owner: string,
     error: string,
     retryAt: Date | null,
+    preservePayload?: boolean,
   ): Promise<boolean>;
+  /** Failed encrypted jobs that may become readable after restoring a key. */
+  failedPayloads(
+    kind: string,
+    error: string,
+    limit: number,
+  ): Promise<{ id: string; payload: unknown }[]>;
+  /** Makes failed jobs claimable again. */
+  retry(ids: readonly string[]): Promise<number>;
+  /** Blanks old failed payloads except errors whose ciphertext is retained for recovery. */
+  scrubFailed(
+    preserveErrors: readonly string[],
+    limit: number,
+  ): Promise<number>;
   /** Jobs that gave up, newest first, for site health. */
   failures(
     limit: number,
   ): Promise<{ kind: string; error: string; failedAt: Date }[]>;
+  /** Deletes failed-job metadata older than `before`. */
+  purge(before: Date): Promise<number>;
 }

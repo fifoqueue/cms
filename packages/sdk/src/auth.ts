@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { CAPABILITIES } from '#sdk/capabilities';
 import { ADMIN_LOCALES } from '#sdk/locales';
-import { KEBAB_CASE } from '#sdk/common';
+import { CONTENT_SLUG, KEBAB_CASE } from '#sdk/common';
 
 export const roleSchema = z.string().min(1).max(32).regex(KEBAB_CASE);
 
@@ -13,9 +13,10 @@ export const userSlugSchema = z
   .string()
   .trim()
   .toLowerCase()
+  .normalize('NFC')
   .min(1)
   .max(191)
-  .regex(KEBAB_CASE);
+  .regex(CONTENT_SLUG);
 
 export const loginSchema = z.object({
   email: z.email().max(191),
@@ -105,6 +106,17 @@ export const sessionGrantSchema = z.object({
   expiresAt: z.string(),
   user: adminUserSchema,
 });
+
+/** One of the signed-in user's sessions. `id` is opaque; the token and its digest are never sent. */
+export const sessionInfoSchema = z.object({
+  id: z.string(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  /** The session making the request. */
+  current: z.boolean(),
+});
+
+export type SessionInfo = z.output<typeof sessionInfoSchema>;
 
 export const setupStatusSchema = z.object({ setupRequired: z.boolean() });
 export const ssoInfoSchema = z.object({

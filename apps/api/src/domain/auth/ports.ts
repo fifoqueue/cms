@@ -18,7 +18,7 @@ export interface UserRepository {
   findByEmail(email: string): Promise<UserRecord | null>;
   /** Throws `conflict` when the email or slug is taken. */
   insert(user: UserRecord): Promise<void>;
-  /** The subset of `slugs` other users already use, in one read. */
+  /** The subset of `slugs` other users already use, in one read, compared as the store's unique index compares them. */
   takenSlugs(slugs: readonly string[]): Promise<Set<string>>;
   setPassword(id: string, passwordHash: string): Promise<void>;
 }
@@ -41,6 +41,8 @@ export interface SessionRecord {
   userId: string;
   /** The linked identity the session was issued through; `null` for every other sign-in. */
   identityId: string | null;
+  /** When it was issued (sessions from before this column carry the migration time). */
+  createdAt: Date;
   expiresAt: Date;
 }
 
@@ -63,6 +65,8 @@ export interface SessionRepository {
   deleteExpired(now: Date): Promise<void>;
   /** Signs the user out everywhere, except the session `keep` when given. */
   deleteForUser(userId: string, keep?: string): Promise<void>;
+  /** The user's sessions that have not expired by `now`, newest first. */
+  listForUser(userId: string, now: Date): Promise<SessionRecord[]>;
 }
 
 export interface PasswordHasher {

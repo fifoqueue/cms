@@ -106,6 +106,8 @@ export const publicContentTypeSchema = z.object({
   pluralName: z.string(),
   description: z.string(),
   archive: z.boolean(),
+  /** Listed in site search and feeds. */
+  searchable: z.boolean().default(true),
   fields: z.array(
     z.object({ key: z.string(), label: z.string(), type: z.enum(FIELD_TYPES) }),
   ),

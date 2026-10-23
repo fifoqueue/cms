@@ -1,6 +1,8 @@
 import { redirect } from '@sveltejs/kit';
 import { COMMENT_BULK_ACTIONS } from '@cms/sdk';
 import { can } from '@cms/sdk/capabilities';
+import { mapBounded } from '#lib/server/bulk.js';
+import { readDashboardLayout } from '#lib/server/screen-options.js';
 import { failFrom, text } from '#lib/server/errors.js';
 import { adminFor } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
@@ -19,9 +21,15 @@ export const load: PageServerLoad = async (event) => {
   if (!can(user, 'content.create')) redirect(303, '/admin/account');
   const moderates = can(user, 'comments.moderate');
   const model = await admin.contentModel.model();
+  /** By publication time: the next scheduled first, the latest published first. */
   const entries = (status: 'scheduled' | 'published') =>
     admin.content
-      .list({ status, pageSize: 5 })
+      .list({
+        status,
+        orderBy: 'publishedAt',
+        order: status === 'scheduled' ? 'asc' : 'desc',
+        pageSize: 5,
+      })
       .then((page) =>
         page.items.map(({ id, title, publishedAt }) => ({
           id,
@@ -42,20 +50,20 @@ export const load: PageServerLoad = async (event) => {
     recent,
     approved,
     health,
+    widgets,
   ] = await Promise.all([
-    Promise.all(
-      model.types.map(async (type) => ({
-        key: type.key,
-        name: type.pluralName,
-        count: await total(
-          admin.content.list({
-            type: type.key,
-            status: 'published',
-            pageSize: 1,
-          }),
-        ),
-      })),
-    ),
+    // One count per type, a few at a time; At a Glance lists the first 20 types.
+    mapBounded(model.types.slice(0, 20), async (type) => ({
+      key: type.key,
+      name: type.pluralName,
+      count: await total(
+        admin.content.list({
+          type: type.key,
+          status: 'published',
+          pageSize: 1,
+        }),
+      ),
+    })),
     total(admin.content.list({ status: 'draft', pageSize: 1 })),
     total(admin.content.list({ status: 'pending', pageSize: 1 })),
     total(admin.content.list({ status: 'scheduled', pageSize: 1 })),
@@ -90,6 +98,8 @@ export const load: PageServerLoad = async (event) => {
           }))
           .catch(() => null)
       : null,
+    // A plugin problem never takes the dashboard down: its widgets are simply left out.
+    admin.plugins.dashboardWidgets().catch(() => []),
   ]);
   const comment = ({
     id,
@@ -122,6 +132,13 @@ export const load: PageServerLoad = async (event) => {
     },
     activity: { soon, recent },
     health,
+    widgets: widgets.map(({ plugin, key, title, blocks }) => ({
+      plugin,
+      key,
+      title,
+      blocks,
+    })),
+    layout: readDashboardLayout(event.cookies),
   };
 };
 

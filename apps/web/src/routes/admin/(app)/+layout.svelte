@@ -1,8 +1,19 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import { afterNavigate } from '$app/navigation';
-  import { ExternalLink, LogOut, Menu, X } from '@lucide/svelte';
+  import {
+    ExternalLink,
+    LogOut,
+    Menu,
+    PanelLeftClose,
+    PanelLeftOpen,
+    X,
+  } from '@lucide/svelte';
+  import { onMount } from 'svelte';
   import AdminMenu from '#lib/admin/AdminMenu.svelte';
+  import AdminTopBar from '#lib/admin/AdminTopBar.svelte';
+  import FlashNotice from '#lib/admin/FlashNotice.svelte';
+  import { claimBackups } from '#lib/admin/editor-backup.js';
   import ColorModeToggle from '#lib/admin/ColorModeToggle.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import { provideI18n } from '#lib/i18n/index.js';
@@ -18,6 +29,28 @@
   afterNavigate(() => {
     expanded = false;
   });
+
+  // Another account's editor backups never reach this one (a shared browser tab).
+  $effect(() => claimBackups(data.user.id));
+
+  // Icons-only sidebar on wide screens, remembered by this browser.
+  const COLLAPSED = 'cms-admin-collapsed';
+  let collapsed = $state(false);
+  onMount(() => {
+    try {
+      collapsed = localStorage.getItem(COLLAPSED) === '1';
+    } catch {
+      // Storage blocked: the full menu shows.
+    }
+  });
+  const toggleCollapsed = () => {
+    collapsed = !collapsed;
+    try {
+      localStorage.setItem(COLLAPSED, collapsed ? '1' : '0');
+    } catch {
+      // Only this page view remembers it.
+    }
+  };
 </script>
 
 <div
@@ -25,10 +58,13 @@
   lang={i18n.language}
 >
   <aside
-    class="border-b bg-background md:w-56 md:shrink-0 md:border-r md:border-b-0"
+    class={[
+      'border-b bg-background md:shrink-0 md:border-r md:border-b-0',
+      collapsed ? 'collapsed md:w-14' : 'md:w-56',
+    ]}
   >
     <div class="flex items-center justify-between gap-2 px-4 py-3 md:block">
-      <div>
+      <div class="sidebar-label">
         <a href={resolve('/admin/(app)')} class="font-semibold">CMS</a>
         <a
           href={resolve('/admin/(app)/account')}
@@ -79,15 +115,53 @@
             {i18n.m.signOut}
           </Button>
         </form>
-        <div class="px-3 pt-1">
+        <div class="sidebar-label px-3 pt-1">
           <ColorModeToggle mode={data.colorMode} />
         </div>
+        <Button
+          variant="ghost"
+          class="hidden w-full justify-start gap-2 px-3 font-normal text-foreground/80 md:flex"
+          aria-pressed={collapsed}
+          onclick={toggleCollapsed}
+        >
+          {#if collapsed}<PanelLeftOpen class="size-4" />{:else}<PanelLeftClose
+              class="size-4"
+            />{/if}
+          {collapsed ? i18n.m.expandMenu : i18n.m.collapseMenu}
+        </Button>
       </div>
     </div>
   </aside>
-  <main class="min-w-0 flex-1 p-4 md:p-8">
-    <div class="mx-auto max-w-5xl space-y-6">
-      {@render children()}
-    </div>
-  </main>
+  <div class="min-w-0 flex-1">
+    <AdminTopBar
+      user={data.user}
+      siteTitle={data.siteTitle}
+      pendingComments={data.counts.comments}
+    />
+    <main class="p-4 md:p-8">
+      <div class="mx-auto max-w-5xl space-y-6">
+        <FlashNotice />
+        {@render children()}
+      </div>
+    </main>
+  </div>
 </div>
+
+<style>
+  /* Collapsed (wide screens): section links keep their icon and accessible name only. */
+  @media (min-width: 48rem) {
+    .collapsed :global(:is([data-section-link], a, button)) {
+      font-size: 0;
+      justify-content: center;
+    }
+    .collapsed
+      :global(:is(.sidebar-label, nav ul ul:not([class*='absolute']))) {
+      display: none;
+    }
+    /* Hover menus keep readable text. */
+    .collapsed :global(nav ul ul a) {
+      font-size: 0.875rem;
+      justify-content: flex-start;
+    }
+  }
+</style>

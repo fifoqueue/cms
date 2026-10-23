@@ -6,6 +6,7 @@
  * editor share one definition. Pure and browser-safe.
  */
 import { Errors } from '#sdk/errors';
+import { CONTENT_SLUG } from '#sdk/slugs';
 
 export type BlockAttr =
   | { type: 'text'; max: number; default: string; pattern?: RegExp }
@@ -40,6 +41,39 @@ const level = (value: number, min = 1) => ({
 const color = { type: 'color' as const, default: '' };
 
 export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** A link a theme may hold: a site path, an `https:`/`http:` or `mailto:` address, or a fragment. */
+export const LINK =
+  /^(?:https?:\/\/[^\s"<>]+|\/[^\s"<>]*|mailto:[^\s"<>]+|#[\w-]*)$/;
+
+/** Services a `social-link` block names (WordPress social icons). */
+export const SOCIAL_SERVICES = [
+  'link',
+  'email',
+  'rss',
+  'facebook',
+  'x',
+  'instagram',
+  'threads',
+  'bluesky',
+  'mastodon',
+  'youtube',
+  'tiktok',
+  'linkedin',
+  'github',
+] as const;
+
+const link = { type: 'text' as const, max: 2048, default: '', pattern: LINK };
+
+/** An image from the media library (`/media/…`); themes cannot point at other files. */
+export const MEDIA_IMAGE = /^\/media\/(?!.*\.\.)[\w./-]+$/;
+
+const mediaImage = {
+  type: 'text' as const,
+  max: 512,
+  default: '',
+  pattern: MEDIA_IMAGE,
+};
 
 export const BLOCKS = {
   group: {
@@ -90,6 +124,14 @@ export const BLOCKS = {
     },
   },
   'site-tagline': { attrs: {} },
+  /** The custom logo (Settings → General); renders nothing while none is set. */
+  'site-logo': {
+    attrs: {
+      /** Display width in pixels; the height follows the image. */
+      width: { type: 'number', min: 16, max: 600, default: 120 },
+      link: flag(true),
+    },
+  },
   navigation: {
     attrs: {
       location: choice(['primary', 'footer'], 'primary'),
@@ -137,14 +179,16 @@ export const BLOCKS = {
   },
   'post-fields': { attrs: {} },
   comments: { attrs: {} },
+  /** Links to the previous and next entry of the same type. */
+  'post-navigation': { attrs: { showTitle: flag(true) } },
   breadcrumbs: { attrs: {} },
   query: {
     attrs: {
       inherit: flag(true),
       type: { type: 'text', max: 32, default: '', pattern: SLUG },
-      category: { type: 'text', max: 191, default: '', pattern: SLUG },
-      tag: { type: 'text', max: 191, default: '', pattern: SLUG },
-      author: { type: 'text', max: 191, default: '', pattern: SLUG },
+      category: { type: 'text', max: 191, default: '', pattern: CONTENT_SLUG },
+      tag: { type: 'text', max: 191, default: '', pattern: CONTENT_SLUG },
+      author: { type: 'text', max: 191, default: '', pattern: CONTENT_SLUG },
       count: { type: 'number', min: 1, max: 100, default: 6 },
       layout: choice(['list', 'grid'], 'list'),
       columns: { type: 'number', min: 1, max: 4, default: 3 },
@@ -182,6 +226,96 @@ export const BLOCKS = {
   separator: { attrs: {} },
   spacer: { attrs: { size: space('medium') } },
   copyright: { attrs: {} },
+  buttons: {
+    attrs: { justify: choice(['start', 'center', 'end'], 'start') },
+    children: ['button'],
+  },
+  button: {
+    attrs: {
+      text: { type: 'text', max: 100, default: '' },
+      url: link,
+      style: choice(['fill', 'outline'], 'fill'),
+      newTab: flag(false),
+    },
+    parent: ['buttons'],
+  },
+  'social-links': {
+    attrs: { justify: choice(['start', 'center', 'end'], 'start') },
+    children: ['social-link'],
+  },
+  'social-link': {
+    attrs: {
+      service: choice(SOCIAL_SERVICES, 'link'),
+      url: link,
+      /** Shown instead of the service name. */
+      label: { type: 'text', max: 100, default: '' },
+    },
+    parent: ['social-links'],
+  },
+  /** Titles of the newest published entries of a type (posts by default). */
+  'latest-posts': {
+    attrs: {
+      type: { type: 'text', max: 32, default: '', pattern: SLUG },
+      count: { type: 'number', min: 1, max: 20, default: 5 },
+    },
+  },
+  /** Categories with published entries, as a tree. */
+  categories: { attrs: {} },
+  /** Tags with published entries. */
+  'tag-cloud': { attrs: {} },
+  /** Monthly archive links. */
+  archives: {
+    attrs: { months: { type: 'number', min: 1, max: 60, default: 12 } },
+  },
+  /** A sign-in link, or a sign-out button for signed-in visitors. */
+  loginout: { attrs: {} },
+  image: {
+    attrs: {
+      src: mediaImage,
+      alt: { type: 'text', max: 300, default: '' },
+      caption: { type: 'text', max: 300, default: '' },
+      link,
+      align: choice(ALIGN, 'center'),
+      /** Display width in pixels; 0 fills the column. */
+      width: { type: 'number', min: 0, max: 2000, default: 0 },
+      rounded: flag(false),
+    },
+  },
+  /** An image with a colour overlay and blocks on top (WordPress Cover). */
+  cover: {
+    attrs: {
+      src: mediaImage,
+      overlayColor: { type: 'color', default: 'contrast' },
+      /** Overlay opacity in percent. */
+      dim: { type: 'number', min: 0, max: 100, default: 50 },
+      minHeight: choice(['small', 'medium', 'large'], 'medium'),
+      align: choice(ALIGN, 'center'),
+    },
+    children: 'any',
+  },
+  /** An image beside blocks (WordPress Media & Text). */
+  'media-text': {
+    attrs: {
+      src: mediaImage,
+      alt: { type: 'text', max: 300, default: '' },
+      mediaPosition: choice(['left', 'right'], 'left'),
+      /** Percent of the row the image takes. */
+      mediaWidth: { type: 'number', min: 20, max: 80, default: 50 },
+    },
+    children: 'any',
+  },
+  /** The entry's author: avatar (when shown in Settings → Discussion), name and bio. */
+  'post-author': { attrs: { showAvatar: flag(true), showBio: flag(true) } },
+  /** A link to the entry, for query loops. */
+  'read-more': { attrs: { text: { type: 'text', max: 100, default: '' } } },
+  /** Published pages as a tree (page parents). */
+  'page-list': { attrs: {} },
+  /** Newest approved comments on public entries. */
+  'latest-comments': {
+    attrs: { comments: { type: 'number', min: 1, max: 20, default: 5 } },
+  },
+  /** A month of posts by day: the archive's month, otherwise the current one (UTC). */
+  calendar: { attrs: {} },
 } as const satisfies Record<string, BlockSpec>;
 
 export type BlockName = keyof typeof BLOCKS;
@@ -216,9 +350,11 @@ export interface BlockInput {
 /** Hard limits that keep a template cheap to validate and render. */
 export const BLOCK_LIMITS = { depth: 16, nodes: 1000 } as const;
 
-/** WordPress template hierarchy names, optionally narrowed by a slug or type (`single-article`). */
-export const TEMPLATE_NAME =
-  /^(index|home|front-page|singular|single|page|archive|taxonomy|category|tag|author|date|search|404)(-[a-z0-9]+(?:-[a-z0-9]+)*)?$/;
+/** WordPress template hierarchy names, optionally narrowed by a (Unicode) slug or type (`single-article`, `page-소식`). */
+export const TEMPLATE_NAME = new RegExp(
+  `^(index|home|front-page|singular|single|page|archive|taxonomy|category|tag|author|date|search|404)(-${CONTENT_SLUG.source.slice(1, -1)})?$`,
+  'u',
+);
 
 export interface BlockIssue {
   path: string;
@@ -365,6 +501,11 @@ export const parseBlocks = (
   const blocks = list(input, '', 0, null);
   return { blocks, issues };
 };
+
+/** Blocks that select their own published entries (not the page's); a theme may hold 32. */
+export const isIndependentQuery = (block: Block) =>
+  (block.name === 'query' && !block.attrs.inherit) ||
+  block.name === 'latest-posts';
 
 /** Every block in a tree, depth first. */
 export function* walkBlocks(blocks: readonly Block[]): Generator<Block> {

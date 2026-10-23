@@ -1,6 +1,8 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import { enhance } from '$app/forms';
+  import AdminBlocks from '#lib/admin/AdminBlocks.svelte';
+  import DashboardOptions from '#lib/admin/DashboardOptions.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { CircleAlert, CircleCheck } from '@lucide/svelte';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -28,6 +30,44 @@
           timeStyle: 'short',
         })
       : '';
+
+  const pluginWidgets = $derived(
+    new Map(
+      data.widgets.map((widget) => [
+        `plugin:${widget.plugin}:${widget.key}`,
+        widget,
+      ]),
+    ),
+  );
+  /** Boxes this user can have: core ones with content, then plugin widgets. */
+  const available = $derived(
+    [
+      'glance',
+      ...(data.health ? ['health'] : []),
+      'activity',
+      'draft',
+      ...(data.comments?.recent.length ? ['comments'] : []),
+      ...pluginWidgets.keys(),
+    ].sort((a, b) => rank(a) - rank(b)),
+  );
+  /** The saved order first; boxes the user never placed keep their default position after. */
+  const rank = (id: string) => {
+    const index = data.layout.order.indexOf(id);
+    return index === -1 ? 1000 : index;
+  };
+  const visible = $derived(
+    available.filter((id) => !data.layout.hidden.includes(id)),
+  );
+  const titleOf = (id: string) =>
+    ({
+      glance: m.atAGlance,
+      health: m.dashboardHealth,
+      activity: m.dashboardActivity,
+      draft: m.quickDraft,
+      comments: m.dashboardWaitingComments,
+    })[id] ??
+    pluginWidgets.get(id)?.title ??
+    id;
 </script>
 
 <svelte:head><title>{m.dashboard}</title></svelte:head>
@@ -62,7 +102,7 @@
 
 <FormMessage {form} />
 
-<div class="grid gap-6 lg:grid-cols-2">
+{#snippet glance()}
   <Card>
     <CardHeader><CardTitle>{m.atAGlance}</CardTitle></CardHeader>
     <CardContent>
@@ -120,7 +160,9 @@
       </ul>
     </CardContent>
   </Card>
+{/snippet}
 
+{#snippet health()}
   {#if data.health}
     {@const { critical, recommended } = data.health}
     <Card>
@@ -150,7 +192,9 @@
       </CardContent>
     </Card>
   {/if}
+{/snippet}
 
+{#snippet activity()}
   <Card>
     <CardHeader><CardTitle>{m.dashboardActivity}</CardTitle></CardHeader>
     <CardContent class="space-y-5 text-sm">
@@ -182,7 +226,9 @@
       {/if}
     </CardContent>
   </Card>
+{/snippet}
 
+{#snippet draft()}
   <Card>
     <CardHeader><CardTitle>{m.quickDraft}</CardTitle></CardHeader>
     <CardContent>
@@ -218,7 +264,9 @@
       {/if}
     </CardContent>
   </Card>
+{/snippet}
 
+{#snippet comments()}
   {#if data.comments?.recent.length}
     <Card class="lg:col-span-2">
       <CardHeader
@@ -274,4 +322,34 @@
       </CardContent>
     </Card>
   {/if}
+{/snippet}
+<DashboardOptions
+  widgets={available.map((id) => ({ id, title: titleOf(id) }))}
+  hidden={data.layout.hidden}
+/>
+
+<div class="grid gap-6 lg:grid-cols-2">
+  {#each visible as id (id)}
+    {#if id === 'glance'}
+      {@render glance()}
+    {:else if id === 'health'}
+      {@render health()}
+    {:else if id === 'activity'}
+      {@render activity()}
+    {:else if id === 'draft'}
+      {@render draft()}
+    {:else if id === 'comments'}
+      {@render comments()}
+    {:else}
+      {@const widget = pluginWidgets.get(id)}
+      {#if widget}
+        <Card>
+          <CardHeader><CardTitle>{widget.title}</CardTitle></CardHeader>
+          <CardContent class="space-y-3">
+            <AdminBlocks blocks={widget.blocks} />
+          </CardContent>
+        </Card>
+      {/if}
+    {/if}
+  {/each}
 </div>

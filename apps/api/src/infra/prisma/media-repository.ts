@@ -67,9 +67,19 @@ export class PrismaMediaRepository implements MediaRepository {
     );
   }
 
-  async list({ kind, search, page, pageSize }: MediaCriteria) {
+  async list({
+    kind,
+    search,
+    uploaded,
+    unattached,
+    page,
+    pageSize,
+  }: MediaCriteria) {
     const filters: Prisma.MediaWhereInput[] = [];
     if (kind) filters.push({ mime: { startsWith: MIME_PREFIX[kind] } });
+    if (uploaded)
+      filters.push({ createdAt: { gte: uploaded.start, lt: uploaded.end } });
+    if (unattached) filters.push({ usages: { none: {} } });
     if (search) {
       const contains = literal(search);
       filters.push({
@@ -94,6 +104,48 @@ export class PrismaMediaRepository implements MediaRepository {
     return { items: rows.map(toRecord), total };
   }
 
+  async neighbors(id: string) {
+    const current = await this.db.media.findUnique({
+      where: { id },
+      select: { createdAt: true },
+    });
+    if (!current) return { newer: null, older: null };
+    const { createdAt } = current;
+    // The list order: newest first, ties by id descending.
+    const [newer, older] = await Promise.all([
+      this.db.media.findFirst({
+        where: {
+          OR: [{ createdAt: { gt: createdAt } }, { createdAt, id: { gt: id } }],
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: { id: true },
+      }),
+      this.db.media.findFirst({
+        where: {
+          OR: [{ createdAt: { lt: createdAt } }, { createdAt, id: { lt: id } }],
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { id: true },
+      }),
+    ]);
+    return { newer: newer?.id ?? null, older: older?.id ?? null };
+  }
+
+  async usedIn(id: string, limit: number, publishedOnly: boolean) {
+    const rows = await this.db.contentMedia.findMany({
+      where: {
+        mediaId: id,
+        ...(publishedOnly && {
+          content: { status: 'published', trashedAt: null },
+        }),
+      },
+      select: { content: { select: { id: true, title: true, type: true } } },
+      orderBy: { content: { updatedAt: 'desc' } },
+      take: limit,
+    });
+    return rows.map(({ content }) => content);
+  }
+
   async publicImages(ids: readonly string[]) {
     if (!ids.length) return new Map();
     const rows = await this.db.media.findMany({
@@ -115,7 +167,7 @@ export class PrismaMediaRepository implements MediaRepository {
     );
   }
 
-  async update(id: string, changes: { alt: string; caption: string }) {
+  async update(id: string, changes: { alt?: string; caption?: string }) {
     await this.db.media.update({ where: { id }, data: changes });
   }
 

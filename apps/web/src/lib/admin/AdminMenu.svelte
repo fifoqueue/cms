@@ -201,6 +201,11 @@
             label: (m) => m.appearanceWidgets,
             capability: 'appearance.manage',
           },
+          {
+            href: resolve('/admin/(app)/patterns'),
+            label: (m) => m.patternsTitle,
+            capability: 'content.create',
+          },
         ],
       },
       {
@@ -311,6 +316,11 @@
             href: resolve('/admin/(app)/settings/sso'),
             label: (m) => m.settingsSso,
             capability: 'settings.manage',
+          },
+          {
+            href: resolve('/admin/(app)/settings/egress'),
+            label: (m) => m.settingsEgress,
+            capability: 'egress.manage',
           },
           {
             href: resolve('/admin/(app)/fields'),

@@ -19,6 +19,7 @@ export const adminThemeView = ({
   active,
   builtin,
   customized,
+  screenshot,
 }: AdminTheme) => ({
   id,
   name,
@@ -30,6 +31,10 @@ export const adminThemeView = ({
   active,
   builtin,
   customized,
+  /** Admin-only address of the theme's screenshot (versioned for caching), or null. */
+  screenshot:
+    screenshot &&
+    `/admin/appearance/screenshot/${encodeURIComponent(id)}?v=${encodeURIComponent(screenshot)}`,
 });
 
 const invalid = (message: string, issues?: FormFailure['issues']) =>

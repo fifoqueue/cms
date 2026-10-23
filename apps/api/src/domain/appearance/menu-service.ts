@@ -2,6 +2,7 @@ import { archivePath } from '@cms/sdk';
 import type { ArchivePathsService } from '#api/domain/permalinks/archive-paths';
 import { MENU_LOCATIONS, menusSettingsSchema } from '@cms/sdk';
 import type {
+  MenuTarget,
   MenuItem,
   MenuLocation,
   MenusSettings,
@@ -33,6 +34,35 @@ export class MenuService {
   async get(actor: Actor): Promise<MenusSettings> {
     authorize(actor, 'appearance.manage');
     return this.stored();
+  }
+
+  /**
+   * Labels for the menu editor: the published entries the saved menus link to (unpublished ones
+   * stay unnamed). Needs only `appearance.manage`, read in chunks from the published projection.
+   */
+  async targets(actor: Actor): Promise<MenuTarget[]> {
+    authorize(actor, 'appearance.manage');
+    const settings = await this.stored();
+    const ids = [
+      ...new Set(
+        settings.menus
+          .flatMap((menu) => walk(menu.items))
+          .flatMap((item) =>
+            item.kind === 'content' && item.contentId ? [item.contentId] : [],
+          ),
+      ),
+    ];
+    const found: MenuTarget[] = [];
+    for (let start = 0; start < ids.length; start += 500)
+      for (const {
+        id,
+        title,
+        type,
+      } of await this.deps.published.summariesByIds(
+        ids.slice(start, start + 500),
+      ))
+        found.push({ id, title, type });
+    return found;
   }
 
   /** Replaces every menu and location assignment at once. Unknown menus at a location are cleared. */
@@ -148,7 +178,7 @@ export class MenuService {
           [url, title] = [
             term.taxonomy === 'category' || term.taxonomy === 'tag'
               ? archivePath(bases, term.taxonomy, term.slug)
-              : `/taxonomy/${term.taxonomy}/${term.slug}`,
+              : `/taxonomy/${encodeURIComponent(term.taxonomy)}/${encodeURIComponent(term.slug)}`,
             term.name,
           ];
           break;

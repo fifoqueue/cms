@@ -1,7 +1,18 @@
-import { CONTENT_STATUSES, can } from '@cms/sdk';
+import { redirect } from '@sveltejs/kit';
+import {
+  CONTENT_ORDERS,
+  CONTENT_STATUSES,
+  can,
+  contentListQuerySchema,
+} from '@cms/sdk';
 import type { ContentStatus } from '@cms/sdk';
-import { failFrom, text } from '#lib/server/errors.js';
+import { Errors, failFrom, text } from '#lib/server/errors.js';
+import { eachBounded, readSelection } from '#lib/server/bulk.js';
+import { bulkEditInput, readBulkChanges } from '#lib/server/bulk-edit.js';
 import { readQuickEdit } from '#lib/server/quick-edit.js';
+import { clampPage } from '#lib/server/page-range.js';
+import { readScreenOptions } from '#lib/server/screen-options.js';
+import { CONTENT_COLUMNS } from '#lib/admin/screen-options.js';
 import { adminFor } from '#lib/server/session.js';
 import { loadTaxonomyChoices } from '#lib/server/taxonomy-admin.js';
 import type { Actions, PageServerLoad } from './$types';
@@ -58,9 +69,23 @@ export const load: PageServerLoad = async (event) => {
     params.get('author'),
   );
   // `YYYY-MM`, as the month input sends it; entries are dated by publication (UTC).
+  // Anything the API's list query would reject means "no filter", like the other filters.
   const [, year, month] = /^(\d{4})-(\d{2})$/.exec(params.get('m') ?? '') ?? [];
-  const dated = year && Number(month) >= 1 && Number(month) <= 12;
+  const parsed =
+    year && contentListQuerySchema.safeParse({ year, month }).success;
+  const dated = parsed ? { year: Number(year), month: Number(month) } : null;
   const page = Math.max(1, Math.trunc(Number(params.get('page'))) || 1);
+  // Sorting: only the SDK's allowlisted columns; anything else is the default order.
+  const orderby = pick(CONTENT_ORDERS, params.get('orderby'));
+  const order = orderby
+    ? pick(['asc', 'desc'] as const, params.get('order'))
+    : undefined;
+  const screen = readScreenOptions(
+    event.cookies,
+    'content',
+    CONTENT_COLUMNS,
+    20,
+  );
   // Status view totals follow the type only, like wp-admin.
   const counts = Promise.all([
     total(admin.content.list({ type, pageSize: 1 })),
@@ -79,14 +104,17 @@ export const load: PageServerLoad = async (event) => {
       taxonomy,
       term,
       author,
-      year: dated ? Number(year) : undefined,
-      month: dated ? Number(month) : undefined,
+      year: dated?.year,
+      month: dated?.month,
       search,
+      orderBy: orderby,
+      order,
       page,
-      pageSize: 20,
+      pageSize: screen.perPage,
     }),
     counts,
   ]);
+  clampPage(event.url, content);
   return {
     filter: {
       type,
@@ -98,6 +126,8 @@ export const load: PageServerLoad = async (event) => {
       term,
       author,
       m: dated ? `${year}-${month}` : undefined,
+      orderby,
+      order,
       q: search,
     },
     counts: {
@@ -118,6 +148,7 @@ export const load: PageServerLoad = async (event) => {
     ...terms,
     authors,
     canPublish: can(event.locals.user!, 'content.publish'),
+    screen,
     content,
   };
 };
@@ -136,7 +167,20 @@ const rowAction =
   };
 
 export const actions: Actions = {
-  trash: rowAction('trash', 'movedToTrash'),
+  /** The notice and its Undo (restore) travel in the address, shown by `FlashNotice`. */
+  trash: async (event) => {
+    const id = text(await event.request.formData(), 'id');
+    try {
+      await adminFor(event).content.trash(id);
+    } catch (caught) {
+      return failFrom(caught);
+    }
+    const params = new URLSearchParams(event.url.search);
+    params.delete('/trash');
+    params.set('notice', 'entryTrashed');
+    params.set('undo', id);
+    redirect(303, `${event.url.pathname}?${params}`);
+  },
   restore: rowAction('restore', 'restored'),
   delete: rowAction('remove', 'deleted'),
   /** Quick Edit: replaces the list fields and keeps everything else of the entry. */
@@ -156,28 +200,51 @@ export const actions: Actions = {
     }
     return { notice: 'saved' };
   },
-  /** Applies one action to every selected entry; stops at the first failure. */
+  /** Applies one action to every selected entry and reports the ones that failed. */
   bulk: async (event) => {
     const form = await event.request.formData();
     const action = pick(BULK, text(form, 'action'));
-    const ids = form.getAll('ids').filter((id) => typeof id === 'string');
-    if (!action || !ids.length) return {};
+    const selection = readSelection(form);
+    if (selection.failure) return selection.failure;
+    if (!action) return {};
     const content = adminFor(event).content;
-    try {
-      for (const id of ids)
-        if (action === 'trash') await content.trash(id);
-        else if (action === 'restore') await content.restore(id);
-        else await content.remove(id);
-    } catch (caught) {
-      return failFrom(caught);
-    }
-    return {
-      notice:
+    const result = await eachBounded(
+      selection.ids,
+      (id) =>
         action === 'trash'
-          ? 'movedToTrash'
+          ? content.trash(id)
           : action === 'restore'
-            ? 'restored'
-            : 'deleted',
-    };
+            ? content.restore(id)
+            : content.remove(id),
+      selection.invalid,
+    );
+    return { bulk: result };
+  },
+  /**
+   * Bulk Edit: adds terms and sets author, status, comments or sticky on every selected entry.
+   * Each entry is read and saved with its own version check; bodies are copied, never changed.
+   */
+  bulkEdit: async (event) => {
+    const form = await event.request.formData();
+    const selection = readSelection(form);
+    if (selection.failure) return selection.failure;
+    const changes = readBulkChanges(form);
+    const admin = adminFor(event);
+    const result = await eachBounded(
+      selection.ids,
+      async (id) => {
+        const entry = await admin.content.get(id);
+        // The version the list showed, so a save made since then is not overwritten.
+        const input = bulkEditInput(
+          entry,
+          changes,
+          text(form, `version:${id}`) || entry.updatedAt,
+        );
+        if (!input) return Errors.FormInvalid;
+        await admin.content.update(id, input);
+      },
+      selection.invalid,
+    );
+    return { bulk: result };
   },
 };

@@ -11,12 +11,12 @@ import type {
   MailTransport,
   Mailer,
 } from '#api/domain/email/ports';
-import type { JobQueue } from '#api/domain/jobs/ports';
+import type { SealedJobs } from '#api/domain/jobs/sealed-jobs';
 import { templates } from '#api/domain/email/templates';
 import { PermanentJobError } from '#api/domain/jobs/job-runner';
 import type { SecretBox } from '#api/domain/ports';
 import type { SettingsRepository } from '#api/domain/site/site-service';
-import { invalidInput, Errors } from '#api/shared/errors';
+import { DomainError, invalidInput, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 
 const KEY = 'email';
@@ -47,7 +47,8 @@ export class EmailService {
       settings: SettingsRepository;
       secrets: SecretBox;
       mailer: Mailer;
-      jobs: JobQueue;
+      sealedJobs: SealedJobs;
+      checkDestination?: (host: string, port: number) => Promise<void>;
     },
   ) {}
 
@@ -70,6 +71,8 @@ export class EmailService {
       input,
     );
     const current = await this.stored();
+    if (settings.enabled)
+      await this.deps.checkDestination?.(settings.host, settings.port);
     await this.deps.settings.set(KEY, {
       settings,
       password:
@@ -85,7 +88,7 @@ export class EmailService {
   /** Queues `message`; throws `invalid_input` while email is disabled. */
   async queue(message: EmailMessage): Promise<void> {
     if (!(await this.enabled())) throw invalidInput(Errors.EmailDisabled);
-    await this.deps.jobs.enqueue(EMAIL_JOB, message);
+    await this.deps.sealedJobs.enqueue(EMAIL_JOB, message);
   }
 
   /** Sends a test message now, so the administrator sees the server's answer. */
@@ -96,18 +99,31 @@ export class EmailService {
     await this.deps.mailer
       .send(transport, { to, ...templates(site.locale).test(site.title) })
       .catch((error: unknown) => {
+        if (error instanceof DomainError) throw error;
         throw invalidInput(Errors.EmailSendFailed(String(error)));
       });
   }
 
   /** The job handler for `EMAIL_JOB`. */
   async deliver(payload: unknown): Promise<void> {
-    const message = messageSchema.safeParse(payload);
-    if (!message.success) throw new PermanentJobError(Errors.EmailInvalidJob);
+    const message = this.message(payload);
     const transport = await this.transport();
     // Disabled or misconfigured mail fails for now; enabling it lets queued messages go out.
     if (!transport) throw new Error(Errors.EmailDisabled);
-    await this.deps.mailer.send(transport, message.data);
+    await this.deps.mailer.send(transport, message);
+  }
+
+  /** Opens sealed envelopes and accepts plaintext jobs queued before this upgrade. */
+  private message(payload: unknown): EmailMessage {
+    const legacy = messageSchema.safeParse(payload);
+    if (legacy.success) return legacy.data;
+    try {
+      return this.deps.sealedJobs.open(payload, messageSchema);
+    } catch (error) {
+      if (error instanceof PermanentJobError)
+        throw new PermanentJobError(Errors.EmailInvalidJob);
+      throw error;
+    }
   }
 
   private async transport(): Promise<MailTransport | null> {

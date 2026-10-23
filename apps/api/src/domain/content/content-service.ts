@@ -31,6 +31,7 @@ import type { RevisionRepository } from '#api/domain/content/revisions';
 import type { ContentTypeService } from '#api/domain/content/content-types';
 import { fieldMediaIds } from '#api/domain/content/fields';
 import type { FieldService } from '#api/domain/content/fields';
+import { teaserOf } from '#api/domain/content/plain-text';
 import { slugify, uniqueSlug } from '#api/domain/content/slug';
 import type { Clock, HookDispatcher, IdGenerator } from '#api/domain/ports';
 import {
@@ -53,6 +54,8 @@ export interface ContentServiceDeps {
   hasher: PasswordHasher;
   types: Pick<ContentTypeService, 'require'>;
   fields: Pick<FieldService, 'validate' | 'forType'>;
+  /** Settings → Writing: the existing category a post saved without one gets (WordPress). */
+  defaultCategory?: () => Promise<string | null>;
 }
 
 /** Revisions kept per entry; older ones are pruned on save. */
@@ -82,7 +85,6 @@ export class ContentService {
       ...filters,
       page,
       pageSize,
-      orderBy: 'updatedAt',
     });
     return { items: items.map(toEntrySummary), total, page, pageSize };
   }
@@ -149,18 +151,29 @@ export class ContentService {
     const slug = data.slug ?? current.slug;
     if (slug !== current.slug) await this.assertSlugFree(slug);
     const now = this.deps.clock.now();
-    const record = await this.deps.repository.update({
-      ...(await this.fields(data, current)),
-      ...this.schedule(data, current, now),
-      passwordHash: await this.passwordHash(data, current.passwordHash),
-      seo: data.seo ?? current.seo,
-      id: current.id,
-      slug,
-      createdAt: current.createdAt,
-      updatedAt: now,
-      authorId,
-    });
-    await this.saveRevision(record, actor);
+    const expected = data.expectedUpdatedAt
+      ? new Date(data.expectedUpdatedAt)
+      : undefined;
+    if (expected && expected.getTime() !== current.updatedAt.getTime())
+      throw conflict(Errors.ContentChanged);
+    const record = await this.deps.repository.update(
+      {
+        ...(await this.fields(data, current)),
+        ...this.schedule(data, current, now),
+        passwordHash: await this.passwordHash(data, current.passwordHash),
+        seo: data.seo ?? current.seo,
+        id: current.id,
+        slug,
+        createdAt: current.createdAt,
+        updatedAt: now,
+        authorId,
+      },
+      {
+        expectedUpdatedAt: expected,
+        autosaveOf: data.preserveAutosave ? actor.id : undefined,
+      },
+    );
+    await this.saveRevision(record, actor, !data.preserveAutosave);
 
     const entry = toEntry(record);
     void this.deps.hooks.emit('content.updated', entry);
@@ -244,7 +257,7 @@ export class ContentService {
       document: data.document,
       html: this.deps.renderer.render(data.document),
       searchText: locked ? '' : text,
-      summary: locked ? '' : summarize(text),
+      summary: locked ? '' : (teaserOf(data.document) ?? summarize(text)),
       status: data.status,
       sticky: data.sticky,
       allowComments: data.allowComments,
@@ -263,7 +276,9 @@ export class ContentService {
         ),
       ],
       categoryIds: type.supports.categories
-        ? [...new Set(data.categoryIds)]
+        ? data.categoryIds.length || data.type !== 'post'
+          ? [...new Set(data.categoryIds)]
+          : await this.defaultCategories()
         : [],
       tagIds: type.supports.tags ? [...new Set(data.tagIds)] : [],
       featuredMediaId,
@@ -278,6 +293,11 @@ export class ContentService {
     } satisfies Partial<ContentWrite>;
   }
 
+  private async defaultCategories() {
+    const id = await this.deps.defaultCategory?.();
+    return id ? [id] : [];
+  }
+
   /**
    * Status and publication time. `scheduled` needs a future time (a past one publishes at
    * once); an explicit time redates the entry; otherwise the stored time is kept, or set now
@@ -288,6 +308,8 @@ export class ContentService {
     current: ContentRecord | null,
     now: Date,
   ): Pick<ContentWrite, 'status' | 'publishedAt'> {
+    const kept = current?.publishedAt ?? null;
+    // Every explicit time is honored; forms resend the stored time exactly when untouched.
     const requested = data.publishedAt ? new Date(data.publishedAt) : null;
     if (data.status === 'scheduled') {
       if (!requested)
@@ -298,7 +320,6 @@ export class ContentService {
         ? { status: 'scheduled', publishedAt: requested }
         : { status: 'published', publishedAt: requested };
     }
-    const kept = current?.publishedAt ?? null;
     return {
       status: data.status,
       publishedAt:
@@ -311,7 +332,12 @@ export class ContentService {
     return data.password ? this.deps.hasher.hash(data.password) : null;
   }
 
-  private async saveRevision(record: ContentRecord, actor: Actor) {
+  /** Records the saved text; a full save also discards the actor's autosave it replaced. */
+  private async saveRevision(
+    record: ContentRecord,
+    actor: Actor,
+    clearAutosave = true,
+  ) {
     await this.deps.revisions.add(
       {
         id: this.deps.ids.next(),
@@ -325,7 +351,8 @@ export class ContentService {
       },
       REVISIONS_KEPT,
     );
-    await this.deps.revisions.clearAutosave(record.id, actor.id);
+    if (clearAutosave)
+      await this.deps.revisions.clearAutosave(record.id, actor.id);
   }
 
   private async prepare(input: unknown): Promise<ContentData> {
@@ -335,7 +362,12 @@ export class ContentService {
       data,
       isContentData,
     );
-    return contentInputSchema.parse(filtered);
+    // The concurrency check is the client's, never a filter's.
+    return {
+      ...contentInputSchema.parse(filtered),
+      expectedUpdatedAt: data.expectedUpdatedAt,
+      preserveAutosave: data.preserveAutosave,
+    };
   }
 
   /**

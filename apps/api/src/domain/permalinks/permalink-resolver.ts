@@ -1,5 +1,6 @@
 import { canonicalPermalinkPath, resolvePathQuerySchema } from '@cms/sdk';
 import type { PublicContent } from '@cms/sdk';
+import type { Actor } from '#api/domain/auth/authorization';
 import type { PathLookup } from '#api/domain/permalinks/permalink-repository';
 import { notFound, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
@@ -10,6 +11,7 @@ export interface PublicContentById {
   getById(
     id: string,
     proofs?: readonly string[],
+    actor?: Actor | null,
   ): Promise<PublicContent | null>;
 }
 
@@ -33,6 +35,7 @@ export class PermalinkResolver {
   async resolve(
     query: unknown,
     proofs: readonly string[] = [],
+    actor: Actor | null = null,
   ): Promise<ResolvedPath> {
     const { path } = parseInput(resolvePathQuerySchema, query);
     const canonical = canonicalPermalinkPath(path);
@@ -43,7 +46,7 @@ export class PermalinkResolver {
           canonical.endsWith('/') ? canonical.slice(0, -1) : `${canonical}/`,
         )));
     const content =
-      owner && (await this.content.getById(owner.contentId, proofs));
+      owner && (await this.content.getById(owner.contentId, proofs, actor));
 
     if (!owner || !content) throw notFound(Errors.ContentNotFound);
 

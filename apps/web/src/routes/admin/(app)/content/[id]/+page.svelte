@@ -1,9 +1,10 @@
 <script lang="ts">
   import type { Path } from '$app/types';
+  import { page } from '$app/state';
   import { resolve } from '$app/paths';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
-  import { Eye, ExternalLink, RotateCcw, Trash2 } from '@lucide/svelte';
+  import { ExternalLink, RotateCcw, Trash2 } from '@lucide/svelte';
   import ContentForm from '#lib/admin/ContentForm.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';
@@ -26,6 +27,17 @@
   const confirmDelete: SubmitFunction = ({ cancel }) => {
     if (!confirm(m.confirmDelete)) cancel();
   };
+  let restored = $state(0);
+  const restoreRevision: SubmitFunction = ({ cancel }) => {
+    if (!confirm(m.revisionRestoreConfirm)) {
+      cancel();
+      return;
+    }
+    return async ({ result, update }) => {
+      await update();
+      if (result.type === 'success') restored++;
+    };
+  };
   const date = (value: string) => new Date(value).toLocaleString(i18n.language);
 </script>
 
@@ -43,12 +55,6 @@
         target="_blank"><ExternalLink class="size-4" /> {m.view}</Button
       >
     {/if}
-    <!-- Not enhanced: the browser follows the redirect into the new tab. -->
-    <form method="POST" action="?/preview" target="_blank">
-      <Button type="submit" variant="outline"
-        ><Eye class="size-4" /> {m.preview}</Button
-      >
-    </form>
     {#if data.entry.trashedAt}
       <form method="POST" action="?/restore" use:enhance>
         <Button type="submit" variant="outline"
@@ -71,6 +77,9 @@
 </div>
 
 <FormMessage {form} />
+{#if page.url.searchParams.has('restored')}
+  <Alert><AlertTitle>{m.revisionRestored}</AlertTitle></Alert>
+{/if}
 
 {#if data.autosave && !data.useAutosave}
   <Alert>
@@ -87,9 +96,17 @@
   </Alert>
 {/if}
 
-{#key `${data.entry.id}:${data.entry.updatedAt}:${data.useAutosave}`}
+<!-- Saving keeps the editor (cursor, open panels); restoring a revision reloads its text. -->
+{#key `${data.user.id}:${data.entry.id}:${data.useAutosave}:${restored}`}
   <ContentForm
     entry={data.entry}
+    userId={data.user.id}
+    revisionCount={data.revisions.filter(
+      (revision) => revision.kind === 'revision',
+    ).length}
+    fieldImages={data.fieldImages}
+    canManageTerms={data.canManageTerms}
+    created={page.url.searchParams.get('saved')}
     values={form && 'values' in form ? form.values : undefined}
     draft={data.useAutosave && data.autosave ? data.autosave : undefined}
     parentPages={data.parentPages}
@@ -100,7 +117,6 @@
     model={data.model}
     authors={data.authors}
     canPublish={data.canPublish}
-    submitLabel={m.save}
   />
 {/key}
 
@@ -129,16 +145,17 @@
               <Button
                 variant="ghost"
                 size="sm"
-                href={resolve(
-                  '/admin/(app)/content/[id]/revisions/[revisionId]',
-                  {
-                    id: data.entry.id,
-                    revisionId: revision.id,
-                  },
-                )}>{m.revisionCompare}</Button
+                href={`${resolve('/admin/(app)/content/[id]/revisions', {
+                  id: data.entry.id,
+                })}?to=${encodeURIComponent(revision.id)}`}
+                >{m.revisionCompare}</Button
               >
               {#if index > 0 || revision.kind === 'autosave'}
-                <form method="POST" action="?/restoreRevision" use:enhance>
+                <form
+                  method="POST"
+                  action="?/restoreRevision"
+                  use:enhance={restoreRevision}
+                >
                   <input type="hidden" name="revisionId" value={revision.id} />
                   <Button type="submit" variant="outline" size="sm"
                     >{m.restore}</Button

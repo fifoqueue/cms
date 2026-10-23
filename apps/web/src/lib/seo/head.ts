@@ -21,10 +21,11 @@ import {
   LLMS_TXT_PATH,
   SITEMAP_PATH,
   crumbPath,
+  feedPath,
   listingPath,
   markdownPath,
 } from '#lib/seo/paths.js';
-import type { CrumbTarget } from '#lib/seo/paths.js';
+import type { CrumbTarget, FeedTarget } from '#lib/seo/paths.js';
 import { lastPageOf } from '#lib/theme/pagination.js';
 import type { HomeListType, ListingTarget } from '#lib/theme/pagination.js';
 
@@ -374,7 +375,11 @@ const describe = (
       };
     case 'content': {
       const { content } = page;
-      const base = content.seo.title || content.title;
+      // Every part of a split entry is canonical to itself, like WordPress.
+      const { current, total } = content.pages;
+      const partPath = (part: number) =>
+        part > 1 ? `${content.path}?page=${part}` : content.path;
+      const base = paged(content.seo.title || content.title, current);
       const description =
         content.seo.description || content.excerpt || site.description;
       // An explicit SEO image wins; otherwise the featured image, when the site has an address.
@@ -394,8 +399,12 @@ const describe = (
         description,
         socialTitle: content.seo.socialTitle || base,
         socialDescription: content.seo.socialDescription || description,
-        path: content.path,
-        canonical: content.seo.canonicalUrl || absolute(content.path),
+        path: partPath(current),
+        canonical:
+          (current === 1 && content.seo.canonicalUrl) ||
+          absolute(partPath(current)),
+        prev: current > 1 ? partPath(current - 1) : undefined,
+        next: current < total ? partPath(current + 1) : undefined,
         index: !content.seo.noIndex,
         follow: !content.seo.noFollow,
         type: 'WebPage',
@@ -524,12 +533,32 @@ export const buildHead = ({
       type: 'application/xml',
       href: href(SITEMAP_PATH),
     });
-  links.push({
-    rel: 'alternate',
-    type: 'application/rss+xml',
-    title: site.title,
-    href: href(FEED_PATH),
-  });
+  // The feed route answers only while discoverable; narrowed feeds follow archives.
+  if (discoverable) {
+    links.push({
+      rel: 'alternate',
+      type: 'application/rss+xml',
+      title: site.title,
+      href: href(FEED_PATH),
+    });
+    const term = page?.kind === 'term' ? page.term : null;
+    const followed: (FeedTarget & { name: string }) | null =
+      page?.kind === 'author'
+        ? { kind: 'author', slug: page.author.slug, name: page.author.name }
+        : term && (term.taxonomy === 'category' || term.taxonomy === 'tag')
+          ? { kind: term.taxonomy, slug: term.slug, name: term.name }
+          : null;
+    if (followed)
+      links.push({
+        rel: 'alternate',
+        type: 'application/rss+xml',
+        title: messagesFor(site.locale).themeFeedTitle(
+          site.title,
+          followed.name,
+        ),
+        href: href(feedPath({ kind: followed.kind, slug: followed.slug })),
+      });
+  }
   if (discoverable && settings.llmsTxtEnabled)
     links.push({
       rel: 'describedby',
@@ -553,6 +582,9 @@ export const buildHead = ({
     settings.siteUrl ? `${absolute(path)}#${key}` : `_:${key}`;
   const ref = (key: string) => ({ '@id': key });
   const person = settings.entityType === 'Person';
+  // The custom logo stands in for an SEO logo, as an absolute URL only.
+  const logoUrl =
+    settings.logoUrl || (site.logo ? absolute(site.logo.url) : '');
   const identityName = settings.entityName || (person ? '' : site.title);
   const identityId = id('/', person ? 'person' : 'organization');
   const publisher = identityName ? ref(identityId) : undefined;
@@ -590,8 +622,8 @@ export const buildHead = ({
           '@id': identityId,
           name: identityName,
           url: absolute('/'),
-          [person ? 'image' : 'logo']: settings.logoUrl
-            ? { '@type': 'ImageObject', url: settings.logoUrl }
+          [person ? 'image' : 'logo']: logoUrl
+            ? { '@type': 'ImageObject', url: logoUrl }
             : undefined,
           sameAs: settings.sameAs,
         })

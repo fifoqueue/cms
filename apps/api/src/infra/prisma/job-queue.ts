@@ -58,7 +58,13 @@ export class PrismaJobQueue implements JobQueue {
     return count === 1;
   }
 
-  async fail(id: string, owner: string, error: string, retryAt: Date | null) {
+  async fail(
+    id: string,
+    owner: string,
+    error: string,
+    retryAt: Date | null,
+    preservePayload = false,
+  ) {
     const { count } = await this.db.job.updateMany({
       where: { id, lockedBy: owner },
       data: {
@@ -66,10 +72,64 @@ export class PrismaJobQueue implements JobQueue {
         lastError: error.slice(0, 2000),
         lockedUntil: null,
         lockedBy: null,
-        ...(retryAt ? { runAt: retryAt } : { failedAt: new Date() }),
+        ...(retryAt
+          ? { runAt: retryAt }
+          : {
+              failedAt: new Date(),
+              ...(!preservePayload && { payload: 'null' }),
+            }),
       },
     });
     return count === 1;
+  }
+
+  async failedPayloads(kind: string, error: string, limit: number) {
+    const rows = await this.db.job.findMany({
+      where: {
+        kind,
+        lastError: error,
+        failedAt: { not: null },
+        payload: { not: 'null' },
+      },
+      select: { id: true, payload: true },
+      take: limit,
+    });
+    return rows.flatMap(({ id, payload }) => {
+      try {
+        return [{ id, payload: JSON.parse(payload) as unknown }];
+      } catch {
+        return [];
+      }
+    });
+  }
+
+  async retry(ids: readonly string[]) {
+    if (!ids.length) return 0;
+    const { count } = await this.db.job.updateMany({
+      where: { id: { in: [...ids] }, failedAt: { not: null } },
+      data: { attempts: 0, failedAt: null, lastError: null, runAt: new Date() },
+    });
+    return count;
+  }
+
+  async scrubFailed(preserveErrors: readonly string[], limit: number) {
+    const rows = await this.db.job.findMany({
+      where: {
+        failedAt: { not: null },
+        payload: { not: 'null' },
+        ...(preserveErrors.length && {
+          NOT: { lastError: { in: [...preserveErrors] } },
+        }),
+      },
+      select: { id: true },
+      take: limit,
+    });
+    if (!rows.length) return 0;
+    const { count } = await this.db.job.updateMany({
+      where: { id: { in: rows.map(({ id }) => id) } },
+      data: { payload: 'null' },
+    });
+    return count;
   }
 
   async failures(limit: number) {
@@ -84,5 +144,12 @@ export class PrismaJobQueue implements JobQueue {
       error: row.lastError ?? '',
       failedAt: row.failedAt!,
     }));
+  }
+
+  async purge(before: Date) {
+    const { count } = await this.db.job.deleteMany({
+      where: { failedAt: { lt: before } },
+    });
+    return count;
   }
 }

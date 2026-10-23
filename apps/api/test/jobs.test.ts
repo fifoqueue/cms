@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import { z } from 'zod';
 import { JobRunner, PermanentJobError } from '#api/domain/jobs/job-runner';
+import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
 import { Scheduler } from '#api/domain/jobs/scheduler';
 import { fixedClock, recordingLogger } from '#test/support/memory';
 import { MemoryJobQueue, MemoryTaskLeases } from '#test/support/memory-jobs';
+import { aesSecretBox } from '#api/infra/secret-box';
 
 describe('scheduler and jobs', () => {
   test('a recurring task runs in one process per interval, even when it fails', async () => {
@@ -38,7 +41,7 @@ describe('scheduler and jobs', () => {
 
   test('failed jobs retry with backoff and give up when permanent', async () => {
     const clock = fixedClock();
-    const queue = new MemoryJobQueue();
+    const queue = new MemoryJobQueue(clock.now);
     const runner = new JobRunner({
       queue,
       clock,
@@ -58,6 +61,9 @@ describe('scheduler and jobs', () => {
     await runner.drain();
     expect(attempts).toBe(1);
     expect(await queue.failures(10)).toMatchObject([{ kind: 'broken' }]);
+    expect(
+      [...queue.rows.values()].find((row) => row.kind === 'broken')?.payload,
+    ).toBeNull();
 
     // Not due until the backoff has passed.
     await runner.drain();
@@ -66,6 +72,10 @@ describe('scheduler and jobs', () => {
     await runner.drain();
     expect(attempts).toBe(2);
     expect([...queue.rows.values()].map((row) => row.kind)).toEqual(['broken']);
+
+    clock.set('2026-02-01T00:00:00.001Z');
+    expect(await runner.purge()).toBe(1);
+    expect(queue.rows.size).toBe(0);
   });
 
   test('an expired owner cannot complete a job reclaimed elsewhere', async () => {
@@ -77,5 +87,56 @@ describe('scheduler and jobs', () => {
     expect(second?.id).toBe(first?.id);
     expect(await queue.complete(first!.id, 'first')).toBe(false);
     expect(await queue.complete(second!.id, 'second')).toBe(true);
+  });
+
+  test('maintenance scrubs historical failed plaintext before retention expires', async () => {
+    const clock = fixedClock();
+    const queue = new MemoryJobQueue(clock.now);
+    await queue.enqueue('legacy', { token: 'plaintext-credential' });
+    const row = [...queue.rows.values()][0]!;
+    row.failedAt = clock.now();
+    row.error = 'old failure';
+    const runner = new JobRunner({
+      queue,
+      clock,
+      logger: recordingLogger().logger,
+      owner: 'worker',
+    });
+
+    expect(await runner.purge()).toBe(0);
+    expect(row.payload).toBeNull();
+  });
+
+  test('an unreadable sealed job keeps ciphertext and recovers with the right key', async () => {
+    const clock = fixedClock();
+    const queue = new MemoryJobQueue(clock.now);
+    const correct = new SealedJobs(queue, aesSecretBox('correct-job-key'));
+    const wrong = new SealedJobs(queue, aesSecretBox('wrong-job-key'));
+    const rotated = new SealedJobs(
+      queue,
+      aesSecretBox('new-active-job-key', 'correct-job-key'),
+    );
+    await correct.enqueue('secret', { token: 'credential' });
+    const runner = new JobRunner({
+      queue,
+      clock,
+      logger: recordingLogger().logger,
+      owner: 'worker',
+    });
+    let value = '';
+    runner.handle('secret', async (payload) => {
+      value = wrong.open(payload, z.object({ token: z.string() })).token;
+    });
+
+    await runner.drain();
+    expect([...queue.rows.values()][0]?.payload).not.toBeNull();
+    await rotated.recover(['secret']);
+    runner.handle('secret', async (payload) => {
+      value = rotated.open(payload, z.object({ token: z.string() })).token;
+    });
+    await runner.drain();
+
+    expect(value).toBe('credential');
+    expect(queue.rows.size).toBe(0);
   });
 });

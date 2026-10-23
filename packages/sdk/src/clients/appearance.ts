@@ -1,12 +1,21 @@
 import { z } from 'zod';
-import { menusSettingsSchema, publicMenuSchema } from '#sdk/menus';
+import {
+  menuTargetSchema,
+  menusSettingsSchema,
+  publicMenuSchema,
+} from '#sdk/menus';
 import type {
   MenuLocation,
+  MenuTarget,
   MenusSettings,
   MenusSettingsInput,
   PublicMenuItem,
 } from '#sdk/menus';
 import { publicReadingSchema, readingSettingsSchema } from '#sdk/reading';
+import { writingSettingsSchema } from '#sdk/writing';
+import { adminPatternSchema } from '#sdk/patterns';
+import type { AdminPattern, PatternInput } from '#sdk/patterns';
+import type { WritingSettings, WritingSettingsInput } from '#sdk/writing';
 import type {
   PublicReading,
   ReadingSettings,
@@ -52,6 +61,47 @@ export const publicAppearanceClient = (request: Request) => ({
 
 /** Reading needs `settings.manage`; menus and widgets `appearance.manage`. */
 export const appearanceAdminClient = (request: Request) => ({
+  /** Patterns: writers list and use them; changing another user's needs `content.editOthers`. */
+  patterns: {
+    list: () =>
+      request<AdminPattern[]>('GET', '/api/v1/admin/patterns', {
+        response: z.array(adminPatternSchema),
+      }),
+    get: (id: string) =>
+      request<AdminPattern>(
+        'GET',
+        `/api/v1/admin/patterns/${encodeURIComponent(id)}`,
+        { response: adminPatternSchema },
+      ),
+    create: (input: PatternInput) =>
+      request<AdminPattern>('POST', '/api/v1/admin/patterns', {
+        json: input,
+        response: adminPatternSchema,
+      }),
+    update: (id: string, input: PatternInput) =>
+      request<AdminPattern>(
+        'PUT',
+        `/api/v1/admin/patterns/${encodeURIComponent(id)}`,
+        { json: input, response: adminPatternSchema },
+      ),
+    remove: (id: string) =>
+      request<void>(
+        'DELETE',
+        `/api/v1/admin/patterns/${encodeURIComponent(id)}`,
+      ),
+  },
+  /** Every writer reads the defaults; saving them needs `settings.manage`. */
+  writing: {
+    get: () =>
+      request<WritingSettings>('GET', '/api/v1/admin/writing', {
+        response: writingSettingsSchema,
+      }),
+    update: (input: WritingSettingsInput) =>
+      request<WritingSettings>('PUT', '/api/v1/admin/writing', {
+        json: input,
+        response: writingSettingsSchema,
+      }),
+  },
   reading: {
     get: () =>
       request<ReadingSettings>('GET', '/api/v1/admin/reading', {
@@ -72,6 +122,11 @@ export const appearanceAdminClient = (request: Request) => ({
       request<MenusSettings>('PUT', '/api/v1/admin/menus', {
         json: input,
         response: menusSettingsSchema,
+      }),
+    /** Titles of the published entries the saved menus link to. */
+    targets: () =>
+      request<MenuTarget[]>('GET', '/api/v1/admin/menus/targets', {
+        response: z.array(menuTargetSchema),
       }),
   },
   widgets: {

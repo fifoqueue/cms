@@ -42,6 +42,9 @@ const summaryColumns = {
   seoAuthorName: true,
   seoAuthorUrl: true,
   sticky: true,
+  parentId: true,
+  // Only whether the parent is public leaves the repository (see `toSummary`).
+  parent: { select: { status: true, trashedAt: true, passwordHash: true } },
   commentCount: true,
   summary: true,
   passwordHash: true,
@@ -62,6 +65,7 @@ const toSummary = ({
   author,
   passwordHash,
   featuredMedia,
+  parent,
   ...row
 }: SummaryRow): PublishedSummaryRecord => {
   if (!currentPath) throw new Error(Errors.ContentPathMissing);
@@ -87,6 +91,13 @@ const toSummary = ({
     categories: termSummaries(terms, 'category'),
     tags: termSummaries(terms, 'tag'),
     author,
+    // Unpublished, trashed or locked parents stay private: the child shows as top-level.
+    parentId:
+      parent?.status === 'published' &&
+      parent.trashedAt === null &&
+      parent.passwordHash === null
+        ? row.parentId
+        : null,
     featuredImage: featuredImageOf(featuredMedia),
     sticky: row.sticky,
     commentCount: row.commentCount,
@@ -111,6 +122,14 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
 
   byId(id: string) {
     return this.find({ id });
+  }
+
+  async privateById(id: string) {
+    const row = await this.db.content.findFirst({
+      where: { id, status: 'private', trashedAt: null },
+      select: columns,
+    });
+    return row ? toRecord(row) : null;
   }
 
   bySlug(slug: string) {
@@ -256,6 +275,37 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
       month: Number(row.month),
       count: Number(row.count),
     }));
+  }
+
+  async adjacent(id: string) {
+    const entry = await this.db.content.findFirst({
+      where: { id, ...PUBLIC_CONTENT },
+      select: { type: true, publishedAt: true },
+    });
+    const at = entry?.publishedAt;
+    if (!entry || !at) return { previous: null, next: null };
+    // Ties on `publishedAt` fall back to the id, like the list order.
+    const near = (direction: 'lt' | 'gt') =>
+      this.db.content.findFirst({
+        where: {
+          ...PUBLIC_CONTENT,
+          type: entry.type,
+          OR: [
+            { publishedAt: { [direction]: at } },
+            { publishedAt: at, id: { [direction]: id } },
+          ],
+        },
+        select: summaryColumns,
+        orderBy:
+          direction === 'lt'
+            ? [{ publishedAt: 'desc' }, { id: 'desc' }]
+            : [{ publishedAt: 'asc' }, { id: 'asc' }],
+      });
+    const [previous, next] = await Promise.all([near('lt'), near('gt')]);
+    return {
+      previous: previous && toSummary(previous),
+      next: next && toSummary(next),
+    };
   }
 
   async passwordHash(id: string) {

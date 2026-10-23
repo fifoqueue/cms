@@ -4,7 +4,13 @@ import { toPublicEntrySeo } from '@cms/sdk';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
 import { recordingLogger } from '#test/support/memory';
 
-const site: SiteSettings = { title: 'Site', description: '', locale: 'en' };
+const site: SiteSettings = {
+  title: 'Site',
+  description: '',
+  locale: 'en',
+  iconId: null,
+  logoId: null,
+};
 const content: PublicContent = {
   id: '1',
   type: 'post',

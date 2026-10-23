@@ -1,19 +1,24 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
+  import { can } from '@cms/sdk/capabilities';
   import { useI18n } from '#lib/i18n/index.js';
   import type { Messages } from '#lib/i18n/index.js';
   import type { LayoutProps } from './$types';
 
-  let { children }: LayoutProps = $props();
+  let { data, children }: LayoutProps = $props();
 
   const i18n = useI18n();
 
   /** wp-admin's order first, then this CMS's own screens (the same order as the menu). */
-  const tabs = [
+  const tabs = $derived([
     {
       route: '/admin/(app)/settings',
       label: (m: Messages) => m.settingsGeneral,
+    },
+    {
+      route: '/admin/(app)/settings/writing',
+      label: (m: Messages) => m.settingsWriting,
     },
     {
       route: '/admin/(app)/settings/reading',
@@ -43,7 +48,15 @@
       route: '/admin/(app)/settings/sso',
       label: (m: Messages) => m.settingsSso,
     },
-  ] as const;
+    ...(can(data.user, 'egress.manage')
+      ? [
+          {
+            route: '/admin/(app)/settings/egress' as const,
+            label: (m: Messages) => m.settingsEgress,
+          },
+        ]
+      : []),
+  ] as const);
 </script>
 
 <nav aria-label={i18n.m.navSettings} class="flex flex-wrap gap-1 border-b">

@@ -25,6 +25,8 @@ export interface PublishedRecord {
   categories: TermSummary[];
   tags: TermSummary[];
   author: { name: string; slug: string } | null;
+  /** Parent page; null for top-level entries. */
+  parentId?: string | null;
   sticky: boolean;
   /** Approved comments. */
   commentCount: number;
@@ -61,6 +63,8 @@ export type PublishedCriteria = Pick<
 
 /** Read-only view of published content; drafts are filtered by the store and never returned. */
 export interface PublishedContentRepository {
+  /** Private, non-trashed entry with the same public projection; caller must authorize. */
+  privateById(id: string): Promise<PublishedRecord | null>;
   byId(id: string): Promise<PublishedRecord | null>;
   bySlug(slug: string): Promise<PublishedRecord | null>;
   /** Public entries among `ids`, without bodies; missing or unpublished ids are left out. */
@@ -76,6 +80,14 @@ export interface PublishedContentRepository {
     types: readonly string[],
     limit: number,
   ): Promise<{ year: number; month: number; count: number }[]>;
+  /**
+   * The public entries of the same type published just before (`previous`) and after (`next`)
+   * entry `id`, in `list` order; both null when the entry is not public.
+   */
+  adjacent(id: string): Promise<{
+    previous: PublishedSummaryRecord | null;
+    next: PublishedSummaryRecord | null;
+  }>;
   /** Same selection and order as `list`, without reading the body. */
   summaries(
     criteria: PublishedCriteria,

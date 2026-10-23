@@ -75,7 +75,9 @@ const archive = (
         ...files,
       }).map(([path, value]) => [
         `${id}/${path}`,
-        strToU8(typeof value === 'string' ? value : JSON.stringify(value)),
+        value instanceof Uint8Array
+          ? value
+          : strToU8(typeof value === 'string' ? value : JSON.stringify(value)),
       ]),
     ),
   );
@@ -142,6 +144,34 @@ describe('ThemeService archives', () => {
     expect(shown.parts.find((part) => part.slug === 'header')?.area).toBe(
       'header',
     );
+  });
+
+  test('keeps a sniffed screenshot with the theme and drops it on upgrade or removal', async () => {
+    const { themes } = setup();
+    const png = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 1, 2,
+    ]);
+    expect(
+      await codeOf(
+        themes.install(
+          archive('shot', { 'screenshot.png': strToU8('<svg></svg>.......') }),
+        ),
+      ),
+    ).toBe('invalid_input');
+
+    await themes.install(archive('shot', { 'screenshot.png': png }));
+    const listed = (await themes.list()).find((theme) => theme.id === 'shot');
+    expect(listed?.screenshot).toBeString();
+    expect(await themes.screenshot('shot')).toEqual({
+      type: 'image/png',
+      bytes: png,
+    });
+
+    await themes.install(archive('shot'));
+    expect(await themes.screenshot('shot')).toBeNull();
+    expect(
+      (await themes.list()).find((theme) => theme.id === 'shot')?.screenshot,
+    ).toBeNull();
   });
 
   test('refuses broken archives, invalid blocks, missing index and built-in ids', async () => {

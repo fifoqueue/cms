@@ -40,8 +40,13 @@ const { actions: editContentActions } =
 const { actions: appearanceActions } =
   await import('#web/routes/admin/(app)/appearance/+page.server.js');
 const { removeApiSecrets } = await import('#web-env');
+const { GET: feed } = await import('#web/routes/feed.xml/+server.js');
+const { loadBlockData } = await import('#lib/server/theme-queries.js');
+const { contentApi } = await import('#lib/server/api.js');
 const { actions: editorActions } =
   await import('#web/routes/admin/(app)/appearance/editor/+page.server.js');
+
+const { commentAction } = await import('#lib/server/comments.js');
 
 const SECRET = 'SECRET-SENTINEL-7f3a';
 const TOKEN = 'TOKEN-SENTINEL-91c2';
@@ -120,6 +125,7 @@ interface Call {
   method: string;
   url: URL;
   authorization: string | null;
+  commenterProof: string | null;
   body: string;
 }
 
@@ -134,6 +140,7 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     method: request.method,
     url: new URL(request.url),
     authorization: request.headers.get('authorization'),
+    commenterProof: request.headers.get('x-cms-commenter-proof'),
     body: await request.text(),
   };
   calls.push(call);
@@ -267,6 +274,17 @@ const forbidden = (name: string) =>
     },
   );
 
+const publicLocals = () =>
+  new Proxy(
+    { token: null as string | null },
+    {
+      get(target, key) {
+        if (key === 'token') return target.token;
+        throw new Error(`public loader read locals.${String(key)}`);
+      },
+    },
+  );
+
 const publicEvent = (
   path: string,
   params: Record<string, string> = {},
@@ -277,19 +295,12 @@ const publicEvent = (
     url: new URL(path, 'http://web.test'),
     route: { id: route },
     params,
-    locals: forbidden('locals'),
-    // Only unlock proofs may be read; any session cookie access fails the test.
-    cookies: new Proxy(
-      { getAll: () => [] },
-      {
-        get(target, key) {
-          if (key === 'getAll') return target.getAll;
-          throw new Error(`public loader read cookies.${String(key)}`);
-        },
-      },
-    ),
+    locals: publicLocals(),
+    // Public entry reads may forward visitor proofs and an optional session to the API.
+    cookies: { getAll: () => [], get: () => undefined },
     parent: async () => ({
       reading,
+      theme,
       archives: {
         bases: { category: '/category', tag: '/tag' },
         history: { category: [], tag: [] },
@@ -334,6 +345,8 @@ describe('public page data', () => {
     const env = {
       DATABASE_URL: 'mysql://secret',
       CMS_SECRET_KEY: SECRET,
+      CMS_SECRET_KEY_PREVIOUS: `${SECRET}-previous`,
+      CMS_EGRESS_ALLOWLIST: '[{"host":"internal"}]',
       CMS_API_URL: 'http://api',
     };
     removeApiSecrets(env);
@@ -428,6 +441,238 @@ describe('public page data', () => {
       ),
     ).toMatchObject({ status: 502 });
   });
+
+  test('archive aliases redirect to the stored Unicode slug', async () => {
+    override = ({ url }) =>
+      url.pathname === '/api/v1/taxonomies/category/cafe'
+        ? json({
+            id: 'cafe',
+            taxonomy: 'category',
+            name: 'Café',
+            slug: 'café',
+            description: '',
+            parentId: null,
+            count: 1,
+            seo: publicSeo,
+          })
+        : undefined;
+    expect(
+      await loadCategory(
+        publicEvent('/category/cafe?ref=old', { slug: 'cafe' }),
+      ).catch((thrown: unknown) => thrown),
+    ).toMatchObject({ status: 308, location: '/category/caf%C3%A9?ref=old' });
+  });
+
+  test('block data shared by the error template and the page, and archive slots, load once', async () => {
+    const footer = [
+      { name: 'latest-posts', attrs: { count: 5 } },
+      { name: 'archives', attrs: { months: 12 } },
+    ];
+    const shared = {
+      ...theme,
+      templates: {
+        index: [{ name: 'template-part', attrs: { slug: 'footer' } }],
+        single: [
+          { name: 'post-navigation' },
+          { name: 'template-part', attrs: { slug: 'footer' } },
+        ],
+      },
+      parts: [{ slug: 'footer', area: 'footer', blocks: footer }],
+    };
+    override = ({ url }) =>
+      url.pathname === '/api/v1/layout'
+        ? json({
+            site: { title: 'Site', description: '', locale: 'en' },
+            seo: SEO_SETTINGS_DEFAULTS,
+            theme: shared,
+            reading,
+            menus: { primary: null, footer: null },
+            widgets: { sidebar: [], footer: [] },
+            archives: {
+              bases: { category: '/topics', tag: '/tag' },
+              history: { category: [], tag: [] },
+            },
+          })
+        : url.pathname === '/api/v1/adjacent'
+          ? json({ previous: null, next: null })
+          : url.pathname === '/api/v1/months'
+            ? // Fewer months than asked for is still the complete answer.
+              json([{ year: 2026, month: 1, count: 1 }])
+            : undefined;
+    const layout = await loadSiteLayout(publicEvent('/'));
+    const withLayout = (path: string) =>
+      ({
+        ...(publicEvent(path) as object),
+        parent: async () => layout,
+      }) as never;
+    const entry = await loadEntry(withLayout('/hello'));
+    const latest = calls.filter(
+      ({ url }) =>
+        url.pathname === '/api/v1/content' &&
+        url.searchParams.get('pageSize') === '5',
+    );
+    expect(latest).toHaveLength(1);
+    expect(
+      calls.filter(({ url }) => url.pathname === '/api/v1/months'),
+    ).toHaveLength(1);
+    expect(entry).toMatchObject({ adjacent: { previous: null, next: null } });
+
+    calls = [];
+    expect(await loadEntry(withLayout('/topics/news'))).toMatchObject({
+      kind: 'term',
+    });
+    const paths = calls.map(({ url }) => url.pathname);
+    expect(paths.filter((path) => path === '/api/v1/slots')).toHaveLength(1);
+    expect(paths).not.toContain('/api/v1/content-types');
+  });
+
+  test('the page list reads every page and leaves out locked ones', async () => {
+    override = ({ url }) => {
+      if (url.pathname !== '/api/v1/content') return undefined;
+      const page = Number(url.searchParams.get('page'));
+      const items = Array.from(
+        { length: page === 1 ? 100 : 50 },
+        (_, index) => {
+          const {
+            html: _html,
+            fields: _fields,
+            ...item
+          } = content(`p${page}-${index}`, 'page');
+          return { ...item, protected: page === 2 && index === 0 };
+        },
+      );
+      return json({ items, total: 150, page, pageSize: 100 });
+    };
+    const { parseBlocks } = await import('@cms/sdk');
+    const data = await loadBlockData(
+      contentApi(fakeFetch),
+      parseBlocks([{ name: 'page-list' }]).blocks,
+    );
+    expect(data.pageTree).toHaveLength(149);
+    expect(data.pageTree!.map((entry) => entry.title)).not.toContain(
+      'Title p2-0',
+    );
+  });
+
+  test('feeds refuse values that are not slugs instead of shortening them', async () => {
+    const response = await feed({
+      fetch: fakeFetch,
+      url: new URL(`http://web.test/feed.xml?category=${'a'.repeat(192)}`),
+    } as never);
+    expect(response.status).toBe(404);
+    expect(
+      calls.some(({ url }) => url.pathname.startsWith('/api/v1/taxonomies')),
+    ).toBe(false);
+  });
+});
+
+test('failed replies retain their parent and retry redirects to the returned comment page', async () => {
+  const fields = {
+    contentId: 'id-hello',
+    parentId: 'parent',
+    parentName: 'Ann',
+    authorName: 'Reader',
+    authorEmail: 'reader@example.com',
+    body: 'Reply',
+  };
+  const event = () =>
+    ({
+      ...(adminEvent('/hello?/comment&cpage=2', fields) as object),
+      getClientAddress: () => '203.0.113.1',
+      cookies: {
+        get: () => undefined,
+        getAll: () => [],
+        delete: () => undefined,
+      },
+    }) as Parameters<typeof commentAction>[0];
+  override = ({ url }) =>
+    url.pathname === '/api/v1/comments'
+      ? json(
+          { error: { code: 'captcha_required', message: 'Solve captcha' } },
+          403,
+        )
+      : undefined;
+  const failure = failureData(await commentAction(event()));
+  expect(failure).toMatchObject({
+    parentId: 'parent',
+    parentName: 'Ann',
+    captcha: true,
+  });
+  override = ({ url, body }) => {
+    if (url.pathname !== '/api/v1/comments') return undefined;
+    expect(JSON.parse(body).parentId).toBe(failure.parentId);
+    return json({
+      status: 'approved',
+      page: 2,
+      pendingProof: null,
+      comment: {
+        id: 'reply',
+        parentId: 'parent',
+        depth: 1,
+        authorName: 'Reader',
+        authorUrl: null,
+        byAuthor: false,
+        avatarUrl: null,
+        pending: false,
+        body: 'Reply',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+  };
+  expect(
+    await commentAction(event()).catch((error: unknown) => error),
+  ).toMatchObject({ status: 303, location: '/hello?cpage=2#comment-reply' });
+});
+
+test('remembered commenters send and rotate only the signed proof cookie', async () => {
+  const set: { name: string; value: string }[] = [];
+  const base = adminEvent('/hello?/comment', {
+    contentId: 'id-hello',
+    authorName: 'Reader',
+    authorEmail: 'reader@example.com',
+    body: 'Hello',
+    remember: 'on',
+  });
+  const event = {
+    ...(base as object),
+    getClientAddress: () => '203.0.113.1',
+    cookies: {
+      get: (name: string) =>
+        name === 'cms_commenter_proof' ? 'old-signed-proof' : undefined,
+      getAll: () => [],
+      set: (name: string, value: string) => set.push({ name, value }),
+      delete: () => undefined,
+    },
+  } as Parameters<typeof commentAction>[0];
+  override = ({ url }) =>
+    url.pathname === '/api/v1/comments'
+      ? json({
+          status: 'approved',
+          page: 1,
+          pendingProof: null,
+          commenterProof: 'new-signed-proof',
+          comment: {
+            id: 'comment',
+            parentId: null,
+            depth: 0,
+            authorName: 'Reader',
+            authorUrl: null,
+            byAuthor: false,
+            avatarUrl: null,
+            pending: false,
+            body: 'Hello',
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+        })
+      : undefined;
+
+  await commentAction(event).catch(() => undefined);
+
+  expect(calls[0]?.commenterProof).toBe('old-signed-proof');
+  expect(set).toContainEqual({
+    name: 'cms_commenter_proof',
+    value: 'new-signed-proof',
+  });
 });
 
 describe('admin form failures', () => {
@@ -468,6 +713,8 @@ describe('admin form failures', () => {
         parentId: '',
       },
       message: 'Slug already in use',
+      // The error code lets the screen show catalog text in the reader's language.
+      code: 'conflict',
       issues: [{ path: 'slug', message: 'Taken' }],
     });
     expect(JSON.stringify(data)).not.toContain(TOKEN);

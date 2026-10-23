@@ -81,7 +81,36 @@
           />
         </form>
       {:else if widget.kind === 'text'}
-        <p class="whitespace-pre-line text-muted-foreground">{widget.text}</p>
+        <!-- eslint-disable svelte/no-navigation-without-resolve -- links the API checked (site paths, http(s), mailto) -->
+        {#each widget.paragraphs as runs, index (index)}
+          <p class="whitespace-pre-line text-muted-foreground">
+            {#each runs as run, at (at)}{#if run.href}<a
+                  href={run.href}
+                  class="text-foreground underline"
+                  class:font-semibold={run.strong}
+                  class:italic={run.em}>{run.text}</a
+                >{:else if run.strong}<strong>{run.text}</strong
+                >{:else if run.em}<em>{run.text}</em
+                >{:else}{run.text}{/if}{/each}
+          </p>
+        {/each}
+        <!-- eslint-enable svelte/no-navigation-without-resolve -->
+      {:else if widget.kind === 'image'}
+        {#snippet picture()}
+          <img
+            src={widget.src}
+            alt={widget.alt}
+            loading="lazy"
+            decoding="async"
+            class="h-auto w-full rounded-[var(--radius)]"
+          />
+        {/snippet}
+        {#if widget.link}
+          <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- a link the API checked -->
+          <a href={widget.link}>{@render picture()}</a>
+        {:else}
+          {@render picture()}
+        {/if}
       {:else if widget.kind === 'menu'}
         <MenuList items={widget.items} />
       {:else if widget.kind === 'archives'}

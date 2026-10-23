@@ -11,6 +11,7 @@ import type {
   ContentRecord,
   ContentRepository,
   ContentWrite,
+  ContentWriteGuard,
 } from '#api/domain/content/content-repository';
 import { checkContentParent } from '#api/domain/content/hierarchy';
 import { checkTermKinds } from '#api/domain/content/term-assignment';
@@ -30,6 +31,7 @@ import type {
 import { conflict, invalidInput, Errors } from '#api/shared/errors';
 import type { Logger } from '#api/shared/logger';
 import { MemoryPermalinkRepository } from '#test/support/memory-permalinks';
+import { MemoryRevisionRepository } from '#test/support/memory-revisions';
 
 /**
  * Content rows keep their term ids; `terms` is the term table, shared with
@@ -66,16 +68,23 @@ export class MemoryContentRepository implements ContentRepository {
     else this.trashed.delete(id);
   }
 
-  async publishDue(now: Date) {
-    const due = [...this.rows.values()].filter(
-      (row) =>
-        row.status === 'scheduled' &&
-        !this.trashed.has(row.id) &&
-        row.publishedAt &&
-        row.publishedAt <= now,
-    );
-    for (const row of due) row.status = 'published';
-    return due.map((row) => row.id);
+  /** Like the Prisma adapter: in the write queue, advancing each version. */
+  publishDue(now: Date) {
+    return this.exclusive(async () => {
+      const due = [...this.rows.values()].filter(
+        (row) =>
+          row.status === 'scheduled' &&
+          !this.trashed.has(row.id) &&
+          row.publishedAt &&
+          row.publishedAt <= now,
+      );
+      for (const row of due) {
+        row.status = 'published';
+        row.updatedAt =
+          now > row.updatedAt ? now : new Date(row.updatedAt.getTime() + 1);
+      }
+      return due.map((row) => row.id);
+    });
   }
 
   async expiredTrash(before: Date, limit: number) {
@@ -106,6 +115,7 @@ export class MemoryContentRepository implements ContentRepository {
     page,
     pageSize,
     orderBy,
+    order = 'desc',
   }: ContentCriteria) {
     const needle = search?.toLowerCase();
     const categoryIds = category && this.categoryScope(category);
@@ -140,11 +150,25 @@ export class MemoryContentRepository implements ContentRepository {
             row.categoryIds.some((id) => categoryIds.includes(id))) &&
           (tagId === undefined || row.tagIds.includes(tagId)),
       )
-      .sort(
-        (a, b) =>
-          (b[orderBy]?.getTime() ?? 0) - (a[orderBy]?.getTime() ?? 0) ||
-          (a.id < b.id ? 1 : -1),
-      );
+      .sort((a, b) => {
+        // Newest/largest first, then id; `asc` reverses both.
+        const key = (row: ContentWrite) =>
+          orderBy === 'title'
+            ? row.title
+            : orderBy === 'author'
+              ? row.authorId
+              : orderBy === 'commentCount'
+                ? (this.commentCounts.get(row.id) ?? 0)
+                : (row[orderBy]?.getTime() ?? 0);
+        const [left, right] = [key(a), key(b)];
+        const compared =
+          typeof left === 'string'
+            ? String(right).localeCompare(left)
+            : (right as number) - left;
+        return (
+          (compared || (a.id < b.id ? 1 : -1)) * (order === 'asc' ? -1 : 1)
+        );
+      });
     return {
       items: matches
         .slice((page - 1) * pageSize, page * pageSize)
@@ -164,7 +188,11 @@ export class MemoryContentRepository implements ContentRepository {
       .map((row) => this.toRecord(row));
   }
 
-  async insert(record: ContentWrite) {
+  insert(record: ContentWrite) {
+    return this.exclusive(() => this.add(record));
+  }
+
+  private async add(record: ContentWrite) {
     await checkContentParent(
       { id: record.id, type: record.type, parentId: record.parentId ?? null },
       async (id) => {
@@ -182,7 +210,42 @@ export class MemoryContentRepository implements ContentRepository {
     return this.toRecord(record);
   }
 
-  async update(record: ContentWrite) {
+  /** Revisions and autosaves of these entries, sharing this store's write queue. */
+  readonly revisions: MemoryRevisionRepository = new MemoryRevisionRepository({
+    exclusive: (task) => this.exclusive(task),
+    savedAt: (id) => this.rows.get(id)?.updatedAt,
+  });
+
+  /** Content writes and autosaves run one at a time, like the Prisma adapter's write lock. */
+  private writing: Promise<unknown> = Promise.resolve();
+  exclusive<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.writing.then(task, task);
+    this.writing = run.catch(() => undefined);
+    return run;
+  }
+
+  update(record: ContentWrite, guard: ContentWriteGuard = {}) {
+    return this.exclusive(() => this.write(record, guard));
+  }
+
+  private async write(input: ContentWrite, guard: ContentWriteGuard) {
+    const stored = this.rows.get(input.id);
+    // The version (`updatedAt`) strictly advances, so equal clocks never share one.
+    const record =
+      stored && input.updatedAt <= stored.updatedAt
+        ? { ...input, updatedAt: new Date(stored.updatedAt.getTime() + 1) }
+        : input;
+    if (
+      guard.expectedUpdatedAt &&
+      stored?.updatedAt.getTime() !== guard.expectedUpdatedAt.getTime()
+    )
+      throw conflict(Errors.ContentChanged);
+    if (
+      guard.autosaveOf &&
+      stored &&
+      this.revisions.pendingNow(record.id, guard.autosaveOf, stored.updatedAt)
+    )
+      throw conflict(Errors.ContentAutosavePending);
     if (
       record.type !== 'page' &&
       [...this.rows.values()].some((row) => row.parentId === record.id)
@@ -202,16 +265,16 @@ export class MemoryContentRepository implements ContentRepository {
     if (other && other.id !== record.id)
       throw conflict('Slug is already in use');
     const current = this.rows.get(record.id);
-    const next = {
-      ...record,
-      publishedAt: current?.publishedAt ?? record.publishedAt,
-    };
-    await this.permalinks.assign(next, current?.publishedAt != null);
-    this.rows.set(record.id, structuredClone(next));
-    return this.toRecord(next);
+    await this.permalinks.assign(record, current?.publishedAt != null);
+    this.rows.set(record.id, structuredClone(record));
+    return this.toRecord(record);
   }
 
-  async delete(id: string) {
+  delete(id: string) {
+    return this.exclusive(() => this.erase(id));
+  }
+
+  private async erase(id: string) {
     const rows = structuredClone([...this.rows]);
     const paths = structuredClone([...this.permalinks.paths]);
     try {

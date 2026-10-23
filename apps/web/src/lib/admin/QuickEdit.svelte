@@ -91,6 +91,7 @@
   <h2 id="{id}-title" class="text-sm font-semibold">{m.rowQuickEdit}</h2>
   <FormMessage {form} />
   <input type="hidden" name="id" value={entry.id} />
+  <input type="hidden" name="updatedAt" value={entry.updatedAt} />
   <input type="hidden" name="publishedAt" value={publishedAt} />
   <div class="grid gap-4 md:grid-cols-3">
     <div class="grid content-start gap-3">
@@ -117,8 +118,8 @@
         <Input
           id="{id}-password"
           name="password"
-          type="text"
-          autocomplete="off"
+          type="password"
+          autocomplete="new-password"
           maxlength={200}
           placeholder={entry.protected ? m.quickEditPasswordKept : ''}
         />

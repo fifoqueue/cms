@@ -1,5 +1,15 @@
 import type { ContentDocument } from '@cms/sdk';
 
+/** Visible text kept in attributes (captions, citations, file link text); never URLs or alt text. */
+const VISIBLE: Record<string, string> = {
+  image: 'caption',
+  video: 'caption',
+  gallery: 'caption',
+  table: 'caption',
+  pullquote: 'cite',
+  file: 'name',
+};
+
 /** The document's text without markup, whitespace collapsed. Searched instead of the HTML. */
 export const plainText = (document: ContentDocument): string => {
   const parts: string[] = [];
@@ -13,16 +23,26 @@ export const plainText = (document: ContentDocument): string => {
       continue;
     }
     if (typeof frame.node !== 'object' || frame.node === null) continue;
-    const { type, text, content } = frame.node as Record<string, unknown>;
+    const { type, text, content, attrs } = frame.node as Record<
+      string,
+      unknown
+    >;
     if (type === 'text') {
       if (typeof text === 'string') parts.push(text);
       continue;
     }
-    if (!Array.isArray(content)) continue;
+    const visible = (attrs as Record<string, unknown> | undefined)?.[
+      VISIBLE[String(type)] ?? ''
+    ];
+    if (!Array.isArray(content) && typeof visible !== 'string') continue;
     parts.push(' ');
     stack.push({ node: null, close: true });
-    for (let index = content.length - 1; index >= 0; index -= 1)
-      stack.push({ node: content[index], close: false });
+    // Pushed before the children, so it follows them (a caption after its gallery).
+    if (typeof visible === 'string')
+      stack.push({ node: { type: 'text', text: visible }, close: false });
+    if (Array.isArray(content))
+      for (let index = content.length - 1; index >= 0; index -= 1)
+        stack.push({ node: content[index], close: false });
   }
 
   return parts.join('').replace(/\s+/g, ' ').trim();
@@ -38,7 +58,7 @@ export const summarize = (text: string, words = 55): string => {
     : clipped;
 };
 
-/** Ids of library media the document shows (`image` nodes with a `mediaId`). */
+/** Ids of library media the document shows (`mediaId` of media nodes, and video posters' `posterId`). */
 export const mediaIdsOf = (document: ContentDocument): string[] => {
   const ids = new Set<string>();
   const stack: unknown[] = [document];
@@ -47,12 +67,33 @@ export const mediaIdsOf = (document: ContentDocument): string[] => {
     const node = stack.pop();
     if (typeof node !== 'object' || node === null) continue;
     const { type, attrs, content } = node as Record<string, unknown>;
-    const mediaId = (attrs as { mediaId?: unknown } | undefined)?.mediaId;
-    if ((type === 'image' || type === 'audio') && typeof mediaId === 'string')
+    const { mediaId, posterId } =
+      (attrs as { mediaId?: unknown; posterId?: unknown } | undefined) ?? {};
+    if (
+      ['image', 'audio', 'video', 'file'].includes(String(type)) &&
+      typeof mediaId === 'string'
+    )
       ids.add(mediaId);
+    if (type === 'video' && typeof posterId === 'string') ids.add(posterId);
     if (Array.isArray(content))
       for (let index = content.length - 1; index >= 0; index -= 1)
         stack.push(content[index]);
   }
   return [...ids];
+};
+
+/**
+ * The text before a top-level "more" break (WordPress `<!--more-->`), the entry's teaser in
+ * lists; null without one. At most 1000 characters.
+ */
+export const teaserOf = (document: ContentDocument): string | null => {
+  const index = (document.content ?? []).findIndex(
+    (node) => (node as { type?: unknown }).type === 'more',
+  );
+  if (index < 0) return null;
+  const text = plainText({
+    ...document,
+    content: (document.content ?? []).slice(0, index),
+  }).trim();
+  return text.length > 1000 ? `${text.slice(0, 999).trimEnd()}…` : text;
 };

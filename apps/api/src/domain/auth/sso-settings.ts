@@ -45,6 +45,7 @@ export class SsoSettingsService {
       siteUrl: () => Promise<string>;
       /** Builds a provider client; discovery happens on first use. */
       connect: (client: OidcClient) => OidcProvider;
+      checkIssuer?: (issuer: string) => Promise<void>;
       /** The environment's setup, or `null` to use the stored settings. */
       environment: SsoSetup | null;
     },
@@ -80,6 +81,7 @@ export class SsoSettingsService {
         ]);
       if (!(await this.deps.siteUrl()))
         throw invalidInput(Errors.SsoSiteUrlRequired);
+      await this.deps.checkIssuer?.(settings.issuer);
     }
     await this.deps.settings.set(KEY, {
       settings,

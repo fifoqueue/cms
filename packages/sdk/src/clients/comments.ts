@@ -1,6 +1,9 @@
+import { unlockHeaders } from '#sdk/clients/content';
 import { visitorHeaders } from '#sdk/clients/security';
 import type { Visitor } from '#sdk/clients/security';
 import {
+  COMMENTER_PROOF_HEADER,
+  COMMENT_PENDING_HEADER,
   adminCommentSchema,
   commentCountsSchema,
   commentSubmittedSchema,
@@ -25,17 +28,37 @@ import type { Query, Request } from '#sdk/transport';
 
 export const publicCommentsClient = (request: Request) => ({
   comments: {
-    list: (contentId: string, page = 1) =>
+    list: (
+      contentId: string,
+      page = 1,
+      proofs: readonly string[] = [],
+      pendingProof?: string,
+    ) =>
       request<PublicCommentPage>('GET', '/api/v1/comments', {
         query: { contentId, page },
+        headers: {
+          ...unlockHeaders(proofs),
+          ...(pendingProof && { [COMMENT_PENDING_HEADER]: pendingProof }),
+        },
         response: publicCommentPageSchema,
       }),
     /** `visitor` lets the API count submissions per visitor and accept a solved captcha. */
-    submit: (input: CommentInput, visitor?: Visitor) =>
+    submit: (
+      input: CommentInput,
+      visitor?: Visitor,
+      proofs: readonly string[] = [],
+      commenterProof?: string,
+    ) =>
       request<CommentSubmitted>('POST', '/api/v1/comments', {
         json: input,
         response: commentSubmittedSchema,
-        headers: visitorHeaders(visitor),
+        headers: {
+          ...visitorHeaders(visitor),
+          ...unlockHeaders(proofs),
+          ...(commenterProof && {
+            [COMMENTER_PROOF_HEADER]: commenterProof,
+          }),
+        },
       }),
   },
 });

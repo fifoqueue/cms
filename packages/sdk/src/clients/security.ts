@@ -18,6 +18,8 @@ import type {
 import { adminSsoSettingsSchema } from '#sdk/sso-settings';
 import type { AdminSsoSettings, SsoSettingsInput } from '#sdk/sso-settings';
 import type { Request } from '#sdk/transport';
+import { adminEgressSettingsSchema } from '#sdk/egress';
+import type { AdminEgressSettings, EgressSettingsInput } from '#sdk/egress';
 import { apiTokenCreatedSchema, apiTokenSchema } from '#sdk/users';
 import type {
   ApiTokenCreateInput,
@@ -134,5 +136,17 @@ export const securityAdminClient = (request: Request) => ({
       }),
     test: (to: string) =>
       request<void>('POST', '/api/v1/admin/email/test', { json: { to } }),
+  },
+  /** Private destinations; needs the separate `egress.manage` capability. */
+  egress: {
+    settings: () =>
+      request<AdminEgressSettings>('GET', '/api/v1/admin/egress', {
+        response: adminEgressSettingsSchema,
+      }),
+    update: (input: EgressSettingsInput) =>
+      request<AdminEgressSettings>('PUT', '/api/v1/admin/egress', {
+        json: input,
+        response: adminEgressSettingsSchema,
+      }),
   },
 });

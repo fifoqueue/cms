@@ -18,7 +18,10 @@ export type RevisionWrite = Omit<RevisionRecord, 'authorName'>;
 export interface RevisionRepository {
   /** Stores a revision and keeps only the newest `keep` revisions of the entry. */
   add(revision: RevisionWrite, keep: number): Promise<void>;
-  /** Replaces the user's autosave of the entry. */
+  /**
+   * Replaces the user's autosave of the entry, under the content write lock, dated after the
+   * entry's last save: an autosave that raced a save stays pending instead of looking stale.
+   */
   autosave(revision: RevisionWrite): Promise<void>;
   /** Removes the user's autosave once the entry is saved. */
   clearAutosave(contentId: string, authorId: string): Promise<void>;
@@ -27,6 +30,15 @@ export interface RevisionRepository {
     contentId: string,
   ): Promise<Omit<RevisionRecord, 'document' | 'excerpt'>[]>;
   get(id: string): Promise<RevisionRecord | null>;
+  /**
+   * The user's autosave when it holds text newer than the entry's last text save: its newest
+   * revision, else `savedAt`. Status-only changes (scheduled publishing) never hide it.
+   */
+  pendingAutosave(
+    contentId: string,
+    authorId: string,
+    savedAt: Date,
+  ): Promise<RevisionRecord | null>;
   /** The user's autosave of the entry, if any. */
   findAutosave(
     contentId: string,

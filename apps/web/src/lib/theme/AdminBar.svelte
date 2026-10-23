@@ -15,7 +15,13 @@
   import { useI18n } from '#lib/i18n/index.js';
 
   interface Props {
-    user: { name: string | null; role: Role; capabilities?: Capability[] };
+    user: {
+      name: string | null;
+      /** Public author slug, to recognise the user's own entries. */
+      slug: string;
+      role: Role;
+      capabilities?: Capability[];
+    };
     siteTitle: string;
     /** Name of the theme being previewed, if any. */
     previewing: string | null;
@@ -25,10 +31,33 @@
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
-  /** The entry this page shows, for the edit link. */
+  /**
+   * The entry this page shows, when the user may edit it: others' entries need
+   * `content.editOthers`, their own published ones `content.publish` (WordPress).
+   */
   const entry = $derived.by(() => {
-    const data = page.data as { kind?: string; content?: { id: string } };
-    return data.kind === 'content' && data.content ? data.content : null;
+    const data = page.data as {
+      kind?: string;
+      content?: { id: string; author: { slug: string } | null };
+    };
+    const content = data.kind === 'content' ? data.content : null;
+    if (!content) return null;
+    const own = !!user.slug && content.author?.slug === user.slug;
+    // The API also requires the base editing capability (custom roles may lack it).
+    return can(user, 'content.create') &&
+      can(user, own ? 'content.publish' : 'content.editOthers')
+      ? content
+      : null;
+  });
+  /** The category or tag this archive shows, when the user manages terms. */
+  const term = $derived.by(() => {
+    const data = page.data as {
+      kind?: string;
+      term?: { id: string; taxonomy: string };
+    };
+    return data.kind === 'term' && data.term && can(user, 'taxonomy.manage')
+      ? data.term
+      : null;
   });
   const item =
     'flex h-full items-center gap-1.5 px-2.5 text-white/85 transition hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:outline-none';
@@ -41,7 +70,13 @@
   aria-label={m.adminBar}
 >
   <div class="flex min-w-0 items-stretch">
-    <a href={resolve('/admin/(app)')} class={item}>
+    <!-- Subscribers have no dashboard; their profile is their admin home (WordPress). -->
+    <a
+      href={can(user, 'content.create')
+        ? resolve('/admin/(app)')
+        : resolve('/admin/(app)/account')}
+      class={item}
+    >
       <LayoutDashboard class="size-4" />
       <span class="hidden max-w-48 truncate sm:inline">{siteTitle}</span>
     </a>
@@ -56,15 +91,39 @@
         <Plus class="size-4" />
         <span class="hidden sm:inline">{m.adminBarNew}</span>
       </a>
-      {#if entry}
-        <a
-          href={resolve('/admin/(app)/content/[id]', { id: entry.id })}
-          class={item}
+    {/if}
+    {#if entry}
+      <a
+        href={resolve('/admin/(app)/content/[id]', { id: entry.id })}
+        class={item}
+      >
+        <Pencil class="size-4" />
+        <span class="hidden sm:inline">{m.adminBarEdit}</span>
+      </a>
+    {:else if term}
+      <!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the term to edit -->
+      <a
+        href={`${
+          term.taxonomy === 'category'
+            ? resolve('/admin/(app)/categories')
+            : term.taxonomy === 'tag'
+              ? resolve('/admin/(app)/tags')
+              : resolve('/admin/(app)/taxonomies/[taxonomy]', {
+                  taxonomy: term.taxonomy,
+                })
+        }?edit=${encodeURIComponent(term.id)}`}
+        class={item}
+      >
+        <Pencil class="size-4" />
+        <span class="hidden sm:inline"
+          >{term.taxonomy === 'category'
+            ? m.adminBarEditCategory
+            : term.taxonomy === 'tag'
+              ? m.adminBarEditTag
+              : m.adminBarEditTerm}</span
         >
-          <Pencil class="size-4" />
-          <span class="hidden sm:inline">{m.adminBarEdit}</span>
-        </a>
-      {/if}
+      </a>
+      <!-- eslint-enable svelte/no-navigation-without-resolve -->
     {/if}
     {#if previewing}
       <span class="flex items-center gap-1.5 px-2.5 text-amber-300">

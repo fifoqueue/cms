@@ -1,7 +1,7 @@
 import { Errors } from '#sdk/errors';
 import { extraTermSummarySchema, taxonomyTypeSchema } from '#sdk/taxonomy';
 import { z } from 'zod';
-import { KEBAB_CASE } from '#sdk/common';
+import { CONTENT_SLUG } from '#sdk/common';
 import { termSummarySchema } from '#sdk/taxonomy';
 import { permalinkPathSchema } from '#sdk/permalinks';
 import { publicImageSchema } from '#sdk/media';
@@ -93,8 +93,9 @@ export const contentInputSchema = z.object({
     .string()
     .trim()
     .toLowerCase()
+    .normalize('NFC')
     .max(191)
-    .regex(KEBAB_CASE)
+    .regex(CONTENT_SLUG)
     .refine(
       (slug) => !RESERVED_CONTENT_SLUGS.includes(slug),
       'Slug is reserved',
@@ -108,7 +109,8 @@ export const contentInputSchema = z.object({
   /** Ids of `tag` terms. */
   parentId: z.string().min(1).max(36).nullable().optional(),
   tagIds: termIdsSchema,
-  extraTermIds: termIdsSchema.optional(),
+  /** Ids of custom taxonomy terms. Omitted keeps the stored ones (no default, unlike the others). */
+  extraTermIds: z.array(z.string().trim().min(1).max(36)).max(100).optional(),
   /** Omission preserves existing SEO on update; new entries receive defaults. */
   seo: seoInputSchema.optional(),
   /** Another author than the signed-in user; needs `content.editOthers`. Omitted keeps the current author. */
@@ -128,6 +130,17 @@ export const contentInputSchema = z.object({
   fields: fieldValuesSchema.optional(),
   /** An image from the media library shown with the entry. Omitted keeps it; null removes it. */
   featuredMediaId: z.string().trim().min(1).max(36).nullable().optional(),
+  /**
+   * Updates only: the `updatedAt` the client last read. When the stored entry was saved since,
+   * the update is refused with `conflict` and nothing changes.
+   */
+  expectedUpdatedAt: z.iso.datetime({ offset: true }).optional(),
+  /**
+   * Updates only, for partial editors that copy the stored body (Quick Edit, Bulk Edit): the
+   * save is refused with `conflict` while the user has a pending autosave of the entry, and
+   * never discards one, so unsaved editor text survives.
+   */
+  preserveAutosave: z.boolean().optional(),
 });
 
 /** What clients send when creating or replacing content. */
@@ -139,8 +152,9 @@ const termSlugFilterSchema = z
   .string()
   .trim()
   .toLowerCase()
+  .normalize('NFC')
   .max(191)
-  .regex(KEBAB_CASE)
+  .regex(CONTENT_SLUG)
   .optional();
 
 const listFilters = {
@@ -169,12 +183,26 @@ const listFilters = {
   pageSize: z.coerce.number().int().min(1).max(100).default(10),
 };
 
+/** Admin list sort columns: modified, date, title, author name and approved comments. */
+export const CONTENT_ORDERS = [
+  'updatedAt',
+  'publishedAt',
+  'title',
+  'author',
+  'commentCount',
+] as const;
+
+export type ContentOrder = (typeof CONTENT_ORDERS)[number];
+
 /** Admin listing: every status unless `status` is given; the trash only with `view=trash`. */
 export const contentListQuerySchema = z
   .object({
     ...listFilters,
     status: z.enum(CONTENT_STATUSES).optional(),
     view: z.enum(['active', 'trash']).default('active'),
+    /** Sort field, then id in the same direction. */
+    orderBy: z.enum(CONTENT_ORDERS).default('updatedAt'),
+    order: z.enum(['asc', 'desc']).default('desc'),
   })
   .refine((value) => Boolean(value.taxonomy) === Boolean(value.term), {
     path: ['term'],
@@ -266,6 +294,8 @@ export const publicContentSchema = z.strictObject({
   tags: z.array(strictTermSummarySchema),
   /** The author's public name and archive slug; never their id or email. */
   author: z.strictObject({ name: z.string(), slug: z.string() }).nullable(),
+  /** The parent page (page hierarchy); null or absent for top-level entries. */
+  parentId: z.string().nullable().optional(),
   sticky: z.boolean(),
   /** Approved comments. */
   commentCount: z.number().int(),
@@ -294,6 +324,40 @@ export const publicContentSummarySchema = publicContentSchema.omit({
 });
 
 export type PublicContentSummary = z.output<typeof publicContentSummarySchema>;
+
+/** The published entries of the same type just before and after one (WordPress post navigation). */
+export const publicAdjacentSchema = z.strictObject({
+  previous: publicContentSummarySchema.nullable(),
+  next: publicContentSummarySchema.nullable(),
+});
+
+export type PublicAdjacent = z.output<typeof publicAdjacentSchema>;
+
+export const adjacentQuerySchema = z.object({
+  contentId: z.string().trim().min(1).max(36),
+});
+
+/** Months with published posts (UTC), newest first. */
+export const publicMonthSchema = z.strictObject({
+  year: z.number().int(),
+  month: z.number().int().min(1).max(12),
+  count: z.number().int().min(0),
+});
+
+export type PublicMonth = z.output<typeof publicMonthSchema>;
+
+/** A recent approved comment on a public, unprotected entry. */
+export const publicRecentCommentSchema = z.strictObject({
+  author: z.string(),
+  title: z.string(),
+  path: z.string(),
+});
+
+export type PublicRecentComment = z.output<typeof publicRecentCommentSchema>;
+
+export const monthsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(60).default(12),
+});
 
 export const CONTENT_REVISION_KINDS = ['revision', 'autosave'] as const;
 
@@ -354,6 +418,8 @@ export const publicAuthorSchema = z.object({
   name: z.string(),
   slug: z.string(),
   bio: z.string(),
+  /** Same-origin proxy URL while Settings → Discussion shows avatars; never an email digest. */
+  avatarUrl: z.string().startsWith('/avatars/').nullable().default(null),
 });
 
 export type PublicAuthor = z.output<typeof publicAuthorSchema>;

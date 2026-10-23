@@ -4,6 +4,7 @@ import type { FieldDefinition } from '@cms/sdk';
 import type { ContentFormValues } from '#lib/admin/content-form-values.js';
 import type { FormFailure } from '#lib/server/errors.js';
 import { Errors, text } from '#lib/server/errors.js';
+import type { adminApi } from '#lib/server/api.js';
 import { readSeoForm } from '#lib/server/seo-admin.js';
 
 const parseJson = (raw: string): unknown => {
@@ -87,6 +88,8 @@ export const readContentForm = (
       ? values.featuredMediaId || null
       : undefined,
     password,
+    // The version the editor loaded; the API refuses the save if it changed since.
+    expectedUpdatedAt: text(form, 'updatedAt') || undefined,
   });
   if (result.success) return { input: result.data, values };
   const issues = result.error.issues.map(({ path, message }) => ({
@@ -101,3 +104,30 @@ export const readContentForm = (
     } satisfies FormFailure & { values: ContentFormValues }),
   };
 };
+
+/** Thumbnail addresses of an entry's image field values, so the editor can show them. */
+export const fieldImages = async (
+  admin: ReturnType<typeof adminApi>,
+  definitions: readonly FieldDefinition[],
+  values: Record<string, unknown>,
+) =>
+  Object.fromEntries(
+    await Promise.all(
+      definitions.flatMap((field) => {
+        const id = values[field.key];
+        if (field.type !== 'image' || typeof id !== 'string') return [];
+        return [
+          admin.media
+            .get(id)
+            .then(
+              (media) =>
+                media.variants.find((variant) => variant.name === 'thumbnail')
+                  ?.url ?? media.url,
+            )
+            // A deleted file shows no preview; the field still holds its id.
+            .catch(() => '')
+            .then((url) => [field.key, url] as const),
+        ];
+      }),
+    ),
+  );

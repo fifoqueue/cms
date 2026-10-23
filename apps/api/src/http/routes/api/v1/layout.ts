@@ -19,7 +19,7 @@ export const routes = (app: ApiApp) =>
     }) => {
       const [siteData, seoData, theme, readingData, menuData, widgetData] =
         await Promise.all([
-          site.get(),
+          site.getPublic(),
           seo.getPublic(),
           themePreviews
             .resolve(query.preview)

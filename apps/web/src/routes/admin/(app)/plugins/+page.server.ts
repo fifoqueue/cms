@@ -1,12 +1,41 @@
 import { fail } from '@sveltejs/kit';
+import { eachBounded, readSelection } from '#lib/server/bulk.js';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
-import { readPluginSettings } from '#lib/server/plugin-settings-form.js';
 import { adminFor } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async (event) => ({
-  plugins: await adminFor(event).plugins.list(),
-});
+const STATUSES = ['active', 'inactive', 'failed'] as const;
+
+/** Plugin ids follow the manifest contract: kebab-case, at most 64 characters. */
+const isPluginId = (id: string) =>
+  id.length <= 64 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id);
+
+export const load: PageServerLoad = async (event) => {
+  const plugins = await adminFor(event).plugins.list();
+  const params = event.url.searchParams;
+  const status = STATUSES.find((option) => option === params.get('status'));
+  const search = (params.get('q') ?? '').trim().slice(0, 200).toLowerCase();
+  return {
+    plugins: plugins.filter(
+      (plugin) =>
+        (!status || plugin.status === status) &&
+        (!search ||
+          [plugin.name, plugin.id, plugin.description].some((value) =>
+            value.toLowerCase().includes(search),
+          )),
+    ),
+    counts: {
+      all: plugins.length,
+      ...Object.fromEntries(
+        STATUSES.map((option) => [
+          option,
+          plugins.filter((plugin) => plugin.status === option).length,
+        ]),
+      ),
+    } as Record<(typeof STATUSES)[number] | 'all', number>,
+    filter: { status, q: search || undefined },
+  };
+};
 
 /** Runs a plugin command and reports the outcome as form data. */
 const attempt = async (task: () => Promise<unknown>, notice: string) => {
@@ -58,21 +87,27 @@ export const actions: Actions = {
       return failFrom(caught);
     }
   },
-  settings: async (event) => {
+  /** Activates, deactivates or deletes every selected plugin and reports each outcome. */
+  bulk: async (event) => {
     const form = await event.request.formData();
-    const id = text(form, 'id');
-    const admin = adminFor(event);
-    const plugin = (await admin.plugins.list()).find(
-      (candidate) => candidate.id === id,
-    );
-    if (!plugin) return fail(404, { message: Errors.PluginNotFound });
-    return attempt(
-      () =>
-        admin.plugins.updateSettings(
-          id,
-          readPluginSettings(plugin.settings, form),
-        ),
-      'saved',
-    );
+    const action = text(form, 'action');
+    const plugins = adminFor(event).plugins;
+    if (!['enable', 'disable', 'remove'].includes(action)) return {};
+    const selection = readSelection(form, isPluginId);
+    if (selection.failure) return selection.failure;
+    return {
+      bulk: await eachBounded(
+        selection.ids,
+        async (id) => {
+          if (action === 'remove') return void (await plugins.remove(id));
+          if (action === 'disable') return void (await plugins.disable(id));
+          // The host isolates a failing activation and answers with status `failed`.
+          const plugin = await plugins.enable(id);
+          if (plugin.status !== 'active')
+            return plugin.error ?? Errors.PluginActivationFailed;
+        },
+        selection.invalid,
+      ),
+    };
   },
 };

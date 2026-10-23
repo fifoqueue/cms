@@ -2,6 +2,7 @@ import {
   profileUpdateSchema,
   userCreateSchema,
   userDeleteSchema,
+  userRoleSchema,
   userUpdateSchema,
   membershipSchema,
   registrationSchema,
@@ -24,6 +25,7 @@ import type {
 } from '#api/domain/auth/ports';
 import { slugify, uniqueSlug } from '#api/domain/content/slug';
 import type { Clock, IdGenerator } from '#api/domain/ports';
+import type { SealedJobs } from '#api/domain/jobs/sealed-jobs';
 import { toProfile } from '#api/domain/users/user-mapper';
 import type {
   UserDirectory,
@@ -48,6 +50,9 @@ export interface UserServiceDeps {
   tokens: Pick<TokenIssuer, 'issue'>;
   ids: IdGenerator;
   clock: Clock;
+  sealedJobs: SealedJobs;
+  /** Signed same-origin avatar URL for a public author key, or null. */
+  avatar?: (key: string) => Promise<string | null>;
   /** Invitations by email to choose a password. */
   invitations: {
     /** Whether email delivery can send one now. */
@@ -67,6 +72,12 @@ const toSummary = (user: UserListItem): AdminUserSummary => ({
   contentCount: user.contentCount,
 });
 
+export const REGISTRATION_JOB = 'user.register';
+const registrationJobSchema = registrationSchema.pick({
+  email: true,
+  name: true,
+});
+
 /** Accounts of the people who run the site. */
 export class UserService {
   constructor(private readonly deps: UserServiceDeps) {}
@@ -80,7 +91,12 @@ export class UserService {
   async publicAuthor(slug: string): Promise<PublicAuthor> {
     const author = await this.deps.directory.publicAuthor(slug);
     if (!author) throw notFound(Errors.UserNotFound);
-    return { name: author.name, slug: author.slug, bio: author.bio };
+    return {
+      name: author.name,
+      slug: author.slug,
+      bio: author.bio,
+      avatarUrl: (await this.deps.avatar?.(`author:${author.slug}`)) ?? null,
+    };
   }
 
   /** Id, name and public slug of every user who can write, for the author picker and filter. */
@@ -106,7 +122,10 @@ export class UserService {
     return this.createAccount(input);
   }
 
-  private async createAccount(input: unknown): Promise<AdminUserSummary> {
+  private async createAccount(
+    input: unknown,
+    preparedHash?: string,
+  ): Promise<AdminUserSummary> {
     const data = parseInput(userCreateSchema, input);
     await this.deps.roles?.require(data.role);
     const email = data.email.toLowerCase();
@@ -121,9 +140,11 @@ export class UserService {
       email,
       name: data.name,
       // An invited user cannot sign in until they choose a password.
-      passwordHash: await this.deps.hasher.hash(
-        data.password ?? this.deps.tokens.issue(),
-      ),
+      passwordHash:
+        preparedHash ??
+        (await this.deps.hasher.hash(
+          data.password ?? this.deps.tokens.issue(),
+        )),
       role: data.role,
       slug: data.slug ?? (await this.newSlug(data.name, id)),
       bio: '',
@@ -162,13 +183,37 @@ export class UserService {
       action: 'passwordReset',
       account: data.email.toLowerCase(),
     });
-    if (await this.deps.users.findByEmail(data.email.toLowerCase())) return;
+    if (!(await this.deps.invitations.available()))
+      throw invalidInput(Errors.EmailDisabled);
+    await this.deps.sealedJobs.enqueue(REGISTRATION_JOB, {
+      email: data.email.toLowerCase(),
+      name: data.name,
+    });
+  }
+
+  /** Creates the account after the public request has returned. */
+  async completeRegistration(payload: unknown) {
+    const data = this.deps.sealedJobs.open(payload, registrationJobSchema);
+    const [existing, passwordHash] = await Promise.all([
+      this.deps.users.findByEmail(data.email),
+      this.deps.hasher.hash(this.deps.tokens.issue()),
+    ]);
+    if (existing) return;
     try {
-      await this.createAccount({ ...data, role: 'subscriber' });
+      await this.createAccount({ ...data, role: 'subscriber' }, passwordHash);
     } catch (caught) {
       if (!(caught instanceof DomainError) || caught.code !== 'conflict')
         throw caught;
     }
+  }
+
+  /** Changes only the user's role; the profile stays as currently stored. */
+  async setRole(id: string, input: unknown, actor: Actor): Promise<void> {
+    authorize(actor, 'users.manage');
+    await this.require(id);
+    const { role } = parseInput(userRoleSchema, input);
+    await this.deps.roles?.require(role);
+    await this.deps.directory.setRole(id, role);
   }
 
   async update(

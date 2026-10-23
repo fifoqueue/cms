@@ -2,6 +2,7 @@
   import { walkBlocks } from '@cms/sdk';
   import type { ArchivePathsState, Block, SlotMap } from '@cms/sdk';
   import type { CommentSection } from '#lib/server/comments.js';
+  import type { BlockData } from '#lib/server/theme-queries.js';
   import type {
     MenuItemView,
     PostList,
@@ -12,8 +13,12 @@
   } from '#lib/server/public-view.js';
   import Blocks from '#lib/theme/blocks/Blocks.svelte';
   import SlotOutlet from '#lib/theme/SlotOutlet.svelte';
-  import { provideScope } from '#lib/theme/scope.js';
-  import { pickTemplate, templateCandidates } from '#lib/theme/template.js';
+  import { provideBlockPath, provideScope } from '#lib/theme/scope.js';
+  import {
+    isFrontPage,
+    pickTemplate,
+    templateCandidates,
+  } from '#lib/theme/template.js';
   import type { ThemePage } from '#lib/theme/template.js';
 
   interface Props {
@@ -21,6 +26,13 @@
     data: {
       archives?: ArchivePathsState;
       queries?: Record<string, PostList>;
+      terms?: BlockData['terms'];
+      months?: BlockData['months'];
+      adjacent?: BlockData['adjacent'];
+      pageTree?: BlockData['pageTree'];
+      recentComments?: BlockData['recentComments'];
+      authors?: BlockData['authors'];
+      calendar?: BlockData['calendar'];
       theme: ThemeView;
       site: SiteView;
       reading: ReadingView;
@@ -31,16 +43,29 @@
       fieldLabels?: { key: string; label: string; type: string }[];
       comments?: CommentSection | null;
       moderation?: boolean;
+      toolbar?: unknown;
     };
     page: ThemePage;
     previewBlocks?: Block[];
+    /** In the site editor: blocks are marked so the canvas can select them. */
+    editable?: boolean;
   }
 
-  let { data, page, previewBlocks }: Props = $props();
+  let { data, page, previewBlocks, editable = false }: Props = $props();
+
+  // svelte-ignore state_referenced_locally
+  if (editable) provideBlockPath([]);
 
   provideScope(() => ({
     archives: data.archives,
     queries: data.queries,
+    terms: data.terms ?? { category: null, tag: null },
+    months: data.months ?? null,
+    adjacent: data.adjacent ?? null,
+    pageTree: data.pageTree ?? null,
+    recentComments: data.recentComments ?? null,
+    authors: data.authors ?? null,
+    calendar: data.calendar ?? null,
     theme: data.theme,
     site: data.site,
     reading: data.reading,
@@ -52,16 +77,15 @@
     fieldLabels: data.fieldLabels ?? [],
     comments: data.comments ?? null,
     moderation: data.moderation ?? false,
+    signedIn: !!data.toolbar,
   }));
 
-  /** `/` is the front page whether it lists posts or shows the static front page. */
-  const front = $derived(
-    (page.kind === 'home' && !page.path && page.type === 'post') ||
-      (page.kind === 'content' && page.content.path === '/'),
-  );
   const blocks = $derived(
     previewBlocks ??
-      pickTemplate(data.theme.templates, templateCandidates(page, front)),
+      pickTemplate(
+        data.theme.templates,
+        templateCandidates(page, isFrontPage(page)),
+      ),
   );
 
   // Header and footer slots follow the header/footer template parts; templates without them

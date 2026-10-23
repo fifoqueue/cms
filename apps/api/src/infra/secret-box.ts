@@ -14,12 +14,14 @@ const VERSION = 'v1';
  * AES-256-GCM with a key derived from `secret`. The sealed form is
  * `v1:<iv>:<tag>:<ciphertext>` in base64url.
  */
-export const aesSecretBox = (secret: string): SecretBox => {
-  const key = createHash('sha256').update(secret).digest();
+export const aesSecretBox = (secret: string, previous?: string): SecretBox => {
+  const keys = [secret, previous]
+    .filter((value): value is string => !!value)
+    .map((value) => createHash('sha256').update(value).digest());
   return {
     seal(plain) {
       const iv = randomBytes(12);
-      const cipher = createCipheriv('aes-256-gcm', key, iv);
+      const cipher = createCipheriv('aes-256-gcm', keys[0]!, iv);
       const body = Buffer.concat([
         cipher.update(plain, 'utf8'),
         cipher.final(),
@@ -33,20 +35,23 @@ export const aesSecretBox = (secret: string): SecretBox => {
     open(sealed) {
       const [version, iv, tag, body] = sealed.split(':');
       if (version !== VERSION || !iv || !tag || body === undefined) return null;
-      try {
-        const decipher = createDecipheriv(
-          'aes-256-gcm',
-          key,
-          Buffer.from(iv, 'base64url'),
-        );
-        decipher.setAuthTag(Buffer.from(tag, 'base64url'));
-        return Buffer.concat([
-          decipher.update(Buffer.from(body, 'base64url')),
-          decipher.final(),
-        ]).toString('utf8');
-      } catch {
-        return null;
+      for (const key of keys) {
+        try {
+          const decipher = createDecipheriv(
+            'aes-256-gcm',
+            key,
+            Buffer.from(iv, 'base64url'),
+          );
+          decipher.setAuthTag(Buffer.from(tag, 'base64url'));
+          return Buffer.concat([
+            decipher.update(Buffer.from(body, 'base64url')),
+            decipher.final(),
+          ]).toString('utf8');
+        } catch {
+          // Try the previous key during an intentional rotation.
+        }
       }
+      return null;
     },
   };
 };

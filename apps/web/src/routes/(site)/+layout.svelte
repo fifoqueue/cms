@@ -39,12 +39,25 @@
 <SeoHead {head} />
 
 <svelte:head>
+  {#if data.site.icon}
+    <link
+      rel="icon"
+      href={data.site.icon.sizes[0]?.url ?? data.site.icon.url}
+    />
+    <link rel="apple-touch-icon" href={data.site.icon.url} />
+  {/if}
   <SlotOutlet fragments={slots?.head ?? []} />
   {#if css}
     <!-- eslint-disable-next-line svelte/no-at-html-tags -- the theme stylesheet, checked by cssProblem (no markup, no resources, balanced braces) -->
     {@html `<style>${css}</style>`}
   {/if}
 </svelte:head>
+
+<a
+  href="#main"
+  class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[60] focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:text-foreground focus:shadow-lg"
+  >{i18n.m.themeSkipToContent}</a
+>
 
 {#if data.toolbar}
   <AdminBar

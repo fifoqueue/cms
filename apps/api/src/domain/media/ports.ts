@@ -36,6 +36,10 @@ export interface MediaCriteria {
   kind?: MediaKind;
   /** Substring of the file name, alt text or caption. */
   search?: string;
+  /** Uploaded at or after `start` and before `end`. */
+  uploaded?: { start: Date; end: Date };
+  /** Only files no entry shows. */
+  unattached?: boolean;
   page: number;
   pageSize: number;
 }
@@ -49,7 +53,23 @@ export interface MediaRepository {
   list(
     criteria: MediaCriteria,
   ): Promise<{ items: MediaRecord[]; total: number }>;
-  update(id: string, changes: { alt: string; caption: string }): Promise<void>;
+  update(
+    id: string,
+    changes: { alt?: string; caption?: string },
+  ): Promise<void>;
+  /** The files just newer and just older than `id` in the library order. */
+  neighbors(
+    id: string,
+  ): Promise<{ newer: string | null; older: string | null }>;
+  /**
+   * Entries that show the file, newest first, at most `limit`. `publishedOnly` keeps only
+   * published entries that are not in the trash (for accounts that cannot list content).
+   */
+  usedIn(
+    id: string,
+    limit: number,
+    publishedOnly: boolean,
+  ): Promise<{ id: string; title: string; type: string }[]>;
   /** Public projections of the given images that exist. */
   publicImages(ids: readonly string[]): Promise<Map<string, PublicImage>>;
   /** Also removes its usage links and featured-image references. */
@@ -58,7 +78,11 @@ export interface MediaRepository {
 
 /** Bytes of uploaded files by key. Shared by every API instance. */
 export interface MediaStorage {
-  write(key: string, bytes: Uint8Array): Promise<void>;
+  /** Commits a complete upload only when it leaves at least `freeBytes` available. */
+  commit(
+    files: readonly { key: string; bytes: Uint8Array }[],
+    freeBytes: number,
+  ): Promise<'stored' | 'low_space' | 'busy'>;
   /** The file, or the byte range `[start, end]`; null when missing. */
   read(
     key: string,

@@ -4,10 +4,16 @@
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
-  import { CONTENT_STATUSES } from '@cms/sdk';
+  import { CONTENT_STATUSES, UNPUBLISHED_STATUSES } from '@cms/sdk';
+  import type { ContentOrder, ContentStatus } from '@cms/sdk';
+  import { can } from '@cms/sdk/capabilities';
   import { Plus, Search } from '@lucide/svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import BulkEdit from '#lib/admin/BulkEdit.svelte';
+  import BulkReport from '#lib/admin/BulkReport.svelte';
   import QuickEdit from '#lib/admin/QuickEdit.svelte';
+  import ScreenOptions from '#lib/admin/ScreenOptions.svelte';
+  import { CONTENT_COLUMNS } from '#lib/admin/screen-options.js';
   import { flattenTree } from '#lib/admin/taxonomy-tree.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -58,14 +64,23 @@
   };
 
   let selected = $state<string[]>([]);
+  const selectable = $derived(
+    data.content.items.filter((item) => canEdit(item)).map((item) => item.id),
+  );
   const allSelected = $derived(
-    data.content.items.length > 0 &&
-      selected.length === data.content.items.length,
+    selectable.length > 0 && selected.length === selectable.length,
   );
 
   const confirmDelete: SubmitFunction = ({ cancel }) => {
     if (!confirm(m.confirmDelete)) cancel();
   };
+
+  /** The API's edit rule (`assertEditable`), so rows only offer what the user may do. */
+  const canEdit = (item: { authorId: string; status: ContentStatus }) =>
+    item.authorId === data.user.id
+      ? UNPUBLISHED_STATUSES.includes(item.status) ||
+        can(data.user, 'content.publish')
+      : can(data.user, 'content.editOthers');
 
   /** The entry whose Quick Edit row is open. */
   let editing = $state<string | null>(null);
@@ -83,11 +98,57 @@
     typeInfo ? pluralLabel(m, typeInfo) : m.contentTitle,
   );
 
+  /** The list's sort: modified, newest first, unless a column was chosen. */
+  const direction = $derived(data.filter.order ?? 'desc');
+  const ariaSort = (column: ContentOrder) =>
+    (data.filter.orderby ?? 'updatedAt') === column
+      ? direction === 'asc'
+        ? 'ascending'
+        : 'descending'
+      : undefined;
+
   /** A status view is listed while it has entries (or is the current one). */
   const listed = (count: number | null, current: boolean) =>
     current || count === null || count > 0;
 
+  /** Bulk Edit panel, opened by the "Edit" bulk action. */
+  let bulkEditing = $state(false);
+  const bulkEntries = $derived(
+    data.content.items.filter((item) => selected.includes(item.id)),
+  );
+  const bulkResult = $derived(
+    form && 'bulk' in form
+      ? (form.bulk as {
+          done: number;
+          failed: { id: string; message: string }[];
+        })
+      : null,
+  );
+  const titles = $derived(
+    new Map(data.content.items.map((item) => [item.id, item.title])),
+  );
+
+  const hidden = $derived(new Set<string>(data.screen.hidden));
+  const columnLabels = $derived({
+    author: m.columnAuthor,
+    categories: m.columnCategories,
+    tags: m.columnTags,
+    comments: m.navComments,
+    status: m.columnStatus,
+    date: m.columnDate,
+    modified: m.columnModified,
+  });
+  /** Title and checkbox are always shown; colspan of full-width rows. */
+  const span = $derived(
+    2 + CONTENT_COLUMNS.filter((key) => !hidden.has(key)).length,
+  );
+
   const confirmBulk: SubmitFunction = ({ formData, cancel }) => {
+    if (formData.get('action') === 'edit') {
+      cancel();
+      bulkEditing = true;
+      return;
+    }
     if (formData.get('action') === 'delete' && !confirm(m.confirmDelete))
       cancel();
     return ({ update }) => {
@@ -129,6 +190,26 @@
     ><Plus class="size-4" /> {m.contentNew}</Button
   >
 </div>
+
+<ScreenOptions
+  screen="content"
+  columns={CONTENT_COLUMNS.map((key) => ({ key, label: columnLabels[key] }))}
+  hidden={data.screen.hidden}
+  perPage={data.screen.perPage}
+/>
+
+{#snippet sortLink(column: ContentOrder, label: string)}
+  {@const current = (data.filter.orderby ?? 'updatedAt') === column}
+  <a
+    href={resolve(
+      `/admin/(app)/content${query({ orderby: column, order: current ? (direction === 'asc' ? 'desc' : 'asc') : column === 'title' || column === 'author' ? 'asc' : 'desc', page: 1 })}`,
+    )}
+    class="inline-flex items-center gap-1 hover:underline"
+    >{label}{#if current}<span aria-hidden="true"
+        >{direction === 'asc' ? '▲' : '▼'}</span
+      >{/if}</a
+  >
+{/snippet}
 
 {#snippet count(value: number | null)}{#if value !== null}
     <span class="text-muted-foreground">({value})</span>{/if}{/snippet}
@@ -207,6 +288,7 @@
     <Input
       name="m"
       type="month"
+      min="1970-01"
       value={data.filter.m ?? ''}
       class="w-44"
       aria-label={m.contentMonth}
@@ -259,6 +341,7 @@
 </form>
 
 {#if !quickForm}<FormMessage {form} />{/if}
+<BulkReport result={bulkResult} names={titles} />
 
 <!-- The row checkboxes belong to this form through their `form` attribute, so rows can hold their own forms. -->
 <form
@@ -276,6 +359,7 @@
         >{m.deletePermanently}</NativeSelectOption
       >
     {:else}
+      <NativeSelectOption value="edit">{m.edit}</NativeSelectOption>
       <NativeSelectOption value="trash">{m.moveToTrash}</NativeSelectOption>
     {/if}
   </NativeSelect>
@@ -283,6 +367,20 @@
     >{m.apply}</Button
   >
 </form>
+
+{#if bulkEditing && bulkEntries.length}
+  <BulkEdit
+    entries={bulkEntries}
+    categories={categoryRows}
+    tags={tagOptions}
+    authors={data.authors}
+    canPublish={data.canPublish}
+    onclose={() => {
+      bulkEditing = false;
+      selected = [];
+    }}
+  />
+{/if}
 
 <div class="rounded-md border bg-background">
   <Table>
@@ -294,16 +392,37 @@
             aria-label={m.selectAll}
             checked={allSelected}
             onchange={(event) =>
-              (selected = event.currentTarget.checked
-                ? data.content.items.map((item) => item.id)
-                : [])}
+              (selected = event.currentTarget.checked ? selectable : [])}
           />
         </TableHead>
-        <TableHead>{m.columnTitle}</TableHead>
-        <TableHead class="hidden md:table-cell">{m.columnAuthor}</TableHead>
-        <TableHead class="hidden lg:table-cell">{m.columnCategories}</TableHead>
-        <TableHead>{m.columnStatus}</TableHead>
-        <TableHead>{m.columnDate}</TableHead>
+        <TableHead aria-sort={ariaSort('title')}
+          >{@render sortLink('title', m.columnTitle)}</TableHead
+        >
+        {#if !hidden.has('author')}<TableHead
+            class="hidden md:table-cell"
+            aria-sort={ariaSort('author')}
+            >{@render sortLink('author', m.columnAuthor)}</TableHead
+          >{/if}
+        {#if !hidden.has('categories')}<TableHead class="hidden lg:table-cell"
+            >{m.columnCategories}</TableHead
+          >{/if}
+        {#if !hidden.has('tags')}<TableHead class="hidden lg:table-cell"
+            >{m.columnTags}</TableHead
+          >{/if}
+        {#if !hidden.has('comments')}<TableHead
+            class="hidden text-right md:table-cell"
+            aria-sort={ariaSort('commentCount')}
+            >{@render sortLink('commentCount', m.navComments)}</TableHead
+          >{/if}
+        {#if !hidden.has('status')}<TableHead>{m.columnStatus}</TableHead>{/if}
+        {#if !hidden.has('date')}<TableHead aria-sort={ariaSort('publishedAt')}
+            >{@render sortLink('publishedAt', m.columnDate)}</TableHead
+          >{/if}
+        {#if !hidden.has('modified')}<TableHead
+            class="hidden xl:table-cell"
+            aria-sort={ariaSort('updatedAt')}
+            >{@render sortLink('updatedAt', m.columnModified)}</TableHead
+          >{/if}
       </TableRow>
     </TableHeader>
     <TableBody>
@@ -311,7 +430,7 @@
         {#if editing === item.id}
           {@const type = data.types.find((option) => option.key === item.type)}
           <TableRow>
-            <TableCell colspan={6} class="bg-muted/40 whitespace-normal">
+            <TableCell colspan={span} class="bg-muted/40 whitespace-normal">
               <QuickEdit
                 entry={item}
                 categories={type?.categories ? categoryRows : []}
@@ -324,22 +443,29 @@
             </TableCell>
           </TableRow>
         {:else}
+          {@const editable = canEdit(item)}
           <TableRow>
             <TableCell class="align-top">
-              <input
-                type="checkbox"
-                form="bulk"
-                name="ids"
-                value={item.id}
-                aria-label={m.selectItem(item.title)}
-                bind:group={selected}
-              />
+              {#if editable}
+                <input
+                  type="checkbox"
+                  form="bulk"
+                  name="ids"
+                  value={item.id}
+                  aria-label={m.selectItem(item.title)}
+                  bind:group={selected}
+                />
+              {/if}
             </TableCell>
             <TableCell class="whitespace-normal">
-              <a
-                href={resolve('/admin/(app)/content/[id]', { id: item.id })}
-                class="font-medium hover:underline">{item.title}</a
-              >
+              {#if editable}
+                <a
+                  href={resolve('/admin/(app)/content/[id]', { id: item.id })}
+                  class="font-medium hover:underline">{item.title}</a
+                >
+              {:else}
+                <span class="font-medium">{item.title}</span>
+              {/if}
               <span class="ml-1 inline-flex gap-1 align-middle">
                 {#if item.sticky}<Badge variant="outline">{m.sticky}</Badge
                   >{/if}
@@ -353,7 +479,15 @@
               <div
                 class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"
               >
-                {#if item.trashedAt}
+                {#if !editable}
+                  {#if item.status === 'published' && !item.trashedAt}
+                    <a
+                      href={resolve(item.path as Path)}
+                      target="_blank"
+                      class="row-action text-primary">{m.view}</a
+                    >
+                  {/if}
+                {:else if item.trashedAt}
                   <form method="POST" action="?/restore" use:enhance>
                     <input type="hidden" name="id" value={item.id} />
                     <button type="submit" class="row-action text-primary"
@@ -412,37 +546,78 @@
                 {/if}
               </div>
             </TableCell>
-            <TableCell class="hidden align-top text-sm md:table-cell"
-              >{item.authorName}</TableCell
-            >
-            <TableCell class="hidden align-top text-sm lg:table-cell">
-              {#each item.categories as category, index (category.id)}{index
-                  ? ', '
-                  : ''}<a
-                  href={resolve(
-                    `/admin/(app)/content${query({ category: category.slug, page: 1 })}`,
-                  )}
-                  class="hover:underline">{category.name}</a
-                >{:else}<span class="text-muted-foreground">—</span>{/each}
-            </TableCell>
-            <TableCell class="align-top">
-              <Badge
-                variant={item.status === 'published' ? 'default' : 'secondary'}
-                >{statusLabel(m, item.status)}</Badge
+            {#if !hidden.has('author')}
+              <TableCell class="hidden align-top text-sm md:table-cell"
+                >{item.authorName}</TableCell
               >
-            </TableCell>
-            <TableCell class="align-top text-sm text-muted-foreground">
-              {#if item.trashedAt}
-                {m.trashedOn(date(item.trashedAt))}
-              {:else}
-                {date(item.publishedAt ?? item.updatedAt)}
-              {/if}
-            </TableCell>
+            {/if}
+            {#if !hidden.has('categories')}
+              <TableCell class="hidden align-top text-sm lg:table-cell">
+                {#each item.categories as category, index (category.id)}{index
+                    ? ', '
+                    : ''}<a
+                    href={resolve(
+                      `/admin/(app)/content${query({ category: category.slug, page: 1 })}`,
+                    )}
+                    class="hover:underline">{category.name}</a
+                  >{:else}<span class="text-muted-foreground">—</span>{/each}
+              </TableCell>
+            {/if}
+            {#if !hidden.has('tags')}
+              <TableCell class="hidden align-top text-sm lg:table-cell">
+                {#each item.tags as tag, index (tag.id)}{index ? ', ' : ''}<a
+                    href={resolve(
+                      `/admin/(app)/content${query({ tag: tag.slug, page: 1 })}`,
+                    )}
+                    class="hover:underline">{tag.name}</a
+                  >{:else}<span class="text-muted-foreground">—</span>{/each}
+              </TableCell>
+            {/if}
+            {#if !hidden.has('comments')}
+              <TableCell
+                class="hidden text-right align-top text-sm md:table-cell"
+              >
+                {#if item.commentCount}
+                  <a
+                    href={resolve(
+                      `/admin/(app)/comments?contentId=${encodeURIComponent(item.id)}`,
+                    )}
+                    class="hover:underline">{item.commentCount}</a
+                  >
+                {:else}<span class="text-muted-foreground">—</span>{/if}
+              </TableCell>
+            {/if}
+            {#if !hidden.has('status')}
+              <TableCell class="align-top">
+                <Badge
+                  variant={item.status === 'published'
+                    ? 'default'
+                    : 'secondary'}>{statusLabel(m, item.status)}</Badge
+                >
+              </TableCell>
+            {/if}
+            {#if !hidden.has('date')}
+              <TableCell class="align-top text-sm text-muted-foreground">
+                {#if item.trashedAt}
+                  {m.trashedOn(date(item.trashedAt))}
+                {:else}
+                  {date(item.publishedAt ?? item.updatedAt)}
+                {/if}
+              </TableCell>
+            {/if}
+            {#if !hidden.has('modified')}
+              <TableCell
+                class="hidden align-top text-sm text-muted-foreground xl:table-cell"
+                >{date(item.updatedAt)}</TableCell
+              >
+            {/if}
           </TableRow>
         {/if}
       {:else}
         <TableRow>
-          <TableCell colspan={6} class="py-10 text-center text-muted-foreground"
+          <TableCell
+            colspan={span}
+            class="py-10 text-center text-muted-foreground"
             >{trash
               ? m.emptyTrash
               : filtered

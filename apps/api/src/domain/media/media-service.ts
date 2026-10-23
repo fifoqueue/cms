@@ -5,7 +5,15 @@ import {
   mediaListQuerySchema,
   mediaUpdateSchema,
 } from '@cms/sdk';
-import type { AdminMedia, ImageSizeName, MediaType, Paginated } from '@cms/sdk';
+import type {
+  AdminMedia,
+  ImageSizeName,
+  MediaAdmission,
+  RateRule,
+  MediaContext,
+  MediaType,
+  Paginated,
+} from '@cms/sdk';
 import { can } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
@@ -19,11 +27,13 @@ import type {
 } from '#api/domain/media/ports';
 import { sniffMediaType } from '#api/domain/media/sniff';
 import type { Clock, HookDispatcher, IdGenerator } from '#api/domain/ports';
+import type { RateLimitStore } from '#api/domain/security/ports';
 import {
   conflict,
   forbidden,
   invalidInput,
   notFound,
+  rateLimited,
   Errors,
 } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
@@ -35,9 +45,20 @@ export interface MediaServiceDeps {
   ids: IdGenerator;
   clock: Clock;
   hooks: HookDispatcher;
+  limiter: Pick<RateLimitStore, 'hit'>;
   /** Largest accepted upload, in bytes. */
   maxBytes: number;
+  limits: () => Promise<MediaAdmission>;
 }
+
+const uploadRule = (max: number) =>
+  ({
+    enabled: max > 0,
+    max: Math.max(1, max),
+    windowSeconds: 60 * 60,
+    blockSeconds: 60 * 60,
+    enforcement: 'block',
+  }) as const satisfies RateRule;
 
 /** Images re-encoded on upload; GIFs keep their animation and carry no camera metadata. */
 const CLEANED: readonly MediaType[] = [
@@ -68,12 +89,20 @@ export class MediaService {
 
   async list(query: unknown, actor: Actor): Promise<Paginated<AdminMedia>> {
     authorize(actor, 'media.upload');
-    const { page, pageSize, ...filters } = parseInput(
+    const { page, pageSize, month, ...filters } = parseInput(
       mediaListQuerySchema,
       query,
     );
+    const [year, number] = month?.split('-').map(Number) ?? [];
     const { items, total } = await this.deps.repository.list({
       ...filters,
+      uploaded:
+        year && number
+          ? {
+              start: new Date(Date.UTC(year, number - 1, 1)),
+              end: new Date(Date.UTC(year, number, 1)),
+            }
+          : undefined,
       page,
       pageSize,
     });
@@ -83,6 +112,18 @@ export class MediaService {
   async get(id: string, actor: Actor): Promise<AdminMedia> {
     authorize(actor, 'media.upload');
     return toAdminMedia(await this.require(id));
+  }
+
+  /** Previous/next files for the details screen and the entries that show this one. */
+  async context(id: string, actor: Actor): Promise<MediaContext> {
+    authorize(actor, 'media.upload');
+    await this.require(id);
+    const [{ newer, older }, usedIn] = await Promise.all([
+      this.deps.repository.neighbors(id),
+      // Writers list every entry anyway; others learn only of published ones.
+      this.deps.repository.usedIn(id, 50, !can(actor, 'content.create')),
+    ]);
+    return { newerId: newer, olderId: older, usedIn };
   }
 
   /**
@@ -95,6 +136,16 @@ export class MediaService {
     actor: Actor,
   ): Promise<AdminMedia> {
     authorize(actor, 'media.upload');
+    const limits = await this.deps.limits();
+    if (
+      limits.uploadsPerHour > 0 &&
+      (await this.deps.limiter.hit(
+        `mediaUpload:${actor.id}`,
+        uploadRule(limits.uploadsPerHour),
+        this.deps.clock.now(),
+      ))
+    )
+      throw rateLimited(Errors.MediaUploadRate(limits.uploadsPerHour));
     if (bytes.byteLength === 0) throw invalidInput(Errors.MediaEmpty);
     if (bytes.byteLength > this.deps.maxBytes)
       throw invalidInput(Errors.MediaTooLarge(this.deps.maxBytes));
@@ -110,6 +161,7 @@ export class MediaService {
     let original = bytes;
     let size: { width: number; height: number } | null = null;
     const variants: Partial<Record<ImageSizeName, StoredVariant>> = {};
+    const files: { key: string; bytes: Uint8Array }[] = [];
     const written: string[] = [];
     try {
       if (isImage) {
@@ -125,8 +177,7 @@ export class MediaService {
             IMAGE_SIZES[name],
           );
           const key = `${base}-${name}.webp`;
-          await this.deps.storage.write(key, resized.bytes);
-          written.push(key);
+          files.push({ key, bytes: resized.bytes });
           variants[name] = {
             key,
             width: resized.width,
@@ -134,8 +185,12 @@ export class MediaService {
           };
         }
       }
-      await this.deps.storage.write(storageKey, original);
-      written.push(storageKey);
+      files.push({ key: storageKey, bytes: original });
+      written.push(...files.map(({ key }) => key));
+      const freeBytes = limits.freeSpaceMb * 1024 * 1024;
+      const stored = await this.deps.storage.commit(files, freeBytes);
+      if (stored === 'low_space') throw conflict(Errors.MediaStorageLow);
+      if (stored === 'busy') throw conflict(Errors.MediaStorageBusy);
       const record: MediaWrite = {
         id,
         uploaderId: actor.id,

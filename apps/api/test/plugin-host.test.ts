@@ -109,7 +109,13 @@ describe('PluginHost lifecycle', () => {
       (
         await runtime.slots.render({
           path: '/',
-          site: { title: 't', description: '', locale: 'en' },
+          site: {
+            title: 't',
+            description: '',
+            locale: 'en',
+            iconId: null,
+            logoId: null,
+          },
           content: null,
         })
       ).head,
@@ -395,7 +401,7 @@ describe('PluginHost lifecycle', () => {
     };
     const service = new SlotService({
       registry: runtime.slots,
-      site: new SiteService(settings, runtime.hooks),
+      site: new SiteService(settings, runtime.hooks, async () => new Map()),
       content: new PublishedContentReader(
         new MemoryPublishedContentRepository(repository),
       ),
@@ -606,6 +612,55 @@ test('plugin admin pages are data, checked, authorized and released with the plu
 
   await runtime.host.disable('stats');
   expect(runtime.pages.list(ADMIN)).toEqual([]);
+});
+
+test('dashboard widgets are checked, isolated, authorized and released with the plugin', async () => {
+  const runtime = createRuntime({ timeoutMs: 50 });
+  await runtime.host.install(
+    runtime.bundles.register(
+      'w',
+      definePlugin({
+        manifest: { id: 'boxes', name: 'Boxes', version: '1.0.0' },
+        activate({ admin }) {
+          admin.dashboardWidget('visits', {
+            title: 'Visits',
+            capability: 'content.create',
+            render: () => [{ kind: 'text', text: '12 today' }],
+          });
+          admin.dashboardWidget('private', {
+            title: 'Private',
+            render: () => [{ kind: 'text', text: 'admins only' }],
+          });
+          admin.dashboardWidget('throws', {
+            title: 'Throws',
+            render: () => {
+              throw new Error('boom');
+            },
+          });
+          admin.dashboardWidget('slow', {
+            title: 'Slow',
+            render: () => new Promise(() => {}),
+          });
+          admin.dashboardWidget('markup', {
+            title: 'Markup',
+            render: () => [{ kind: 'html', html: '<script>' }] as never,
+          });
+        },
+      }),
+    ),
+  );
+  await runtime.host.enable('boxes');
+  const author = { id: 'a', role: 'author' };
+  expect(
+    (await runtime.dashboardWidgets.render(author)).map((w) => w.key),
+  ).toEqual(['visits']);
+  // Failing, hanging and invalid widgets are dropped; the dashboard still renders.
+  expect(
+    (await runtime.dashboardWidgets.render(ADMIN)).map((w) => w.key),
+  ).toEqual(['visits', 'private']);
+
+  await runtime.host.disable('boxes');
+  expect(await runtime.dashboardWidgets.render(ADMIN)).toEqual([]);
 });
 
 test('another instance follows installs, upgrades, toggles and removals', async () => {

@@ -25,10 +25,12 @@ import {
   recordingLogger,
   sequentialIds,
 } from '#test/support/memory';
-import { MemoryRevisionRepository } from '#test/support/memory-revisions';
 import { Embeds, vimeo, youtube } from '#api/domain/content/embeds';
 import { MemoryPublishedContentRepository } from '#test/support/memory-published';
 import { createRuntime } from '#test/support/runtime';
+
+/** Values past the engine's nesting limit take seconds to build and check on a loaded machine. */
+const DEEP_TIMEOUT_MS = 30_000;
 
 const cyclic = () => {
   const value: Record<string, unknown> = { a: 1 };
@@ -132,16 +134,21 @@ describe('isJsonValue', () => {
     expect(isJsonValue({ meta: hiddenToJson() })).toBe(false);
   });
 
-  test('agrees with JSON.stringify on nesting depth, without overflowing', () => {
-    // One value past the engine's nesting limit (the oracle confirms it); serializing it costs ~0.5s.
-    const tooDeep = nest(100_000);
-    const deep = nest(1_000);
+  test(
+    'agrees with JSON.stringify on nesting depth, without overflowing',
+    () => {
+      // One value past the engine's nesting limit (the oracle confirms it); serializing it costs ~0.5s.
+      const tooDeep = nest(100_000);
+      const deep = nest(1_000);
 
-    expect(serializes(tooDeep)).toBe(false);
-    expect(isJsonValue(tooDeep)).toBe(false);
-    expect(serializes(deep)).toBe(true);
-    expect(isJsonValue(deep)).toBe(true);
-  });
+      expect(serializes(tooDeep)).toBe(false);
+      expect(isJsonValue(tooDeep)).toBe(false);
+      expect(serializes(deep)).toBe(true);
+      expect(isJsonValue(deep)).toBe(true);
+      // The depth must pass the engine's own limit, so it cannot shrink; a busy machine needs time.
+    },
+    DEEP_TIMEOUT_MS,
+  );
 
   test('rejects deep cycles from the shape check alone', () => {
     const loop: unknown[] = [];
@@ -167,7 +174,7 @@ describe('content.public filter output', () => {
       ids: sequentialIds(),
       clock: fixedClock(),
       users: noUsers,
-      revisions: new MemoryRevisionRepository(),
+      revisions: repository.revisions,
       hasher: plainHasher,
       types: testTypes(),
       fields: testFields(),
@@ -256,22 +263,26 @@ describe('content.public filter output', () => {
     ).toBeGreaterThanOrEqual(bad.length);
   });
 
-  test('meta nested too deep to serialize is discarded for every endpoint', async () => {
-    const { hooks, publicContent } = await setup();
-    const meta = { deep: nest(100_000) };
+  test(
+    'meta nested too deep to serialize is discarded for every endpoint',
+    async () => {
+      const { hooks, publicContent } = await setup();
+      const meta = { deep: nest(100_000) };
 
-    hooks.filter('content.public', (value) => ({ ...value, meta }));
-    hooks.filter('content.publicSummary', (value) => ({ ...value, meta }));
+      hooks.filter('content.public', (value) => ({ ...value, meta }));
+      hooks.filter('content.publicSummary', (value) => ({ ...value, meta }));
 
-    const item = await publicContent.getBySlug('hello');
-    const page = await publicContent.list({});
+      const item = await publicContent.getBySlug('hello');
+      const page = await publicContent.list({});
 
-    expect(item.meta).toEqual({});
-    expect(page.items as unknown[]).toEqual([
-      { ...item, html: undefined, fields: undefined },
-    ]);
-    expect(() => Response.json(page)).not.toThrow();
-  });
+      expect(item.meta).toEqual({});
+      expect(page.items as unknown[]).toEqual([
+        { ...item, html: undefined, fields: undefined },
+      ]);
+      expect(() => Response.json(page)).not.toThrow();
+    },
+    DEEP_TIMEOUT_MS,
+  );
 
   test('an accepted result is a core copy the plugin cannot break afterwards', async () => {
     const { hooks, publicContent } = await setup();

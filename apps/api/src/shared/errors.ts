@@ -6,7 +6,8 @@ export type ErrorCode =
   | 'conflict'
   | 'rate_limited'
   | 'payload_too_large'
-  | 'captcha_required';
+  | 'captcha_required'
+  | 'destination_blocked';
 
 /** An expected failure that maps to a client error. Anything else is a bug. */
 export class DomainError extends Error {
@@ -27,10 +28,15 @@ export class DomainError extends Error {
 export const Errors = {
   AuthenticationRequired: 'Authentication required',
   Forbidden: 'You do not have permission to do this',
+  PatternNotFound: 'Pattern not found',
+  PatternLimit: 'A site can keep at most 500 patterns',
   TooManyAttempts: 'Too many attempts. Please wait a while and try again.',
   CaptchaRequired: 'Please confirm that you are not a robot.',
   CaptchaInvalid: 'The robot check failed. Please try again.',
   UserNotFound: 'User not found',
+  SessionNotFound: 'Session not found',
+  PasswordResetLimit:
+    'Too many password reset emails were sent. Try again later.',
   PasswordRequired:
     'Enter a password, or set up email delivery to send an invitation',
   LastAdministrator: 'The site needs at least one administrator',
@@ -50,6 +56,10 @@ export const Errors = {
     'Contact an administrator to change your email address.',
 
   ContentNotFound: 'Content not found',
+  ContentAutosavePending:
+    'You have unsaved changes to this entry in the editor. Open it to save or discard them first.',
+  ContentChanged:
+    'This entry was changed since you opened it. Reload the page and try again.',
   ContentPathMissing: 'Content has no current path',
   SlugConflict: 'Slug is already in use',
   SlugInUse: (slug: string) => `Slug "${slug}" is already in use`,
@@ -64,6 +74,10 @@ export const Errors = {
   MediaKeyInvalid: 'Invalid media key',
   MediaTooLarge: (bytes: number) =>
     `The file is too large (at most ${Math.floor(bytes / 1024 / 1024)} MB)`,
+  MediaStorageLow: 'The server does not have enough free storage for this file',
+  MediaStorageBusy: 'The media storage is busy; try the upload again',
+  MediaUploadRate: (max: number) =>
+    `You can upload ${max} files per hour. Please wait and try again.`,
   MediaTypeUnsupported:
     'This file type is not supported. Upload JPEG, PNG, GIF, WebP, AVIF, PDF, MP4 or WebM.',
   MediaInUse: (count: number) =>
@@ -73,13 +87,22 @@ export const Errors = {
   ContentTypeExists: 'A content type with this key exists',
   ContentTypeNotFound: 'Content type not found',
   ContentTypeInUse: 'Entries of this type exist; delete or change them first',
+  CommentLoginRequired: 'You must be logged in to post a comment',
   CommentNotFound: 'Comment not found',
   CommentsClosed: 'Comments are closed for this entry',
   CommentReplyInvalid: 'The comment you are replying to is not available',
+  AvatarNotFound: 'Avatar not found',
   SearchNotConfigured: 'Enter the Meilisearch address first',
   SearchUnavailable: (detail: string) =>
     `Meilisearch did not answer: ${detail}`,
   SearchTaskFailed: (detail: string) => `Meilisearch task failed: ${detail}`,
+  SearchRequestFailed: (status: number) =>
+    `Meilisearch answered HTTP ${status}`,
+  OutboundUrlInvalid: 'The outbound address is invalid',
+  OutboundHostUnresolved: 'The outbound host could not be resolved',
+  OutboundAddressBlocked: 'The outbound address is not permitted',
+  OutboundRedirectBlocked: 'The outbound redirect is not permitted',
+  EgressAddressInvalid: 'Enter a valid IP address or CIDR range',
   WebhookNotFound: 'Webhook not found',
   WebhookInvalidJob: 'Invalid webhook delivery job',
   WebhookSecretUnreadable:
@@ -195,7 +218,11 @@ export const Errors = {
   CurrentPasswordWrong: 'The current password is not correct',
   ApiTokenNotFound: 'Token not found',
   JobKindUnknown: (kind: string) => `No handler for job kind "${kind}"`,
+  JobPayloadInvalid: 'The queued job payload is not valid',
+  JobPayloadUnreadable:
+    'The queued job is encrypted with a different site secret key',
   ConfigNotJsonObject: 'must be a JSON object',
+  ConfigNotJsonArray: 'must be a JSON array',
   ConfigSetTogether: (keys: readonly string[]) =>
     `${keys.join(', ')} must be set together`,
   ConfigPendingLimitTooHigh: 'must not exceed OIDC_MAX_PENDING_REQUESTS',
@@ -218,6 +245,10 @@ export const Errors = {
     '설정 파일을 읽을 수 없습니다. 파일 접근 권한을 확인해 주세요.',
   InstallConfigCorrupt:
     '설정 파일이 손상되었습니다. 기존 설정을 복구해 주세요.',
+  // site-theme
+  SiteImageInvalid: 'Choose an image from the media library.',
+  ThemeScreenshotInvalid:
+    'The theme screenshot must be a PNG or WebP image of at most 512 KB.',
 } as const;
 
 export const invalidInput = (message: string, issues?: unknown) =>
@@ -235,6 +266,9 @@ export const rateLimited = (message: string) =>
   new DomainError('rate_limited', message);
 export const payloadTooLarge = (message: string) =>
   new DomainError('payload_too_large', message);
+export const destinationBlocked = (
+  message: string = Errors.OutboundAddressBlocked,
+) => new DomainError('destination_blocked', message);
 /** The attempt needs a solved captcha first (or the one sent was not valid). */
 export const captchaRequired = (message: string = Errors.CaptchaRequired) =>
   new DomainError('captcha_required', message);

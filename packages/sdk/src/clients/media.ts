@@ -1,9 +1,14 @@
 import { pageSchema } from '#sdk/transport';
 import type { ClientOptions, Query, Request } from '#sdk/transport';
-import { MEDIA_FILENAME_HEADER, adminMediaSchema } from '#sdk/media';
+import {
+  MEDIA_FILENAME_HEADER,
+  adminMediaSchema,
+  mediaContextSchema,
+} from '#sdk/media';
 import type {
   AdminMedia,
   ImageEditInput,
+  MediaContext,
   MediaListQuery,
   MediaUpdateInput,
 } from '#sdk/media';
@@ -20,6 +25,11 @@ export const mediaAdminClient = (request: Request) => {
       }),
     get: (id: string) =>
       request<AdminMedia>('GET', path(id), { response: adminMediaSchema }),
+    /** Neighbouring files and the entries that show this one. */
+    context: (id: string) =>
+      request<MediaContext>('GET', `${path(id)}/context`, {
+        response: mediaContextSchema,
+      }),
     /** Sends the raw file; the API decides its type from the bytes. */
     upload: (file: BodyInit, filename: string) =>
       request<AdminMedia>('POST', '/api/v1/admin/media', {
@@ -61,5 +71,18 @@ export const createMediaClient = ({
         .map(encodeURIComponent)
         .join('/')}`,
       { headers: range ? { range } : {} },
+    ),
+});
+
+/** Same-origin frontend proxy for a signed avatar identifier. */
+export const createAvatarClient = ({
+  baseUrl,
+  fetch: fetcher = fetch,
+}: ClientOptions) => ({
+  file: (id: string, size: string | null) =>
+    fetcher(
+      `${baseUrl}/api/v1/avatars/${encodeURIComponent(id)}${
+        size ? `?s=${encodeURIComponent(size)}` : ''
+      }`,
     ),
 });

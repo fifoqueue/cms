@@ -27,6 +27,7 @@ export class MemoryCommentRepository implements CommentRepository {
       path: entry.path,
       publishedAt: entry.publishedAt,
       allowComments: entry.allowComments,
+      protected: entry.passwordHash !== null,
       authorId: entry.authorId,
       commentCount: entry.commentCount,
     };
@@ -35,6 +36,17 @@ export class MemoryCommentRepository implements CommentRepository {
   async findById(id: string) {
     const row = this.rows.get(id);
     return row ? { ...row } : null;
+  }
+
+  async pageOf(root: CommentRecord, pageSize: number) {
+    const before = [...this.rows.values()].filter(
+      (row) =>
+        row.contentId === root.contentId &&
+        row.status === 'approved' &&
+        row.parentId === null &&
+        byDate(row, root) < 0,
+    ).length;
+    return Math.floor(before / pageSize) + 1;
   }
 
   async insert(record: CommentRecord) {
@@ -91,6 +103,9 @@ export class MemoryCommentRepository implements CommentRepository {
         .slice((page - 1) * pageSize, page * pageSize)
         .map(async (row) => ({
           ...row,
+          parentAuthor: row.parentId
+            ? (this.rows.get(row.parentId)?.authorName ?? null)
+            : null,
           contentTitle:
             (await this.content.findById(row.contentId))?.title ?? '',
         })),
@@ -168,7 +183,7 @@ export class MemoryCommentRepository implements CommentRepository {
     const result: { author: string; title: string; path: string }[] = [];
     for (const row of rows) {
       const target = await this.target(row.contentId);
-      if (target)
+      if (target && !target.protected)
         result.push({
           author: row.authorName,
           title: target.title,

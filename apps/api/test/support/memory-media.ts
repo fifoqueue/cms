@@ -26,7 +26,20 @@ export class MemoryMediaRepository implements MediaRepository {
     return this.rows.has(id);
   }
 
-  async list({ kind, search, page, pageSize }: MediaCriteria) {
+  /** Entries that show each file, standing in for `content_media` rows. */
+  readonly entries = new Map<
+    string,
+    { id: string; title: string; type: string; published?: boolean }[]
+  >();
+
+  async list({
+    kind,
+    search,
+    uploaded,
+    unattached,
+    page,
+    pageSize,
+  }: MediaCriteria) {
     const prefix = {
       image: 'image/',
       audio: 'audio/',
@@ -36,6 +49,12 @@ export class MemoryMediaRepository implements MediaRepository {
     const items = [...this.rows.values()]
       .filter((row) => !kind || row.mime.startsWith(prefix[kind]))
       .filter((row) => !search || row.filename.includes(search))
+      .filter(
+        (row) =>
+          !uploaded ||
+          (row.createdAt >= uploaded.start && row.createdAt < uploaded.end),
+      )
+      .filter((row) => !unattached || !this.usages.get(row.id))
       .reverse();
     return {
       items: items
@@ -43,6 +62,21 @@ export class MemoryMediaRepository implements MediaRepository {
         .map((row) => this.toRecord(row)),
       total: items.length,
     };
+  }
+
+  /** Insertion order stands in for upload time, as in `list`. */
+  async neighbors(id: string) {
+    const ids = [...this.rows.keys()].reverse();
+    const index = ids.indexOf(id);
+    if (index < 0) return { newer: null, older: null };
+    return { newer: ids[index - 1] ?? null, older: ids[index + 1] ?? null };
+  }
+
+  async usedIn(id: string, limit: number, publishedOnly: boolean) {
+    return (this.entries.get(id) ?? [])
+      .filter((entry) => !publishedOnly || entry.published)
+      .slice(0, limit)
+      .map(({ id: entryId, title, type }) => ({ id: entryId, title, type }));
   }
 
   async publicImages(ids: readonly string[]) {
@@ -61,8 +95,10 @@ export class MemoryMediaRepository implements MediaRepository {
     return images;
   }
 
-  async update(id: string, changes: { alt: string; caption: string }) {
-    Object.assign(this.rows.get(id)!, changes);
+  async update(id: string, changes: { alt?: string; caption?: string }) {
+    const row = this.rows.get(id)!;
+    if (changes.alt !== undefined) row.alt = changes.alt;
+    if (changes.caption !== undefined) row.caption = changes.caption;
   }
 
   async delete(id: string) {
@@ -81,9 +117,17 @@ export class MemoryMediaRepository implements MediaRepository {
 
 export class MemoryMediaStorage implements MediaStorage {
   readonly files = new Map<string, Uint8Array>();
+  freeBytes = Number.POSITIVE_INFINITY;
 
-  async write(key: string, bytes: Uint8Array) {
-    this.files.set(key, bytes);
+  async commit(
+    files: readonly { key: string; bytes: Uint8Array }[],
+    freeBytes: number,
+  ) {
+    const bytes = files.reduce((total, file) => total + file.bytes.length, 0);
+    if (this.freeBytes < freeBytes + bytes) return 'low_space' as const;
+    for (const file of files) this.files.set(file.key, file.bytes);
+    this.freeBytes -= bytes;
+    return 'stored' as const;
   }
 
   async read(key: string, range?: { start: number; end?: number }) {

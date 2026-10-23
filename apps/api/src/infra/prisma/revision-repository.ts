@@ -5,6 +5,7 @@ import type {
   RevisionWrite,
 } from '#api/domain/content/revisions';
 import type { Database } from '#api/infra/prisma/client';
+import { lockPermalinks } from '#api/infra/prisma/permalink-repository';
 import type { ContentRevision } from '#api/infra/prisma/generated/client';
 
 type Row = ContentRevision & { author: { name: string } | null };
@@ -22,6 +23,31 @@ const toRow = ({ document, ...revision }: RevisionWrite) => ({
 });
 
 const withAuthor = { author: { select: { name: true } } } as const;
+
+/**
+ * The user's autosave newer than the entry's last text save (newest revision, else `savedAt`).
+ * Shared with the content write guard, which runs it inside its locked transaction.
+ */
+export const pendingIn = async (
+  db: Pick<Database, 'contentRevision'>,
+  contentId: string,
+  authorId: string,
+  savedAt: Date,
+) => {
+  // Sequential: inside an interactive transaction the queries share one connection.
+  const autosave = await db.contentRevision.findFirst({
+    where: { contentId, authorId, kind: 'autosave' },
+    include: withAuthor,
+  });
+  if (!autosave) return null;
+  const latest = await db.contentRevision.findFirst({
+    where: { contentId, kind: 'revision' },
+    select: { createdAt: true },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+  });
+  const baseline = latest?.createdAt ?? savedAt;
+  return autosave.createdAt > baseline ? toRecord(autosave) : null;
+};
 
 export class PrismaRevisionRepository implements RevisionRepository {
   constructor(private readonly db: Database) {}
@@ -44,6 +70,18 @@ export class PrismaRevisionRepository implements RevisionRepository {
 
   async autosave(revision: RevisionWrite) {
     await this.db.$transaction(async (tx) => {
+      // Serialized with content writes, so a guarded save sees it or it sees the save.
+      await lockPermalinks(tx);
+      const saved = await tx.content.findUnique({
+        where: { id: revision.contentId },
+        select: { updatedAt: true },
+      });
+      // Dated after the last save even when that save committed while this one waited.
+      if (saved && revision.createdAt <= saved.updatedAt)
+        revision = {
+          ...revision,
+          createdAt: new Date(saved.updatedAt.getTime() + 1),
+        };
       await tx.contentRevision.deleteMany({
         where: {
           contentId: revision.contentId,
@@ -88,6 +126,10 @@ export class PrismaRevisionRepository implements RevisionRepository {
       include: withAuthor,
     });
     return row && toRecord(row);
+  }
+
+  async pendingAutosave(contentId: string, authorId: string, savedAt: Date) {
+    return pendingIn(this.db, contentId, authorId, savedAt);
   }
 
   async findAutosave(contentId: string, authorId: string) {

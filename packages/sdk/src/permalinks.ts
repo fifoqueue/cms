@@ -64,10 +64,18 @@ const RESERVED_FILES = [
   '/llms.txt',
 ];
 
-/** `segment` decoded and re-encoded with `encodeURIComponent`; `null` for malformed escapes. */
+const UNSAFE_SEGMENT = /[\\/?#\p{Cc}\p{Zl}\p{Zp}]/u;
+
+/** A safe decoded segment re-encoded with `encodeURIComponent`; `null` for unsafe input. */
 const canonicalSegment = (segment: string): string | null => {
   try {
-    return encodeURIComponent(decodeURIComponent(segment));
+    const decoded = decodeURIComponent(segment);
+    return !decoded ||
+      decoded === '.' ||
+      decoded === '..' ||
+      UNSAFE_SEGMENT.test(decoded)
+      ? null
+      : encodeURIComponent(decoded);
   } catch {
     return null;
   }
@@ -75,9 +83,9 @@ const canonicalSegment = (segment: string): string | null => {
 
 /**
  * The canonical spelling of a request pathname, or `null` when it cannot be one: each segment is
- * decoded once and re-encoded with `encodeURIComponent`, so `%c3%a9`, `é` and `%C3%A9` agree while
- * an encoded `/` (`%2F`) stays inside its segment and nothing is case- or accent-folded. Empty,
- * `.` and `..` segments (`//authority`, trailing `/`, traversal) are refused, never normalized.
+ * decoded once and re-encoded with `encodeURIComponent`, so `%c3%a9`, `é` and `%C3%A9` agree.
+ * Empty/dot segments, encoded separators, query/fragment delimiters and controls are refused;
+ * case and accents are never folded.
  */
 export const canonicalPermalinkPath = (path: string): string | null => {
   if (!path.startsWith('/')) return null;
@@ -88,8 +96,7 @@ export const canonicalPermalinkPath = (path: string): string | null => {
   for (const segment of path.slice(1, trailing ? -1 : undefined).split('/')) {
     const canonical = canonicalSegment(segment);
 
-    if (canonical === null || canonical === '' || /^\.{1,2}$/.test(canonical))
-      return null;
+    if (canonical === null) return null;
     segments.push(canonical);
   }
 

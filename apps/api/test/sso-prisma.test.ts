@@ -186,12 +186,14 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
       tokenHash: hash('rev-sso'),
       userId: 'rev-1',
       identityId: 'rev-i1',
+      createdAt: new Date(),
       expiresAt,
     });
     await sessions.insert({
       tokenHash: hash('rev-password'),
       userId: 'rev-1',
       identityId: null,
+      createdAt: new Date(),
       expiresAt,
     });
 
@@ -208,6 +210,7 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
         tokenHash: hash('rev-late'),
         userId: 'rev-1',
         identityId: 'rev-i1',
+        createdAt: new Date(),
         expiresAt,
       }),
     ).rejects.toMatchObject({ code: 'unauthorized' });
@@ -219,6 +222,7 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
       tokenHash: hash('rev-old'),
       userId: 'rev-2',
       identityId: 'rev-i2',
+      createdAt: new Date(),
       expiresAt,
     });
     await linkAs('rev-i3', 'rev-2', 'rev-subject-3');

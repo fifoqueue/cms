@@ -10,7 +10,7 @@ import {
 } from '#lib/server/api.js';
 import { frontendSecret, pairFrontend } from '#lib/server/frontend-secret.js';
 import { RETURN_PARAM } from '#lib/server/return-path.js';
-import { SESSION_COOKIE, endSession } from '#lib/server/session.js';
+import { endSession, sessionToken } from '#lib/server/session-cookie.js';
 
 const OPEN_ADMIN_PATHS = [
   '/admin/login',
@@ -59,11 +59,17 @@ const requestSize: Handle = async ({ event, resolve }) => {
  * entries get their robots meta from the page itself. Headers are copied because a returned
  * response may have immutable headers.
  */
-const robotsHeader: Handle = async ({ event, resolve }) => {
+const responseSecurity: Handle = async ({ event, resolve }) => {
   const response = await resolve(event);
-  if (!isAdmin(event.url.pathname) && response.status < 400) return response;
+  const admin = isAdmin(event.url.pathname);
+  if (!admin && response.status < 400) return response;
   const headers = new Headers(response.headers);
   headers.set('x-robots-tag', 'noindex, nofollow');
+  if (admin) {
+    headers.set('cache-control', 'no-store');
+    headers.append('content-security-policy', "frame-ancestors 'none'");
+    headers.set('x-frame-options', 'DENY');
+  }
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -72,7 +78,8 @@ const robotsHeader: Handle = async ({ event, resolve }) => {
 };
 
 /** Cookies that make a public page differ per visitor (sessions, unlocked entries, previews). */
-const PERSONAL_COOKIE = /^(cms_session|cms_unlock_|cms_theme_preview)/;
+const PERSONAL_COOKIE =
+  /^(?:__Host-cms_session|cms_session|cms_unlock_|cms_theme_preview|cms_pending_|cms_commenter)/;
 
 /** Settings → Reading `cacheSeconds`, re-read at most once a minute. */
 let caching = { seconds: 0, until: 0 };
@@ -95,6 +102,15 @@ const cacheSeconds = async (fetch: typeof globalThis.fetch) => {
  */
 const publicCache: Handle = async ({ event, resolve }) => {
   const response = await resolve(event);
+  if (event.cookies.getAll().some(({ name }) => PERSONAL_COOKIE.test(name))) {
+    const headers = new Headers(response.headers);
+    headers.set('cache-control', 'private, no-store');
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  }
   if (
     (event.request.method !== 'GET' && event.request.method !== 'HEAD') ||
     isAdmin(event.url.pathname) ||
@@ -124,7 +140,7 @@ let installed = false;
 
 /** Resolves the session once per admin request and keeps signed-out users out of the admin area. */
 const guardAdmin: Handle = async ({ event, resolve }) => {
-  event.locals.token = event.cookies.get(SESSION_COOKIE) ?? null;
+  event.locals.token = sessionToken(event.cookies, event.url);
   event.locals.user = null;
 
   if (!installed) {
@@ -150,11 +166,20 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
     if (!event.locals.user) {
       endSession(event.cookies);
       event.locals.token = null;
-    } else if (!frontendSecret() && can(event.locals.user, 'settings.manage'))
-      await pairFrontend(adminApi(event.fetch, event.locals.token));
+    } else {
+      if (!frontendSecret() && can(event.locals.user, 'settings.manage'))
+        await pairFrontend(adminApi(event.fetch, event.locals.token));
+    }
   }
 
   if (isProtected(event.url.pathname) && !event.locals.user) {
+    // Enhanced forms get an action redirect they can intercept (the editor keeps unsaved text).
+    if (event.request.headers.get('x-sveltekit-action') === 'true')
+      return Response.json({
+        type: 'redirect',
+        status: 303,
+        location: '/admin/login',
+      });
     // Only a page visit can be repeated after signing in; a form post cannot.
     const back =
       event.request.method === 'GET' && event.url.pathname !== '/admin'
@@ -168,9 +193,40 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
   return resolve(event);
 };
 
+/** Languages written right to left (primary subtags). */
+const RTL = new Set([
+  'ar',
+  'ckb',
+  'dv',
+  'fa',
+  'he',
+  'ps',
+  'sd',
+  'ug',
+  'ur',
+  'yi',
+]);
+
+/** `<html lang dir>` from the site locale; anything that is not a language tag counts as `en`. */
+const documentLanguage: Handle = ({ event, resolve }) =>
+  resolve(event, {
+    transformPageChunk: ({ html }) => {
+      const lang = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(
+        event.locals.lang ?? '',
+      )
+        ? event.locals.lang!
+        : 'en';
+      const primary = lang.split('-')[0]!.toLowerCase();
+      return html
+        .replace('%lang%', lang)
+        .replace('%dir%', RTL.has(primary) ? 'rtl' : 'ltr');
+    },
+  });
+
 export const handle = sequence(
   requestSize,
   publicCache,
-  robotsHeader,
+  responseSecurity,
   guardAdmin,
+  documentLanguage,
 );

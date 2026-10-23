@@ -2,12 +2,13 @@ import { redirect } from '@sveltejs/kit';
 import { authApi, contentApi } from '#lib/server/api.js';
 import { failFrom, text } from '#lib/server/errors.js';
 import { RETURN_PARAM, returnPath } from '#lib/server/return-path.js';
-import { startSession } from '#lib/server/session.js';
+import { startSession } from '#lib/server/session-cookie.js';
+import { takeSignedOut } from '#lib/server/session.js';
 import { rememberSsoTransaction, ssoApi } from '#lib/server/sso.js';
 import { clientProof, visitorOf } from '#lib/server/visitor.js';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ fetch, locals, url }) => {
+export const load: PageServerLoad = async ({ fetch, locals, url, cookies }) => {
   if ((await authApi(fetch).status()).setupRequired)
     redirect(303, '/admin/setup');
   const back = returnPath(url.searchParams.get(RETURN_PARAM));
@@ -22,12 +23,13 @@ export const load: PageServerLoad = async ({ fetch, locals, url }) => {
     captcha,
     membership: await authApi(fetch).membership(),
     back,
+    signedOut: takeSignedOut(cookies),
   };
 };
 
 export const actions: Actions = {
   /** Sends the browser to the identity provider; the form is not enhanced so it navigates away. */
-  sso: async ({ fetch, cookies, getClientAddress }) => {
+  sso: async ({ fetch, cookies, getClientAddress, url }) => {
     let start;
 
     try {
@@ -39,7 +41,7 @@ export const actions: Actions = {
       return failFrom(caught);
     }
 
-    rememberSsoTransaction(cookies, start);
+    rememberSsoTransaction(cookies, start, url);
     redirect(303, start.authorizationUrl);
   },
 
@@ -53,9 +55,14 @@ export const actions: Actions = {
           { email, password: text(form, 'password') },
           visitorOf(event, form),
         ),
+        event.url,
       );
     } catch (caught) {
-      return failFrom(caught, { email });
+      // The form posts to `?/login`, dropping the query: echo where to go after the next try.
+      return failFrom(caught, {
+        email,
+        back: returnPath(text(form, RETURN_PARAM)),
+      });
     }
     redirect(303, returnPath(text(form, RETURN_PARAM)));
   },

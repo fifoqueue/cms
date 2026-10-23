@@ -1,4 +1,3 @@
-import { DATE_FORMATS } from '@cms/sdk';
 import type { ReadingSettingsInput } from '@cms/sdk';
 import { failFrom, text } from '#lib/server/errors.js';
 import { adminFor } from '#lib/server/session.js';
@@ -21,18 +20,19 @@ const count = (form: FormData, key: string, fallback: number) =>
 
 export const actions: Actions = {
   save: async (event) => {
-    const form = await event.request.formData();
-    const dateFormat = text(form, 'dateFormat');
+    const [form, current] = await Promise.all([
+      event.request.formData(),
+      adminFor(event).reading.get(),
+    ]);
+    // Dates and the time zone are edited in General settings and kept here.
     const input: ReadingSettingsInput = {
+      ...current,
       frontPage: text(form, 'frontPage') === 'page' ? 'page' : 'posts',
       frontPageId: text(form, 'frontPageId') || null,
       postsPageId: text(form, 'postsPageId') || null,
       postsPerPage: count(form, 'postsPerPage', 10),
       feedItems: count(form, 'feedItems', 20),
-      dateFormat: (DATE_FORMATS as readonly string[]).includes(dateFormat)
-        ? (dateFormat as ReadingSettingsInput['dateFormat'])
-        : 'long',
-      timeZone: text(form, 'timeZone') || 'UTC',
+      feedContent: text(form, 'feedContent') === 'excerpt' ? 'excerpt' : 'full',
       cacheSeconds: Math.max(
         0,
         Math.trunc(Number(text(form, 'cacheSeconds'))) || 0,

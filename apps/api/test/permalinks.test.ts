@@ -55,7 +55,7 @@ test('permalink workflow: templates, atomic regeneration, redirects, drafts and 
     publishedAt: publishedAt ? new Date(publishedAt) : null,
     createdAt: new Date('2026-10-01T09:00:00Z'),
   });
-  const title = 'Café/Ünï Ä';
+  const title = 'Café Ünï Ä';
   const encodedTitle = `/post/${encodeURIComponent(title)}`;
 
   // Fresh sites keep `/<slug>`; drafts own a path but are never served.
@@ -103,7 +103,7 @@ test('permalink workflow: templates, atomic regeneration, redirects, drafts and 
   expect([...paths.paths]).toEqual(before);
   expect(await service.get()).toEqual(DEFAULT_PERMALINK_SETTINGS);
 
-  // Title template: encoded exactly once, `/` stays inside the segment, no case folding.
+  // Title template: encoded exactly once, with no case folding.
   await service.update({
     ...DEFAULT_PERMALINK_SETTINGS,
     post: '/post/%title%',
@@ -126,6 +126,13 @@ test('permalink workflow: templates, atomic regeneration, redirects, drafts and 
   expect(await codeOf(() => resolve('/post/hello'))).toBe('not_found');
   expect(await codeOf(() => resolve('/post/Café/Ünï Ä'))).toBe('not_found');
   expect(await codeOf(() => resolve('/post/%2E%2E'))).toBe('not_found');
+  for (const unsafe of [
+    '/admin%2Flogin',
+    '/news/..%2Fadmin',
+    '/x%5Cy',
+    '/x%00y',
+  ])
+    expect(permalinkPathSchema.safeParse(unsafe).success).toBe(false);
 
   // Back to slugs: the old path is reclaimed, every earlier path redirects to it directly.
   await service.update(DEFAULT_PERMALINK_SETTINGS);
@@ -172,6 +179,7 @@ test('permalink workflow: templates, atomic regeneration, redirects, drafts and 
     item('g', 'dots', '..', '2026-10-24T00:00:00Z'),
     { ...item('f', 'admin', 'Other', null), type: 'page' as const },
     item('h', 'notes', 'notes.md', null),
+    item('i', 'separator', 'admin/login', null),
   ])
     expect(await codeOf(() => save(write))).toBe('invalid_input');
   expect(paths.current('f')).toBe('/post/Other');

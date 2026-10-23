@@ -78,12 +78,13 @@ export class ContentTypeService {
     fields: readonly FieldDefinition[],
   ): Promise<PublicContentType[]> {
     return (await this.list()).map(
-      ({ key, name, pluralName, description, archive }) => ({
+      ({ key, name, pluralName, description, archive, searchable }) => ({
         key,
         name,
         pluralName,
         description,
         archive,
+        searchable,
         fields: fields
           .filter((field) => field.public && field.contentTypes.includes(key))
           .map((field) => ({

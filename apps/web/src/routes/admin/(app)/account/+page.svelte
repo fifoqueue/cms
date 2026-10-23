@@ -86,7 +86,6 @@
           name="slug"
           required
           maxlength={191}
-          pattern="[a-z0-9]+(-[a-z0-9]+)*"
           value={data.user.slug}
           aria-describedby="slug-help"
         />
@@ -165,6 +164,41 @@
         <Button type="submit">{m.save}</Button>
       </div>
     </form>
+  </CardContent>
+</Card>
+
+<Card>
+  <CardHeader>
+    <CardTitle>{m.sessionsTitle}</CardTitle>
+    <CardDescription>{m.sessionsHelp}</CardDescription>
+  </CardHeader>
+  <CardContent>
+    <ul class="divide-y text-sm">
+      {#each data.sessions as session (session.id)}
+        <li class="flex flex-wrap items-center justify-between gap-2 py-2">
+          <span>
+            {m.sessionStarted(
+              new Date(session.createdAt).toLocaleString(i18n.language),
+            )}
+            <span class="block text-xs text-muted-foreground"
+              >{m.sessionExpires(
+                new Date(session.expiresAt).toLocaleString(i18n.language),
+              )}</span
+            >
+          </span>
+          {#if session.current}
+            <Badge variant="secondary">{m.sessionCurrent}</Badge>
+          {:else}
+            <form method="POST" action="?/sessionRevoke" use:enhance>
+              <input type="hidden" name="id" value={session.id} />
+              <Button type="submit" variant="outline" size="sm"
+                >{m.sessionRevoke}</Button
+              >
+            </form>
+          {/if}
+        </li>
+      {/each}
+    </ul>
   </CardContent>
 </Card>
 

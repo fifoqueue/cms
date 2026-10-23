@@ -3,6 +3,7 @@ import { contentApi } from '#lib/server/api.js';
 import { Errors } from '#lib/server/errors.js';
 import { listView, pageParam } from '#lib/server/public-view.js';
 import { loadSlots } from '#lib/server/slots.js';
+import { withTemplateData } from '#lib/server/theme-queries.js';
 import type { PageServerLoad } from './$types';
 
 /** The list of a content type that publishes an archive. */
@@ -19,7 +20,7 @@ export const load: PageServerLoad = async ({ fetch, url, params, parent }) => {
     page: pageParam(url),
     pageSize,
   });
-  return {
+  return withTemplateData(api, parent, {
     kind: 'archive' as const,
     archive: {
       key: type.key,
@@ -28,5 +29,5 @@ export const load: PageServerLoad = async ({ fetch, url, params, parent }) => {
     },
     posts: listView(posts),
     slots: await slots,
-  };
+  });
 };

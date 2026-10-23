@@ -40,6 +40,7 @@ import type { ClientProof, Visitor } from '#sdk/clients/security';
 import type { ClientOptions, Query } from '#sdk/transport';
 import type {
   SessionGrant,
+  SessionInfo,
   SetupStatus,
   LoginInput,
   SsoCallbackInput,
@@ -55,6 +56,7 @@ import {
   SSO_FRONTEND_SECRET_HEADER,
   adminUserSchema,
   sessionGrantSchema,
+  sessionInfoSchema,
   setupStatusSchema,
   ssoInfoSchema,
   ssoStartResultSchema,
@@ -87,6 +89,7 @@ import type {
   PluginInfo,
   PluginPage,
   PluginPageSummary,
+  DashboardWidget,
   PluginUpdate,
   SettingValues,
 } from '#sdk/plugins';
@@ -95,10 +98,20 @@ import {
   pluginPageResultSchema,
   pluginPageSchema,
   pluginPageSummarySchema,
+  dashboardWidgetSchema,
   pluginUpdateSchema,
 } from '#sdk/plugins';
-import type { PublicSiteDto, SiteSettings } from '#sdk/site';
-import { publicSiteSchema, siteSettingsSchema } from '#sdk/site';
+import type {
+  AdminSiteDto,
+  PublicSiteDto,
+  SiteSettings,
+  SiteSettingsInput,
+} from '#sdk/site';
+import {
+  adminSiteSchema,
+  publicSiteSchema,
+  siteSettingsSchema,
+} from '#sdk/site';
 import type { SlotMap, SlotQuery } from '#sdk/slots';
 import { slotMapSchema } from '#sdk/slots';
 import type {
@@ -143,8 +156,8 @@ export { CmsApiError } from '#sdk/transport';
 export type { ClientOptions, Request } from '#sdk/transport';
 
 /** Read-only access to published content. Needs no credentials. */
-export const createContentClient = (options: ClientOptions) => {
-  const request = createTransport(options);
+export const createContentClient = (options: ClientOptions, token?: string) => {
+  const request = createTransport(options, token);
   return {
     ...captchaClient(request),
     ...publicTypesClient(request),
@@ -263,6 +276,18 @@ export const createAuthClient = (options: ClientOptions, token?: string) => {
         response: adminUserSchema,
       }),
     profile: profileClient(request),
+    /** The signed-in user's own sessions. */
+    sessions: {
+      list: () =>
+        request<SessionInfo[]>('GET', '/api/v1/auth/sessions', {
+          response: z.array(sessionInfoSchema),
+        }),
+      revoke: (id: string) =>
+        request<void>(
+          'DELETE',
+          `/api/v1/auth/sessions/${encodeURIComponent(id)}`,
+        ),
+    },
   };
 };
 
@@ -320,6 +345,13 @@ export const createAdminClient = (options: ClientOptions, token: string) => {
           json: input,
           response: roleDefinitionSchema,
         }),
+      /** Deletes a custom role after giving its users `reassignTo`. */
+      remove: (key: string, reassignTo: string) =>
+        request<void>(
+          'DELETE',
+          `/api/v1/admin/roles/${encodeURIComponent(key)}`,
+          { query: { reassignTo } },
+        ),
     },
     membership: (enabled: boolean) =>
       request<{ enabled: boolean }>('PUT', '/api/v1/admin/membership', {
@@ -414,7 +446,11 @@ export const createAdminClient = (options: ClientOptions, token: string) => {
       ...contentWorkflowClient(request),
     },
     site: {
-      update: (input: SiteSettings) =>
+      get: () =>
+        request<AdminSiteDto>('GET', '/api/v1/admin/site', {
+          response: adminSiteSchema,
+        }),
+      update: (input: SiteSettingsInput) =>
         request<SiteSettings>('PUT', '/api/v1/admin/site', {
           json: input,
           response: siteSettingsSchema,
@@ -533,6 +569,11 @@ export const createAdminClient = (options: ClientOptions, token: string) => {
         request<PluginPageSummary[]>('GET', '/api/v1/admin/plugin-pages', {
           response: z.array(pluginPageSummarySchema),
         }),
+      /** Plugin dashboard widgets the user may see, rendered; failed ones are left out. */
+      dashboardWidgets: () =>
+        request<DashboardWidget[]>('GET', '/api/v1/admin/dashboard-widgets', {
+          response: z.array(dashboardWidgetSchema),
+        }),
       page: (id: string, key: string) =>
         request<PluginPage>('GET', pagePath(id, key), {
           response: pluginPageSchema,
@@ -581,3 +622,4 @@ export const createInstallationClient = (options: ClientOptions) => {
 export type { AuthorOption } from '#sdk/clients/users';
 export type { ClientProof, Visitor } from '#sdk/clients/security';
 export { createMediaClient } from '#sdk/clients/media';
+export { createAvatarClient } from '#sdk/clients/media';

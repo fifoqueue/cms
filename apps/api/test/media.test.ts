@@ -12,6 +12,7 @@ import {
   MemoryMediaStorage,
   fakeImages,
 } from '#test/support/memory-media';
+import { MemoryRateLimitStore } from '#test/support/memory-security';
 
 const codeOf = async (promise: Promise<unknown>) =>
   promise.then(
@@ -33,6 +34,8 @@ const setup = () => {
     ids: sequentialIds(),
     clock: fixedClock(),
     hooks: new HookBus({ timeoutMs: 50, logger: recordingLogger().logger }),
+    limiter: new MemoryRateLimitStore(),
+    limits: async () => ({ uploadsPerHour: 60, freeSpaceMb: 256 }),
     maxBytes: 1024,
   });
   return { media, repository, storage };
@@ -124,6 +127,56 @@ describe('media library', () => {
     expect(await media.file('../config.json')).toBeNull();
   });
 
+  test('uploads stop before exhausting storage or one user floods the site', async () => {
+    const low = setup();
+    low.storage.freeBytes = 256 * 1024 * 1024 + 17;
+    expect(await codeOf(low.media.upload(PNG, 'cat.png', author))).toBe(
+      'conflict',
+    );
+    expect(low.storage.files.size).toBe(0);
+
+    const flood = setup();
+    for (let index = 0; index < 60; index += 1)
+      await flood.media.upload(PNG, `${index}.png`, author);
+    expect(await codeOf(flood.media.upload(PNG, 'last.png', author))).toBe(
+      'rate_limited',
+    );
+  });
+
+  test('the library filters by month and attachment and lists where a file is used', async () => {
+    const { media, repository } = setup();
+    const first = await media.upload(PNG, 'a.png', author);
+    const second = await media.upload(PNG, 'b.png', author);
+    repository.usages.set(first.id, 1);
+    repository.entries.set(first.id, [
+      { id: 'c1', title: 'Post', type: 'post' },
+    ]);
+    const month = first.createdAt.slice(0, 7);
+
+    const unattached = await media.list({ unattached: 'true' }, author);
+    expect(unattached.items.map(({ id }) => id)).toEqual([second.id]);
+    expect((await media.list({ month }, author)).total).toBe(2);
+    expect((await media.list({ month: '1999-01' }, author)).total).toBe(0);
+    expect(await media.context(first.id, author)).toEqual({
+      newerId: second.id,
+      olderId: null,
+      usedIn: [{ id: 'c1', title: 'Post', type: 'post' }],
+    });
+    // An account that may upload files but not list content sees published entries only.
+    repository.entries.set(first.id, [
+      { id: 'c1', title: 'Post', type: 'post', published: true },
+      { id: 'c2', title: 'PRIVATE PLAN', type: 'post' },
+    ]);
+    const uploader = {
+      id: 'u',
+      role: 'uploader',
+      capabilities: ['media.upload' as const],
+    };
+    expect((await media.context(first.id, uploader)).usedIn).toEqual([
+      { id: 'c1', title: 'Post', type: 'post' },
+    ]);
+  });
+
   test('only the uploader or managers change a file, and used files need force', async () => {
     const { media, repository, storage } = setup();
     const image = await media.upload(PNG, 'cat.png', author);
@@ -134,6 +187,11 @@ describe('media library', () => {
     expect(await codeOf(media.update(image.id, { alt: 'A cat' }, editor))).toBe(
       'ok',
     );
+    // An alt-only change (the media picker) keeps a caption written elsewhere.
+    await media.update(image.id, { caption: 'Newer caption' }, author);
+    expect(
+      await media.update(image.id, { alt: 'From the picker' }, author),
+    ).toMatchObject({ alt: 'From the picker', caption: 'Newer caption' });
 
     repository.usages.set(image.id, 2);
     expect(await codeOf(media.remove(image.id, false, author))).toBe(

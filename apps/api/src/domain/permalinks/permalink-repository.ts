@@ -12,6 +12,16 @@ export interface PathLookup {
   findByPath(path: string): Promise<PathOwner | null>;
 }
 
+/** Adds old addresses of imported content as permanent redirects. */
+export interface RedirectWriter {
+  /**
+   * Records `path` as a redirect to `contentId`, serialized with path writes. False (nothing
+   * written) when the path is not a valid unreserved content path, lies under an archive base or
+   * is already someone's path or redirect.
+   */
+  addRedirect(contentId: string, path: string): Promise<boolean>;
+}
+
 export interface PermalinkRepository extends PathLookup {
   /** Stored templates through `readPermalinkSettings`; defaults when never saved. */
   readSettings(): Promise<PermalinkSettings>;
