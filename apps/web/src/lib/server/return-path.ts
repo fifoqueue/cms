@@ -31,7 +31,6 @@ export const returnPath = (
   }
   const blocked = [
     loginPath,
-    '/admin/login',
     '/admin/logout',
     '/admin/setup',
     '/admin/sso/callback',

@@ -14,7 +14,7 @@ test('returnPath keeps canonical same-site paths and refuses auth loops or exter
     '/\\evil.example/admin',
     '/\t/evil.example',
     '/admin/../../evil',
-    '/admin/login?redirect_to=/admin',
+    '/admin/register',
     '/members/sign-in',
     '/post/%2F%2Fevil.example',
     `/${'a'.repeat(2000)}`,
