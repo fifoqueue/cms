@@ -61,11 +61,6 @@
           ><RotateCcw class="size-4" /> {m.restore}</Button
         >
       </form>
-      <form method="POST" action="?/delete" use:enhance={confirmDelete}>
-        <Button type="submit" variant="destructive"
-          ><Trash2 class="size-4" /> {m.deletePermanently}</Button
-        >
-      </form>
     {:else}
       <form method="POST" action="?/trash" use:enhance>
         <Button type="submit" variant="destructive"
@@ -73,6 +68,11 @@
         >
       </form>
     {/if}
+    <form method="POST" action="?/delete" use:enhance={confirmDelete}>
+      <Button type="submit" variant="destructive"
+        ><Trash2 class="size-4" /> {m.deletePermanently}</Button
+      >
+    </form>
   </div>
 </div>
 

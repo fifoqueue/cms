@@ -109,7 +109,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
-    redirect(303, '/admin/content?view=trash');
+    redirect(303, '/admin/content?notice=deleted');
   },
   /** Opens the site's rendering of the editor's current text (the form targets a new tab). */
   preview: async (event) => {

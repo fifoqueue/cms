@@ -1667,4 +1667,5 @@ export const en = {
         completed: 'Completed',
       }) as Record<string, string>
     )[status] ?? status,
+  skipToContent: 'Skip to main content',
 } as const;

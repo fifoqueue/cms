@@ -16,6 +16,7 @@ const database = {
 };
 const completion: InstallCompleteInput = {
   token: key,
+  siteUrl: 'https://cms.example.com',
   admin: {
     name: '관리자',
     email: 'admin@example.com',
@@ -120,6 +121,15 @@ describe('InstallationService', () => {
         site: { ...completion.site, title: '' },
       }),
     ).rejects.toMatchObject({ code: 'invalid_input' });
+    for (const siteUrl of [
+      '',
+      'javascript:alert(1)',
+      'https://user:secret@example.com',
+      'https://example.com/path',
+    ])
+      await expect(
+        service.complete({ ...completion, siteUrl }),
+      ).rejects.toMatchObject({ code: 'invalid_input' });
     let received: unknown;
     const original = backend.configure.bind(backend);
     backend.configure = async (...args: unknown[]) => {

@@ -61,6 +61,7 @@ export const actions: Actions = {
     try {
       const grant = await installationApi(fetch).complete({
         token: text(form, 'token') || cookies.get(INSTALL_KEY_COOKIE) || '',
+        siteUrl: url.origin,
         admin: {
           name: values.name,
           email: values.email,

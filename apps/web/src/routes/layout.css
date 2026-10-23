@@ -149,6 +149,30 @@
   html {
     @apply font-sans;
   }
+  :where(
+      a[href],
+      button,
+      select,
+      summary,
+      label[for],
+      input[type='checkbox'],
+      input[type='radio'],
+      input[type='submit'],
+      input[type='button'],
+      input[type='reset'],
+      input[type='file'],
+      [role='button'],
+      [role='tab'],
+      [role='menuitem'],
+      [role='option'],
+      [role='switch']
+    ):not(:disabled):not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+  /* Taller neighbouring fields must not stretch the gap between a label and its input. */
+  .cms-admin .grid:has(> label) {
+    align-content: start;
+  }
   /* Admin: native checkboxes and radios line up with the text and icons beside them. */
   .cms-admin :is(input[type='checkbox'], input[type='radio']) {
     @apply size-4 shrink-0 accent-primary;

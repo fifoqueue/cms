@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { setupSchema } from '#sdk/auth';
 import { siteSettingsSchema } from '#sdk/site';
+import { seoSettingsSchema } from '#sdk/seo';
 
 export const databaseSetupSchema = z.object({
   host: z
@@ -28,6 +29,7 @@ export const installCompleteSchema = z.object({
   token: z.string().min(1).max(256),
   admin: setupSchema,
   site: siteSettingsSchema,
+  siteUrl: seoSettingsSchema.shape.siteUrl.pipe(z.string().min(1)),
 });
 
 export type DatabaseSetupInput = z.input<typeof databaseSetupSchema>;

@@ -1618,4 +1618,5 @@ export const ko: Messages = {
         completed: '처리 완료',
       }) as Record<string, string>
     )[status] ?? status,
+  skipToContent: '본문으로 바로가기',
 };

@@ -25,6 +25,7 @@
 
   /** The small-screen menu panel. */
   let expanded = $state(false);
+  let menuToggle: HTMLButtonElement | null = $state(null);
 
   afterNavigate(() => {
     expanded = false;
@@ -53,10 +54,23 @@
   };
 </script>
 
+<svelte:window
+  onkeydown={(event) => {
+    if (event.key !== 'Escape' || !expanded) return;
+    expanded = false;
+    menuToggle?.focus();
+  }}
+/>
+
 <div
   class="flex min-h-screen flex-col bg-muted/40 md:flex-row"
   lang={i18n.language}
 >
+  <a
+    href="#admin-main"
+    class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-background focus:px-4 focus:py-3 focus:text-foreground focus:outline-2 focus:outline-ring"
+    >{i18n.m.skipToContent}</a
+  >
   <aside
     class={[
       'border-b bg-background md:shrink-0 md:border-r md:border-b-0',
@@ -73,6 +87,7 @@
         >
       </div>
       <Button
+        bind:ref={menuToggle}
         variant="ghost"
         size="icon"
         class="md:hidden"
@@ -138,7 +153,7 @@
       siteTitle={data.siteTitle}
       pendingComments={data.counts.comments}
     />
-    <main class="p-4 md:p-8">
+    <main id="admin-main" tabindex="-1" class="p-4 md:p-8">
       <div class="mx-auto max-w-5xl space-y-6">
         <FlashNotice />
         {@render children()}
