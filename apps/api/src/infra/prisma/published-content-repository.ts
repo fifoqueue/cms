@@ -8,115 +8,13 @@ import type {
 } from '#api/domain/content/published-content-repository';
 import type { Database } from '#api/infra/prisma/client';
 import {
-  parseFields,
-  featuredImageOf,
   PUBLIC_CONTENT,
-  contentRelations,
   contentWhere,
   termScope,
   publishedIn,
-  termSummaries,
 } from '#api/infra/prisma/content-criteria';
 import { Prisma } from '#api/infra/prisma/generated/client';
-import { decodePath } from '#api/infra/prisma/permalink-repository';
-import { fromPublicSeoColumns } from '#api/infra/prisma/seo-mapper';
-import { Errors } from '#api/shared/errors';
-
-/** Public columns only: never the editor document, search text, author, status or focus keyword. */
-const summaryColumns = {
-  id: true,
-  type: true,
-  slug: true,
-  title: true,
-  excerpt: true,
-  publishedAt: true,
-  updatedAt: true,
-  seoTitle: true,
-  seoDescription: true,
-  seoCanonicalUrl: true,
-  seoNoIndex: true,
-  seoNoFollow: true,
-  seoImageUrl: true,
-  seoImageAlt: true,
-  seoSocialTitle: true,
-  seoSocialDescription: true,
-  seoSchemaType: true,
-  seoAuthorName: true,
-  seoAuthorUrl: true,
-  sticky: true,
-  parentId: true,
-  // Only whether the parent is public leaves the repository (see `toSummary`).
-  parent: { select: { status: true, trashedAt: true, passwordHash: true } },
-  commentCount: true,
-  summary: true,
-  passwordHash: true,
-  ...contentRelations,
-} as const satisfies Prisma.ContentSelect;
-
-const columns = {
-  ...summaryColumns,
-  html: true,
-  fields: true,
-} as const satisfies Prisma.ContentSelect;
-
-type SummaryRow = Prisma.ContentGetPayload<{ select: typeof summaryColumns }>;
-
-const toSummary = ({
-  currentPath,
-  terms,
-  author,
-  passwordHash,
-  featuredMedia,
-  parent,
-  ...row
-}: SummaryRow): PublishedSummaryRecord => {
-  if (!currentPath) throw new Error(Errors.ContentPathMissing);
-  return {
-    id: row.id,
-    type: row.type,
-    slug: row.slug,
-    path: decodePath(currentPath.path),
-    title: row.title,
-    excerpt: row.excerpt,
-    publishedAt: row.publishedAt,
-    updatedAt: row.updatedAt,
-    extraTerms: terms
-      .filter(
-        ({ term }) => term.taxonomy !== 'category' && term.taxonomy !== 'tag',
-      )
-      .map(({ term }) => ({
-        id: term.id,
-        name: term.name,
-        slug: term.slug,
-        taxonomy: term.taxonomy,
-      })),
-    categories: termSummaries(terms, 'category'),
-    tags: termSummaries(terms, 'tag'),
-    author,
-    // Unpublished, trashed or locked parents stay private: the child shows as top-level.
-    parentId:
-      parent?.status === 'published' &&
-      parent.trashedAt === null &&
-      parent.passwordHash === null
-        ? row.parentId
-        : null,
-    featuredImage: featuredImageOf(featuredMedia),
-    sticky: row.sticky,
-    commentCount: row.commentCount,
-    // Only whether it is set leaves the repository, never the hash.
-    protected: passwordHash !== null,
-    summary: row.summary,
-    seo: fromPublicSeoColumns(row),
-  };
-};
-
-const toRecord = (
-  row: Prisma.ContentGetPayload<{ select: typeof columns }>,
-): PublishedRecord => ({
-  ...toSummary(row),
-  html: row.html,
-  fields: parseFields(row.fields),
-});
+import { projectContent } from '#api/infra/prisma/public-content-projection';
 
 /** Published-only reads filtered in the database, with the same criteria as the admin list. */
 export class PrismaPublishedContentRepository implements PublishedContentRepository {
@@ -127,11 +25,13 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
   }
 
   async privateById(id: string) {
-    const row = await this.db.content.findFirst({
-      where: { id, status: 'private', trashedAt: null },
-      select: columns,
-    });
-    return row ? toRecord(row) : null;
+    const rows = await projectContent(
+      this.db,
+      Prisma.sql`c.id = ${id}`,
+      true,
+      'private',
+    );
+    return rows[0] ?? null;
   }
 
   bySlug(slug: string) {
@@ -139,16 +39,16 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
   }
 
   list(criteria: PublishedCriteria) {
-    return this.page(criteria, columns, toRecord);
+    return this.page<PublishedRecord>(criteria, true);
   }
 
   summaries(criteria: PublishedCriteria) {
     return criteria.search
       ? this.fullTextSummaries(criteria)
-      : this.page(criteria, summaryColumns, toSummary);
+      : this.page<PublishedSummaryRecord>(criteria, false);
   }
 
-  private async page<S extends Prisma.ContentSelect, R, T>(
+  private async page<T extends PublishedSummaryRecord>(
     {
       page,
       pageSize,
@@ -156,8 +56,7 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
       order = 'desc',
       ...filters
     }: PublishedCriteria,
-    select: S,
-    map: (row: R) => T,
+    body: boolean,
   ) {
     const where = await contentWhere(this.db, {
       ...filters,
@@ -170,21 +69,28 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
     if (skip >= total) return { items: [], total };
     const rows = await this.db.content.findMany({
       where,
-      select,
+      select: { id: true },
       orderBy: [{ [orderBy]: order }, { id: order }],
       skip,
       take: pageSize,
     });
-    return { items: (rows as R[]).map(map), total };
+    if (!rows.length) return { items: [], total };
+    const filter = Prisma.sql`c.id IN (${Prisma.join(rows.map(({ id }) => id))})`;
+    const items = body
+      ? await projectContent(this.db, filter, true)
+      : await projectContent(this.db, filter, false);
+    const positions = new Map(rows.map(({ id }, index) => [id, index]));
+    items.sort((a, b) => positions.get(a.id)! - positions.get(b.id)!);
+    return { items: items as T[], total };
   }
 
   async summariesByIds(ids: readonly string[]) {
     if (!ids.length) return [];
-    const rows = await this.db.content.findMany({
-      where: { id: { in: [...ids] }, ...PUBLIC_CONTENT },
-      select: summaryColumns,
-    });
-    return rows.map(toSummary);
+    return projectContent(
+      this.db,
+      Prisma.sql`c.id IN (${Prisma.join([...ids])})`,
+      false,
+    );
   }
 
   private async fullTextSummaries({
@@ -349,16 +255,23 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
             { publishedAt: at, id: { [direction]: id } },
           ],
         },
-        select: summaryColumns,
+        select: { id: true },
         orderBy:
           direction === 'lt'
             ? [{ publishedAt: 'desc' }, { id: 'desc' }]
             : [{ publishedAt: 'asc' }, { id: 'asc' }],
       });
     const [previous, next] = await Promise.all([near('lt'), near('gt')]);
+    const items = new Map(
+      (
+        await this.summariesByIds(
+          [previous?.id, next?.id].filter((id): id is string => !!id),
+        )
+      ).map((item) => [item.id, item]),
+    );
     return {
-      previous: previous && toSummary(previous),
-      next: next && toSummary(next),
+      previous: previous ? (items.get(previous.id) ?? null) : null,
+      next: next ? (items.get(next.id) ?? null) : null,
     };
   }
 
@@ -400,10 +313,11 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
   }
 
   private async find(where: { id: string } | { slug: string }) {
-    const row = await this.db.content.findUnique({
-      where: { ...where, ...PUBLIC_CONTENT },
-      select: columns,
-    });
-    return row && toRecord(row);
+    const filter =
+      'id' in where
+        ? Prisma.sql`c.id = ${where.id}`
+        : Prisma.sql`c.slug = ${where.slug}`;
+    const rows = await projectContent(this.db, filter, true);
+    return rows[0] ?? null;
   }
 }
