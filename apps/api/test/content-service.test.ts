@@ -7,6 +7,7 @@ import {
 import type { ContentInput } from '@cms/sdk';
 import { ContentService } from '#api/domain/content/content-service';
 import { checkContentParent } from '#api/domain/content/hierarchy';
+import { mediaIdsOf } from '#api/domain/content/plain-text';
 import { MenuService } from '#api/domain/appearance/menu-service';
 import {
   PublicContentService,
@@ -768,15 +769,38 @@ describe('content taxonomy and search', () => {
       ADMIN,
     );
     await service.create(input({ title: 'Needle draft' }), ADMIN);
+    const media = {
+      type: 'doc' as const,
+      content: [
+        {
+          type: 'video',
+          attrs: {
+            mediaId: 'video-1',
+            posterId: 'poster-1',
+            caption: 'Aurora',
+          },
+        },
+        { type: 'file', attrs: { src: '/media/a.pdf', name: 'Accounts' } },
+      ],
+    };
+    await service.create(
+      input({ ...published, title: 'Gamma', document: media }),
+      ADMIN,
+    );
+    // A poster is in use like the video itself, so the library keeps it.
+    expect(mediaIdsOf(media).sort()).toEqual(['poster-1', 'video-1']);
 
     const slugs = async (query: Record<string, unknown>) =>
       (await publicContent.list(query)).items.map((item) => item.slug).sort();
 
     expect(await slugs({ search: 'needle' })).toEqual(['alpha', 'beta']);
     expect(await slugs({ search: 'Intro Needle' })).toEqual(['alpha']);
+    // Captions and file link text are visible, so they are searchable.
+    expect(await slugs({ search: 'aurora' })).toEqual(['gamma']);
+    expect(await slugs({ search: 'accounts' })).toEqual(['gamma']);
     expect(await slugs({ search: 'strong' })).toEqual([]);
     expect(await slugs({ search: '<p>' })).toEqual([]);
-    expect(await slugs({ search: '  ' })).toEqual(['alpha', 'beta']);
+    expect(await slugs({ search: '  ' })).toEqual(['alpha', 'beta', 'gamma']);
   });
 
   test('archives filter by category (with descendants) and tag; totals match the filters', async () => {
