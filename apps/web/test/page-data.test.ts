@@ -274,6 +274,17 @@ const forbidden = (name: string) =>
     },
   );
 
+const publicLocals = () =>
+  new Proxy(
+    { token: null as string | null },
+    {
+      get(target, key) {
+        if (key === 'token') return target.token;
+        throw new Error(`public loader read locals.${String(key)}`);
+      },
+    },
+  );
+
 const publicEvent = (
   path: string,
   params: Record<string, string> = {},
@@ -284,7 +295,7 @@ const publicEvent = (
     url: new URL(path, 'http://web.test'),
     route: { id: route },
     params,
-    locals: forbidden('locals'),
+    locals: publicLocals(),
     // Public entry reads may forward visitor proofs and an optional session to the API.
     cookies: { getAll: () => [], get: () => undefined },
     parent: async () => ({
