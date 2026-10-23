@@ -101,18 +101,17 @@ export const parseDocument = (document: ContentDocument) => {
       const spec = schema.nodes[type] ?? schema.marks[type];
       if (!spec) throw new Error(Errors.InvalidDocument);
       const attrs = raw.attrs ?? {};
-      if (
-        typeof attrs !== 'object' ||
-        attrs === null ||
-        Array.isArray(attrs) ||
-        Object.keys(attrs).some(
-          (key) => !Object.hasOwn(spec.spec.attrs ?? {}, key),
-        )
-      )
+      if (typeof attrs !== 'object' || attrs === null || Array.isArray(attrs))
         throw new Error(Errors.InvalidDocument);
+      // Unknown attributes are dropped by the schema, as they always were; known ones must be valid.
+      const known = Object.fromEntries(
+        Object.entries(attrs).filter(([key]) =>
+          Object.hasOwn(spec.spec.attrs ?? {}, key),
+        ),
+      );
       const validator =
         contentAttributeSchemas[type as keyof typeof contentAttributeSchemas];
-      if (validator && !validator.safeParse(attrs).success)
+      if (validator && !validator.safeParse(known).success)
         throw new Error(Errors.InvalidDocument);
       for (const child of [
         ...(Array.isArray(raw.content) ? raw.content : []),

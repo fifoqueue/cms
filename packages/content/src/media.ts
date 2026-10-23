@@ -155,6 +155,12 @@ export const Video = Node.create({
         parseHTML: (element) =>
           safeImageSrc(videoOf(element)?.getAttribute('poster')),
       },
+      // A library poster's id, so media-in-use protection covers it like the video itself.
+      posterId: {
+        default: null,
+        parseHTML: (element) =>
+          videoOf(element)?.getAttribute('data-poster-id'),
+      },
       loop: {
         default: false,
         parseHTML: (element) => videoOf(element)?.hasAttribute('loop') ?? false,
@@ -182,6 +188,7 @@ export const Video = Node.create({
           src: safeImageSrc(a.src),
           poster: safeImageSrc(a.poster),
           'data-media-id': a.mediaId,
+          'data-poster-id': a.posterId,
           controls: '',
           preload: 'metadata',
           playsinline: '',

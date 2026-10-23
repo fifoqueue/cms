@@ -187,14 +187,21 @@ test('WordPress-only items are reported, and files with a DTD are refused', asyn
 <rss xmlns:wp="http://wordpress.org/export/1.2/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/"><channel>
 <wp:wxr_version>1.2</wp:wxr_version>
 <item><title>Logo</title><wp:post_type>attachment</wp:post_type><wp:status>inherit</wp:status></item>
+<item><title>Huge gallery</title><content:encoded><![CDATA[<figure class="wp-block-gallery">${'<img src="https://example.com/a.jpg">'.repeat(101)}</figure>]]></content:encoded><wp:status>draft</wp:status><wp:post_type>post</wp:post_type></item>
 <item><title>Classic</title><dc:creator>someone</dc:creator><content:encoded><![CDATA[First line
 
 Second <script>x()</script>para]]></content:encoded><wp:post_name>classic</wp:post_name><wp:status>draft</wp:status><wp:post_type>post</wp:post_type></item>
+<item><title>Seven columns</title><content:encoded><![CDATA[<figure class="wp-block-gallery columns-7"><img src="https://example.com/a.jpg"></figure>]]></content:encoded><wp:status>draft</wp:status><wp:post_type>post</wp:post_type></item>
 </channel></rss>`;
   const result = await target.importer.importWxr(xml, ADMIN);
-  expect(result).toMatchObject({ content: 1, skipped: [{ title: 'Logo' }] });
-  const [entry] = [...target.content.rows.values()];
+  // An unusable body skips its entry only; out-of-range block settings fall back to defaults.
+  expect(result).toMatchObject({
+    content: 2,
+    skipped: [{ title: 'Logo' }, { title: 'Huge gallery' }],
+  });
+  const [entry, gallery] = [...target.content.rows.values()];
   expect(entry!.html).toBe('<p>First line</p><p>Second para</p>');
+  expect(gallery!.html).toContain('data-columns="3"');
   expect(
     await target.importer
       .importWxr('<!DOCTYPE x [<!ENTITY a "b">]><rss/>', ADMIN)

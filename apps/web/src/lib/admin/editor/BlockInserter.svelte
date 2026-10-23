@@ -20,6 +20,10 @@
   let picker: ReturnType<typeof MediaPicker>;
   let mediaKind = $state<MediaKind>('image');
   let pending = $state('image');
+  /** How the menu was opened, and whether it ended in a choice or Escape (decides where focus goes). */
+  let slashed = false;
+  let chosen = false;
+  let escaped = false;
   const blocks = [
     'paragraph',
     'heading',
@@ -67,6 +71,7 @@
         return;
       event.preventDefault();
       search = '';
+      slashed = true;
       open = true;
     };
     current.on('transaction', changed);
@@ -87,6 +92,7 @@
 
   const choose = async (type: string) => {
     if (!editor) return;
+    chosen = true;
     open = false;
     search = '';
     if (['image', 'audio', 'video', 'file', 'gallery'].includes(type)) {
@@ -166,7 +172,14 @@
       <Popover.Content
         sideOffset={8}
         align="start"
-        onCloseAutoFocus={(event) => event.preventDefault()}
+        onEscapeKeydown={() => (escaped = true)}
+        onCloseAutoFocus={(event) => {
+          // A choice moves focus itself (into the text or the media picker). Escaping the slash
+          // menu returns to the text at the kept selection; the + button gets focus back otherwise.
+          if (chosen || slashed) event.preventDefault();
+          if (slashed && escaped && !chosen) editor?.commands.focus();
+          slashed = chosen = escaped = false;
+        }}
         class="z-50 w-80 max-w-[calc(100vw-2rem)] rounded-lg border bg-popover p-3 text-popover-foreground shadow-md"
       >
         <Input

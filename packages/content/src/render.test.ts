@@ -48,6 +48,39 @@ describe('renderDocument', () => {
     expect(html).not.toContain('javascript:');
   });
 
+  test('documents written by the previous schema still render', () => {
+    // Tiptap parsed attribute text into scalars (alt="2024" became a number); stored JSON kept it.
+    const html = renderDocument({
+      type: 'doc',
+      content: [
+        {
+          type: 'codeBlock',
+          attrs: { language: 'c#' },
+          content: [{ type: 'text', text: 'int x;' }],
+        },
+        {
+          type: 'image',
+          attrs: { src: '/media/a.png', alt: 2024, width: '100%', extra: 1 },
+        },
+        { type: 'video', attrs: { src: '/media/x.mp4', onerror: 'alert(1)' } },
+        {
+          type: 'orderedList',
+          attrs: { start: 0, type: 'disc' },
+          content: [{ type: 'listItem', content: [paragraph('x').content[0]] }],
+        },
+        paragraph('report', [
+          { type: 'link', attrs: { href: '/r', target: 'report', rel: 'UGC' } },
+        ]).content[0]!,
+      ],
+    });
+    expect(html).toContain('class="language-c#"');
+    expect(html).toContain('target="report"');
+    expect(html).toContain('alt="2024"');
+    // Unknown attributes are dropped, never rendered.
+    expect(html).not.toContain('onerror');
+    expect(html).not.toContain('extra');
+  });
+
   test('rejects nodes outside the schema', () => {
     expect(() =>
       renderDocument({ type: 'doc', content: [{ type: 'iframe' }] }),
@@ -152,7 +185,6 @@ test('block attributes reject injected structure and escape captions, citations 
       type: 'image',
       attrs: { src: '/media/x.webp', align: 'center;position:fixed' },
     },
-    { type: 'video', attrs: { src: '/media/x.mp4', onerror: 'alert(1)' } },
     { type: 'file', attrs: { name: { toString: 'x' } } },
     { type: 'gallery', attrs: { columns: -1 }, content: [{ type: 'image' }] },
     { type: 'paragraph', attrs: { textAlign: 'left;color:red' } },

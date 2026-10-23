@@ -64,6 +64,10 @@
 :is(.cms-prose, .tiptap) .cms-align-center {
   margin-inline: auto;
 }
+/* The figure fills the column, so a narrower picture centers inside it. */
+:is(.cms-prose, .tiptap) .cms-image.cms-align-center > :is(img, a > img) {
+  margin-inline: auto;
+}
 :is(.cms-prose, .tiptap) .cms-align-left {
   float: left;
   max-width: 50%;
@@ -85,6 +89,11 @@
 }
 .cms-site .cms-prose > .cms-align-full {
   --cms-block-width: 100cqw;
+}
+/* The breakout assumes a column centered in the site; beside a sidebar it stays in its column. */
+.cms-site .cms-block-column .cms-prose > :is(.cms-align-wide, .cms-align-full) {
+  width: auto;
+  margin-inline: 0;
 }
 :is(.cms-prose, .tiptap) :is(.cms-align-wide, .cms-align-full) img {
   width: 100%;
