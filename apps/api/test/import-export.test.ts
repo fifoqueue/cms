@@ -130,6 +130,16 @@ test('classic imports retain blank lines and indentation inside preformatted cod
   expect(tiptapHtmlParser.parse(html)).toEqual(tiptapHtmlParser.parse(source));
 });
 
+test('classic shortcode boundaries preserve Unicode text and the following paragraph', () => {
+  const html = classicHtml(
+    '[caption]<img src="https://example.com/a.jpg">İ[/caption]AFTER',
+    '',
+    { url: () => undefined, childImages: () => [] },
+  );
+  expect(html).toContain('<figcaption>İ</figcaption>');
+  expect(html).toContain('<p>AFTER</p>');
+});
+
 test('an over-budget author import creates no accounts or content', async () => {
   let created = 0;
   const target = await site({
