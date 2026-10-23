@@ -1,13 +1,18 @@
 import type { PluginBlockInfo } from '@cms/sdk';
 import { PluginBlock } from '@cms/content';
 
-/** Read on mount so navigation reflects plugin activation changes; failures leave no choices. */
+let loading: Promise<PluginBlockInfo[]> | null = null;
+
+/** Share only an in-flight read; later editor visits see plugin activation changes. */
 export const loadPluginBlocks = () =>
-  fetch('/admin/content/plugin-blocks')
+  (loading ??= fetch('/admin/content/plugin-blocks')
     .then((response) =>
       response.ok ? (response.json() as Promise<PluginBlockInfo[]>) : [],
     )
-    .catch(() => []) as Promise<PluginBlockInfo[]>;
+    .catch(() => [])
+    .finally(() => {
+      loading = null;
+    }));
 
 /**
  * The shared `pluginBlock` node with an editor placeholder: the block's title, or a notice

@@ -86,6 +86,9 @@ test('public login paths stay canonical and outside system routes', () => {
     '/feed.xml',
     '/privacy/confirm',
     '/login/',
+    '/members/sign-in/__data.json',
+    '/members/sign-in.html__data.json',
+    '/members/sign-in/__route.js',
   ])
     expect(
       siteSettingsSchema.safeParse({ ...DEFAULT_SITE_SETTINGS, loginPath })

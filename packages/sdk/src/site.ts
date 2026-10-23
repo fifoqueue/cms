@@ -25,6 +25,8 @@ export const publicLoginPathSchema = z
     if (
       path === '/' ||
       path.endsWith('/') ||
+      path.endsWith('__data.json') ||
+      path.endsWith('__route.js') ||
       LOGIN_ROUTE_CONFLICTS.has(path.toLowerCase()) ||
       permalinkPathIssue(path)
     )
@@ -39,7 +41,7 @@ export const siteSettingsSchema = z.object({
   iconId: siteImageId,
   /** Custom logo shown by the `site-logo` block. */
   logoId: siteImageId,
-  /** Public, same-site alias for the stable administrator login route. */
+  /** Canonical public authentication path. */
   loginPath: publicLoginPathSchema,
   /** Whether themes show login links and signed-out admin requests redirect there. */
   showLogin: z.boolean().default(true),

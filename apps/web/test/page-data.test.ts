@@ -1181,3 +1181,22 @@ test('hidden login masks protected admin screens while visible login uses the co
     );
   }
 });
+
+test('public error responses are not cached when a route may become a login page', async () => {
+  override = ({ url }) =>
+    url.pathname === '/api/v1/install/status'
+      ? json({ databaseConfigured: true, setupRequired: false })
+      : undefined;
+  const event = Object.assign(publicEvent('/not-created'), {
+    request: new Request('http://web.test/not-created'),
+    locals: { token: null, user: null },
+  });
+  const response = await with_request_store({ event, state: {} as never }, () =>
+    handleRequest({
+      event,
+      resolve: async () => new Response(null, { status: 404 }),
+    }),
+  );
+  expect(response.status).toBe(404);
+  expect(response.headers.get('cache-control')).toBe('private, no-store');
+});

@@ -75,8 +75,8 @@ const responseSecurity: Handle = async ({ event, resolve }) => {
   if (!admin && response.status < 400) return response;
   const headers = new Headers(response.headers);
   headers.set('x-robots-tag', 'noindex, nofollow');
+  headers.set('cache-control', 'private, no-store');
   if (admin) {
-    headers.set('cache-control', 'private, no-store');
     headers.append('content-security-policy', "frame-ancestors 'none'");
     headers.set('x-frame-options', 'DENY');
   }

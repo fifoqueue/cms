@@ -13,9 +13,16 @@ const form = (ids: string[]) => {
 test('plugin block choices refresh after activation between editor visits', async () => {
   const original = globalThis.fetch;
   let blocks: unknown[] = [];
-  globalThis.fetch = (async () => Response.json(blocks)) as typeof fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls++;
+    return Response.json(blocks);
+  }) as typeof fetch;
   try {
-    expect(await loadPluginBlocks()).toEqual([]);
+    expect(await Promise.all([loadPluginBlocks(), loadPluginBlocks()])).toEqual(
+      [[], []],
+    );
+    expect(calls).toBe(1);
     blocks = [
       {
         block: 'plugin:sample:notice',
@@ -25,6 +32,7 @@ test('plugin block choices refresh after activation between editor visits', asyn
       },
     ];
     expect(await loadPluginBlocks()).toEqual(blocks);
+    expect(calls).toBe(2);
   } finally {
     globalThis.fetch = original;
   }
