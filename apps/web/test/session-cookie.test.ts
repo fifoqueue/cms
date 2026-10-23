@@ -70,7 +70,7 @@ describe('session cookie', () => {
 
   test('HTTPS SSO uses only its host-bound transaction cookie', () => {
     const state = cookies({ cms_sso: 'planted' });
-    const url = new URL('https://cms.example/admin/login');
+    const url = new URL('https://cms.example/login');
     setSsoTransaction(
       state.api,
       {
@@ -79,16 +79,17 @@ describe('session cookie', () => {
       } as never,
       url,
       '/admin/sso/callback',
+      '/blog?ref=sso',
     );
 
-    expect(state.values.get('__Host-cms_sso')).toBe('real');
+    expect(state.values.get('__Host-cms_sso')).not.toContain('/blog');
     expect(state.options.get('__Host-cms_sso')).toMatchObject({
       path: '/',
       secure: true,
     });
-    expect(consumeSsoTransaction(state.api, url, '/admin/sso/callback')).toBe(
-      'real',
-    );
+    expect(
+      consumeSsoTransaction(state.api, url, '/admin/sso/callback'),
+    ).toEqual({ transaction: 'real', back: '/blog?ref=sso' });
     expect(
       consumeSsoTransaction(state.api, url, '/admin/sso/callback'),
     ).toBeNull();

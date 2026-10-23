@@ -1,5 +1,6 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import type { Path } from '$app/types';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -69,7 +70,7 @@
     {/if}
     <p class="text-center text-sm">
       <a
-        href={resolve('/admin/(auth)/login')}
+        href={resolve(data.loginPath as Path)}
         class="text-muted-foreground hover:underline">{m.backToSignIn}</a
       >
     </p>

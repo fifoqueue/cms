@@ -9,6 +9,7 @@ import { AuthService } from '#api/domain/auth/auth-service';
 import { PasswordService } from '#api/domain/auth/password-service';
 import { EmailService } from '#api/domain/email/email-service';
 import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
+import { openJob } from '#api/domain/jobs/payload';
 import { ProtectionService } from '#api/domain/security/protection-service';
 import { SecuritySettingsService } from '#api/domain/security/security-settings';
 import { aesSecretBox } from '#api/infra/secret-box';
@@ -299,6 +300,15 @@ describe('password reset', () => {
     expect(JSON.stringify(request.payload)).not.toContain('admin@example.com');
     await passwords.deliverResetRequest(request.payload);
     const job = [...queue.rows.values()].at(-1)!;
+    const token = passwordTokens.rows.get(`digest:${issued}`)!;
+    expect(job.expiresAt).toEqual(token.expiresAt);
+    expect(
+      (
+        openJob(job.payload, secrets) as {
+          subjects: string[];
+        }
+      ).subjects,
+    ).toEqual(['admin', 'admin@example.com']);
     expect(JSON.stringify(job.payload)).not.toContain(issued);
     expect(hashes).toBe(0);
     await email.deliver(job.payload);

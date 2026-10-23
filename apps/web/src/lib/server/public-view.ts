@@ -36,12 +36,16 @@ export const siteView = ({
   locale,
   icon,
   logo,
+  loginPath,
+  showLogin,
 }: PublicSiteDto) => ({
   title,
   description,
   locale,
   icon: icon && imageView(icon),
   logo: logo && imageView(logo),
+  loginPath,
+  showLogin,
 });
 
 /** Site-wide settings the public `<head>` uses; AI/llms.txt prose stays with the discovery routes. */

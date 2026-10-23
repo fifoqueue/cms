@@ -22,8 +22,9 @@ export const rememberSsoTransaction = (
   cookies: Cookies,
   start: SsoStart,
   url: URL,
+  back?: string,
 ) => {
-  setSsoTransaction(cookies, start, url, transactionPath());
+  setSsoTransaction(cookies, start, url, transactionPath(), back);
 };
 
 /** Returns the pending transaction once and forgets it. */

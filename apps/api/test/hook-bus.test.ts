@@ -10,6 +10,8 @@ const site: SiteSettings = {
   locale: 'en',
   iconId: null,
   logoId: null,
+  loginPath: '/login',
+  showLogin: true,
 };
 const content: PublicContent = {
   id: '1',

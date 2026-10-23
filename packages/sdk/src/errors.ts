@@ -8,6 +8,8 @@ export const Errors = {
     'Templates for posts, articles and pages are required',
   MenuLinkInvalid: 'Use a web address (https://…) or a path on this site (/…)',
   MenuTargetMissing: 'Choose what the menu item links to',
+  LoginPathInvalid:
+    'Use an available site path such as /login, without a query or reserved route',
   FieldOptionsRequired: 'Add at least one choice',
   FieldValuesInvalid: 'Field values must be plain data',
   CommentUrlInvalid: 'Use a web address starting with https:// or http://',

@@ -54,6 +54,7 @@ export type SitePage =
       archive: { key: string; name: string; description: string };
       posts: PostList;
     }
+  | { kind: 'login' }
   /** Unpublished changes: described like content, never indexed or canonical. */
   | { kind: 'preview'; content: ContentView };
 
@@ -73,6 +74,7 @@ const KINDS: readonly unknown[] = [
   'archive',
   'date',
   'preview',
+  'login',
 ];
 
 /** The page part of merged page data, or `null` when the page describes nothing. */
@@ -375,6 +377,20 @@ const describe = (
         canonical: '',
         index: false,
         follow: false,
+      };
+    case 'login':
+      return {
+        ...listing,
+        title: format(m.signInTitle),
+        name: m.signInTitle,
+        description: '',
+        socialTitle: m.signInTitle,
+        socialDescription: '',
+        path: null,
+        canonical: '',
+        index: false,
+        follow: false,
+        type: 'WebPage',
       };
     case 'content': {
       const { content } = page;

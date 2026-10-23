@@ -132,6 +132,7 @@ export class PrivacyService {
     await this.deps.email.queue(
       {
         to: data.email,
+        subjects: [data.email],
         ...templates(site.locale).privacy(
           site.title,
           data.action,

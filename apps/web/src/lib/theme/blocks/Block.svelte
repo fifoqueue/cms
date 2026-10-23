@@ -1,5 +1,6 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import { page } from '$app/state';
   import type { Block } from '@cms/sdk';
   import PrivacyPolicyLink from '#lib/theme/PrivacyPolicyLink.svelte';
   import Breadcrumbs from '#lib/seo/Breadcrumbs.svelte';
@@ -234,9 +235,12 @@
     >
       <button type="submit" class="hover:underline">{i18n.m.signOut}</button>
     </form>
-  {:else}
+  {:else if scope().site.showLogin}
+    {@const back = `${page.url.pathname}${page.url.search}`}
     <a
-      href={resolve('/admin/(auth)/login')}
+      href={resolve(
+        `${scope().site.loginPath}?${new URLSearchParams({ redirect_to: back })}` as Path,
+      )}
       class="cms-block-loginout text-sm hover:underline">{i18n.m.themeSignIn}</a
     >
   {/if}

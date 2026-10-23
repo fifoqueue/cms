@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { createInstallationClient } from '#sdk/client';
 import { databaseSetupSchema, installCompleteSchema } from '#sdk/installation';
+import { DEFAULT_SITE_SETTINGS, siteSettingsSchema } from '#sdk/site';
 
 test('installation client uses the shared HTTP contract', async () => {
   const calls: { url: string; method?: string; body: unknown }[] = [];
@@ -69,4 +70,25 @@ test('installation client uses the shared HTTP contract', async () => {
   expect(
     installCompleteSchema.safeParse({ ...complete, token: '' }).success,
   ).toBe(false);
+});
+
+test('public login paths stay canonical and outside system routes', () => {
+  expect(
+    siteSettingsSchema.safeParse({
+      ...DEFAULT_SITE_SETTINGS,
+      loginPath: '/members/sign-in',
+    }).success,
+  ).toBe(true);
+  for (const loginPath of [
+    '//outside.example',
+    '/admin/login',
+    '/avatars/person',
+    '/feed.xml',
+    '/privacy/confirm',
+    '/login/',
+  ])
+    expect(
+      siteSettingsSchema.safeParse({ ...DEFAULT_SITE_SETTINGS, loginPath })
+        .success,
+    ).toBe(false);
 });

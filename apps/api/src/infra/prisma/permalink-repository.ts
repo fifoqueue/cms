@@ -1,6 +1,5 @@
 import { siteTimeZone } from '#api/infra/prisma/content-calendar';
 import { checkArchivePaths } from '#api/infra/prisma/archive-paths';
-import { createHash } from 'node:crypto';
 import type { PermalinkSettings } from '@cms/sdk';
 import { readPermalinkSettings } from '#api/domain/permalinks/content-path';
 import type { PermalinkSubject } from '#api/domain/permalinks/content-path';
@@ -21,6 +20,11 @@ import type {
 } from '#api/domain/permalinks/permalink-repository';
 import { permalinkPathIssue } from '@cms/sdk';
 import { guardUnique } from '#api/infra/prisma/client';
+import {
+  checkLoginPath,
+  lockPublicPaths,
+  pathHash,
+} from '#api/infra/prisma/site-settings';
 import type { Database } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
 import { Errors } from '#api/shared/errors';
@@ -33,17 +37,12 @@ import { Errors } from '#api/shared/errors';
  */
 
 const SETTINGS_KEY = 'permalinks';
-/** Row in `settings` whose lock serializes path writes and settings changes. */
-const LOCK_KEY = 'permalinks.lock';
 const BATCH = 500;
 
 type Transaction = Prisma.TransactionClient;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
-
-export const pathHash = (path: string) =>
-  new Uint8Array(createHash('sha256').update(path, 'utf8').digest());
 
 /** The stored `content_paths.path` bytes as the path string. */
 export const decodePath = (bytes: Uint8Array) => decoder.decode(bytes);
@@ -58,7 +57,7 @@ const chunks = <T>(items: readonly T[]) =>
  * so its reads (settings, paths) see everything committed before the lock was granted.
  */
 export const lockPermalinks = async (tx: Transaction) => {
-  await tx.$executeRaw`INSERT INTO settings (\`key\`, value) VALUES (${LOCK_KEY}, 'true') ON DUPLICATE KEY UPDATE value = 'true'`;
+  await lockPublicPaths(tx);
 };
 
 const readSettings = async (db: Pick<Transaction, 'setting'>) => {
@@ -126,6 +125,10 @@ const applyPlan = async (tx: Transaction, plan: PathPlan) => {
 };
 
 const applyChanges = async (tx: Transaction, changes: PathChange[]) => {
+  await checkLoginPath(
+    tx,
+    changes.map((change) => change.to),
+  );
   await checkArchivePaths(
     tx,
     changes.map((change) => change.to),

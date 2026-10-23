@@ -110,6 +110,24 @@
           value={data.site.locale}
         />
       </div>
+      <div class="grid gap-2">
+        <Label for="loginPath">{m.siteLoginPath}</Label>
+        <Input
+          id="loginPath"
+          name="loginPath"
+          required
+          maxlength={200}
+          value={data.site.loginPath}
+          aria-describedby="login-path-help"
+        />
+        <p id="login-path-help" class="text-xs text-muted-foreground">
+          {m.siteLoginPathHelp}
+        </p>
+      </div>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" name="showLogin" checked={data.site.showLogin} />
+        {m.siteShowLogin}
+      </label>
       {#each images as image (image.key)}
         <fieldset class="grid gap-2">
           <legend class="text-sm font-medium">{image.label}</legend>

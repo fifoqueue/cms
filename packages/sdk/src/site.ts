@@ -1,8 +1,35 @@
 import { z } from 'zod';
 import { publicImageSchema } from '#sdk/media';
+import { permalinkPathIssue } from '#sdk/permalinks';
+import { Errors } from '#sdk/errors';
 
 /** A media library image chosen for the site, or `null`. */
 const siteImageId = z.string().trim().min(1).max(36).nullable().default(null);
+
+const LOGIN_ROUTE_CONFLICTS = new Set([
+  '/avatars',
+  '/comments',
+  '/favicon.ico',
+  '/media',
+  '/oembed',
+  '/privacy',
+]);
+
+/** Public path that renders the authentication screen. */
+export const publicLoginPathSchema = z
+  .string()
+  .trim()
+  .max(200, Errors.LoginPathInvalid)
+  .default('/login')
+  .superRefine((path, context) => {
+    if (
+      path === '/' ||
+      path.endsWith('/') ||
+      LOGIN_ROUTE_CONFLICTS.has(path.toLowerCase()) ||
+      permalinkPathIssue(path)
+    )
+      context.addIssue({ code: 'custom', message: Errors.LoginPathInvalid });
+  });
 
 export const siteSettingsSchema = z.object({
   title: z.string().trim().min(1).max(191),
@@ -12,6 +39,10 @@ export const siteSettingsSchema = z.object({
   iconId: siteImageId,
   /** Custom logo shown by the `site-logo` block. */
   logoId: siteImageId,
+  /** Public, same-site alias for the stable administrator login route. */
+  loginPath: publicLoginPathSchema,
+  /** Whether themes show login links and signed-out admin requests redirect there. */
+  showLogin: z.boolean().default(true),
 });
 
 export type SiteSettings = z.output<typeof siteSettingsSchema>;
@@ -24,6 +55,8 @@ export const publicSiteSchema = z.object({
   locale: siteSettingsSchema.shape.locale,
   icon: publicImageSchema.nullable().default(null),
   logo: publicImageSchema.nullable().default(null),
+  loginPath: siteSettingsSchema.shape.loginPath,
+  showLogin: siteSettingsSchema.shape.showLogin,
 });
 export type PublicSiteDto = z.output<typeof publicSiteSchema>;
 
@@ -40,4 +73,6 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   locale: 'en',
   iconId: null,
   logoId: null,
+  loginPath: '/login',
+  showLogin: true,
 };

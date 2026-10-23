@@ -33,6 +33,7 @@ interface Stored {
 
 const messageSchema = z.object({
   to: z.email(),
+  subjects: z.array(z.string().max(191)).max(100).optional(),
   subject: z.string(),
   text: z.string(),
 });

@@ -5,7 +5,7 @@ import {
   roleDeleteSchema,
 } from '@cms/sdk';
 import type { RoleDefinition, Capability } from '@cms/sdk';
-import type { UserDirectory } from '#api/domain/users/user-directory';
+import type { RoleWriter } from '#api/domain/users/user-directory';
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
@@ -16,8 +16,8 @@ import { parseInput } from '#api/shared/validation';
 export class RoleService {
   constructor(
     private readonly settings: SettingsRepository,
-    /** Users, so a deleted role's members can be moved first. */
-    private readonly users?: Pick<UserDirectory, 'list' | 'setRole'>,
+    /** Definition and assignment writes serialized by the repository's shared user lock. */
+    private readonly writer: RoleWriter,
   ) {}
 
   async list(): Promise<RoleDefinition[]> {
@@ -54,7 +54,7 @@ export class RoleService {
     const role = parseInput(roleDefinitionSchema, input);
     if ((ROLES as readonly string[]).includes(role.key))
       throw invalidInput(Errors.RoleBuiltin);
-    await this.settings.set(`role.${role.key}`, role);
+    await this.writer.saveRole(role);
     return role;
   }
 
@@ -74,8 +74,6 @@ export class RoleService {
       throw invalidInput(Errors.RoleUnknown, [
         { path: 'reassignTo', message: Errors.RoleUnknown },
       ]);
-    for (const user of (await this.users?.list()) ?? [])
-      if (user.role === key) await this.users!.setRole(user.id, reassignTo);
-    await this.settings.set(`role.${key}`, null);
+    await this.writer.removeRole(key, reassignTo);
   }
 }

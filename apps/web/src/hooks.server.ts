@@ -1,4 +1,5 @@
 import type { Handle } from '@sveltejs/kit/hooks';
+import type { RequestEvent } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
 import { CmsApiError } from '@cms/sdk/client';
 import { can } from '@cms/sdk/capabilities';
@@ -13,7 +14,6 @@ import { RETURN_PARAM } from '#lib/server/return-path.js';
 import { endSession, sessionToken } from '#lib/server/session-cookie.js';
 
 const OPEN_ADMIN_PATHS = [
-  '/admin/login',
   '/admin/register',
   '/admin/setup',
   '/admin/sso/callback',
@@ -26,6 +26,15 @@ const isAdmin = (pathname: string) =>
 
 const isProtected = (pathname: string) =>
   isAdmin(pathname) && !OPEN_ADMIN_PATHS.includes(pathname);
+
+const isUnknownAdmin = (event: Pick<RequestEvent, 'route' | 'url'>) =>
+  isAdmin(event.url.pathname) && !event.route.id?.startsWith('/admin');
+
+const privateNotFound = () =>
+  new Response(null, {
+    status: 404,
+    headers: { 'cache-control': 'private, no-store' },
+  });
 
 const KIB = 1024;
 const MIB = 1024 * KIB;
@@ -41,6 +50,7 @@ const bodyLimit = (pathname: string) => {
 
 /** Rejects oversized form actions before SvelteKit buffers or parses their bodies. */
 const requestSize: Handle = async ({ event, resolve }) => {
+  if (isUnknownAdmin(event)) return resolve(event);
   if (!['POST', 'PUT', 'PATCH'].includes(event.request.method))
     return resolve(event);
 
@@ -66,7 +76,7 @@ const responseSecurity: Handle = async ({ event, resolve }) => {
   const headers = new Headers(response.headers);
   headers.set('x-robots-tag', 'noindex, nofollow');
   if (admin) {
-    headers.set('cache-control', 'no-store');
+    headers.set('cache-control', 'private, no-store');
     headers.append('content-security-policy', "frame-ancestors 'none'");
     headers.set('x-frame-options', 'DENY');
   }
@@ -143,13 +153,19 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
   event.locals.token = sessionToken(event.cookies, event.url);
   event.locals.user = null;
 
+  // Public catch-alls can match unknown `/admin/*` paths; none may become an auth redirect.
+  if (isUnknownAdmin(event)) return privateNotFound();
+
   if (!installed) {
     const installation = await installationApi(event.fetch).status();
     if (installation.setupRequired) {
       if (event.url.pathname !== '/admin/setup')
         return new Response(null, {
           status: 303,
-          headers: { location: '/admin/setup', 'cache-control': 'no-store' },
+          headers: {
+            location: '/admin/setup',
+            'cache-control': 'private, no-store',
+          },
         });
       return resolve(event);
     }
@@ -173,13 +189,20 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
   }
 
   if (isProtected(event.url.pathname) && !event.locals.user) {
+    const site = await contentApi(event.fetch)
+      .site()
+      .catch(() => null);
+    if (!site?.showLogin) return privateNotFound();
     // Enhanced forms get an action redirect they can intercept (the editor keeps unsaved text).
     if (event.request.headers.get('x-sveltekit-action') === 'true')
-      return Response.json({
-        type: 'redirect',
-        status: 303,
-        location: '/admin/login',
-      });
+      return Response.json(
+        {
+          type: 'redirect',
+          status: 303,
+          location: site.loginPath,
+        },
+        { headers: { 'cache-control': 'private, no-store' } },
+      );
     // Only a page visit can be repeated after signing in; a form post cannot.
     const back =
       event.request.method === 'GET' && event.url.pathname !== '/admin'
@@ -187,7 +210,10 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
         : '';
     return new Response(null, {
       status: 303,
-      headers: { location: `/admin/login${back}` },
+      headers: {
+        location: `${site.loginPath}${back}`,
+        'cache-control': 'private, no-store',
+      },
     });
   }
   return resolve(event);

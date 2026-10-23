@@ -1,5 +1,5 @@
-import { fail, redirect } from '@sveltejs/kit';
-import { installationApi } from '#lib/server/api.js';
+import { error, fail, redirect } from '@sveltejs/kit';
+import { contentApi, installationApi } from '#lib/server/api.js';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { startSession } from '#lib/server/session-cookie.js';
 import type { Actions, PageServerLoad } from './$types';
@@ -11,12 +11,20 @@ const keyOptions = {
   sameSite: 'strict' as const,
 };
 
-export const load: PageServerLoad = async ({ fetch, cookies, setHeaders }) => {
+export const load: PageServerLoad = async ({
+  fetch,
+  cookies,
+  locals,
+  setHeaders,
+}) => {
   setHeaders({ 'cache-control': 'no-store' });
   const status = await installationApi(fetch).status();
   if (!status.setupRequired) {
     cookies.delete(INSTALL_KEY_COOKIE, { path: '/admin/setup' });
-    redirect(303, '/admin/login');
+    if (locals.user) redirect(303, '/admin');
+    const site = await contentApi(fetch).site();
+    if (!site.showLogin) error(404, Errors.NotFound);
+    redirect(303, site.loginPath);
   }
   return { ...status, hasKey: Boolean(cookies.get(INSTALL_KEY_COOKIE)) };
 };

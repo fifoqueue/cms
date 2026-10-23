@@ -26,6 +26,8 @@ export const load: PageServerLoad = async (event) => {
       locale: site.locale,
       icon: preview(site.iconId, site.icon),
       logo: preview(site.logoId, site.logo),
+      loginPath: site.loginPath,
+      showLogin: site.showLogin,
     },
   };
 };
@@ -40,6 +42,8 @@ export const actions: Actions = {
         locale: text(form, 'locale'),
         iconId: text(form, 'iconId') || null,
         logoId: text(form, 'logoId') || null,
+        loginPath: text(form, 'loginPath'),
+        showLogin: form.has('showLogin'),
       });
     } catch (caught) {
       return failFrom(caught);

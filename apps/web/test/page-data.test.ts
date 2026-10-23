@@ -21,6 +21,10 @@ Bun.plugin({
       },
       loader: 'object',
     }));
+    build.module('$app/paths', () => ({
+      exports: { resolve: (path: string) => path },
+      loader: 'object',
+    }));
   },
 });
 
@@ -168,6 +172,14 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       break;
     case '/api/v1/site':
       return json({ title: 'Site', description: '', locale: 'en' });
+    case '/api/v1/auth/status':
+      return json({ setupRequired: false });
+    case '/api/v1/auth/sso':
+      return json({ enabled: false, name: null });
+    case '/api/v1/auth/register':
+      return json({ enabled: false });
+    case '/api/v1/security/captcha':
+      return json({ provider: 'none', siteKey: '', always: [] });
     case '/api/v1/layout':
       return json({
         site: { title: 'Site', description: '', locale: 'en' },
@@ -308,6 +320,7 @@ const publicEvent = (
   path: string,
   params: Record<string, string> = {},
   route = '/(site)',
+  loginPath = '/login',
 ) =>
   ({
     fetch: fakeFetch,
@@ -315,11 +328,21 @@ const publicEvent = (
     route: { id: route },
     params,
     locals: publicLocals(),
+    setHeaders: () => undefined,
     // Public entry reads may forward visitor proofs and an optional session to the API.
     cookies: { getAll: () => [], get: () => undefined },
     parent: async () => ({
       reading,
       theme,
+      site: {
+        title: 'Site',
+        description: '',
+        locale: 'en',
+        icon: null,
+        logo: null,
+        loginPath,
+        showLogin: true,
+      },
       archives: {
         bases: { category: '/category', tag: '/tag' },
         history: { category: [], tag: [] },
@@ -460,6 +483,24 @@ describe('public page data', () => {
         (thrown: unknown) => thrown,
       ),
     ).toMatchObject({ status: 502 });
+  });
+
+  test('the configured public login path renders there with a safe return path', async () => {
+    expect(
+      await loadEntry(
+        publicEvent(
+          '/members/sign-in?redirect_to=%2Fhello',
+          {},
+          '/(site)/[...path]',
+          '/members/sign-in',
+        ),
+      ),
+    ).toMatchObject({
+      kind: 'login',
+      back: '/hello',
+      sso: { enabled: false },
+      captcha: { provider: 'none' },
+    });
   });
 
   test('archive aliases redirect to the stored Unicode slug', async () => {

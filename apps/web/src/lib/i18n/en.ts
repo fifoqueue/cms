@@ -1684,4 +1684,10 @@ export const en = {
   skipToContent: 'Skip to main content',
   // pattern-followup
   patternLoadFailed: 'The pattern could not be loaded. Try selecting it again.',
+
+  // auth-followup
+  siteLoginPath: 'Public login path',
+  siteLoginPathHelp:
+    'Visitors and signed-out administrators use this address to reach the sign-in screen.',
+  siteShowLogin: 'Show login links and redirect signed-out administrators',
 } as const;

@@ -32,9 +32,12 @@ const setup = async (overrides: Partial<UserServiceDeps> = {}) => {
   const users = new MemoryUsers();
   const content = new MemoryContentRepository();
   const jobs = new MemoryJobQueue();
+  const settings = overrides.settings ?? new MemorySeoSettingsRepository();
+  const directory = new MemoryUserDirectory(users, content, settings);
   const service = new UserService({
     users,
-    directory: new MemoryUserDirectory(users, content),
+    directory,
+    settings,
     hasher: {
       hash: async (value) => `hash:${value}`,
       verify: async () => true,
@@ -48,15 +51,15 @@ const setup = async (overrides: Partial<UserServiceDeps> = {}) => {
   });
   await users.insert(userRecord({ id: 'admin' }));
   await users.insert(userRecord({ id: 'writer', role: 'author' }));
-  return { jobs, service, users };
+  return { content, directory, jobs, service, settings, users };
 };
 
 const admin = { id: 'admin', role: 'administrator' };
 
 describe('user administration', () => {
   test('existing sessions lose custom permissions when their role changes', async () => {
-    const roles = new RoleService(new MemorySeoSettingsRepository());
-    const { service, users } = await setup({ roles });
+    const { directory, service, settings, users } = await setup();
+    const roles = new RoleService(settings, directory);
     await roles.save(
       { key: 'staff', name: 'Staff', capabilities: ['users.manage'] },
       admin,
@@ -87,16 +90,8 @@ describe('user administration', () => {
   });
 
   test('sessions are listed and revoked only by their owner; deleting a role moves its users', async () => {
-    const roles = new RoleService(new MemorySeoSettingsRepository());
-    const { users } = await setup({ roles });
-    const directory = new MemoryUserDirectory(
-      users,
-      new MemoryContentRepository(),
-    );
-    const deletable = new RoleService(
-      new MemorySeoSettingsRepository(),
-      directory,
-    );
+    const { directory, settings, users } = await setup();
+    const deletable = new RoleService(settings, directory);
     await deletable.save(
       { key: 'staff', name: 'Staff', capabilities: [] },
       admin,
@@ -174,13 +169,40 @@ describe('user administration', () => {
     ]);
   });
 
+  test('role deletion is atomic with assignments and account creation', async () => {
+    const { directory, service, settings, users } = await setup();
+    const roles = new RoleService(settings, directory);
+    await roles.save(
+      { key: 'staff', name: 'Staff', capabilities: ['content.create'] },
+      admin,
+    );
+    const outcomes = await Promise.allSettled([
+      roles.remove('staff', { reassignTo: 'editor' }, admin),
+      service.setRole('writer', { role: 'staff' }, admin),
+      service.create(
+        {
+          email: 'new-staff@example.com',
+          name: 'New Staff',
+          role: 'staff',
+          password: 'password-123',
+        },
+        admin,
+      ),
+    ]);
+
+    expect((await roles.list()).some(({ key }) => key === 'staff')).toBe(false);
+    expect([...users.rows.values()].some(({ role }) => role === 'staff')).toBe(
+      false,
+    );
+    expect(outcomes.some(({ status }) => status === 'fulfilled')).toBe(true);
+  });
+
   test('public registration requires membership and invites only subscribers', async () => {
     const settings = new MemorySeoSettingsRepository();
     const invitations: string[] = [];
     let hashes = 0;
     const { jobs, service, users } = await setup({
       settings,
-      roles: new RoleService(settings),
       hasher: {
         hash: async (value) => {
           hashes += 1;
@@ -280,6 +302,11 @@ describe('user administration', () => {
   test('a profile update never changes the role', async () => {
     const { service, users } = await setup();
     const writer = { id: 'writer', role: 'author' };
+    const findByEmail = users.findByEmail.bind(users);
+    users.findByEmail = async (email) => {
+      users.rows.get('writer')!.role = 'editor';
+      return findByEmail(email);
+    };
 
     await service.updateProfile(
       {
@@ -290,6 +317,6 @@ describe('user administration', () => {
       },
       writer,
     );
-    expect(users.rows.get('writer')!.role).toBe('author');
+    expect(users.rows.get('writer')!.role).toBe('editor');
   });
 });

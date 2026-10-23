@@ -16,6 +16,7 @@
   import Captcha from '#lib/security/Captcha.svelte';
   import { useI18n } from '#lib/i18n/index.js';
   import { useDateFormat } from '#lib/theme/format.js';
+  import { useScope } from '#lib/theme/scope.js';
 
   interface Props {
     contentId: string;
@@ -47,6 +48,7 @@
     search.set('cpage', String(visible.page));
     return `?/comment&${search}`;
   });
+  const scope = useScope();
 
   const failure = $derived(
     page.form && 'authorName' in page.form
@@ -245,7 +247,9 @@
   {#if visible.open && visible.requireLogin && !visible.viewer}
     <p>
       <a
-        href={resolve('/admin/(auth)/login')}
+        href={resolve(
+          `${scope().site.loginPath}?${new URLSearchParams({ redirect_to: `${page.url.pathname}${page.url.search}` })}` as Path,
+        )}
         class="text-primary hover:underline">{m.commentLoginRequired}</a
       >
     </p>

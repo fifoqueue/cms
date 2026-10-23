@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { PermanentJobError } from '#api/domain/jobs/job-runner';
+import {
+  PermanentJobError,
+  RecoverableJobError,
+} from '#api/domain/jobs/job-runner';
+import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
+import type { SecretBox } from '#api/domain/ports';
 import { WebhookService } from '#api/domain/webhooks/webhook-service';
+import { aesSecretBox } from '#api/infra/secret-box';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
 import {
   ADMIN,
@@ -12,8 +18,10 @@ import {
 import { MemoryJobQueue } from '#test/support/memory-jobs';
 import { plainSecretBox } from '#test/support/memory-security';
 
-const setup = () => {
+const setup = (secrets: SecretBox = plainSecretBox) => {
   const jobs = new MemoryJobQueue();
+  const settings = new MemorySettings();
+  const clock = fixedClock();
   const sent: { url: string; secret: string; event: string; body: string }[] =
     [];
   let answer = 200;
@@ -22,10 +30,10 @@ const setup = () => {
     logger: recordingLogger().logger,
   });
   const webhooks = new WebhookService({
-    settings: new MemorySettings(),
-    secrets: plainSecretBox,
+    settings,
+    secrets,
     tokens: { issue: () => 'whsec-1' },
-    jobs,
+    sealedJobs: new SealedJobs(jobs, secrets),
     transport: {
       check: async () => {},
       send: async (delivery) => {
@@ -34,7 +42,7 @@ const setup = () => {
       },
     },
     ids: sequentialIds(),
-    clock: fixedClock(),
+    clock,
   });
   webhooks.subscribe(hooks.registrar('core:webhooks'));
   return {
@@ -42,6 +50,8 @@ const setup = () => {
     sent,
     hooks,
     webhooks,
+    settings,
+    clock,
     answer: (status: number) => void (answer = status),
     payloads: () => [...jobs.rows.values()].map((row) => row.payload),
   };
@@ -80,6 +90,8 @@ describe('WebhookService', () => {
       locale: 'en',
       iconId: null,
       logoId: null,
+      loginPath: '/login',
+      showLogin: true,
     });
     await hooks.emit('media.deleted', {} as never);
     await Bun.sleep(5);
@@ -124,5 +136,29 @@ describe('WebhookService', () => {
       lastStatus: 503,
       lastError: 'The receiver answered HTTP 503',
     });
+  });
+
+  test('an unreadable encrypted delivery remains recoverable', async () => {
+    const correct = aesSecretBox('webhook-job-key');
+    const wrong = aesSecretBox('wrong-webhook-job-key');
+    const { webhooks, jobs, settings, clock, payloads } = setup(correct);
+    const hook = await webhooks.create(
+      { url: 'https://hooks.example/a', events: ['site.updated'] },
+      ADMIN,
+    );
+    await webhooks.ping(hook.id, ADMIN);
+    const reader = new WebhookService({
+      settings,
+      secrets: wrong,
+      tokens: { issue: () => 'unused' },
+      sealedJobs: new SealedJobs(jobs, wrong),
+      transport: { check: async () => {}, send: async () => 200 },
+      ids: sequentialIds(),
+      clock,
+    });
+
+    expect(
+      await reader.deliver(payloads()[0]).catch((error: unknown) => error),
+    ).toBeInstanceOf(RecoverableJobError);
   });
 });

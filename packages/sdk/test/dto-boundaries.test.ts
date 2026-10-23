@@ -131,7 +131,13 @@ describe('DTO trust boundaries', () => {
       await createContentClient(
         options({ ...site, databasePassword: 'secret', oidcSecret: 'secret' }),
       ).site(),
-    ).toEqual({ ...site, icon: null, logo: null });
+    ).toEqual({
+      ...site,
+      icon: null,
+      logo: null,
+      loginPath: '/login',
+      showLogin: true,
+    });
     const user = {
       id: 'user',
       email: 'admin@example.com',

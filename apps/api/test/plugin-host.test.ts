@@ -115,6 +115,8 @@ describe('PluginHost lifecycle', () => {
             locale: 'en',
             iconId: null,
             logoId: null,
+            loginPath: '/login',
+            showLogin: true,
           },
           content: null,
         })

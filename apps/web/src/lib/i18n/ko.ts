@@ -1637,4 +1637,10 @@ export const ko: Messages = {
   skipToContent: '본문으로 바로가기',
   // pattern-followup
   patternLoadFailed: '패턴을 불러오지 못했습니다. 다시 선택해 주세요.',
+
+  // auth-followup
+  siteLoginPath: '공개 로그인 경로',
+  siteLoginPathHelp:
+    '방문자와 로그아웃한 관리자가 로그인 화면으로 이동할 때 쓰는 주소입니다.',
+  siteShowLogin: '로그인 링크 및 로그아웃한 관리자 리디렉션 표시',
 };

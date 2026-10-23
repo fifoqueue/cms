@@ -23,7 +23,7 @@ export class SlotService {
     // Site and content only feed renderers; without any, skip the reads.
     if (this.deps.registry.empty) return emptySlots();
     const [site, content] = await Promise.all([
-      this.deps.site.get(),
+      this.deps.site.getPlugin(),
       contentId ? this.deps.content.getById(contentId) : this.byPath(path),
     ]);
     return this.deps.registry.render({ path, site, content });

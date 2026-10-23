@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Path } from '$app/types';
   import { resolve } from '$app/paths';
+  import { page } from '$app/state';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
   import {
@@ -115,6 +116,10 @@
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
+  const loginPath = $derived(
+    (page.data as { loginPath?: string }).loginPath ?? '/login',
+  );
+  const resolvedLoginPath = $derived(resolve(loginPath as Path));
 
   const EMPTY: ContentDocument = {
     type: 'doc',
@@ -518,7 +523,8 @@
     return async ({ result: outcome, update }) => {
       if (
         outcome.type === 'redirect' &&
-        outcome.location.startsWith('/admin/login')
+        (outcome.location === resolvedLoginPath ||
+          outcome.location.startsWith(`${resolvedLoginPath}?`))
       ) {
         saving = false;
         sessionExpired();
@@ -1351,7 +1357,9 @@
       >{m.close}</Button
     >
     <Button
-      href={resolve('/admin/(auth)/login')}
+      href={resolve(
+        `${loginPath}?${new URLSearchParams({ redirect_to: `${page.url.pathname}${page.url.search}` })}` as Path,
+      )}
       target="_blank"
       onclick={() => expiredDialog.close()}>{m.signInAgain}</Button
     >

@@ -1,6 +1,8 @@
 import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
 import { DEFAULT_EMAIL_SETTINGS } from '@cms/sdk';
 import { PrivacyService } from '#api/domain/privacy/privacy-service';
+import { RoleService } from '#api/domain/users/role-service';
+import { readSiteSettings } from '#api/domain/site/site-service';
 import { EmailService } from '#api/domain/email/email-service';
 import { ProtectionService } from '#api/domain/security/protection-service';
 import { SecuritySettingsService } from '#api/domain/security/security-settings';
@@ -8,7 +10,7 @@ import { PrismaPrivacyRepository } from '#api/infra/prisma/privacy-repository';
 import { aesSecretBox } from '#api/infra/secret-box';
 import { hmacSigner } from '#api/infra/hmac-signer';
 import { randomTokenIssuer } from '#api/infra/system';
-import { openJob, sealJob } from '#api/domain/jobs/payload';
+import { openJob } from '#api/domain/jobs/payload';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { default as sharp } from 'sharp';
 import { DEFAULT_RATE_RULES } from '@cms/sdk';
@@ -40,6 +42,7 @@ import { PrismaRevisionRepository } from '#api/infra/prisma/revision-repository'
 import { PrismaSearchSource } from '#api/infra/prisma/search-source';
 import { PrismaSettingsTransactions } from '#api/infra/prisma/settings-transactions';
 import { PrismaSettingsRepository } from '#api/infra/prisma/settings-repository';
+import { PrismaSiteSettingsWriter } from '#api/infra/prisma/site-settings';
 import { PrismaTaskLeases } from '#api/infra/prisma/task-leases';
 import { PrismaTaxonomyRepository } from '#api/infra/prisma/taxonomy-repository';
 import { PrismaUserDirectory } from '#api/infra/prisma/user-directory';
@@ -328,6 +331,36 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     expect(await limits.exceeded('ip:2', rule, new Date())).toBe(false);
   });
 
+  test('role deletion is atomic with assignments across processes', async () => {
+    const settings = new PrismaSettingsRepository(db);
+    const first = new PrismaUserDirectory(db);
+    const second = new PrismaUserDirectory(db);
+    const roles = new RoleService(settings, first);
+    const target = uuidV7.next();
+    await first.insert(userRecord({ id: target, role: 'author' }));
+    await roles.save(
+      { key: 'staff', name: 'Staff', capabilities: ['content.create'] },
+      ADMIN,
+    );
+    const created = uuidV7.next();
+
+    await Promise.allSettled([
+      roles.remove('staff', { reassignTo: 'editor' }, ADMIN),
+      second.setRole(target, 'staff'),
+      second.insert(
+        userRecord({
+          id: created,
+          email: `${created}@example.com`,
+          slug: `user-${created}`,
+          role: 'staff',
+        }),
+      ),
+    ]);
+
+    expect(await db.user.count({ where: { role: 'staff' } })).toBe(0);
+    expect((await roles.list()).some(({ key }) => key === 'staff')).toBe(false);
+  });
+
   test('deleting an author with their content queues a rebuild, and export reads every table', async () => {
     const { content, source, terms, comments } = services();
     await new PrismaUserRepository(db).insert(
@@ -597,6 +630,61 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       expect(await archives.get()).toEqual(saved);
     } finally {
       await archives.update(initial.bases);
+    }
+  });
+
+  test('the public login path and a content address cannot both win', async () => {
+    const { content, settings } = services();
+    const writer = new PrismaSiteSettingsWriter(db);
+    const original = readSiteSettings(await settings.get('site'));
+    const slug = `login-${uuidV7.next()}`;
+    const loginPath = `/${slug}`;
+
+    try {
+      const outcomes = await Promise.allSettled([
+        writer.save({ ...original, loginPath }),
+        content.create(
+          {
+            type: 'page',
+            title: 'Login collision',
+            slug,
+            status: 'published',
+            document: paragraph('Only one route owner may commit'),
+          },
+          ADMIN,
+        ),
+      ]);
+      expect(
+        outcomes.filter(({ status }) => status === 'fulfilled'),
+      ).toHaveLength(1);
+      expect(
+        readSiteSettings(await settings.get('site')).loginPath === loginPath &&
+          (await db.content.count({ where: { slug } })) > 0,
+      ).toBe(false);
+    } finally {
+      await db.content.deleteMany({ where: { slug } });
+      await writer.save(original);
+    }
+
+    const legacySlug = `legacy-login-${uuidV7.next()}`;
+    try {
+      const legacy = await content.create(
+        {
+          type: 'page',
+          title: 'Legacy login collision',
+          slug: legacySlug,
+          status: 'published',
+          document: paragraph('Existing content stays visible'),
+        },
+        ADMIN,
+      );
+      await settings.set('site', { ...original, loginPath: legacy.path });
+      expect(await writer.publicLoginPath(legacy.path)).toMatch(
+        /^\/cms-login(?:-\d+)?$/,
+      );
+    } finally {
+      await db.content.deleteMany({ where: { slug: legacySlug } });
+      await writer.save(original);
     }
   });
 
@@ -1147,17 +1235,27 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         attempt,
       );
       const rows = await db.job.findMany({ where: { kind: 'email.send' } });
-      const message = rows
-        .map(
-          (row) =>
-            openJob(JSON.parse(row.payload), secrets) as {
-              to: string;
-              text: string;
-            },
-        )
-        .find((item) => item.to === subject && item.text.includes('token='))!;
+      const confirmation = rows
+        .map((row) => ({
+          row,
+          message: openJob(JSON.parse(row.payload), secrets) as {
+            to: string;
+            text: string;
+            subjects?: string[];
+          },
+        }))
+        .find(
+          ({ message }) =>
+            message.to === subject && message.text.includes('token='),
+        )!;
+      expect(confirmation.row.expiresAt?.toISOString()).toBe(request.expiresAt);
+      expect(confirmation.message.subjects).toEqual([subject]);
       await privacy.confirm(
-        { token: decodeURIComponent(/token=([^\s]+)/.exec(message.text)![1]!) },
+        {
+          token: decodeURIComponent(
+            /token=([^\s]+)/.exec(confirmation.message.text)![1]!,
+          ),
+        },
         attempt,
       );
       await db.job.update({
@@ -1215,16 +1313,14 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         ),
       ).toBe(true);
       const count = remaining.length;
-      await jobs.enqueue(
+      await new SealedJobs(jobs, secrets).enqueue(
         'email.send',
-        sealJob(
-          {
-            to: 'moderator@example.com',
-            subjects: [commentId],
-            text: 'Late snapshot',
-          },
-          secrets,
-        ),
+        {
+          to: 'moderator@example.com',
+          subjects: [commentId],
+          text: 'Late snapshot',
+        },
+        new Date(now.getTime() + 60_000),
       );
       expect(await db.job.count()).toBe(count);
     },

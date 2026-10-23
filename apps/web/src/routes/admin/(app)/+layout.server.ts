@@ -1,12 +1,13 @@
-import { redirect } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { can } from '@cms/sdk/capabilities';
 import { contentApi } from '#lib/server/api.js';
 import { adminFor } from '#lib/server/session.js';
+import { Errors } from '#lib/server/errors.js';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async (event) => {
   const { locals, fetch } = event;
-  if (!locals.user) redirect(303, '/admin/login');
+  if (!locals.user) error(404, Errors.NotFound);
   const { id, email, name, role, capabilities, slug, bio, locale } =
     locals.user;
   const admin = adminFor(event);
@@ -58,6 +59,7 @@ export const load: LayoutServerLoad = async (event) => {
       .map(({ key, name }) => ({ key, name })),
     counts: { comments, plugins },
     siteTitle: site.title,
+    loginPath: site.loginPath,
     /** The user's chosen language, else the site's. */
     language: locale || site.locale,
   };

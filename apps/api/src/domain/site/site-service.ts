@@ -24,28 +24,66 @@ export type SiteImages = (
 
 const SITE_KEY = 'site';
 
+export interface SiteSettingsWriter {
+  /** Saves settings while reserving the public login path against content and archive routes. */
+  save(site: SiteSettings): Promise<void>;
+  /** Existing pre-feature content keeps its route; a reserved public fallback serves login. */
+  publicLoginPath(path: string): Promise<string>;
+}
+
+export const readSiteSettings = (stored: unknown): SiteSettings => {
+  const overrides = typeof stored === 'object' && stored !== null ? stored : {};
+  const result = siteSettingsSchema.safeParse({
+    ...DEFAULT_SITE_SETTINGS,
+    ...overrides,
+  });
+  return result.success ? result.data : DEFAULT_SITE_SETTINGS;
+};
+
 export class SiteService {
   constructor(
     private readonly settings: SettingsRepository,
     private readonly hooks: HookDispatcher,
     private readonly images: SiteImages,
+    private readonly writer: SiteSettingsWriter = {
+      save: (site) => settings.set(SITE_KEY, site),
+      publicLoginPath: async (path) => path,
+    },
   ) {}
 
   async get(): Promise<SiteSettings> {
-    const stored = await this.settings.get(SITE_KEY);
-    const overrides =
-      typeof stored === 'object' && stored !== null ? stored : {};
-    const result = siteSettingsSchema.safeParse({
-      ...DEFAULT_SITE_SETTINGS,
-      ...overrides,
-    });
-    return result.success ? result.data : DEFAULT_SITE_SETTINGS;
+    return readSiteSettings(await this.settings.get(SITE_KEY));
   }
 
   /** Display settings with the icon and logo resolved; a deleted image counts as unset. */
   async getPublic(): Promise<PublicSiteDto> {
-    const { title, description, locale, icon, logo } = await this.getAdmin();
-    return { title, description, locale, icon, logo };
+    const {
+      title,
+      description,
+      locale,
+      icon,
+      logo,
+      loginPath: configuredLoginPath,
+      showLogin,
+    } = await this.getAdmin();
+    return {
+      title,
+      description,
+      locale,
+      icon,
+      logo,
+      loginPath: await this.writer.publicLoginPath(configuredLoginPath),
+      showLogin,
+    };
+  }
+
+  /** Public settings for plugin renderers, without resolving media records. */
+  async getPlugin(): Promise<SiteSettings> {
+    const site = await this.get();
+    return {
+      ...site,
+      loginPath: await this.writer.publicLoginPath(site.loginPath),
+    };
   }
 
   async getAdmin(): Promise<AdminSiteDto> {
@@ -68,7 +106,7 @@ export class SiteService {
           { path: key, message: Errors.SiteImageInvalid },
         ]);
     }
-    await this.settings.set(SITE_KEY, site);
+    await this.writer.save(site);
     void this.hooks.emit('site.updated', site);
     return site;
   }

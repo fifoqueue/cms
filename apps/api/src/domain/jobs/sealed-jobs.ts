@@ -1,4 +1,5 @@
-import { z } from 'zod';
+import type { z } from 'zod';
+import { inspectJob, sealJob } from '#api/domain/jobs/payload';
 import type { JobQueue } from '#api/domain/jobs/ports';
 import {
   PermanentJobError,
@@ -6,11 +7,6 @@ import {
 } from '#api/domain/jobs/job-runner';
 import type { SecretBox } from '#api/domain/ports';
 import { Errors } from '#api/shared/errors';
-
-const envelopeSchema = z.strictObject({
-  version: z.literal(1),
-  sealed: z.string(),
-});
 
 /** Sensitive job payloads encrypted before they reach durable queue storage. */
 export class SealedJobs {
@@ -22,28 +18,19 @@ export class SealedJobs {
   enqueue(kind: string, payload: unknown, expiresAt?: Date) {
     return this.queue.enqueue(
       kind,
-      {
-        version: 1,
-        sealed: this.secrets.seal(JSON.stringify(payload)),
-      },
+      sealJob(payload, this.secrets),
       undefined,
       expiresAt,
     );
   }
 
   open<T>(payload: unknown, schema: z.ZodType<T>): T {
-    const envelope = envelopeSchema.safeParse(payload);
-    if (!envelope.success)
-      throw new PermanentJobError(Errors.JobPayloadInvalid);
-    const plain = this.secrets.open(envelope.data.sealed);
-    if (plain === null)
+    const opened = inspectJob(payload, this.secrets);
+    if (!opened.ok && opened.reason === 'unreadable')
       throw new RecoverableJobError(Errors.JobPayloadUnreadable);
-    try {
-      const result = schema.safeParse(JSON.parse(plain) as unknown);
-      if (result.success) return result.data;
-    } catch {
-      // The common invalid-payload error below intentionally hides parser details.
-    }
+    if (!opened.ok) throw new PermanentJobError(Errors.JobPayloadInvalid);
+    const result = schema.safeParse(opened.value);
+    if (result.success) return result.data;
     throw new PermanentJobError(Errors.JobPayloadInvalid);
   }
 
@@ -56,11 +43,8 @@ export class SealedJobs {
         100,
       );
       const readable = rows.flatMap(({ id, payload }) => {
-        const envelope = envelopeSchema.safeParse(payload);
-        return envelope.success &&
-          this.secrets.open(envelope.data.sealed) !== null
-          ? [id]
-          : [];
+        const opened = inspectJob(payload, this.secrets);
+        return opened.ok && opened.sealed ? [id] : [];
       });
       if (readable.length) await this.queue.retry(readable);
     }

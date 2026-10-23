@@ -34,7 +34,10 @@ import { parseInput } from '#api/shared/validation';
 
 const HOUR = 60 * 60 * 1000;
 export const PASSWORD_RESET_REQUEST_JOB = 'password.reset.request';
-const resetRequestSchema = z.strictObject({ email: z.email() });
+const resetRequestSchema = z.strictObject({
+  email: z.email(),
+  subjects: z.array(z.string().max(191)).max(100).optional(),
+});
 
 /** Reset emails one administrator may send per hour. */
 const ADMIN_RESET_RULE: RateRule = {
@@ -118,9 +121,14 @@ export class PasswordService {
     await this.deps.protection.check(protectedAttempt);
     if (!(await this.deps.email.enabled()))
       throw invalidInput(Errors.EmailDisabled);
-    await this.deps.sealedJobs.enqueue(PASSWORD_RESET_REQUEST_JOB, {
-      email: account,
-    });
+    await this.deps.sealedJobs.enqueue(
+      PASSWORD_RESET_REQUEST_JOB,
+      {
+        email: account,
+        subjects: [account],
+      },
+      new Date(this.deps.clock.now().getTime() + LIFETIME.reset),
+    );
   }
 
   /** Background account lookup keeps the public response independent of existence. */
@@ -130,10 +138,14 @@ export class PasswordService {
     if (!user) return;
     const site = await this.site();
     const link = await this.link(user, 'reset', site.siteUrl);
-    await this.deps.email.queue({
-      to: user.email,
-      ...templates(site.locale).reset(site.title, link),
-    });
+    await this.deps.email.queue(
+      {
+        to: user.email,
+        subjects: [user.id, user.email],
+        ...templates(site.locale).reset(site.title, link),
+      },
+      new Date(this.deps.clock.now().getTime() + LIFETIME.reset),
+    );
   }
 
   /**
