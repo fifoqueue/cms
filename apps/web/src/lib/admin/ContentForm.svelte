@@ -81,6 +81,8 @@
     defaultAuthorId?: string;
     /** Thumbnail addresses of the saved image fields, by field key. */
     fieldImages?: Record<string, string>;
+    /** Saved versions of the entry, for the "Browse" link. */
+    revisionCount?: number;
     /** Status a new entry was just created with (shown as the save result). */
     created?: string | null;
   }
@@ -102,6 +104,7 @@
     userId,
     defaultAuthorId = '',
     fieldImages = {},
+    revisionCount = 0,
     created = null,
   }: Props = $props();
 
@@ -876,6 +879,18 @@
             </NativeSelect>
           {/if}
         </div>
+
+        {#if entry && revisionCount}
+          <p class="flex flex-wrap items-center gap-2 text-sm">
+            {m.revisionsCount(revisionCount)}
+            <a
+              class="underline"
+              href={resolve('/admin/(app)/content/[id]/revisions', {
+                id: entry.id,
+              })}>{m.revisionsBrowse}</a
+            >
+          </p>
+        {/if}
 
         <fieldset class="grid gap-2">
           <legend class="mb-1 text-sm font-medium">{m.visibility}</legend>
