@@ -190,6 +190,18 @@ describe('API route compatibility', () => {
     ]);
   });
 
+  test('authenticated permalink responses carry the verified actor and cannot be cached', async () => {
+    calls.length = 0;
+    const response = await call('GET', '/api/v1/resolve?path=%2Fprivate', {
+      token: TOKEN,
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(calls).toEqual([
+      ['permalinks.resolve', { path: '/private' }, [], user],
+    ]);
+  });
+
   test('unknown paths and methods return the API error body', async () => {
     for (const [method, path] of [
       ['GET', '/nope'],

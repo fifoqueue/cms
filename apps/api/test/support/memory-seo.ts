@@ -1,3 +1,4 @@
+import { archivePath } from '@cms/sdk';
 import type {
   SeoDiscoveryCriteria,
   SeoDiscoveryRecord,
@@ -58,6 +59,7 @@ export class MemorySeoDiscoveryRepository implements SeoDiscoveryRepository {
         });
     } else {
       const terms = [...this.content.terms.values()];
+      const bases = { category: '/category', tag: '/tag' };
       items = terms
         .filter((term) => {
           if (
@@ -65,7 +67,7 @@ export class MemorySeoDiscoveryRepository implements SeoDiscoveryRepository {
             term.seo.noIndex ||
             (term.seo.canonicalUrl &&
               term.seo.canonicalUrl !==
-                `${siteUrl}/${term.taxonomy}/${term.slug}`)
+                `${siteUrl}${archivePath(bases, kind, term.slug)}`)
           )
             return false;
           const ids =
@@ -77,7 +79,7 @@ export class MemorySeoDiscoveryRepository implements SeoDiscoveryRepository {
           );
         })
         .map((term) => ({
-          path: `/${term.taxonomy}/${term.slug}`,
+          path: archivePath(bases, kind, term.slug),
           title: term.seo.title || term.name,
           description: term.seo.description || term.description,
           updatedAt: new Date(term.updatedAt),

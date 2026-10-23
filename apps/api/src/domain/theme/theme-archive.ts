@@ -13,7 +13,9 @@ export interface ThemeArchive {
 export const isThemeFile = (path: string) =>
   path === 'theme.json' ||
   path === 'style.css' ||
-  /^(templates|parts)\/[a-z0-9-]+\.json$/.test(path);
+  /^parts\/[a-z0-9-]+\.json$/.test(path) ||
+  // Template names may end in a Unicode slug (`page-소식`); the theme schema validates them.
+  /^templates\/[\p{L}\p{N}\p{M}-]+\.json$/u.test(path);
 
 const parseJson = (path: string, text: string): unknown => {
   try {

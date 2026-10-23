@@ -1,7 +1,7 @@
 import { Errors } from '#sdk/errors';
 import { extraTermSummarySchema, taxonomyTypeSchema } from '#sdk/taxonomy';
 import { z } from 'zod';
-import { KEBAB_CASE } from '#sdk/common';
+import { CONTENT_SLUG } from '#sdk/common';
 import { termSummarySchema } from '#sdk/taxonomy';
 import { permalinkPathSchema } from '#sdk/permalinks';
 import { publicImageSchema } from '#sdk/media';
@@ -94,7 +94,7 @@ export const contentInputSchema = z.object({
     .trim()
     .toLowerCase()
     .max(191)
-    .regex(KEBAB_CASE)
+    .regex(CONTENT_SLUG)
     .refine(
       (slug) => !RESERVED_CONTENT_SLUGS.includes(slug),
       'Slug is reserved',
@@ -146,7 +146,7 @@ const termSlugFilterSchema = z
   .trim()
   .toLowerCase()
   .max(191)
-  .regex(KEBAB_CASE)
+  .regex(CONTENT_SLUG)
   .optional();
 
 const listFilters = {

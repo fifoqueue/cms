@@ -43,6 +43,8 @@ const { removeApiSecrets } = await import('#web-env');
 const { actions: editorActions } =
   await import('#web/routes/admin/(app)/appearance/editor/+page.server.js');
 
+const { commentAction } = await import('#lib/server/comments.js');
+
 const SECRET = 'SECRET-SENTINEL-7f3a';
 const TOKEN = 'TOKEN-SENTINEL-91c2';
 
@@ -278,16 +280,8 @@ const publicEvent = (
     route: { id: route },
     params,
     locals: forbidden('locals'),
-    // Only unlock proofs may be read; any session cookie access fails the test.
-    cookies: new Proxy(
-      { getAll: () => [] },
-      {
-        get(target, key) {
-          if (key === 'getAll') return target.getAll;
-          throw new Error(`public loader read cookies.${String(key)}`);
-        },
-      },
-    ),
+    // Public entry reads may forward visitor proofs and an optional session to the API.
+    cookies: { getAll: () => [], get: () => undefined },
     parent: async () => ({
       reading,
       archives: {
@@ -428,6 +422,64 @@ describe('public page data', () => {
       ),
     ).toMatchObject({ status: 502 });
   });
+});
+
+test('failed replies retain their parent and retry redirects to the returned comment page', async () => {
+  const fields = {
+    contentId: 'id-hello',
+    parentId: 'parent',
+    parentName: 'Ann',
+    authorName: 'Reader',
+    authorEmail: 'reader@example.com',
+    body: 'Reply',
+  };
+  const event = () =>
+    ({
+      ...(adminEvent('/hello?/comment&cpage=2', fields) as object),
+      getClientAddress: () => '203.0.113.1',
+      cookies: {
+        get: () => undefined,
+        getAll: () => [],
+        delete: () => undefined,
+      },
+    }) as Parameters<typeof commentAction>[0];
+  override = ({ url }) =>
+    url.pathname === '/api/v1/comments'
+      ? json(
+          { error: { code: 'captcha_required', message: 'Solve captcha' } },
+          403,
+        )
+      : undefined;
+  const failure = failureData(await commentAction(event()));
+  expect(failure).toMatchObject({
+    parentId: 'parent',
+    parentName: 'Ann',
+    captcha: true,
+  });
+  override = ({ url, body }) => {
+    if (url.pathname !== '/api/v1/comments') return undefined;
+    expect(JSON.parse(body).parentId).toBe(failure.parentId);
+    return json({
+      status: 'approved',
+      page: 2,
+      pendingProof: null,
+      comment: {
+        id: 'reply',
+        parentId: 'parent',
+        depth: 1,
+        authorName: 'Reader',
+        authorUrl: null,
+        byAuthor: false,
+        avatarUrl: null,
+        pending: false,
+        body: 'Reply',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+  };
+  expect(
+    await commentAction(event()).catch((error: unknown) => error),
+  ).toMatchObject({ status: 303, location: '/hello?cpage=2#comment-reply' });
 });
 
 describe('admin form failures', () => {

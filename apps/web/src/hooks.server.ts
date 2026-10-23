@@ -72,7 +72,8 @@ const robotsHeader: Handle = async ({ event, resolve }) => {
 };
 
 /** Cookies that make a public page differ per visitor (sessions, unlocked entries, previews). */
-const PERSONAL_COOKIE = /^(cms_session|cms_unlock_|cms_theme_preview)/;
+const PERSONAL_COOKIE =
+  /^(cms_session|cms_unlock_|cms_theme_preview|cms_pending_|cms_commenter)/;
 
 /** Settings → Reading `cacheSeconds`, re-read at most once a minute. */
 let caching = { seconds: 0, until: 0 };
@@ -95,6 +96,15 @@ const cacheSeconds = async (fetch: typeof globalThis.fetch) => {
  */
 const publicCache: Handle = async ({ event, resolve }) => {
   const response = await resolve(event);
+  if (event.cookies.getAll().some(({ name }) => PERSONAL_COOKIE.test(name))) {
+    const headers = new Headers(response.headers);
+    headers.set('cache-control', 'private, no-store');
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  }
   if (
     (event.request.method !== 'GET' && event.request.method !== 'HEAD') ||
     isAdmin(event.url.pathname) ||

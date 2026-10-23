@@ -8,9 +8,10 @@ import { unauthorized, Errors } from '#api/shared/errors';
 import { guardUnique } from '#api/infra/prisma/client';
 import type { Database } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
+import { takenSlugs } from '#api/infra/prisma/taken-slugs';
 
 export class PrismaUserRepository implements UserRepository {
-  constructor(private readonly db: Pick<Database, 'user'>) {}
+  constructor(private readonly db: Pick<Database, 'user' | '$queryRaw'>) {}
 
   count() {
     return this.db.user.count();
@@ -36,11 +37,7 @@ export class PrismaUserRepository implements UserRepository {
   }
 
   async takenSlugs(slugs: readonly string[]) {
-    const rows = await this.db.user.findMany({
-      where: { slug: { in: [...slugs] } },
-      select: { slug: true },
-    });
-    return new Set(rows.map((row) => row.slug));
+    return takenSlugs(this.db, 'users', slugs);
   }
 }
 

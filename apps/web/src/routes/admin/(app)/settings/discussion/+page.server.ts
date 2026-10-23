@@ -1,4 +1,4 @@
-import { COMMENT_MODERATION } from '@cms/sdk';
+import { AVATAR_DEFAULTS, COMMENT_MODERATION } from '@cms/sdk';
 import type { DiscussionSettingsInput } from '@cms/sdk';
 import { failFrom, text } from '#lib/server/errors.js';
 import { adminFor } from '#lib/server/session.js';
@@ -24,6 +24,12 @@ export const actions: Actions = {
     const moderation = text(form, 'moderation');
     const input: DiscussionSettingsInput = {
       enabled: form.has('enabled'),
+      requireLogin: form.has('requireLogin'),
+      showAvatars: form.has('showAvatars'),
+      avatarDefault:
+        AVATAR_DEFAULTS.find(
+          (value) => value === text(form, 'avatarDefault'),
+        ) ?? 'mp',
       moderation: (COMMENT_MODERATION as readonly string[]).includes(moderation)
         ? (moderation as DiscussionSettingsInput['moderation'])
         : 'known',

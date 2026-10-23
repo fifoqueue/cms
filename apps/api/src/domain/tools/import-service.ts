@@ -1,4 +1,4 @@
-import { KEBAB_CASE } from '@cms/sdk';
+import { CONTENT_SLUG } from '@cms/sdk';
 import type {
   ContentDocument,
   ContentInput,
@@ -121,7 +121,7 @@ export class ImportService {
       const input: ContentInput = {
         type: item.type,
         title: item.title.trim() || item.slug || 'Untitled',
-        ...(KEBAB_CASE.test(item.slug) && { slug: item.slug.slice(0, 191) }),
+        ...(CONTENT_SLUG.test(item.slug) && { slug: item.slug.slice(0, 191) }),
         excerpt: item.excerpt.trim().slice(0, 1000),
         document: this.deps.html.parse(item.html),
         status: status === 'scheduled' && !scheduled ? 'published' : status,
@@ -164,7 +164,7 @@ export class ImportService {
       ]),
     );
     for (const term of parentsFirst(terms)) {
-      if (ids.has(term.slug) || !KEBAB_CASE.test(term.slug)) continue;
+      if (ids.has(term.slug) || !CONTENT_SLUG.test(term.slug)) continue;
       try {
         const created = await this.deps.taxonomy.create(taxonomy, {
           name: term.name || term.slug,
