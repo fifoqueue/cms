@@ -975,6 +975,7 @@ describe('Prisma published content reads', () => {
       type: 'post',
       slug: 'live',
       path: '/live',
+      parentId: null,
       title: 'Live',
       excerpt: 'Short',
       html: '<p>Body</p>',

@@ -13,7 +13,7 @@
   } from '#lib/server/public-view.js';
   import Blocks from '#lib/theme/blocks/Blocks.svelte';
   import SlotOutlet from '#lib/theme/SlotOutlet.svelte';
-  import { provideScope } from '#lib/theme/scope.js';
+  import { provideBlockPath, provideScope } from '#lib/theme/scope.js';
   import {
     isFrontPage,
     pickTemplate,
@@ -29,6 +29,10 @@
       terms?: BlockData['terms'];
       months?: BlockData['months'];
       adjacent?: BlockData['adjacent'];
+      pageTree?: BlockData['pageTree'];
+      recentComments?: BlockData['recentComments'];
+      postAuthor?: BlockData['postAuthor'];
+      calendar?: BlockData['calendar'];
       theme: ThemeView;
       site: SiteView;
       reading: ReadingView;
@@ -43,9 +47,14 @@
     };
     page: ThemePage;
     previewBlocks?: Block[];
+    /** In the site editor: blocks are marked so the canvas can select them. */
+    editable?: boolean;
   }
 
-  let { data, page, previewBlocks }: Props = $props();
+  let { data, page, previewBlocks, editable = false }: Props = $props();
+
+  // svelte-ignore state_referenced_locally
+  if (editable) provideBlockPath([]);
 
   provideScope(() => ({
     archives: data.archives,
@@ -53,6 +62,10 @@
     terms: data.terms ?? { category: null, tag: null },
     months: data.months ?? null,
     adjacent: data.adjacent ?? null,
+    pageTree: data.pageTree ?? null,
+    recentComments: data.recentComments ?? null,
+    postAuthor: data.postAuthor ?? null,
+    calendar: data.calendar ?? null,
     theme: data.theme,
     site: data.site,
     reading: data.reading,

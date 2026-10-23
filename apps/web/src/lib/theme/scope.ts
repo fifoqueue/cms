@@ -21,6 +21,10 @@ export interface SiteScope {
   months: BlockData['months'];
   /** Previous and next entry of a single entry page. */
   adjacent: BlockData['adjacent'];
+  pageTree: BlockData['pageTree'];
+  recentComments: BlockData['recentComments'];
+  postAuthor: BlockData['postAuthor'];
+  calendar: BlockData['calendar'];
   theme: ThemeView;
   site: SiteView;
   reading: ReadingView;
@@ -40,6 +44,16 @@ export interface SiteScope {
 const SCOPE = Symbol('site-scope');
 const POST = Symbol('post');
 const PARTS = Symbol('template-parts');
+const PATH = Symbol('block-path');
+
+/**
+ * Where the blocks being rendered sit in the tree the site editor edits (indexes from the
+ * root); undefined outside the editor and inside template parts, which are edited separately.
+ */
+export const provideBlockPath = (path: number[] | undefined) =>
+  setContext(PATH, path);
+
+export const useBlockPath = () => getContext<number[] | undefined>(PATH);
 
 export const provideScope = (scope: () => SiteScope) =>
   setContext(SCOPE, scope);

@@ -75,7 +75,7 @@
                   ? 'flex flex-col gap-3 overflow-hidden rounded-[var(--radius)] border bg-card p-5 text-card-foreground shadow-xs transition hover:shadow-md'
                   : `flex flex-col gap-3 ${a.divider ? 'py-8 first:pt-0 last:pb-0' : ''}`}
               >
-                <PostScope {post} blocks={child.children} />
+                <PostScope {post} blocks={child.children} within={index} />
               </li>
             {/each}
           </ul>
@@ -84,7 +84,7 @@
         {#if !posts.items.length}
           <div class="cms-block-query-no-results">
             {#if child.children.length}
-              <Blocks blocks={child.children} />
+              <Blocks blocks={child.children} within={index} />
             {:else}
               <p class="text-muted-foreground">
                 {page.kind === 'search'

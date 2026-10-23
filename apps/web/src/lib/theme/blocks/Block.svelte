@@ -6,7 +6,11 @@
   import type { SitePage } from '#lib/seo/head.js';
   import { useI18n } from '#lib/i18n/index.js';
   import WidgetArea from '#lib/theme/WidgetArea.svelte';
+  import type { Path } from '$app/types';
   import BlockList from '#lib/theme/blocks/BlockList.svelte';
+  import Calendar from '#lib/theme/blocks/Calendar.svelte';
+  import MediaBlock from '#lib/theme/blocks/MediaBlock.svelte';
+  import PostAuthor from '#lib/theme/blocks/PostAuthor.svelte';
   import Buttons from '#lib/theme/blocks/Buttons.svelte';
   import Columns from '#lib/theme/blocks/Columns.svelte';
   import CommentsBlock from '#lib/theme/blocks/CommentsBlock.svelte';
@@ -26,12 +30,13 @@
   import SearchForm from '#lib/theme/blocks/SearchForm.svelte';
   import SocialLinks from '#lib/theme/blocks/SocialLinks.svelte';
   import TemplatePart from '#lib/theme/blocks/TemplatePart.svelte';
-  import { useScope } from '#lib/theme/scope.js';
+  import { useCurrentPost, useScope } from '#lib/theme/scope.js';
 
   /** One block of a template; the theme decides which and where, the core how. */
   let { block }: { block: Block } = $props();
 
   const scope = useScope();
+  const current = useCurrentPost();
   const i18n = useI18n();
 
   const ALIGN = {
@@ -186,8 +191,37 @@
   <Buttons {block} />
 {:else if block.name === 'social-links'}
   <SocialLinks {block} />
-{:else if block.name === 'latest-posts' || block.name === 'categories' || block.name === 'tag-cloud' || block.name === 'archives'}
+{:else if block.name === 'latest-posts' || block.name === 'categories' || block.name === 'tag-cloud' || block.name === 'archives' || block.name === 'latest-comments'}
   <BlockList {block} />
+{:else if block.name === 'image' || block.name === 'cover' || block.name === 'media-text'}
+  <MediaBlock {block} />
+{:else if block.name === 'post-author'}
+  <PostAuthor {block} />
+{:else if block.name === 'read-more'}
+  {@const post = current().post}
+  {#if post}
+    <a
+      href={resolve(post.path as Path)}
+      class="cms-block-read-more inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+      >{block.attrs.text || i18n.m.themeReadMore}<span class="sr-only"
+        >: {post.title}</span
+      ></a
+    >
+  {/if}
+{:else if block.name === 'page-list'}
+  {#if scope().pageTree?.length}
+    <ul class="cms-block-page-list space-y-1 text-sm">
+      {#each scope().pageTree ?? [] as entry (entry.path)}
+        <li style:padding-inline-start="{entry.depth}rem">
+          <a href={resolve(entry.path as Path)} class="hover:underline"
+            >{entry.title}</a
+          >
+        </li>
+      {/each}
+    </ul>
+  {/if}
+{:else if block.name === 'calendar'}
+  <Calendar />
 {:else if block.name === 'loginout'}
   {#if scope().signedIn}
     <form
