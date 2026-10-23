@@ -1553,4 +1553,6 @@ export const ko: Messages = {
   menuDeleteConfirm: (name: string) => `“${name}” 메뉴를 삭제할까요?`,
   widgetMoveTo: (area: string) => `${area}(으)로 이동`,
   widgetDropHere: '여기에 놓으면 위젯이 맨 끝에 배치됩니다',
+  commentNoticePartlyEmptied:
+    '많은 댓글을 삭제했지만 아직 남아 있습니다. 계속하려면 다시 비우기를 누르세요.',
 };

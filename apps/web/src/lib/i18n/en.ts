@@ -1601,4 +1601,6 @@ export const en = {
   menuDeleteConfirm: (name: string) => `Delete the menu “${name}”?`,
   widgetMoveTo: (area: string) => `Move to ${area}`,
   widgetDropHere: 'Drop here to place the widget last',
+  commentNoticePartlyEmptied:
+    'Many comments were deleted, but some remain. Choose Empty again to continue.',
 } as const;

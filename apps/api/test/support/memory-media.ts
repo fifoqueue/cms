@@ -29,7 +29,7 @@ export class MemoryMediaRepository implements MediaRepository {
   /** Entries that show each file, standing in for `content_media` rows. */
   readonly entries = new Map<
     string,
-    { id: string; title: string; type: string }[]
+    { id: string; title: string; type: string; published?: boolean }[]
   >();
 
   async list({
@@ -72,8 +72,11 @@ export class MemoryMediaRepository implements MediaRepository {
     return { newer: ids[index - 1] ?? null, older: ids[index + 1] ?? null };
   }
 
-  async usedIn(id: string, limit: number) {
-    return (this.entries.get(id) ?? []).slice(0, limit);
+  async usedIn(id: string, limit: number, publishedOnly: boolean) {
+    return (this.entries.get(id) ?? [])
+      .filter((entry) => !publishedOnly || entry.published)
+      .slice(0, limit)
+      .map(({ id: entryId, title, type }) => ({ id: entryId, title, type }));
   }
 
   async publicImages(ids: readonly string[]) {

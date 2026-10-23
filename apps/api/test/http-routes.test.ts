@@ -26,8 +26,21 @@ import { profile } from '#test/support/memory';
 const TOKEN = 'admin-token';
 const user = profile({ id: 'u1', email: 'a@example.com', name: 'Admin' });
 
+/** Accounts with one side of the Writing settings permissions. */
+const WRITER = 'writer-token';
+const OPERATOR = 'operator-token';
+const accounts: Record<string, typeof user> = {
+  [TOKEN]: user,
+  [WRITER]: profile({ id: 'w1', role: 'contributor' }),
+  [OPERATOR]: profile({
+    id: 'o1',
+    role: 'settings-operator',
+    capabilities: ['settings.manage'],
+  }),
+};
+
 const auth = {
-  authenticate: async (token: string) => (token === TOKEN ? user : null),
+  authenticate: async (token: string) => accounts[token] ?? null,
   status: async () => ({ setupRequired: false }),
   login: async (input: unknown) => ({ token: TOKEN, input }),
   logout: async () => {},
@@ -122,7 +135,10 @@ const app = await createApiApp({
     previews: {} as ApiServices['previews'],
     media: {} as ApiServices['media'],
     reading: {} as ApiServices['reading'],
-    writing: {} as ApiServices['writing'],
+    writing: {
+      get: record('writing.get'),
+      update: record('writing.update'),
+    } as unknown as ApiServices['writing'],
     patterns: {} as ApiServices['patterns'],
     menus: {} as ApiServices['menus'],
     widgets: {} as ApiServices['widgets'],
@@ -299,6 +315,23 @@ describe('API route compatibility', () => {
       ['admin.list', { page: '3' }, user],
       ['plugins.enable', 'p-1'],
     ]);
+  });
+
+  test('Writing settings: writers read them, settings operators change them', async () => {
+    const put = (token: string) =>
+      call('PUT', '/api/v1/admin/writing', {
+        token,
+        type: 'application/json',
+        body: JSON.stringify({ defaultStatus: 'draft' }),
+      });
+    expect(
+      (await call('GET', '/api/v1/admin/writing', { token: WRITER })).status,
+    ).toBe(200);
+    expect((await put(WRITER)).status).toBe(403);
+    expect(
+      (await call('GET', '/api/v1/admin/writing', { token: OPERATOR })).status,
+    ).toBe(403);
+    expect((await put(OPERATOR)).status).toBe(200);
   });
 
   test('malformed JSON is invalid input and bundle uploads arrive as raw text', async () => {

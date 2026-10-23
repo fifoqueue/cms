@@ -1,6 +1,5 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import { page } from '$app/state';
   import { onMount } from 'svelte';
   import { clearBackups } from '#lib/admin/editor-backup.js';
   import FormMessage from '#lib/admin/FormMessage.svelte';
@@ -25,7 +24,7 @@
 
   // After a completed sign-out, nothing typed in this tab stays in its storage.
   onMount(() => {
-    if (page.url.searchParams.has('signedOut')) clearBackups();
+    if (data.signedOut) clearBackups();
   });
   const showCaptcha = $derived(
     data.captcha.provider !== 'none' &&

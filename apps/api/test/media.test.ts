@@ -143,6 +143,19 @@ describe('media library', () => {
       olderId: null,
       usedIn: [{ id: 'c1', title: 'Post', type: 'post' }],
     });
+    // An account that may upload files but not list content sees published entries only.
+    repository.entries.set(first.id, [
+      { id: 'c1', title: 'Post', type: 'post', published: true },
+      { id: 'c2', title: 'PRIVATE PLAN', type: 'post' },
+    ]);
+    const uploader = {
+      id: 'u',
+      role: 'uploader',
+      capabilities: ['media.upload' as const],
+    };
+    expect((await media.context(first.id, uploader)).usedIn).toEqual([
+      { id: 'c1', title: 'Post', type: 'post' },
+    ]);
   });
 
   test('only the uploader or managers change a file, and used files need force', async () => {
