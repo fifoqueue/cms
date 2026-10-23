@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   interface Crop {
     left: number;
     top: number;
@@ -51,9 +52,20 @@
     };
   };
 
-  // A new ratio applies to the current box at once.
+  // A new ratio applies to the current box at once. Only `ratio` is tracked, and the box is
+  // replaced only when fitting changes it, so the effect cannot feed itself.
   $effect(() => {
-    if (ratio) crop = fit(crop);
+    if (!ratio) return;
+    untrack(() => {
+      const next = fit(crop);
+      if (
+        next.left !== crop.left ||
+        next.top !== crop.top ||
+        next.width !== crop.width ||
+        next.height !== crop.height
+      )
+        crop = next;
+    });
   });
 
   /** Drags the box (`move`) or its lower-right corner (`resize`) in original pixels. */

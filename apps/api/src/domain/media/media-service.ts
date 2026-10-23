@@ -105,7 +105,8 @@ export class MediaService {
     await this.require(id);
     const [{ newer, older }, usedIn] = await Promise.all([
       this.deps.repository.neighbors(id),
-      this.deps.repository.usedIn(id, 50),
+      // Writers list every entry anyway; others learn only of published ones.
+      this.deps.repository.usedIn(id, 50, !can(actor, 'content.create')),
     ]);
     return { newerId: newer, olderId: older, usedIn };
   }

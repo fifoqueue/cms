@@ -460,7 +460,8 @@
    * only then is the preview requested; the preview request itself writes nothing.
    */
   const preview = () => {
-    if (!entry || !previewForm) return;
+    // A save in flight would clear the autosave the preview is about to show.
+    if (!entry || !previewForm || saving) return;
     if (
       !autosaveInputSchema.safeParse({ title, excerpt, document: body }).success
     ) {
@@ -880,8 +881,11 @@
             >
           {/if}
           {#if entry}
-            <Button variant="outline" size="sm" onclick={preview}
-              >{m.preview}</Button
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={saving}
+              onclick={preview}>{m.preview}</Button
             >
           {/if}
         </div>
