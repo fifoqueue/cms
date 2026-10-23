@@ -39,6 +39,13 @@
       (id) => !titles.has(id),
     ),
   );
+  const savedOrder = $derived.by(() => {
+    let index = 0;
+    const placed = [...new Set(preferences.order)]
+      .map((id) => (unavailable.includes(id) ? id : choices[index++]))
+      .filter((id): id is string => id !== undefined);
+    return [...new Set([...placed, ...choices.slice(index), ...unavailable])];
+  });
   let saving = $state(false);
   let failed = $state(false);
 
@@ -88,8 +95,10 @@
     {:else}
       <FormMessage {form} />
     {/if}
-    {#each unavailable as id (id)}
+    {#each savedOrder as id (id)}
       <input type="hidden" name="order" value={id} />
+    {/each}
+    {#each unavailable as id (id)}
       {#if !preferences.hidden.includes(id)}
         <input type="hidden" name="shown" value={id} />
       {/if}
@@ -99,7 +108,6 @@
       <ol class="grid gap-1">
         {#each choices as id, index (id)}
           <li class="flex items-center gap-2">
-            <input type="hidden" name="order" value={id} />
             <label class="flex flex-1 items-center gap-2">
               <input
                 type="checkbox"
