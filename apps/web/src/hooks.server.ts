@@ -9,6 +9,7 @@ import {
   installationApi,
 } from '#lib/server/api.js';
 import { frontendSecret, pairFrontend } from '#lib/server/frontend-secret.js';
+import { RETURN_PARAM } from '#lib/server/return-path.js';
 import { SESSION_COOKIE, endSession } from '#lib/server/session.js';
 
 const OPEN_ADMIN_PATHS = [
@@ -154,9 +155,14 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
   }
 
   if (isProtected(event.url.pathname) && !event.locals.user) {
+    // Only a page visit can be repeated after signing in; a form post cannot.
+    const back =
+      event.request.method === 'GET' && event.url.pathname !== '/admin'
+        ? `?${new URLSearchParams({ [RETURN_PARAM]: `${event.url.pathname}${event.url.search}` })}`
+        : '';
     return new Response(null, {
       status: 303,
-      headers: { location: '/admin/login' },
+      headers: { location: `/admin/login${back}` },
     });
   }
   return resolve(event);

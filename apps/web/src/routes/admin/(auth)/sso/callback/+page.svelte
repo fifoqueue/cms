@@ -8,15 +8,19 @@
     CardHeader,
     CardTitle,
   } from '#lib/components/ui/card/index.js';
+  import { useI18n } from '#lib/i18n/index.js';
   import type { PageProps } from './$types';
 
   let { data }: PageProps = $props();
+
+  const i18n = useI18n();
+  const m = $derived(i18n.m);
 </script>
 
-<svelte:head><title>Single sign-on</title></svelte:head>
+<svelte:head><title>{m.settingsSso}</title></svelte:head>
 
 <Card>
-  <CardHeader><CardTitle>Single sign-on</CardTitle></CardHeader>
+  <CardHeader><CardTitle>{m.settingsSso}</CardTitle></CardHeader>
   <CardContent class="space-y-4">
     <FormMessage form={data} />
 
@@ -26,7 +30,7 @@
         variant="outline"
         class="w-full"
       >
-        Back to account
+        {m.ssoBackToAccount}
       </Button>
     {:else}
       <Button
@@ -34,7 +38,7 @@
         variant="outline"
         class="w-full"
       >
-        Back to sign in
+        {m.ssoBackToSignIn}
       </Button>
     {/if}
   </CardContent>
