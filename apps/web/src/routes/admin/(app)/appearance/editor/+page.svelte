@@ -22,6 +22,7 @@
   } from '@lucide/svelte';
   import BlockTreeEditor from '#lib/admin/BlockTreeEditor.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import { confirmLeave } from '#lib/admin/unsaved.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
@@ -69,6 +70,11 @@
   );
   const parts = $derived(editor.parts.map((part) => part.slug));
   let dirty = $state(false);
+  let stylesDirty = $state(false);
+  confirmLeave(
+    () => dirty || stylesDirty,
+    () => m.unsavedLeave,
+  );
   let canvasBlocks = $state<Block[] | undefined>();
   let canvasQueries = $state<typeof data.canvas.queries | undefined>();
   let previewError = $state<{ message?: string } | undefined>();
@@ -92,6 +98,7 @@
     canvasQueries = data.canvas.queries;
     previewError = undefined;
     dirty = false;
+    stylesDirty = false;
   });
 
   $effect(() => {
@@ -311,7 +318,13 @@
           <form
             method="POST"
             action="?/saveStyles"
-            use:enhance
+            use:enhance={() =>
+              async ({ result, update }) => {
+                if (result.type === 'success') stylesDirty = false;
+                await update();
+              }}
+            oninput={() => (stylesDirty = true)}
+            onchange={() => (stylesDirty = true)}
             class="space-y-6"
           >
             <input type="hidden" name="theme" value={editor.id} />

@@ -31,6 +31,6 @@
   model={data.model}
   authors={data.authors}
   canPublish={data.canPublish}
+  canManageTerms={data.canManageTerms}
   defaultAuthorId={data.authorId}
-  submitLabel={m.create}
 />

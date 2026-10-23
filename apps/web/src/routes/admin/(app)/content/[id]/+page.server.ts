@@ -1,7 +1,7 @@
 import { redirect } from '@sveltejs/kit';
-import { can } from '@cms/sdk';
-import { readContentForm } from '#lib/server/content-form.js';
-import { failFrom, notFoundFrom, text } from '#lib/server/errors.js';
+import { autosaveInputSchema, can } from '@cms/sdk';
+import { fieldImages, readContentForm } from '#lib/server/content-form.js';
+import { failFrom, jsonField, notFoundFrom, text } from '#lib/server/errors.js';
 import { loadSeoContext } from '#lib/server/seo-admin.js';
 import { adminFor } from '#lib/server/session.js';
 import { loadTermChoices } from '#lib/server/taxonomy-admin.js';
@@ -24,6 +24,7 @@ export const load: PageServerLoad = async (event) => {
   return {
     entry,
     model,
+    fieldImages: await fieldImages(admin, model.fields, entry.fields),
     ...terms,
     seo,
     revisions,
@@ -32,6 +33,7 @@ export const load: PageServerLoad = async (event) => {
     useAutosave: event.url.searchParams.has('autosave') && autosave !== null,
     authors,
     canPublish: can(user, 'content.publish'),
+    canManageTerms: can(user, 'taxonomy.manage'),
   };
 };
 
@@ -48,7 +50,8 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught, { values });
     }
-    return { notice: 'saved' };
+    // The editor shows what the save did next to its buttons.
+    return { saved: true };
   },
   trash: async (event) => {
     try {
@@ -74,10 +77,19 @@ export const actions: Actions = {
     }
     redirect(303, '/admin/content?view=trash');
   },
-  /** Opens the site's rendering of unsaved changes (the form targets a new tab). */
+  /** Opens the site's rendering of the editor's current text (the form targets a new tab). */
   preview: async (event) => {
+    const form = await event.request.formData();
+    const current = autosaveInputSchema.safeParse({
+      title: text(form, 'title'),
+      excerpt: text(form, 'excerpt'),
+      document: jsonField(form, 'document'),
+    });
     let token: string;
     try {
+      // Kept as an autosave first: the preview renders the newest autosave.
+      if (current.success)
+        await adminFor(event).content.autosave(event.params.id, current.data);
       ({ token } = await adminFor(event).content.preview(event.params.id));
     } catch (caught) {
       return failFrom(caught);

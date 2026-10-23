@@ -10,6 +10,7 @@
     Trash2,
   } from '@lucide/svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import { confirmLeave } from '#lib/admin/unsaved.js';
   import {
     indent,
     moveDown,
@@ -145,6 +146,14 @@
     }),
   );
 
+  // What the server has; leaving with anything else asks first.
+  // svelte-ignore state_referenced_locally
+  let saved = payload;
+  confirmLeave(
+    () => payload !== saved,
+    () => m.unsavedLeave,
+  );
+
   const locationNames = $derived({
     primary: m.primaryNavigation,
     footer: m.footerNavigation,
@@ -158,9 +167,13 @@
 <form
   method="POST"
   action="?/save"
-  use:enhance={() =>
-    ({ update }) =>
-      update({ reset: false })}
+  use:enhance={() => {
+    const sent = payload;
+    return async ({ result, update }) => {
+      if (result.type === 'success') saved = sent;
+      await update({ reset: false });
+    };
+  }}
   class="grid gap-6"
 >
   <input type="hidden" name="menus" value={payload} />

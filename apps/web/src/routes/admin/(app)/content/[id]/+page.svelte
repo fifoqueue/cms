@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Path } from '$app/types';
+  import { page } from '$app/state';
   import { resolve } from '$app/paths';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
@@ -26,6 +27,17 @@
   const confirmDelete: SubmitFunction = ({ cancel }) => {
     if (!confirm(m.confirmDelete)) cancel();
   };
+  let restored = $state(0);
+  const restoreRevision: SubmitFunction = ({ cancel }) => {
+    if (!confirm(m.revisionRestoreConfirm)) {
+      cancel();
+      return;
+    }
+    return async ({ result, update }) => {
+      await update();
+      if (result.type === 'success') restored++;
+    };
+  };
   const date = (value: string) => new Date(value).toLocaleString(i18n.language);
 </script>
 
@@ -43,12 +55,10 @@
         target="_blank"><ExternalLink class="size-4" /> {m.view}</Button
       >
     {/if}
-    <!-- Not enhanced: the browser follows the redirect into the new tab. -->
-    <form method="POST" action="?/preview" target="_blank">
-      <Button type="submit" variant="outline"
-        ><Eye class="size-4" /> {m.preview}</Button
-      >
-    </form>
+    <!-- The preview form is in the editor, which sends its current text. -->
+    <Button type="submit" variant="outline" form="content-preview"
+      ><Eye class="size-4" /> {m.preview}</Button
+    >
     {#if data.entry.trashedAt}
       <form method="POST" action="?/restore" use:enhance>
         <Button type="submit" variant="outline"
@@ -87,9 +97,13 @@
   </Alert>
 {/if}
 
-{#key `${data.entry.id}:${data.entry.updatedAt}:${data.useAutosave}`}
+<!-- Saving keeps the editor (cursor, open panels); restoring a revision reloads its text. -->
+{#key `${data.entry.id}:${data.useAutosave}:${restored}`}
   <ContentForm
     entry={data.entry}
+    fieldImages={data.fieldImages}
+    canManageTerms={data.canManageTerms}
+    created={page.url.searchParams.get('saved')}
     values={form && 'values' in form ? form.values : undefined}
     draft={data.useAutosave && data.autosave ? data.autosave : undefined}
     parentPages={data.parentPages}
@@ -100,7 +114,6 @@
     model={data.model}
     authors={data.authors}
     canPublish={data.canPublish}
-    submitLabel={m.save}
   />
 {/key}
 
@@ -138,7 +151,11 @@
                 )}>{m.revisionCompare}</Button
               >
               {#if index > 0 || revision.kind === 'autosave'}
-                <form method="POST" action="?/restoreRevision" use:enhance>
+                <form
+                  method="POST"
+                  action="?/restoreRevision"
+                  use:enhance={restoreRevision}
+                >
                   <input type="hidden" name="revisionId" value={revision.id} />
                   <Button type="submit" variant="outline" size="sm"
                     >{m.restore}</Button

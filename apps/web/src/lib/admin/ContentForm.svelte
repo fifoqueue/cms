@@ -1,9 +1,10 @@
 <script lang="ts">
+  import type { Path } from '$app/types';
+  import { resolve } from '$app/paths';
   import { enhance } from '$app/forms';
+  import type { SubmitFunction } from '$app/forms';
   import {
-    CONTENT_STATUSES,
     DEFAULT_ENTRY_SEO,
-    UNPUBLISHED_STATUSES,
     contentDocumentSchema,
     renderPermalink,
   } from '@cms/sdk';
@@ -17,7 +18,9 @@
   } from '@cms/sdk';
   import { permalinkPatternFor } from '@cms/sdk';
   import type { AuthorOption } from '@cms/sdk/client';
-  import { onDestroy, untrack } from 'svelte';
+  import { ExternalLink, X } from '@lucide/svelte';
+  import { onDestroy, onMount, untrack } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
   import type { ContentFormValues } from '#lib/admin/content-form-values.js';
   import Editor from '#lib/admin/Editor.svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
@@ -25,6 +28,8 @@
   import type { SeoPreviewContext } from '#lib/admin/seo.js';
   import { documentText, seoFormValues } from '#lib/admin/seo.js';
   import { flattenTree } from '#lib/admin/taxonomy-tree.js';
+  import { confirmLeave } from '#lib/admin/unsaved.js';
+  import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
@@ -66,9 +71,14 @@
     authors: AuthorOption[] | null;
     /** Whether the user may publish, schedule or make entries private. */
     canPublish: boolean;
+    /** Whether the user may add categories and tags. */
+    canManageTerms?: boolean;
     /** Author of a new entry: the signed-in user. */
     defaultAuthorId?: string;
-    submitLabel: string;
+    /** Thumbnail addresses of the saved image fields, by field key. */
+    fieldImages?: Record<string, string>;
+    /** Status a new entry was just created with (shown as the save result). */
+    created?: string | null;
   }
 
   let {
@@ -84,8 +94,10 @@
     model,
     authors,
     canPublish,
+    canManageTerms = false,
     defaultAuthorId = '',
-    submitLabel,
+    fieldImages = {},
+    created = null,
   }: Props = $props();
 
   const i18n = useI18n();
@@ -103,6 +115,8 @@
       .toISOString()
       .slice(0, 16);
   };
+  /** Statuses after which the entry is out of the draft workflow. */
+  const LIVE: readonly ContentStatus[] = ['published', 'private', 'scheduled'];
 
   // Initial values only; the form owns the state afterwards.
   const initial = untrack(() => ({
@@ -128,44 +142,80 @@
     fields: values?.fields ?? entry?.fields ?? {},
   }));
   let body = $state(initial.document);
+  // Remounts the editor when a browser backup is restored.
+  let editorKey = $state(0);
   // Live fields the SEO previews and autosave follow.
   let title = $state(initial.title);
   let slug = $state(initial.slug);
+  let editingSlug = $state(false);
   let excerpt = $state(initial.excerpt);
   let contentType = $state(initial.type);
-  let status = $state(initial.status);
   let publishAt = $state(initial.publishedAt);
-  let featured = $state(
+  let draftStatus = $state<ContentStatus>(
+    initial.status === 'pending' ? 'pending' : 'draft',
+  );
+  let visibility = $state<'public' | 'password' | 'private'>(
     untrack(() =>
-      values
-        ? values.featuredMediaId
-          ? { id: values.featuredMediaId, url: '', alt: '' }
-          : null
-        : entry?.featuredImage && entry.featuredMediaId
-          ? {
-              id: entry.featuredMediaId,
-              url: entry.featuredImage.sizes[0]?.url ?? entry.featuredImage.url,
-              alt: entry.featuredImage.alt,
-            }
-          : null,
+      initial.status === 'private'
+        ? 'private'
+        : entry?.protected
+          ? 'password'
+          : 'public',
     ),
+  );
+  let featured = $state(
+    untrack(() => {
+      const id = values ? values.featuredMediaId : entry?.featuredMediaId;
+      if (!id) return null;
+      // A failed save may echo another image than the saved one; its preview then follows on save.
+      const image =
+        id === entry?.featuredMediaId ? entry.featuredImage : undefined;
+      return {
+        id,
+        url: image ? (image.sizes[0]?.url ?? image.url) : '',
+        alt: image?.alt ?? '',
+      };
+    }),
   );
   let featuredPicker: ReturnType<typeof MediaPicker>;
 
-  /** Statuses this user may choose; the current one stays listed so saving keeps it. */
-  const statuses = $derived(
-    CONTENT_STATUSES.filter(
-      (option) =>
-        canPublish ||
-        UNPUBLISHED_STATUSES.includes(option) ||
-        option === initial.status,
-    ),
+  const isLive = $derived(!!entry && LIVE.includes(entry.status));
+  const future = $derived(
+    publishAt !== '' && new Date(publishAt).getTime() > Date.now(),
   );
+  /** What the main button saves. */
+  const primaryStatus = $derived<ContentStatus>(
+    !canPublish
+      ? isLive && entry
+        ? entry.status
+        : 'pending'
+      : visibility === 'private'
+        ? 'private'
+        : future
+          ? 'scheduled'
+          : 'published',
+  );
+  const primaryLabel = $derived(
+    !canPublish
+      ? isLive
+        ? m.update
+        : m.submitForReview
+      : isLive && primaryStatus === entry?.status
+        ? m.update
+        : primaryStatus === 'scheduled'
+          ? m.schedule
+          : isLive
+            ? m.update
+            : m.publish,
+  );
+  /** What Enter and Ctrl+S save: a draft stays a draft, a live entry is updated. */
+  const defaultStatus = $derived(isLive ? primaryStatus : draftStatus);
   const publishedAt = $derived(
     publishAt ? new Date(publishAt).toISOString() : '',
   );
 
   const bodyText = $derived(documentText(body).text);
+  const words = $derived(bodyText.split(/\s+/).filter(Boolean).length);
   const pattern = $derived(permalinkPatternFor(seo.permalinks, contentType));
   const typeInfo = $derived(
     model.types.find((option) => option.key === contentType),
@@ -189,7 +239,12 @@
           .filter((field) => field.type === 'image')
           .map((field) => {
             const id = initial.fields[field.key];
-            return [field.key, typeof id === 'string' ? { id, url: '' } : null];
+            return [
+              field.key,
+              typeof id === 'string'
+                ? { id, url: fieldImages[field.key] ?? '' }
+                : null,
+            ];
           }),
       ),
     ),
@@ -210,72 +265,305 @@
       : null,
   );
 
-  const categoryRows = $derived(flattenTree(categories));
-  const tagRows = $derived(
-    [...tags].sort((a, b) => a.name.localeCompare(b.name)),
+  // Terms added here join the lists; categories start checked.
+  let categoryList = $state(untrack(() => [...categories]));
+  let tagList = $state(untrack(() => [...tags]));
+  const addedCategories = new SvelteSet<string>();
+  const categoryRows = $derived(flattenTree(categoryList));
+  let chosenTags = $state(
+    untrack(() => tags.filter((tag) => initial.tagIds.has(tag.id))),
   );
+  let tagText = $state('');
+  let tagError = $state('');
+  let addingCategory = $state(false);
+  let categoryName = $state('');
+  let categoryParent = $state('');
+  let categoryError = $state('');
+
+  const createTerm = async (
+    taxonomy: 'category' | 'tag',
+    name: string,
+    parentId: string | null,
+  ): Promise<TermOption | null> => {
+    const response = await fetch('/admin/content/terms', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ taxonomy, name, parentId }),
+    }).catch(() => null);
+    return response?.status === 201
+      ? ((await response.json()) as TermOption)
+      : null;
+  };
+
+  const addTags = async () => {
+    tagError = '';
+    const names = tagText
+      .split(',')
+      .map((name) => name.trim())
+      .filter(Boolean);
+    tagText = '';
+    for (const name of names) {
+      let tag = tagList.find(
+        (option) => option.name.toLowerCase() === name.toLowerCase(),
+      );
+      if (!tag && canManageTerms) {
+        tag = (await createTerm('tag', name, null)) ?? undefined;
+        if (tag) tagList.push(tag);
+        else tagError = m.termCreateFailed;
+      } else if (!tag) tagError = m.termUnknown(name);
+      if (tag && !chosenTags.some((option) => option.id === tag.id)) {
+        chosenTags.push(tag);
+        touched = true;
+      }
+    }
+  };
+
+  const addCategory = async () => {
+    const name = categoryName.trim();
+    if (!name) return;
+    categoryError = '';
+    const category = await createTerm('category', name, categoryParent || null);
+    if (!category) {
+      categoryError = m.termCreateFailed;
+      return;
+    }
+    addedCategories.add(category.id);
+    categoryList.push(category);
+    categoryName = '';
+    touched = true;
+  };
+
+  // Unsaved changes: the text against what was last saved, plus any other field touched.
+  const snapshot = () => JSON.stringify([title, excerpt, body]);
+  let savedText = untrack(snapshot);
+  let touched = $state(false);
+  let saving = $state(false);
+  const isDirty = () => !saving && (touched || snapshot() !== savedText);
+  confirmLeave(isDirty, () => m.unsavedLeave);
+
+  // A browser copy of the text survives an expired session, a crash or a closed tab.
+  const backupKey = untrack(() => `cms-editor:${entry?.id ?? `new:${type}`}`);
+  const storage = () => {
+    try {
+      return sessionStorage;
+    } catch {
+      return null;
+    }
+  };
+  let backup = $state<{
+    title: string;
+    excerpt: string;
+    document: ContentDocument;
+  } | null>(null);
+  $effect(() => {
+    const text = snapshot();
+    const timer = setTimeout(() => {
+      try {
+        if (text !== savedText) storage()?.setItem(backupKey, text);
+      } catch {
+        // Full or blocked storage: the editor still holds the text.
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  });
+  onMount(() => {
+    try {
+      const raw = storage()?.getItem(backupKey);
+      if (!raw || raw === savedText) return;
+      const [savedTitle, savedExcerpt, document] = JSON.parse(raw) as unknown[];
+      const parsed = contentDocumentSchema.safeParse(document);
+      if (
+        typeof savedTitle === 'string' &&
+        typeof savedExcerpt === 'string' &&
+        parsed.success
+      )
+        backup = {
+          title: savedTitle,
+          excerpt: savedExcerpt,
+          document: parsed.data,
+        };
+    } catch {
+      // An unreadable backup is ignored.
+    }
+  });
+  const restoreBackup = () => {
+    if (!backup) return;
+    ({ title, excerpt } = backup);
+    body = backup.document;
+    editorKey++;
+    backup = null;
+  };
+  const dismissBackup = () => {
+    backup = null;
+    try {
+      storage()?.removeItem(backupKey);
+    } catch {
+      // Nothing to clean up.
+    }
+  };
+
+  let expiredDialog: HTMLDialogElement;
+  const sessionExpired = () => {
+    if (!expiredDialog.open) expiredDialog.showModal();
+  };
 
   // Autosave: every 30 seconds while the text differs from what was last kept.
   let autosaveState = $state<{ ok: boolean; at: Date } | null>(null);
-  let kept = untrack(() => JSON.stringify([title, excerpt, body]));
+  let kept = savedText;
   const timer = setInterval(async () => {
     if (!entry) return;
-    const current = JSON.stringify([title, excerpt, body]);
+    const current = snapshot();
     if (current === kept) return;
     const response = await fetch(`/admin/content/${entry.id}/autosave`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title, excerpt, document: body }),
     }).catch(() => null);
-    autosaveState = { ok: !!response?.ok, at: new Date() };
-    if (response?.ok) kept = current;
+    // An expired session answers with the sign-in page.
+    if (response?.redirected) sessionExpired();
+    const ok = !!response?.ok && !response.redirected;
+    autosaveState = { ok, at: new Date() };
+    if (ok) kept = current;
   }, 30_000);
   onDestroy(() => clearInterval(timer));
+
+  /** The result of the last save: what was asked for and what the entry was before. */
+  let result = $state<{ status: string; previous?: string } | null>(
+    untrack(() => (created ? { status: created } : null)),
+  );
+  let saveError = $state('');
+  const resultText = $derived.by(() => {
+    if (!result) return '';
+    const { status, previous } = result;
+    if (status === 'draft') return m.entryDraftSaved;
+    if (status === previous) return m.entryUpdated;
+    if (status === 'pending') return m.entrySubmitted;
+    if (status === 'published') return m.entryPublished;
+    if (status === 'scheduled') return m.entryScheduled;
+    return m.entryUpdated;
+  });
+  const justPublished = $derived(
+    result?.status === 'published' &&
+      result.previous !== 'published' &&
+      entry?.status === 'published',
+  );
+
+  let formElement: HTMLFormElement;
+  const submit: SubmitFunction = ({ formData }) => {
+    const status = String(formData.get('status') ?? '');
+    const previous = entry?.status;
+    const sent = snapshot();
+    saving = true;
+    saveError = '';
+    return async ({ result: outcome, update }) => {
+      if (
+        outcome.type === 'redirect' &&
+        outcome.location.startsWith('/admin/login')
+      ) {
+        saving = false;
+        sessionExpired();
+        return;
+      }
+      if (outcome.type === 'error') {
+        saving = false;
+        saveError = m.saveFailed;
+        return;
+      }
+      if (outcome.type === 'failure') {
+        const message = outcome.data?.message;
+        saveError = typeof message === 'string' ? message : m.saveFailed;
+      } else {
+        savedText = kept = sent;
+        touched = false;
+        result = { status, previous };
+        try {
+          storage()?.removeItem(backupKey);
+        } catch {
+          // Nothing to clean up.
+        }
+      }
+      await update({ reset: false });
+      saving = false;
+    };
+  };
+
+  const shortcut = (event: KeyboardEvent) => {
+    if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 's')
+      return;
+    event.preventDefault();
+    if (!saving)
+      formElement.requestSubmit(
+        formElement.querySelector<HTMLButtonElement>('button[data-default]'),
+      );
+  };
 </script>
 
-{#snippet termChoices(
-  name: string,
-  legend: string,
-  rows: { term: TermOption; depth: number }[],
-  selected: Set<string>,
-  empty: string,
-)}
-  <fieldset class="grid gap-2">
-    <legend class="mb-2 text-sm font-medium">{legend}</legend>
-    {#if rows.length}
-      <div
-        class="max-h-48 space-y-1 overflow-y-auto rounded-md border bg-background p-3"
-      >
-        {#each rows as { term, depth } (term.id)}
-          <label
-            class="flex items-center gap-2 text-sm"
-            style:padding-left="{depth * 1.25}rem"
-          >
-            <input
-              type="checkbox"
-              {name}
-              value={term.id}
-              checked={selected.has(term.id)}
-              class="size-4 accent-primary"
-            />
-            {term.name}
-          </label>
-        {/each}
-      </div>
-    {:else}
-      <p class="text-sm text-muted-foreground">{empty}</p>
-    {/if}
-  </fieldset>
+<svelte:window onkeydown={shortcut} />
+
+{#snippet saveButtons(compact: boolean)}
+  <!-- The card shows "Save draft" at its top, like WordPress; the mobile bar needs both. -->
+  {#if compact && !isLive}
+    <Button
+      type="submit"
+      name="status"
+      value={draftStatus}
+      variant="outline"
+      size={compact ? 'sm' : 'default'}
+      disabled={saving}
+      >{draftStatus === 'pending' ? m.saveAsPending : m.saveDraft}</Button
+    >
+  {/if}
+  <Button
+    type="submit"
+    name="status"
+    value={primaryStatus}
+    size={compact ? 'sm' : 'default'}
+    class={compact ? '' : 'w-full'}
+    disabled={saving}>{primaryLabel}</Button
+  >
 {/snippet}
 
+{#snippet saveResult()}
+  {#if saveError}
+    <p class="text-sm text-destructive" role="alert">{saveError}</p>
+  {:else if resultText}
+    <p class="text-sm text-muted-foreground" role="status">{resultText}</p>
+  {/if}
+{/snippet}
+
+{#if backup}
+  <Alert class="mb-6">
+    <AlertTitle class="flex flex-wrap items-center justify-between gap-2">
+      {m.backupFound}
+      <span class="flex gap-2">
+        <Button size="sm" onclick={restoreBackup}>{m.backupRestore}</Button>
+        <Button size="sm" variant="ghost" onclick={dismissBackup}
+          >{m.dismiss}</Button
+        >
+      </span>
+    </AlertTitle>
+  </Alert>
+{/if}
+
 <form
+  bind:this={formElement}
   method="POST"
   action="?/save"
-  use:enhance={() =>
-    ({ update }) =>
-      update({ reset: false })}
-  class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]"
+  use:enhance={submit}
+  oninput={() => (touched = true)}
+  onchange={() => (touched = true)}
+  class="grid gap-6 pb-20 lg:grid-cols-[minmax(0,1fr)_18rem] lg:pb-0"
 >
+  <!-- First submit button: what Enter in a field saves. -->
+  <button
+    type="submit"
+    name="status"
+    value={defaultStatus}
+    data-default
+    hidden
+    tabindex="-1"
+    aria-hidden="true"
+  ></button>
   <div class="min-w-0 space-y-6">
     <div class="grid gap-2">
       <Label for="title">{m.fieldTitle}</Label>
@@ -286,50 +574,76 @@
         maxlength={255}
         bind:value={title}
       />
-    </div>
-
-    <div class="grid gap-4 sm:grid-cols-2">
-      <div class="grid gap-2">
-        <Label for="slug">{m.fieldSlug}</Label>
-        <Input
-          id="slug"
-          name="slug"
-          maxlength={191}
-          placeholder={m.slugPlaceholder}
-          bind:value={slug}
-        />
-      </div>
-      <div class="grid gap-2">
-        <Label for="type">{m.fieldType}</Label>
-        <NativeSelect
-          class="w-full"
-          id="type"
-          name="type"
-          bind:value={contentType}
-        >
-          {#each model.types as option (option.key)}
-            <NativeSelectOption value={option.key}
-              >{option.builtin
-                ? typeLabel(m, option.key)
-                : option.name}</NativeSelectOption
+      <input type="hidden" name="slug" value={slug} />
+      {#if entry && path && !editingSlug}
+        {@const address = `${seo.siteUrl.replace(/\/$/, '')}${path}`}
+        <p class="flex flex-wrap items-center gap-2 text-sm">
+          <span class="text-muted-foreground">{m.permalink}:</span>
+          {#if entry.status === 'published' && path === entry.path}
+            <a
+              href={resolve(path as Path)}
+              target="_blank"
+              class="break-all underline">{address}</a
             >
-          {/each}
-        </NativeSelect>
-      </div>
+          {:else}
+            <span class="break-all">{address}</span>
+          {/if}
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-7"
+            onclick={() => (editingSlug = true)}>{m.edit}</Button
+          >
+        </p>
+      {:else}
+        <div class="flex flex-wrap items-center gap-2 text-sm">
+          <Label for="slug">{m.fieldSlug}</Label>
+          <Input
+            id="slug"
+            class="h-8 max-w-xs"
+            maxlength={191}
+            placeholder={m.slugPlaceholder}
+            bind:value={slug}
+            aria-describedby={entry ? undefined : 'slug-help'}
+            onkeydown={(event) => {
+              if (event.key !== 'Enter' || !entry) return;
+              event.preventDefault();
+              editingSlug = false;
+            }}
+          />
+          {#if entry}
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-8"
+              onclick={() => (editingSlug = false)}>{m.ok}</Button
+            >
+          {:else}
+            <span id="slug-help" class="text-xs text-muted-foreground"
+              >{m.permalinkAfterSave}</span
+            >
+          {/if}
+        </div>
+      {/if}
     </div>
 
     <div class="grid gap-2">
       <Label>{m.fieldBody}</Label>
-      <Editor name="document" bind:value={body} />
-      {#if autosaveState}
-        <p class="text-xs text-muted-foreground" role="status">
-          {autosaveState.ok
-            ? m.autosaveSaved(
-                autosaveState.at.toLocaleTimeString(i18n.language),
-              )
-            : m.autosaveFailed}
-        </p>
-      {/if}
+      {#key editorKey}
+        <Editor name="document" label={m.fieldBody} bind:value={body} />
+      {/key}
+      <p class="flex flex-wrap gap-x-4 text-xs text-muted-foreground">
+        <span>{m.wordCount(words)}</span>
+        {#if autosaveState}
+          <span role="status">
+            {autosaveState.ok
+              ? m.autosaveSaved(
+                  autosaveState.at.toLocaleTimeString(i18n.language),
+                )
+              : m.autosaveFailed}
+          </span>
+        {/if}
+      </p>
     </div>
 
     <div class="grid gap-2">
@@ -402,7 +716,7 @@
                 {/if}
                 <div class="flex gap-2">
                   <Button
-                    type="button"
+                    {id}
                     variant="outline"
                     size="sm"
                     onclick={() => {
@@ -412,11 +726,12 @@
                   >
                   {#if chosen}
                     <Button
-                      type="button"
                       variant="ghost"
                       size="sm"
-                      onclick={() => (imageFields[field.key] = null)}
-                      >{m.mediaRemoveFeatured}</Button
+                      onclick={() => {
+                        imageFields[field.key] = null;
+                        touched = true;
+                      }}>{m.mediaRemoveFeatured}</Button
                     >
                   {/if}
                 </div>
@@ -447,36 +762,17 @@
       </fieldset>
       <MediaPicker
         bind:this={fieldPicker}
-        onpick={(media) =>
-          (imageFields[pickingField] = {
+        onpick={(media) => {
+          imageFields[pickingField] = {
             id: media.id,
             url:
               media.variants.find((variant) => variant.name === 'thumbnail')
                 ?.url ?? media.url,
-          })}
+          };
+          touched = true;
+        }}
       />
     {/if}
-
-    <div class="grid gap-6 sm:grid-cols-2">
-      {#if supports.categories}
-        {@render termChoices(
-          'categoryIds',
-          m.columnCategories,
-          categoryRows,
-          initial.categoryIds,
-          m.noCategories,
-        )}
-      {/if}
-      {#if supports.tags}
-        {@render termChoices(
-          'tagIds',
-          m.columnTags,
-          tagRows.map((term) => ({ term, depth: 0 })),
-          initial.tagIds,
-          m.noTags,
-        )}
-      {/if}
-    </div>
 
     <SeoEditor
       kind="content"
@@ -498,21 +794,109 @@
     <Card>
       <CardHeader><CardTitle>{m.publishTitle}</CardTitle></CardHeader>
       <CardContent class="space-y-4">
-        <div class="grid gap-2">
-          <Label for="status">{m.fieldStatus}</Label>
-          <NativeSelect
-            class="w-full"
-            id="status"
-            name="status"
-            bind:value={status}
-          >
-            {#each statuses as option (option)}
-              <NativeSelectOption value={option}
-                >{statusLabel(m, option)}</NativeSelectOption
-              >
-            {/each}
-          </NativeSelect>
+        <div class="flex flex-wrap gap-2">
+          {#if !isLive}
+            <Button
+              type="submit"
+              name="status"
+              value={draftStatus}
+              variant="outline"
+              size="sm"
+              disabled={saving}
+              >{draftStatus === 'pending'
+                ? m.saveAsPending
+                : m.saveDraft}</Button
+            >
+          {/if}
+          {#if entry}
+            <Button
+              type="submit"
+              variant="outline"
+              size="sm"
+              form="content-preview">{m.preview}</Button
+            >
+          {/if}
         </div>
+
+        <div class="grid gap-2">
+          {#if isLive && entry}
+            <p class="flex flex-wrap items-center gap-2 text-sm">
+              <span class="text-muted-foreground">{m.fieldStatus}:</span>
+              {statusLabel(m, entry.status)}
+              <Button
+                type="submit"
+                name="status"
+                value="draft"
+                variant="link"
+                size="sm"
+                class="h-auto p-0"
+                disabled={saving}>{m.switchToDraft}</Button
+              >
+            </p>
+          {:else}
+            <Label for="status">{m.fieldStatus}</Label>
+            <NativeSelect class="w-full" id="status" bind:value={draftStatus}>
+              <NativeSelectOption value="draft"
+                >{statusLabel(m, 'draft')}</NativeSelectOption
+              >
+              <NativeSelectOption value="pending"
+                >{statusLabel(m, 'pending')}</NativeSelectOption
+              >
+            </NativeSelect>
+          {/if}
+        </div>
+
+        <fieldset class="grid gap-2">
+          <legend class="mb-1 text-sm font-medium">{m.visibility}</legend>
+          {#each [{ key: 'public', label: m.visibilityPublic }, { key: 'password', label: m.visibilityPassword }, { key: 'private', label: m.visibilityPrivate }] as option (option.key)}
+            <label class="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="visibility"
+                value={option.key}
+                bind:group={visibility}
+                disabled={option.key === 'private' &&
+                  !canPublish &&
+                  entry?.status !== 'private'}
+                class="size-4 accent-primary"
+              />
+              {option.label}
+              {#if option.key === 'password' && entry?.protected}<Badge
+                  variant="secondary">{m.protectedBadge}</Badge
+                >{/if}
+            </label>
+          {/each}
+          {#if visibility === 'password'}
+            <Input
+              id="content-password"
+              name="password"
+              type="password"
+              autocomplete="new-password"
+              maxlength={200}
+              required={!entry?.protected}
+              aria-label={m.fieldPassword}
+              aria-describedby="content-password-help"
+            />
+            <p id="content-password-help" class="text-xs text-muted-foreground">
+              {entry?.protected ? m.passwordSet : m.passwordHelp}
+            </p>
+          {:else if visibility === 'public' && entry?.protected}
+            <input type="hidden" name="removePassword" value="on" />
+          {/if}
+          <!-- Kept in the form for other types, so changing the type never loses the setting. -->
+          <label
+            class="flex items-center gap-2 text-sm"
+            hidden={contentType !== 'post'}
+          >
+            <input
+              type="checkbox"
+              name="sticky"
+              checked={initial.sticky}
+              class="size-4 accent-primary"
+            />
+            {m.fieldSticky}
+          </label>
+        </fieldset>
 
         {#if canPublish}
           <div class="grid gap-2">
@@ -521,7 +905,6 @@
               id="publish-at"
               type="datetime-local"
               bind:value={publishAt}
-              required={status === 'scheduled'}
               aria-describedby="publish-at-help"
             />
             <input type="hidden" name="publishedAt" value={publishedAt} />
@@ -530,6 +913,24 @@
             </p>
           </div>
         {/if}
+
+        <div class="grid gap-2">
+          <Label for="type">{m.fieldType}</Label>
+          <NativeSelect
+            class="w-full"
+            id="type"
+            name="type"
+            bind:value={contentType}
+          >
+            {#each model.types as option (option.key)}
+              <NativeSelectOption value={option.key}
+                >{option.builtin
+                  ? typeLabel(m, option.key)
+                  : option.name}</NativeSelectOption
+              >
+            {/each}
+          </NativeSelect>
+        </div>
 
         {#if authors}
           <div class="grid gap-2">
@@ -549,62 +950,6 @@
           </div>
         {/if}
 
-        <div class="grid gap-2" hidden={!supports.featuredImage}>
-          <Label>{m.featuredImage}</Label>
-          <input
-            type="hidden"
-            name="featuredMediaId"
-            value={featured?.id ?? ''}
-          />
-          {#if featured?.url}
-            <img
-              src={featured.url}
-              alt={featured.alt}
-              class="aspect-video w-full rounded-md border object-cover"
-            />
-          {:else if !featured}
-            <p class="text-sm text-muted-foreground">{m.featuredNone}</p>
-          {/if}
-          <div class="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onclick={() => featuredPicker.open()}>{m.mediaChoose}</Button
-            >
-            {#if featured}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onclick={() => (featured = null)}
-                >{m.mediaRemoveFeatured}</Button
-              >
-            {/if}
-          </div>
-          <MediaPicker
-            bind:this={featuredPicker}
-            onpick={(media) =>
-              (featured = {
-                id: media.id,
-                url:
-                  media.variants.find((variant) => variant.name === 'medium')
-                    ?.url ?? media.url,
-                alt: media.alt,
-              })}
-          />
-        </div>
-
-        <label class="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            name="sticky"
-            checked={initial.sticky}
-            class="size-4 accent-primary"
-          />
-          {m.fieldSticky}
-        </label>
-
         <!-- Kept in the form when hidden, so changing the type never loses the setting. -->
         <label
           class="flex items-center gap-2 text-sm"
@@ -619,77 +964,308 @@
           {m.fieldAllowComments}
         </label>
 
-        <div class="grid gap-2">
-          <Label for="content-password" class="flex items-center gap-2">
-            {m.fieldPassword}
-            {#if entry?.protected}<Badge variant="secondary"
-                >{m.protectedBadge}</Badge
-              >{/if}
-          </Label>
-          <Input
-            id="content-password"
-            name="password"
-            type="password"
-            autocomplete="new-password"
-            maxlength={200}
-            aria-describedby="content-password-help"
-          />
-          <p id="content-password-help" class="text-xs text-muted-foreground">
-            {entry?.protected ? m.passwordSet : m.passwordHelp}
-          </p>
-          {#if entry?.protected}
-            <label class="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="removePassword" />
-              {m.passwordRemove}
-            </label>
+        <div class="space-y-2 border-t pt-4">
+          {@render saveButtons(false)}
+          {@render saveResult()}
+          {#if justPublished && entry}
+            <p class="text-sm font-medium">
+              {m.entryLive}
+              <a
+                href={resolve(entry.path as Path)}
+                target="_blank"
+                class="inline-flex items-center gap-1 underline"
+                >{m.view}<ExternalLink class="size-3" /></a
+              >
+            </p>
           {/if}
+          <p class="text-xs text-muted-foreground">{m.saveShortcut}</p>
         </div>
-
-        <Button type="submit" class="w-full">{submitLabel}</Button>
       </CardContent>
     </Card>
-  </aside>
-  {#if contentType === 'page'}
-    <Card
-      ><CardHeader><CardTitle>{m.parentPage}</CardTitle></CardHeader
-      ><CardContent>
-        <NativeSelect
-          name="parentId"
-          aria-label={m.parentPage}
-          value={values?.parentId ?? entry?.parentId ?? ''}
-        >
-          <NativeSelectOption value="">{m.none}</NativeSelectOption>
-          {#each parentPages.filter((parent) => parent.id !== entry?.id) as parent (parent.id)}
-            <NativeSelectOption value={parent.id}
-              >{parent.title}</NativeSelectOption
-            >
-          {/each}
-        </NativeSelect>
-      </CardContent></Card
-    >
-  {/if}
-  {#each extraTaxonomies as taxonomy (taxonomy.key)}
-    <Card
-      ><CardHeader><CardTitle>{taxonomy.name}</CardTitle></CardHeader
-      ><CardContent class="space-y-2">
-        {#each flattenTree(taxonomy.terms) as { term, depth } (term.id)}
-          <label
-            class="flex items-center gap-2 text-sm"
-            style:padding-left={`${depth}rem`}
+
+    <Card hidden={!supports.featuredImage}>
+      <CardHeader><CardTitle>{m.featuredImage}</CardTitle></CardHeader>
+      <CardContent class="grid gap-2">
+        <input
+          type="hidden"
+          name="featuredMediaId"
+          value={featured?.id ?? ''}
+        />
+        {#if featured?.url}
+          <img
+            src={featured.url}
+            alt={featured.alt}
+            class="aspect-video w-full rounded-md border object-cover"
+          />
+        {:else if !featured}
+          <p class="text-sm text-muted-foreground">{m.featuredNone}</p>
+        {/if}
+        <div class="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={() => featuredPicker.open()}>{m.mediaChoose}</Button
           >
-            <input
-              type="checkbox"
-              name="extraTermIds"
-              value={term.id}
-              checked={(
-                values?.extraTermIds ??
-                entry?.extraTerms.map((term) => term.id) ??
-                []
-              ).includes(term.id)}
-            />{term.name}
-          </label>
-        {/each}
-      </CardContent></Card
-    >
-  {/each}
+          {#if featured}
+            <Button
+              variant="ghost"
+              size="sm"
+              onclick={() => {
+                featured = null;
+                touched = true;
+              }}>{m.mediaRemoveFeatured}</Button
+            >
+          {/if}
+        </div>
+        <MediaPicker
+          bind:this={featuredPicker}
+          onpick={(media, choice) => {
+            featured = {
+              id: media.id,
+              url:
+                media.variants.find((variant) => variant.name === 'medium')
+                  ?.url ?? media.url,
+              alt: choice.alt,
+            };
+            touched = true;
+          }}
+        />
+      </CardContent>
+    </Card>
+
+    {#if supports.categories}
+      <Card>
+        <CardHeader><CardTitle>{m.columnCategories}</CardTitle></CardHeader>
+        <CardContent class="grid gap-3">
+          <fieldset>
+            <legend class="sr-only">{m.columnCategories}</legend>
+            {#if categoryRows.length}
+              <div
+                class="max-h-48 space-y-1 overflow-y-auto rounded-md border bg-background p-3"
+              >
+                {#each categoryRows as { term, depth } (term.id)}
+                  <label
+                    class="flex items-center gap-2 text-sm"
+                    style:padding-left="{depth * 1.25}rem"
+                  >
+                    <input
+                      type="checkbox"
+                      name="categoryIds"
+                      value={term.id}
+                      checked={initial.categoryIds.has(term.id) ||
+                        addedCategories.has(term.id)}
+                      class="size-4 accent-primary"
+                    />
+                    {term.name}
+                  </label>
+                {/each}
+              </div>
+            {:else}
+              <p class="text-sm text-muted-foreground">{m.noCategories}</p>
+            {/if}
+          </fieldset>
+          {#if canManageTerms}
+            {#if addingCategory}
+              <div class="grid gap-2">
+                <Input
+                  aria-label={m.newCategoryName}
+                  placeholder={m.newCategoryName}
+                  maxlength={191}
+                  bind:value={categoryName}
+                  onkeydown={(event) => {
+                    if (event.key !== 'Enter') return;
+                    event.preventDefault();
+                    void addCategory();
+                  }}
+                />
+                <NativeSelect
+                  class="w-full"
+                  aria-label={m.parentCategory}
+                  bind:value={categoryParent}
+                >
+                  <NativeSelectOption value=""
+                    >— {m.parentCategory} —</NativeSelectOption
+                  >
+                  {#each categoryRows as { term, depth } (term.id)}
+                    <NativeSelectOption value={term.id}
+                      >{' '.repeat(depth * 3)}{term.name}</NativeSelectOption
+                    >
+                  {/each}
+                </NativeSelect>
+                <Button variant="outline" size="sm" onclick={addCategory}
+                  >{m.addNewCategory}</Button
+                >
+                {#if categoryError}<p
+                    class="text-sm text-destructive"
+                    role="alert"
+                  >
+                    {categoryError}
+                  </p>{/if}
+              </div>
+            {:else}
+              <Button
+                variant="link"
+                size="sm"
+                class="h-auto justify-start p-0"
+                onclick={() => (addingCategory = true)}
+                >+ {m.addNewCategory}</Button
+              >
+            {/if}
+          {/if}
+        </CardContent>
+      </Card>
+    {/if}
+
+    {#if supports.tags}
+      <Card>
+        <CardHeader><CardTitle>{m.columnTags}</CardTitle></CardHeader>
+        <CardContent class="grid gap-3">
+          {#each chosenTags as tag (tag.id)}
+            <input type="hidden" name="tagIds" value={tag.id} />
+          {/each}
+          <div class="flex gap-2">
+            <Input
+              aria-label={m.tagInput}
+              aria-describedby="tag-help"
+              list="tag-names"
+              maxlength={500}
+              bind:value={tagText}
+              onkeydown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ',') return;
+                event.preventDefault();
+                void addTags();
+              }}
+            />
+            <Button variant="outline" size="sm" class="h-9" onclick={addTags}
+              >{m.add}</Button
+            >
+          </div>
+          <datalist id="tag-names">
+            {#each tagList as tag (tag.id)}<option value={tag.name}
+              ></option>{/each}
+          </datalist>
+          <p id="tag-help" class="text-xs text-muted-foreground">
+            {m.tagInputHelp}
+          </p>
+          {#if tagError}<p class="text-sm text-destructive" role="alert">
+              {tagError}
+            </p>{/if}
+          {#if chosenTags.length}
+            <ul class="flex flex-wrap gap-2">
+              {#each chosenTags as tag (tag.id)}
+                <li>
+                  <Badge variant="secondary" class="gap-1 pr-1">
+                    {tag.name}
+                    <button
+                      type="button"
+                      class="rounded-full p-0.5 hover:bg-muted"
+                      aria-label={m.removeTag(tag.name)}
+                      onclick={() => {
+                        chosenTags = chosenTags.filter(
+                          (option) => option.id !== tag.id,
+                        );
+                        touched = true;
+                      }}><X class="size-3" /></button
+                    >
+                  </Badge>
+                </li>
+              {/each}
+            </ul>
+          {:else}
+            <p class="text-sm text-muted-foreground">{m.noTags}</p>
+          {/if}
+        </CardContent>
+      </Card>
+    {/if}
+
+    {#if contentType === 'page'}
+      <Card
+        ><CardHeader><CardTitle>{m.parentPage}</CardTitle></CardHeader
+        ><CardContent>
+          <NativeSelect
+            class="w-full"
+            name="parentId"
+            aria-label={m.parentPage}
+            value={values?.parentId ?? entry?.parentId ?? ''}
+          >
+            <NativeSelectOption value="">{m.none}</NativeSelectOption>
+            {#each parentPages.filter((parent) => parent.id !== entry?.id) as parent (parent.id)}
+              <NativeSelectOption value={parent.id}
+                >{parent.title}</NativeSelectOption
+              >
+            {/each}
+          </NativeSelect>
+        </CardContent></Card
+      >
+    {/if}
+    {#each extraTaxonomies as taxonomy (taxonomy.key)}
+      <Card
+        ><CardHeader><CardTitle>{taxonomy.name}</CardTitle></CardHeader
+        ><CardContent class="space-y-2">
+          {#each flattenTree(taxonomy.terms) as { term, depth } (term.id)}
+            <label
+              class="flex items-center gap-2 text-sm"
+              style:padding-left={`${depth}rem`}
+            >
+              <input
+                type="checkbox"
+                name="extraTermIds"
+                value={term.id}
+                checked={(
+                  values?.extraTermIds ??
+                  entry?.extraTerms.map((term) => term.id) ??
+                  []
+                ).includes(term.id)}
+              />{term.name}
+            </label>
+          {/each}
+        </CardContent></Card
+      >
+    {/each}
+  </aside>
+
+  <!-- Mobile: the save buttons stay reachable while writing. -->
+  <div
+    class="fixed inset-x-0 bottom-0 z-20 flex items-center justify-end gap-2 border-t bg-background p-3 lg:hidden"
+  >
+    <div class="mr-auto min-w-0 truncate">{@render saveResult()}</div>
+    {@render saveButtons(true)}
+  </div>
 </form>
+
+{#if entry}
+  <!-- Not enhanced: the browser follows the redirect into the new tab. The current text is
+       autosaved first, so the preview shows it. -->
+  <form
+    id="content-preview"
+    method="POST"
+    action="?/preview"
+    target="_blank"
+    hidden
+  >
+    <input type="hidden" name="title" value={title} />
+    <input type="hidden" name="excerpt" value={excerpt} />
+    <input type="hidden" name="document" value={JSON.stringify(body)} />
+  </form>
+{/if}
+
+<dialog
+  bind:this={expiredDialog}
+  class="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-lg border bg-background p-6 text-foreground shadow-lg backdrop:bg-black/40"
+  aria-labelledby="session-expired-title"
+>
+  <h2 id="session-expired-title" class="text-lg font-semibold">
+    {m.sessionExpiredTitle}
+  </h2>
+  <p class="mt-2 text-sm text-muted-foreground">{m.sessionExpiredHelp}</p>
+  <div class="mt-4 flex justify-end gap-2">
+    <Button variant="ghost" onclick={() => expiredDialog.close()}
+      >{m.close}</Button
+    >
+    <Button
+      href={resolve('/admin/(auth)/login')}
+      target="_blank"
+      onclick={() => expiredDialog.close()}>{m.signInAgain}</Button
+    >
+  </div>
+</dialog>

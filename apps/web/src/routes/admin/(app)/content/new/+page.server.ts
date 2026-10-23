@@ -21,6 +21,7 @@ export const load: PageServerLoad = async (event) => {
     seo,
     authors,
     canPublish: can(user, 'content.publish'),
+    canManageTerms: can(user, 'taxonomy.manage'),
     authorId: event.locals.user!.id,
   };
 };
@@ -39,6 +40,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught, { values });
     }
-    redirect(303, `/admin/content/${id}`);
+    // `saved` lets the editor say what the save did.
+    redirect(303, `/admin/content/${id}?saved=${input.status}`);
   },
 };
