@@ -181,6 +181,17 @@ const listFilters = {
   pageSize: z.coerce.number().int().min(1).max(100).default(10),
 };
 
+/** Admin list sort columns: modified, date, title, author name and approved comments. */
+export const CONTENT_ORDERS = [
+  'updatedAt',
+  'publishedAt',
+  'title',
+  'author',
+  'commentCount',
+] as const;
+
+export type ContentOrder = (typeof CONTENT_ORDERS)[number];
+
 /** Admin listing: every status unless `status` is given; the trash only with `view=trash`. */
 export const contentListQuerySchema = z
   .object({
@@ -188,7 +199,7 @@ export const contentListQuerySchema = z
     status: z.enum(CONTENT_STATUSES).optional(),
     view: z.enum(['active', 'trash']).default('active'),
     /** Sort field, then id in the same direction. */
-    orderBy: z.enum(['updatedAt', 'publishedAt']).default('updatedAt'),
+    orderBy: z.enum(CONTENT_ORDERS).default('updatedAt'),
     order: z.enum(['asc', 'desc']).default('desc'),
   })
   .refine((value) => Boolean(value.taxonomy) === Boolean(value.term), {

@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import {
   indent,
   moveDown,
+  moveTo,
   moveUp,
   outdent,
   removeRow,
@@ -31,4 +32,10 @@ test('menu rows move with their children and keep the three-level limit', () => 
   expect(shape(indent(start, 1))).toBe('a -b --c d');
   expect(shape(outdent(rows('a -b -c d'), 1))).toBe('a -c b d');
   expect(shape(removeRow(start, 1))).toBe('a d');
+  // Dragging takes the drop target's place and depth, children included.
+  expect(shape(moveTo(start, 3, 1))).toBe('a -d -b --c');
+  expect(shape(moveTo(start, 0, 4))).toBe('d a -b --c');
+  expect(shape(moveTo(start, 0, 2))).toBe('a -b --c d');
+  expect(shape(moveTo(start, 1, 0))).toBe('b -c a d');
+  expect(shape(moveTo(start, 1, 2))).toBe('a -b --c d');
 });

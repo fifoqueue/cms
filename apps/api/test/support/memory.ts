@@ -143,11 +143,25 @@ export class MemoryContentRepository implements ContentRepository {
             row.categoryIds.some((id) => categoryIds.includes(id))) &&
           (tagId === undefined || row.tagIds.includes(tagId)),
       )
-      .sort(
-        (a, b) =>
-          ((b[orderBy]?.getTime() ?? 0) - (a[orderBy]?.getTime() ?? 0) ||
-            (a.id < b.id ? 1 : -1)) * (order === 'asc' ? -1 : 1),
-      );
+      .sort((a, b) => {
+        // Newest/largest first, then id; `asc` reverses both.
+        const key = (row: ContentWrite) =>
+          orderBy === 'title'
+            ? row.title
+            : orderBy === 'author'
+              ? row.authorId
+              : orderBy === 'commentCount'
+                ? (this.commentCounts.get(row.id) ?? 0)
+                : (row[orderBy]?.getTime() ?? 0);
+        const [left, right] = [key(a), key(b)];
+        const compared =
+          typeof left === 'string'
+            ? String(right).localeCompare(left)
+            : (right as number) - left;
+        return (
+          (compared || (a.id < b.id ? 1 : -1)) * (order === 'asc' ? -1 : 1)
+        );
+      });
     return {
       items: matches
         .slice((page - 1) * pageSize, page * pageSize)

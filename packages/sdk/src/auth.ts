@@ -106,6 +106,17 @@ export const sessionGrantSchema = z.object({
   user: adminUserSchema,
 });
 
+/** One of the signed-in user's sessions. `id` is opaque; the token and its digest are never sent. */
+export const sessionInfoSchema = z.object({
+  id: z.string(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  /** The session making the request. */
+  current: z.boolean(),
+});
+
+export type SessionInfo = z.output<typeof sessionInfoSchema>;
+
 export const setupStatusSchema = z.object({ setupRequired: z.boolean() });
 export const ssoInfoSchema = z.object({
   enabled: z.boolean(),

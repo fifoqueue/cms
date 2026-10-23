@@ -89,6 +89,18 @@ export class MemorySessions implements SessionRepository {
       if (row.expiresAt <= now) this.rows.delete(key);
   }
 
+  async listForUser(userId: string, now: Date) {
+    return structuredClone(
+      [...this.rows.values()]
+        .filter((row) => row.userId === userId && row.expiresAt > now)
+        .sort(
+          (a, b) =>
+            b.createdAt.getTime() - a.createdAt.getTime() ||
+            a.tokenHash.localeCompare(b.tokenHash),
+        ),
+    );
+  }
+
   /** `ON DELETE CASCADE` from the identity. */
   deleteByIdentity(identityId: string) {
     for (const [key, row] of this.rows)

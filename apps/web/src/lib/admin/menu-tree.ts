@@ -90,3 +90,18 @@ export const removeRow = (rows: readonly MenuRow[], index: number) => [
   ...rows.slice(0, index),
   ...rows.slice(blockEnd(rows, index)),
 ];
+
+/**
+ * Drag and drop: moves the row (with its children) in front of row `to`, taking that row's
+ * depth; `to === rows.length` appends at the top level. Unchanged when dropped inside itself or
+ * when its children would nest too deep.
+ */
+export const moveTo = (rows: readonly MenuRow[], from: number, to: number) => {
+  const end = blockEnd(rows, from);
+  if (to >= from && to < end) return [...rows];
+  const depth = to < rows.length ? rows[to]!.depth : 0;
+  const shift = depth - rows[from]!.depth;
+  const deepest = Math.max(...rows.slice(from, end).map((row) => row.depth));
+  if (deepest + shift > MAX_DEPTH) return [...rows];
+  return moveBlock(rows, from, to, shift);
+};

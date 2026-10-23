@@ -183,6 +183,19 @@ export const pluginPageSchema = pluginPageSummarySchema.extend({
 
 export type PluginPage = z.output<typeof pluginPageSchema>;
 
+/**
+ * A plugin's dashboard widget, rendered for the viewer. Display blocks only (`form` blocks are
+ * dropped: widgets have no actions; a plugin page can host them).
+ */
+export const dashboardWidgetSchema = pluginPageSummarySchema.extend({
+  blocks: z
+    .array(adminBlockSchema)
+    .max(30)
+    .refine((blocks) => blocks.every((block) => block.kind !== 'form')),
+});
+
+export type DashboardWidget = z.output<typeof dashboardWidgetSchema>;
+
 export const pluginPageResultSchema = z.object({
   notice: z.string().max(500).nullable(),
 });

@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { COMMENT_BULK_ACTIONS } from '@cms/sdk';
 import { can } from '@cms/sdk/capabilities';
 import { mapBounded } from '#lib/server/bulk.js';
+import { readDashboardLayout } from '#lib/server/screen-options.js';
 import { failFrom, text } from '#lib/server/errors.js';
 import { adminFor } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
@@ -49,6 +50,7 @@ export const load: PageServerLoad = async (event) => {
     recent,
     approved,
     health,
+    widgets,
   ] = await Promise.all([
     // One count per type, a few at a time; At a Glance lists the first 20 types.
     mapBounded(model.types.slice(0, 20), async (type) => ({
@@ -96,6 +98,8 @@ export const load: PageServerLoad = async (event) => {
           }))
           .catch(() => null)
       : null,
+    // A plugin problem never takes the dashboard down: its widgets are simply left out.
+    admin.plugins.dashboardWidgets().catch(() => []),
   ]);
   const comment = ({
     id,
@@ -128,6 +132,13 @@ export const load: PageServerLoad = async (event) => {
     },
     activity: { soon, recent },
     health,
+    widgets: widgets.map(({ plugin, key, title, blocks }) => ({
+      plugin,
+      key,
+      title,
+      blocks,
+    })),
+    layout: readDashboardLayout(event.cookies),
   };
 };
 

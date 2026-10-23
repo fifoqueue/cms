@@ -18,6 +18,26 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+  /** Emails the user a reset link through the administrator endpoint. */
+  reset: async (event) => {
+    requireCapability(event.locals, 'users.manage');
+    try {
+      await adminFor(event).users.sendPasswordReset(event.params.id);
+    } catch (caught) {
+      return failFrom(caught);
+    }
+    return { notice: 'usersResetSent' };
+  },
+  /** Ends every session of the user; their API tokens keep working. */
+  signOut: async (event) => {
+    requireCapability(event.locals, 'users.manage');
+    try {
+      await adminFor(event).users.signOutEverywhere(event.params.id);
+    } catch (caught) {
+      return failFrom(caught);
+    }
+    return { notice: 'usersSignedOut' };
+  },
   save: async (event) => {
     requireCapability(event.locals, 'users.manage');
     const form = await event.request.formData();

@@ -7,7 +7,6 @@
   import { Search, Upload } from '@lucide/svelte';
   import BulkReport from '#lib/admin/BulkReport.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
-  import PluginSettingsForm from '#lib/admin/PluginSettingsForm.svelte';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import type { BadgeVariant } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -24,7 +23,6 @@
     NativeSelect,
     NativeSelectOption,
   } from '#lib/components/ui/native-select/index.js';
-  import { Separator } from '#lib/components/ui/separator/index.js';
   import { useI18n } from '#lib/i18n/index.js';
   import type { PageProps } from './$types';
 
@@ -233,7 +231,16 @@
         >
       </CardTitle>
       <CardDescription>{plugin.description || plugin.id}</CardDescription>
-      <CardAction class="flex gap-2">
+      <CardAction class="flex flex-wrap gap-2">
+        {#if plugin.settings.length}
+          <Button
+            href={resolve('/admin/(app)/plugins/[id]/settings', {
+              id: plugin.id,
+            })}
+            variant="ghost"
+            size="sm">{m.pluginSettingsLink}</Button
+          >
+        {/if}
         {#if plugin.updatable}
           <form method="POST" action="?/update" use:enhance>
             <input type="hidden" name="id" value={plugin.id} />
@@ -276,15 +283,9 @@
         {/if}
       </CardContent>
     {/if}
-    {#if plugin.error || plugin.settings.length}
-      <CardContent class="space-y-4">
-        {#if plugin.error}<p class="text-sm text-destructive">
-            {plugin.error}
-          </p>{/if}
-        {#if plugin.settings.length}
-          <Separator />
-          <PluginSettingsForm {plugin} />
-        {/if}
+    {#if plugin.error}
+      <CardContent>
+        <p class="text-sm text-destructive">{plugin.error}</p>
       </CardContent>
     {/if}
   </Card>

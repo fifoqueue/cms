@@ -107,6 +107,7 @@ import { PluginRouteRegistry } from '#api/plugin-runtime/route-registry';
 import { SlotRegistry } from '#api/plugin-runtime/slot-registry';
 import { WidgetRegistry } from '#api/plugin-runtime/widget-registry';
 import { AdminPageRegistry } from '#api/plugin-runtime/admin-page-registry';
+import { DashboardWidgetRegistry } from '#api/plugin-runtime/dashboard-widget-registry';
 import { WidgetService } from '#api/domain/appearance/widget-service';
 import { CommentService } from '#api/domain/comments/comment-service';
 import { SearchService } from '#api/domain/search/search-service';
@@ -205,6 +206,7 @@ export const createContainer = async (
   const slotRegistry = new SlotRegistry({ timeoutMs, logger });
   const widgetRegistry = new WidgetRegistry({ timeoutMs, logger });
   const pluginPages = new AdminPageRegistry({ timeoutMs, logger });
+  const dashboardWidgets = new DashboardWidgetRegistry({ timeoutMs, logger });
   const pluginRoutes = new PluginRouteRegistry();
   const embedRegistry = new EmbedRegistry({ timeoutMs, logger });
   // Core providers first; plugins add more and never replace them.
@@ -357,7 +359,8 @@ export const createContainer = async (
     ids: uuidV7,
     clock: systemClock,
   });
-  const roles = new RoleService(settingsRepository);
+  const directory = new PrismaUserDirectory(db);
+  const roles = new RoleService(settingsRepository, directory);
   const auth = createAuth(users, sessions, config, {
     protection,
     apiTokens,
@@ -369,6 +372,7 @@ export const createContainer = async (
     credentials: new PrismaCredentialRepository(db),
     issuer: randomTokenIssuer,
     hasher: bunPasswordHasher,
+    limits: rateLimits,
     email,
     protection,
     clock: systemClock,
@@ -437,7 +441,6 @@ export const createContainer = async (
     intervalMs: 6 * HOUR,
     run: () => content.emptyTrash(TRASH_DAYS),
   });
-  const directory = new PrismaUserDirectory(db);
   const userAdmin = new UserService({
     roles,
     settings: settingsRepository,
@@ -540,6 +543,7 @@ export const createContainer = async (
       embeds: embedRegistry,
       scheduler,
       pages: pluginPages,
+      dashboardWidgets,
       routes: pluginRoutes,
       data: pluginData,
       settings: pluginSettings,
@@ -628,6 +632,7 @@ export const createContainer = async (
       comments,
       search,
       pluginPages,
+      dashboardWidgets,
       webhooks,
       siteHealth,
       themePreviews,
