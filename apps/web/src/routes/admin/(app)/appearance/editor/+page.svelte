@@ -71,11 +71,16 @@
   const parts = $derived(editor.parts.map((part) => part.slug));
   let dirty = $state(false);
   let canvasBlocks = $state<Block[] | undefined>();
-  let canvasQueries = $state<typeof data.canvas.queries | undefined>();
+  type CanvasData = Pick<
+    typeof data.canvas,
+    'queries' | 'terms' | 'months' | 'adjacent'
+  >;
+  let canvasData = $state<CanvasData | undefined>();
   let previewError = $state<{ message?: string } | undefined>();
   let mobile = $state(false);
 
-  const querySignature = $derived(
+  /** Changes whenever the data the edited blocks show changes (lists, terms, months, neighbours). */
+  const dataSignature = $derived(
     JSON.stringify(
       [...walkBlocks(canvasBlocks ?? [])].flatMap((block) =>
         isIndependentQuery(block)
@@ -86,7 +91,13 @@
                 ),
               ),
             ]
-          : [],
+          : block.name === 'archives'
+            ? [`archives:${block.attrs.months}`]
+            : block.name === 'categories' ||
+                block.name === 'tag-cloud' ||
+                block.name === 'post-navigation'
+              ? [block.name]
+              : [],
       ),
     ),
   );
@@ -98,13 +109,13 @@
         : selected.kind === 'part'
           ? selected.part.blocks
           : undefined;
-    canvasQueries = data.canvas.queries;
+    canvasData = undefined;
     previewError = undefined;
     dirty = false;
   });
 
   $effect(() => {
-    const signature = querySignature;
+    const signature = dataSignature;
     const theme = editor.id;
     const selection = selected;
     const blocks = untrack(() => canvasBlocks);
@@ -123,6 +134,9 @@
           : selection.part.slug,
       );
       body.set('blocks', JSON.stringify(blocks));
+      // The published sample entry, for its previous and next entries.
+      if (data.previewPage?.kind === 'content')
+        body.set('contentId', data.previewPage.content.id);
 
       try {
         const response = await fetch('?/preview', {
@@ -131,13 +145,12 @@
           signal: controller.signal,
           headers: { 'x-sveltekit-action': 'true' },
         });
-        const result = deserialize<
-          { queries: typeof data.canvas.queries },
-          { message?: string }
-        >(await response.text());
+        const result = deserialize<CanvasData, { message?: string }>(
+          await response.text(),
+        );
         if (!current) return;
         if (result.type === 'success') {
-          canvasQueries = result.data?.queries;
+          canvasData = result.data;
           previewError = undefined;
         } else if (result.type === 'failure') {
           previewError = result.data;
@@ -259,7 +272,7 @@
           name="slug"
           placeholder={m.editorTemplateSlug}
           aria-label={m.editorTemplateSlug}
-          pattern="[a-z0-9]+(-[a-z0-9]+)*"
+          pattern={'[\\p{L}\\p{N}][\\p{L}\\p{N}\\p{M}]*(-[\\p{L}\\p{N}][\\p{L}\\p{N}\\p{M}]*)*'}
           class="h-8"
         />
         <Button type="submit" variant="outline" size="sm" class="w-full"
@@ -529,7 +542,7 @@
                     <TemplateView
                       data={{
                         ...data.canvas,
-                        queries: canvasQueries ?? data.canvas.queries,
+                        ...canvasData,
                       }}
                       page={data.previewPage}
                       previewBlocks={canvasBlocks ?? item.blocks}

@@ -61,6 +61,8 @@ export type PublishedCriteria = Pick<
 
 /** Read-only view of published content; drafts are filtered by the store and never returned. */
 export interface PublishedContentRepository {
+  /** Private, non-trashed entry with the same public projection; caller must authorize. */
+  privateById(id: string): Promise<PublishedRecord | null>;
   byId(id: string): Promise<PublishedRecord | null>;
   bySlug(slug: string): Promise<PublishedRecord | null>;
   /** Public entries among `ids`, without bodies; missing or unpublished ids are left out. */

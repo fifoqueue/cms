@@ -1,4 +1,4 @@
-import { KEBAB_CASE } from '@cms/sdk';
+import { CONTENT_SLUG } from '@cms/sdk';
 import { contentApi } from '#lib/server/api.js';
 import { notFoundFrom } from '#lib/server/errors.js';
 import {
@@ -14,7 +14,7 @@ import type { RequestHandler } from './$types';
  * are noindex, canonicalised elsewhere or hidden by global indexing return 404.
  */
 export const GET: RequestHandler = async ({ fetch, params }) => {
-  if (!KEBAB_CASE.test(params.slug)) return notFound();
+  if (!CONTENT_SLUG.test(params.slug)) return notFound();
   const api = contentApi(fetch);
   const [settings, content] = await Promise.all([
     api.seo.settings(),

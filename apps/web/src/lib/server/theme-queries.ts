@@ -87,15 +87,13 @@ const termItems = (terms: PublicTaxonomyTerm[], tree: boolean): TermItem[] => {
 const link = (entry: { title: string; path: string } | null) =>
   entry && { title: entry.title, path: entry.path };
 
-/**
- * Loads, in parallel, what the data blocks among `blocks` show. Post lists fail the page like
- * its own list would; term lists, monthly archives and post navigation are optional extras.
- */
-export const loadBlockData = async (
-  api: Api,
-  blocks: Block[],
-  contentId: string | null,
-): Promise<BlockData> => {
+/** What the site layout already loaded (for error pages); pages reuse it instead of asking again. */
+export type LayoutBlockData = { theme: ThemeView } & Partial<
+  Pick<BlockData, 'queries' | 'terms' | 'months'>
+>;
+
+/** What the data blocks among `blocks` need: list selections, term lists, months, neighbours. */
+export const blockNeeds = (blocks: Block[]) => {
   const all = [...walkBlocks(blocks)];
   const queries = new Map<string, QuerySelection>();
   for (const block of all)
@@ -105,20 +103,44 @@ export const loadBlockData = async (
       );
       queries.set(queryKey(selection), selection);
     }
-  if (queries.size > 32) error(400, Errors.ThemeQueriesLimit);
   const has = (name: Block['name']) => all.some((block) => block.name === name);
+  return {
+    queries,
+    category: has('categories'),
+    tag: has('tag-cloud'),
+    months: Math.max(
+      0,
+      ...all.map((block) =>
+        block.name === 'archives' ? block.attrs.months : 0,
+      ),
+    ),
+    adjacent: has('post-navigation'),
+  };
+};
+
+/**
+ * Loads, in parallel, what the data blocks among `blocks` show, reusing what `known` already
+ * holds. Post lists fail the page like its own list would; term lists, monthly archives and
+ * post navigation are optional extras.
+ */
+export const loadBlockData = async (
+  api: Api,
+  blocks: Block[],
+  contentId: string | null,
+  known: Partial<Pick<BlockData, 'queries' | 'terms' | 'months'>> = {},
+): Promise<BlockData> => {
+  const needs = blockNeeds(blocks);
+  if (needs.queries.size > 32) error(400, Errors.ThemeQueriesLimit);
+  const missing = [...needs.queries].filter(([key]) => !known.queries?.[key]);
   const terms = (taxonomy: TaxonomyType) =>
+    known.terms?.[taxonomy as 'category' | 'tag'] ??
     api.taxonomy.list(taxonomy).then(
       (list) => termItems(list, taxonomy === 'category'),
       () => null,
     );
-  const monthCount = Math.max(
-    0,
-    ...all.map((block) => (block.name === 'archives' ? block.attrs.months : 0)),
-  );
   const [lists, category, tag, months, adjacent] = await Promise.all([
     Promise.all(
-      [...queries].map(
+      missing.map(
         async ([key, selection]) =>
           [
             key,
@@ -134,10 +156,18 @@ export const loadBlockData = async (
           ] as const,
       ),
     ),
-    has('categories') ? terms('category') : null,
-    has('tag-cloud') ? terms('tag') : null,
-    monthCount ? api.months(monthCount).catch(() => null) : null,
-    contentId && has('post-navigation')
+    needs.category ? terms('category') : (known.terms?.category ?? null),
+    needs.tag ? terms('tag') : (known.terms?.tag ?? null),
+    !needs.months
+      ? (known.months ?? null)
+      : known.months && known.months.length >= needs.months
+        ? known.months
+        : api.months(needs.months).then(
+            (list) =>
+              list.map(({ year, month, count }) => ({ year, month, count })),
+            () => null,
+          ),
+    contentId && needs.adjacent
       ? api.adjacent(contentId).then(
           ({ previous, next }) => ({
             previous: link(previous),
@@ -148,46 +178,56 @@ export const loadBlockData = async (
       : null,
   ]);
   return {
-    queries: Object.fromEntries(lists),
+    queries: { ...known.queries, ...Object.fromEntries(lists) },
     terms: { category, tag },
-    months:
-      months &&
-      months.map(({ year, month, count }) => ({ year, month, count })),
+    months,
     adjacent,
   };
 };
 
 /** Block data of the template `page` renders with, and of the parts it includes. */
-export const loadTemplateData = (api: Api, theme: ThemeView, page: ThemePage) =>
+export const loadTemplateData = (
+  api: Api,
+  layout: LayoutBlockData,
+  page: ThemePage,
+) =>
   loadBlockData(
     api,
     withParts(
       pickTemplate(
-        theme.templates,
+        layout.theme.templates,
         templateCandidates(page, isFrontPage(page)),
       ),
-      theme.parts,
+      layout.theme.parts,
     ),
     page.kind === 'content' ? page.content.id : null,
+    layout,
   );
 
 /** Page data plus the block data of its template; the layout is loaded alongside. */
 export const withTemplateData = async <P extends ThemePage>(
   api: Api,
-  parent: () => Promise<{ theme: ThemeView }>,
+  parent: () => Promise<LayoutBlockData>,
   page: P,
 ) => ({
   ...page,
-  ...(await loadTemplateData(api, (await parent()).theme, page)),
+  ...(await loadTemplateData(api, await parent(), page)),
 });
 
-/** Block data of every template and part, for the site editor's canvas. */
-export const loadThemeData = (api: Api, theme: ThemeView) =>
+/**
+ * Block data of every template and part, for the site editor's canvas. `contentId` is the
+ * published sample entry, for post navigation.
+ */
+export const loadThemeData = (
+  api: Api,
+  theme: Pick<ThemeView, 'templates' | 'parts'>,
+  contentId: string | null = null,
+) =>
   loadBlockData(
     api,
     [
       ...Object.values(theme.templates).flat(),
       ...theme.parts.flatMap((part) => part.blocks),
     ],
-    null,
+    contentId,
   );

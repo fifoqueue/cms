@@ -87,6 +87,11 @@
 
 <form method="GET" role="search" class="flex gap-2" aria-label={m.filter}>
   {#if view}<input type="hidden" name="status" value={view} />{/if}
+  {#if data.filter.contentId}<input
+      type="hidden"
+      name="contentId"
+      value={data.filter.contentId}
+    />{/if}
   <Input
     name="q"
     type="search"
@@ -100,6 +105,20 @@
     ><Search class="size-4" /> {m.filter}</Button
   >
 </form>
+
+{#if data.filter.contentId}
+  <p class="text-sm">
+    {m.commentsForEntry(
+      data.comments.items[0]?.contentTitle ?? data.filter.contentId,
+    )}
+    <a
+      href={resolve(
+        `/admin/(app)/comments${query({ contentId: undefined, page: 1 })}`,
+      )}
+      class="text-primary hover:underline">{m.commentsAllEntries}</a
+    >
+  </p>
+{/if}
 
 <FormMessage {form} />
 
@@ -115,10 +134,18 @@
       <NativeSelectOption value="approve">{m.commentApprove}</NativeSelectOption
       >
       <NativeSelectOption value="unapprove"
-        >{m.commentUnapprove}</NativeSelectOption
+        >{view === 'spam'
+          ? m.commentNotSpam
+          : view === 'trash'
+            ? m.restore
+            : m.commentUnapprove}</NativeSelectOption
       >
-      <NativeSelectOption value="spam">{m.commentMarkSpam}</NativeSelectOption>
-      <NativeSelectOption value="trash">{m.moveToTrash}</NativeSelectOption>
+      {#if view !== 'spam'}<NativeSelectOption value="spam"
+          >{m.commentMarkSpam}</NativeSelectOption
+        >{/if}
+      {#if view !== 'trash'}<NativeSelectOption value="trash"
+          >{m.moveToTrash}</NativeSelectOption
+        >{/if}
       {#if removable}
         <NativeSelectOption value="delete"
           >{m.deletePermanently}</NativeSelectOption
@@ -168,19 +195,22 @@
             <Badge variant="secondary">{statusName(m, item.status)}</Badge>
           </p>
           <p class="text-xs text-muted-foreground">
-            {date(item.createdAt)} ·
+            {date(item.createdAt)} · {m.commentInResponseTo}
             <a
-              href={resolve('/admin/(app)/content/[id]', {
-                id: item.contentId,
-              })}
+              href={resolve(
+                `/admin/(app)/comments${query({ contentId: item.contentId, page: 1 })}`,
+              )}
               class="hover:underline">{item.contentTitle}</a
             >
           </p>
+          {#if item.parentId}<p class="text-xs text-muted-foreground">
+              {m.commentInReplyTo(item.parentAuthor ?? item.parentId)}
+            </p>{/if}
           <p class="text-sm whitespace-pre-line">{item.body}</p>
         </div>
       </div>
       <div class="flex flex-wrap gap-1">
-        {#each [item.status === 'approved' ? 'unapprove' : 'approve', 'spam', 'trash', ...(item.status === 'spam' || item.status === 'trash' ? ['delete'] : [])] as action (action)}
+        {#each item.status === 'spam' ? ['unapprove', 'trash', 'delete'] : item.status === 'trash' ? ['unapprove', 'delete'] : [item.status === 'approved' ? 'unapprove' : 'approve', 'spam', 'trash'] as action (action)}
           <form method="POST" action="?/bulk" use:enhance={confirmDelete}>
             <input type="hidden" name="ids" value={item.id} />
             <input type="hidden" name="action" value={action} />
@@ -188,7 +218,11 @@
               >{action === 'approve'
                 ? m.commentApprove
                 : action === 'unapprove'
-                  ? m.commentUnapprove
+                  ? item.status === 'spam'
+                    ? m.commentNotSpam
+                    : item.status === 'trash'
+                      ? m.restore
+                      : m.commentUnapprove
                   : action === 'spam'
                     ? m.commentMarkSpam
                     : action === 'trash'

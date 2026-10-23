@@ -196,7 +196,6 @@
             value={selectedRole?.key ?? ''}
             required
             maxlength={32}
-            pattern="[a-z0-9]+(-[a-z0-9]+)*"
             readonly={!!selectedRole}
           /></label
         >

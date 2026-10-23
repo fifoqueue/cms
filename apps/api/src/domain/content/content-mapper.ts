@@ -84,7 +84,8 @@ const publicFields = (record: PublishedSummaryRecord, unlocked: boolean) => ({
     record.protected && !unlocked ? '' : record.excerpt || record.summary,
   author: record.author,
   sticky: record.sticky,
-  commentCount: record.commentCount,
+  // Locked discussions stay private: the count would reveal activity without the password.
+  commentCount: record.protected && !unlocked ? 0 : record.commentCount,
   featuredImage: record.featuredImage,
   protected: record.protected && !unlocked,
   publishedAt: (record.publishedAt ?? record.updatedAt).toISOString(),

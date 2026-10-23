@@ -1,11 +1,15 @@
 import { contentApi } from '#lib/server/api.js';
+import { SESSION_COOKIE } from '#lib/server/session.js';
 import { commentAction } from '#lib/server/comments.js';
 import { entryPage } from '#lib/server/content-page.js';
 import { notFoundFrom } from '#lib/server/errors.js';
 import { latestPosts } from '#lib/server/archive.js';
 import { homeTypeParam, listView, pageParam } from '#lib/server/public-view.js';
 import { loadSlots } from '#lib/server/slots.js';
-import { withTemplateData } from '#lib/server/theme-queries.js';
+import {
+  loadTemplateData,
+  withTemplateData,
+} from '#lib/server/theme-queries.js';
 import { unlockAction, unlockProofs } from '#lib/server/unlock.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -14,8 +18,11 @@ import type { Actions, PageServerLoad } from './$types';
  * shows the static front page (Settings → Reading) or lists posts, or articles with
  * `?type=article`; search covers every searchable type.
  */
-export const load: PageServerLoad = async ({ fetch, url, cookies, parent }) => {
-  const api = contentApi(fetch);
+export const load: PageServerLoad = async (event) => {
+  const { fetch, url, cookies, parent } = event;
+  const api = contentApi(fetch, cookies.get(SESSION_COOKIE));
+  // Block data is public: it never uses the visitor's session.
+  const publicApi = contentApi(fetch);
   const page = pageParam(url);
   const reading = await api.reading().catch(() => null);
   const pageSize = reading?.postsPerPage ?? 10;
@@ -25,7 +32,7 @@ export const load: PageServerLoad = async ({ fetch, url, cookies, parent }) => {
       query ? api.list({ search: query, page, pageSize }) : null,
       loadSlots(api, { path: url.pathname }),
     ]);
-    return withTemplateData(api, parent, {
+    return withTemplateData(publicApi, parent, {
       kind: 'search' as const,
       query,
       posts: posts && listView(posts),
@@ -39,11 +46,11 @@ export const load: PageServerLoad = async ({ fetch, url, cookies, parent }) => {
       .catch(notFoundFrom);
     return entryPage(
       api,
-      url,
+      event,
       content,
       types,
       loadSlots(api, { path: '/', contentId: content.id }),
-      parent().then(({ theme }) => theme),
+      async (page) => loadTemplateData(publicApi, await parent(), page),
       '/',
     );
   }
@@ -52,7 +59,7 @@ export const load: PageServerLoad = async ({ fetch, url, cookies, parent }) => {
     latestPosts(api, type, page, pageSize),
     loadSlots(api, { path: url.pathname }),
   ]);
-  return withTemplateData(api, parent, {
+  return withTemplateData(publicApi, parent, {
     kind: 'home' as const,
     type,
     posts,

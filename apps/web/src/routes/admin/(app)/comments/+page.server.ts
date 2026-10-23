@@ -11,14 +11,15 @@ export const load: PageServerLoad = async (event) => {
     (option) => option === params.get('status'),
   );
   const search = (params.get('q') ?? '').trim().slice(0, 200) || undefined;
+  const contentId = params.get('contentId')?.slice(0, 36) || undefined;
   const page = Math.max(1, Math.trunc(Number(params.get('page'))) || 1);
   const admin = adminFor(event);
   const [comments, counts] = await Promise.all([
-    admin.comments.list({ status, search, page, pageSize: 20 }),
+    admin.comments.list({ status, search, contentId, page, pageSize: 20 }),
     admin.comments.counts(),
   ]);
   return {
-    filter: { status, q: search },
+    filter: { status, q: search, contentId },
     counts,
     comments: {
       ...comments,
@@ -27,6 +28,7 @@ export const load: PageServerLoad = async (event) => {
         contentId: item.contentId,
         contentTitle: item.contentTitle,
         parentId: item.parentId,
+        parentAuthor: item.parentAuthor,
         authorName: item.authorName,
         authorEmail: item.authorEmail,
         authorUrl: item.authorUrl,

@@ -15,6 +15,13 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
     return published(await this.content.findById(id));
   }
 
+  async privateById(id: string) {
+    const record = await this.content.findById(id);
+    return record?.status === 'private' && !record.trashedAt
+      ? { ...project(record), html: record.html, fields: record.fields }
+      : null;
+  }
+
   async bySlug(slug: string) {
     return published(await this.content.findBySlug(slug));
   }

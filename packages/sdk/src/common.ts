@@ -147,5 +147,7 @@ export const stringifyJson = (value: unknown): string => {
   return json;
 };
 
-/** Lowercase ASCII words joined by single dashes. Shared by slugs and plugin ids. */
+export { CONTENT_SLUG } from '#sdk/slugs';
+
+/** Lowercase ASCII words joined by single dashes, for system identifiers. */
 export const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

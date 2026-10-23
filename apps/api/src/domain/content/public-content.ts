@@ -1,5 +1,6 @@
 import {
   adjacentQuerySchema,
+  can,
   isJsonValue,
   monthsQuerySchema,
   publicContentListQuerySchema,
@@ -13,6 +14,8 @@ import type {
   PublicContentSummary,
   PublicMonth,
 } from '@cms/sdk';
+import { authorize } from '#api/domain/auth/authorization';
+import type { Actor } from '#api/domain/auth/authorization';
 import type { ContentReader } from '@cms/sdk/plugin';
 import { toPublic, toPublicSummary } from '#api/domain/content/content-mapper';
 import type {
@@ -121,6 +124,20 @@ export class PublishedContentReader implements ContentReader {
     return this.read(await this.repository.byId(id), unlock, fields);
   }
 
+  async getPrivateById(
+    id: string,
+    fields: Present,
+  ): Promise<PublicContent | null> {
+    const content = await this.read(
+      await this.repository.privateById(id),
+      async () => true,
+      fields,
+    );
+    return content
+      ? { ...content, seo: { ...content.seo, noIndex: true } }
+      : null;
+  }
+
   private async read(
     record: PublishedRecord | null,
     unlock: Unlock,
@@ -204,12 +221,19 @@ export class PublicContentService {
   async getById(
     id: string,
     proofs: readonly string[] = [],
+    actor: Actor | null = null,
   ): Promise<PublicContent | null> {
-    const content = await this.reader.getById(
+    let content = await this.reader.getById(
       id,
       (contentId) => this.locks.unlocked(contentId, proofs),
       (type, values) => this.fields.present(type, values),
     );
+    if (!content && actor && can(actor, 'content.readPrivate')) {
+      authorize(actor, 'content.readPrivate');
+      content = await this.reader.getPrivateById(id, (type, values) =>
+        this.fields.present(type, values),
+      );
+    }
     return content ? this.present(content) : null;
   }
 

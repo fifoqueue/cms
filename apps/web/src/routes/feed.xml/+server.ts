@@ -1,4 +1,5 @@
-import { contentApi } from '#lib/server/api.js';
+import { CONTENT_SLUG } from '@cms/sdk';
+import { contentApi, mediaFiles } from '#lib/server/api.js';
 import {
   feedTypes,
   loadBodies,
@@ -11,18 +12,44 @@ import { FEED_KINDS, feedPath } from '#lib/seo/paths.js';
 import type { FeedTarget } from '#lib/seo/paths.js';
 import type { RequestHandler } from './$types';
 
-/** `?category=`, `?tag=` or `?author=` narrows the feed to one archive. */
-const targetOf = (url: URL): FeedTarget | null => {
+/**
+ * `?category=`, `?tag=` or `?author=` narrows the feed to one archive. A value that is not a
+ * slug (`undefined`) has no feed; it is never shortened into another archive's slug.
+ */
+const targetOf = (url: URL): FeedTarget | null | undefined => {
   for (const kind of FEED_KINDS) {
-    const slug = url.searchParams.get(kind)?.trim();
-    if (slug) return { kind, slug: slug.slice(0, 191) };
+    const slug = url.searchParams.get(kind);
+    if (slug === null) continue;
+    return slug.length <= 191 && CONTENT_SLUG.test(slug)
+      ? { kind, slug }
+      : undefined;
   }
   return null;
 };
 
+/** A library file's size from a one-byte range request, without downloading it. */
+const mediaSize =
+  (fetch: typeof globalThis.fetch) =>
+  async (key: string): Promise<number | null> => {
+    const response = await mediaFiles(fetch)
+      .file(key, 'bytes=0-0')
+      .catch(() => null);
+    if (!response) return null;
+    await response.body?.cancel();
+    const total =
+      response.status === 206
+        ? /\/(\d+)$/.exec(response.headers.get('content-range') ?? '')?.[1]
+        : response.ok
+          ? response.headers.get('content-length')
+          : null;
+    const size = Number(total);
+    return Number.isSafeInteger(size) && size > 0 ? size : null;
+  };
+
 export const GET: RequestHandler = async ({ fetch, url }) => {
   const api = contentApi(fetch);
   const target = targetOf(url);
+  if (target === undefined) return notFound();
   const [settings, site, reading, types, followed] = await Promise.all([
     api.seo.settings(),
     api.site(),
@@ -57,6 +84,6 @@ export const GET: RequestHandler = async ({ fetch, url }) => {
     bodies:
       reading?.feedContent === 'excerpt'
         ? undefined
-        : await loadBodies(api, items),
+        : await loadBodies(api, items, mediaSize(fetch)),
   });
 };

@@ -40,9 +40,8 @@ export const isFrontPage = (page: ThemePage) =>
   (page.kind === 'home' && !page.path && page.type === 'post') ||
   (page.kind === 'content' && page.content.path === '/');
 
-/** Template slugs only take lowercase letters, numbers and dashes. */
-const suffix = (value: string) =>
-  /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value) ? [value] : [];
+// Names are only looked up in the theme's validated template record; unknown names fall through.
+const suffix = (value: string) => [value];
 
 /**
  * WordPress template hierarchy, most specific first. `front` marks the site's front page

@@ -12,17 +12,40 @@ import type {
   PublicSiteDto,
   SeoSitemapEntry,
 } from '@cms/sdk';
-import { SEO_SITEMAP_PAGE_SIZE } from '@cms/sdk';
+import { MEDIA_PATH, SEO_SITEMAP_PAGE_SIZE } from '@cms/sdk';
 import type { ContentClient } from '@cms/sdk/client';
 import { Errors } from '#lib/server/errors.js';
 import { contentMarkdown, markdownInline } from '#lib/server/markdown.js';
-import { FEED_PATH } from '#lib/seo/paths.js';
+import { FEED_PATH, markdownPath } from '#lib/seo/paths.js';
 
 export const SITEMAP_KINDS = ['content', 'category', 'tag'] as const;
 export type SitemapKind = (typeof SITEMAP_KINDS)[number];
 
 /** sitemaps.org limit on sitemaps per index; each chunk holds one API page (≤ 1,000 URLs). */
 const SITEMAP_INDEX_LIMIT = 50_000;
+
+/** API requests one discovery response keeps in flight at most. */
+export const DISCOVERY_CONCURRENCY = 4;
+
+/** `task` over `items` in order, with at most `limit` running at once. */
+export const mapLimit = async <T, R>(
+  items: readonly T[],
+  task: (item: T) => Promise<R>,
+  limit = DISCOVERY_CONCURRENCY,
+): Promise<R[]> => {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await task(items[index]!);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+  return results;
+};
 
 /** Entries listed by the feed and llms.txt: a recent selection, not the full corpus. */
 export const RECENT_LIMIT = 20;
@@ -71,10 +94,8 @@ export const loadRecent = async (
   limit = RECENT_LIMIT,
   filter: PublicContentListQuery = {},
 ) => {
-  const lists = await Promise.all(
-    (types ?? [undefined]).map((type) =>
-      api.list({ ...filter, type, pageSize: limit }),
-    ),
+  const lists = await mapLimit(types ?? [undefined], (type) =>
+    api.list({ ...filter, type, pageSize: limit }),
   );
   return lists
     .flatMap((list) => list.items)
@@ -211,33 +232,54 @@ export const sitemapChunk = (
   );
 };
 
-/** Rendered bodies of feed entries by id (Settings → Reading: full text). */
-export const loadBodies = async (
-  api: ContentClient,
-  items: readonly PublicContentSummary[],
-) =>
-  new Map(
-    await Promise.all(
-      items.map(
-        async (item) =>
-          [
-            item.id,
-            // Protected entries stay locked: their body is empty.
-            await api.resolvePath(item.path).then(
-              ({ content }) => content.html,
-              () => '',
-            ),
-          ] as const,
-      ),
-    ),
-  );
-
 const AUDIO_TYPES: Record<string, string> = {
   mp3: 'audio/mpeg',
   wav: 'audio/wav',
   ogg: 'audio/ogg',
   oga: 'audio/ogg',
 };
+
+/** A full-text feed item: its body and the first library audio file (RSS enclosure). */
+export interface FeedBody {
+  html: string;
+  audio: { path: string; type: string; length: number } | null;
+}
+
+/** Byte size of a library file by key, or null when unknown. */
+export type MediaSize = (key: string) => Promise<number | null>;
+
+/** The first media-library audio file of a body, with its size; others are not described. */
+const audioOf = async (html: string, size: MediaSize) => {
+  const src = /<audio\b[^>]*\ssrc="([^"]+)"/
+    .exec(html)?.[1]
+    ?.replace(/&amp;/g, '&');
+  const type = AUDIO_TYPES[src?.split('.').pop()?.toLowerCase() ?? ''];
+  if (!src?.startsWith(MEDIA_PATH) || !type) return null;
+  const length = await size(src.slice(MEDIA_PATH.length));
+  return length ? { path: src, type, length } : null;
+};
+
+/**
+ * Bodies of feed entries by id (Settings → Reading: full text), a few requests at a time.
+ * Protected entries are not read: their body stays locked.
+ */
+export const loadBodies = async (
+  api: ContentClient,
+  items: readonly PublicContentSummary[],
+  size: MediaSize,
+) =>
+  new Map(
+    await mapLimit(
+      items.filter((item) => !item.protected),
+      async (item) => {
+        const html = await api.resolvePath(item.path).then(
+          ({ content }) => content.html,
+          () => '',
+        );
+        return [item.id, { html, audio: await audioOf(html, size) }] as const;
+      },
+    ),
+  );
 
 /** Feed readers show bodies elsewhere: site paths become absolute, responsive hints go. */
 const absoluteBody = (origin: string, html: string) =>
@@ -248,16 +290,6 @@ const absoluteBody = (origin: string, html: string) =>
       (_, attribute: string) => `${attribute}${origin}/`,
     );
 
-/** The first audio file of a body as an RSS enclosure (podcasts); its size is unknown. */
-const enclosure = (origin: string, html: string) => {
-  const src = /<audio\b[^>]*\ssrc="([^"]+)"/.exec(html)?.[1];
-  const type = AUDIO_TYPES[src?.split('.').pop()?.toLowerCase() ?? ''];
-  if (!src || !type) return null;
-  const url =
-    src.startsWith('/') && !src.startsWith('//') ? `${origin}${src}` : src;
-  return `<enclosure url="${xmlText(url.replace(/&amp;/g, '&'))}" length="0" type="${type}"/>`;
-};
-
 /** What a feed shows besides its entries. */
 export interface FeedOptions {
   /** The category, tag or author a narrowed feed follows. */
@@ -265,7 +297,7 @@ export interface FeedOptions {
   /** The feed's own path with its query (`/feed.xml?category=news`). */
   self?: string;
   /** Rendered bodies by entry id; omitted when feeds carry excerpts only. */
-  bodies?: ReadonlyMap<string, string>;
+  bodies?: ReadonlyMap<string, FeedBody>;
 }
 
 /** RSS 2.0 of recent discoverable entries, linked to their canonical URLs. */
@@ -281,7 +313,7 @@ export const rssFeed = (
   const entries = items.map((content) => {
     const link = absoluteUrl(origin, content.path);
     const body = bodies?.get(content.id);
-    const media = body && enclosure(origin, body);
+    const audio = body?.audio;
     return [
       '    <item>',
       `      ${element('title', content.title)}`,
@@ -295,10 +327,16 @@ export const rssFeed = (
         (term) => `      ${element('category', term.name)}`,
       ),
       `      ${element('description', content.seo.description || content.excerpt)}`,
-      ...(body
-        ? [`      ${element('content:encoded', absoluteBody(origin, body))}`]
+      ...(body?.html
+        ? [
+            `      ${element('content:encoded', absoluteBody(origin, body.html))}`,
+          ]
         : []),
-      ...(media ? [`      ${media}`] : []),
+      ...(audio
+        ? [
+            `      <enclosure url="${xmlText(absoluteUrl(origin, audio.path))}" length="${audio.length}" type="${audio.type}"/>`,
+          ]
+        : []),
       '    </item>',
     ].join('\n');
   });
@@ -336,9 +374,9 @@ export const llmsTxt = (
   const intro = markdownInline(
     settings.llmsIntro || settings.homeDescription || site.description,
   ).trim();
-  // Slugs are kebab-case, so these URLs hold nothing that could end a Markdown destination.
+  // Encoded slugs hold nothing that could end a Markdown destination.
   const links = items.map((content) => {
-    const url = absoluteUrl(origin, `/${content.slug}.md`);
+    const url = absoluteUrl(origin, markdownPath(content.slug));
     const summary = markdownInline(
       content.seo.description || content.excerpt,
     ).trim();

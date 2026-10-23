@@ -41,11 +41,15 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
     // Without a primary menu, navigation falls back to the published pages.
     primary ? null : api.list({ type: 'page', pageSize: 20 }),
     // Pages load the data of their own template; error pages only have this one.
-    loadTemplateData(api, theme, {
-      kind: 'error',
-      status: 404,
-      message: Errors.NotFound,
-    }),
+    loadTemplateData(
+      api,
+      { theme },
+      {
+        kind: 'error',
+        status: 404,
+        message: Errors.NotFound,
+      },
+    ),
   ]);
   return {
     archives: layout.archives,

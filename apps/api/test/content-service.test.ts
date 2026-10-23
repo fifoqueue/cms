@@ -151,11 +151,58 @@ describe('ContentService', () => {
     expect(second.slug).toBe('hello-world-2');
   });
 
-  test('falls back to an id-based slug for titles without ASCII letters', async () => {
-    const { service } = setup();
+  test('Unicode slugs keep their encoded permalink identity', async () => {
+    const { service, publicContent, repository } = setup();
+    const entry = await service.create(
+      input({ title: '안녕하세요', status: 'published' }),
+      ADMIN,
+    );
+    expect(entry.slug).toBe('안녕하세요');
+    expect(entry.path).toBe(`/${encodeURIComponent('안녕하세요')}`);
+    const resolver = new PermalinkResolver(
+      repository.permalinks,
+      publicContent,
+    );
+    expect((await resolver.resolve({ path: entry.path })).content.id).toBe(
+      entry.id,
+    );
+    expect((await service.create(input({ title: '🌧️' }), ADMIN)).slug).toMatch(
+      /^post-[0-9a-f]+$/,
+    );
+  });
+
+  test('private site reads require resolved capabilities and never expose drafts or admin fields', async () => {
+    const { service, publicContent, repository } = setup();
+    const entry = await service.create(input({ status: 'private' }), ADMIN);
+    const resolver = new PermalinkResolver(
+      repository.permalinks,
+      publicContent,
+    );
+    expect(await codeOf(resolver.resolve({ path: entry.path }))).toBe(
+      'not_found',
+    );
     expect(
-      (await service.create(input({ title: '안녕하세요' }), ADMIN)).slug,
-    ).toMatch(/^post-[0-9a-f]+$/);
+      await codeOf(
+        resolver.resolve({ path: entry.path }, [], {
+          id: 'reader',
+          role: 'subscriber',
+        }),
+      ),
+    ).toBe('not_found');
+    const resolved = await resolver.resolve({ path: entry.path }, [], {
+      id: 'editor',
+      role: 'custom',
+      capabilities: ['content.readPrivate'],
+    });
+    expect(resolved.content.html).toContain('Body');
+    expect(resolved.content.seo.noIndex).toBe(true);
+    for (const key of ['document', 'authorId', 'status', 'passwordHash'])
+      expect(resolved.content).not.toHaveProperty(key);
+    expect((await publicContent.list({})).items).toEqual([]);
+    await service.update(entry.id, input({ status: 'draft' }), ADMIN);
+    expect(
+      await codeOf(resolver.resolve({ path: entry.path }, [], ADMIN)),
+    ).toBe('not_found');
   });
 
   test('rejects taken slugs, invalid input and documents outside the schema', async () => {
@@ -297,14 +344,21 @@ describe('ContentService', () => {
   });
 
   test('a protected body stays hidden, unsearchable and unlockable only with its current password', async () => {
-    const { service, publicContent, protectedActions } = setup();
+    const { service, publicContent, protectedActions, repository } = setup();
     const entry = await service.create(
       input({ status: 'published', password: 'open-sesame' }),
       ADMIN,
     );
+    repository.commentCounts.set(entry.id, 2);
 
     const locked = await publicContent.getBySlug('hello-world');
-    expect(locked).toMatchObject({ protected: true, html: '', excerpt: '' });
+    expect(locked).toMatchObject({
+      protected: true,
+      html: '',
+      excerpt: '',
+      commentCount: 0,
+    });
+    expect((await publicContent.list({})).items[0]!.commentCount).toBe(0);
     expect((await publicContent.list({ search: 'Body' })).total).toBe(0);
     expect(
       await codeOf(publicContent.unlock(entry.id, { password: 'no' })),
@@ -315,9 +369,9 @@ describe('ContentService', () => {
       password: 'open-sesame',
     });
     const proof = `${entry.id}.${token}`;
-    expect(
-      (await publicContent.getBySlug('hello-world', [proof])).html,
-    ).toContain('Body');
+    const unlocked = await publicContent.getBySlug('hello-world', [proof]);
+    expect(unlocked.html).toContain('Body');
+    expect(unlocked.commentCount).toBe(2);
     // Proofs are bound to the entry: another entry's id never matches.
     expect(
       (await publicContent.getBySlug('hello-world', [`other.${token}`])).html,
@@ -397,6 +451,55 @@ describe('ContentService', () => {
     expect(await codeOf(previews.render(`${token}x`))).toBe('not_found');
     clock.set('2026-01-01T02:00:00.000Z');
     expect(await codeOf(previews.render(token))).toBe('not_found');
+  });
+
+  test('a stale expected version changes nothing; an explicit date replaces the stored one', async () => {
+    const { service, clock } = setup();
+    const entry = await service.create(
+      input({ status: 'published', publishedAt: '2026-04-01T00:00:00.000Z' }),
+      ADMIN,
+    );
+    clock.set('2026-06-01T00:00:00.000Z');
+    const body = {
+      type: 'doc' as const,
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'New body' }] },
+      ],
+    };
+    await service.update(
+      entry.id,
+      input({ status: 'published', document: body }),
+      ADMIN,
+    );
+    // A metadata edit read the old version, then someone else saved the new body.
+    expect(
+      await codeOf(
+        service.update(
+          entry.id,
+          input({
+            status: 'published',
+            title: 'Renamed',
+            expectedUpdatedAt: entry.updatedAt,
+          }),
+          ADMIN,
+        ),
+      ),
+    ).toBe('conflict');
+    const current = await service.get(entry.id, ADMIN);
+    expect(current.document).toEqual(body);
+    expect(current.title).toBe('Hello World');
+
+    const redated = await service.update(
+      entry.id,
+      input({
+        status: 'published',
+        document: body,
+        publishedAt: '2026-05-01T00:00:00.000Z',
+        expectedUpdatedAt: current.updatedAt,
+      }),
+      ADMIN,
+    );
+    expect(redated.publishedAt).toBe('2026-05-01T00:00:00.000Z');
   });
 
   test('the public API serves published content only', async () => {

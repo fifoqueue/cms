@@ -18,7 +18,7 @@ export interface UserRepository {
   findByEmail(email: string): Promise<UserRecord | null>;
   /** Throws `conflict` when the email or slug is taken. */
   insert(user: UserRecord): Promise<void>;
-  /** The subset of `slugs` other users already use, in one read. */
+  /** The subset of `slugs` other users already use, in one read, compared as the store's unique index compares them. */
   takenSlugs(slugs: readonly string[]): Promise<Set<string>>;
   setPassword(id: string, passwordHash: string): Promise<void>;
 }

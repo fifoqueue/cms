@@ -49,7 +49,7 @@ const listingRoot = (target: ListingTarget) =>
               target.kind === 'tag' ||
               target.kind === 'author' ||
               target.kind === 'archive'
-            ? `/${target.kind}/${target.slug}`
+            ? `/${target.kind}/${encodeURIComponent(target.slug)}`
             : '/';
 
 /** One page of a listing with only its own filters; page 1 carries no `page` parameter. */

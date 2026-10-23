@@ -49,6 +49,11 @@
 
     <!-- Not enhanced: a captcha widget must render fresh after each attempt. -->
     <form method="POST" action="?/login" class="space-y-4">
+      <input
+        type="hidden"
+        name="redirect_to"
+        value={form && 'back' in form ? form.back : data.back}
+      />
       <div class="grid gap-2">
         <Label for="email">{m.email}</Label>
         <Input

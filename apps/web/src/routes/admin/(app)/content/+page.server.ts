@@ -1,8 +1,10 @@
-import { CONTENT_STATUSES } from '@cms/sdk';
+import { CONTENT_STATUSES, can, contentListQuerySchema } from '@cms/sdk';
 import type { ContentStatus } from '@cms/sdk';
-import { failFrom, text } from '#lib/server/errors.js';
+import { fail } from '@sveltejs/kit';
+import { Errors, failFrom, text } from '#lib/server/errors.js';
+import { readQuickEdit } from '#lib/server/quick-edit.js';
 import { adminFor } from '#lib/server/session.js';
-import { loadTermChoices } from '#lib/server/taxonomy-admin.js';
+import { loadTaxonomyChoices } from '#lib/server/taxonomy-admin.js';
 import type { Actions, PageServerLoad } from './$types';
 
 const pick = <T extends string>(options: readonly T[], value: string | null) =>
@@ -11,16 +13,29 @@ const pick = <T extends string>(options: readonly T[], value: string | null) =>
 /** Bulk actions in the order they appear in the menu. */
 const BULK = ['trash', 'restore', 'delete'] as const;
 
+/** Totals only: one-item pages carry the count without the entries. */
+const total = (page: Promise<{ total: number }>) =>
+  page.then(
+    (result) => result.total,
+    () => null,
+  );
+
 export const load: PageServerLoad = async (event) => {
   const params = event.url.searchParams;
-  const model = await adminFor(event).contentModel.model();
+  const admin = adminFor(event);
+  const [model, terms, authors] = await Promise.all([
+    admin.contentModel.model(),
+    loadTaxonomyChoices(event),
+    can(event.locals.user!, 'content.editOthers')
+      ? admin.users.authors()
+      : null,
+  ]);
   const type = pick(
     model.types.map(({ key }) => key),
     params.get('type'),
   );
   const status = pick<ContentStatus>(CONTENT_STATUSES, params.get('status'));
   const view = params.get('view') === 'trash' ? 'trash' : 'active';
-  const terms = await loadTermChoices(event);
   // Only slugs of existing terms are sent; anything else means "no filter".
   const category = pick(
     terms.categories.map(({ slug }) => slug),
@@ -39,16 +54,27 @@ export const load: PageServerLoad = async (event) => {
   );
   const taxonomy = term ? definition?.key : undefined;
   const search = (params.get('q') ?? '').trim().slice(0, 200) || undefined;
+  const author = pick(
+    authors?.map(({ slug }) => slug) ?? [],
+    params.get('author'),
+  );
+  // `YYYY-MM`, as the month input sends it; entries are dated by publication (UTC).
+  // Anything the API's list query would reject means "no filter", like the other filters.
+  const [, year, month] = /^(\d{4})-(\d{2})$/.exec(params.get('m') ?? '') ?? [];
+  const parsed =
+    year && contentListQuerySchema.safeParse({ year, month }).success;
+  const dated = parsed ? { year: Number(year), month: Number(month) } : null;
   const page = Math.max(1, Math.trunc(Number(params.get('page'))) || 1);
-  return {
-    filter: { type, status, view, category, tag, taxonomy, term, q: search },
-    types: model.types.map(({ key, name, builtin }) => ({
-      key,
-      name,
-      builtin,
-    })),
-    ...terms,
-    content: await adminFor(event).content.list({
+  // Status view totals follow the type only, like wp-admin.
+  const counts = Promise.all([
+    total(admin.content.list({ type, pageSize: 1 })),
+    ...CONTENT_STATUSES.map((option) =>
+      total(admin.content.list({ type, status: option, pageSize: 1 })),
+    ),
+    total(admin.content.list({ type, view: 'trash', pageSize: 1 })),
+  ]);
+  const [content, [all, ...rest]] = await Promise.all([
+    admin.content.list({
       type,
       status,
       view,
@@ -56,14 +82,88 @@ export const load: PageServerLoad = async (event) => {
       tag,
       taxonomy,
       term,
+      author,
+      year: dated?.year,
+      month: dated?.month,
       search,
       page,
       pageSize: 20,
     }),
+    counts,
+  ]);
+  return {
+    filter: {
+      type,
+      status,
+      view,
+      category,
+      tag,
+      taxonomy,
+      term,
+      author,
+      m: dated ? `${year}-${month}` : undefined,
+      q: search,
+    },
+    counts: {
+      all,
+      trash: rest.at(-1) ?? null,
+      ...Object.fromEntries(
+        CONTENT_STATUSES.map((option, index) => [option, rest[index] ?? null]),
+      ),
+    } as Record<ContentStatus | 'all' | 'trash', number | null>,
+    types: model.types.map(({ key, name, pluralName, builtin, supports }) => ({
+      key,
+      name,
+      pluralName,
+      builtin,
+      categories: supports.categories,
+      tags: supports.tags,
+    })),
+    ...terms,
+    authors,
+    canPublish: can(event.locals.user!, 'content.publish'),
+    content,
   };
 };
 
+/** One entry's row action from the list. */
+const rowAction =
+  (run: 'trash' | 'restore' | 'remove', notice: string) =>
+  async (event: Parameters<Actions[string]>[0]) => {
+    const id = text(await event.request.formData(), 'id');
+    try {
+      await adminFor(event).content[run](id);
+    } catch (caught) {
+      return failFrom(caught);
+    }
+    return { notice };
+  };
+
 export const actions: Actions = {
+  trash: rowAction('trash', 'movedToTrash'),
+  restore: rowAction('restore', 'restored'),
+  delete: rowAction('remove', 'deleted'),
+  /** Quick Edit: replaces the list fields and keeps everything else of the entry. */
+  quickEdit: async (event) => {
+    const form = await event.request.formData();
+    const id = text(form, 'id');
+    const admin = adminFor(event);
+    try {
+      const [entry, autosave] = await Promise.all([
+        admin.content.get(id),
+        admin.content.pendingAutosave(id),
+      ]);
+      // Saving would clear the user's autosave, which Quick Edit never showed.
+      if (autosave)
+        return fail(409, { quickEdit: id, message: Errors.QuickEditAutosave });
+      const { input, failure } = readQuickEdit(entry, form);
+      if (failure) return failure;
+      await admin.content.update(id, input);
+    } catch (caught) {
+      return failFrom(caught, { quickEdit: id });
+    }
+    return { notice: 'saved' };
+  },
   /** Applies one action to every selected entry; stops at the first failure. */
   bulk: async (event) => {
     const form = await event.request.formData();

@@ -1,22 +1,23 @@
+import type { RequestEvent } from '@sveltejs/kit';
 import type { PublicContent, PublicContentType, SlotMap } from '@cms/sdk';
 import type { ContentClient } from '@cms/sdk/client';
 import { loadComments } from '#lib/server/comments.js';
 import { contentView } from '#lib/server/public-view.js';
-import type { ThemeView } from '#lib/server/public-view.js';
-import { loadTemplateData } from '#lib/server/theme-queries.js';
+import type { BlockData } from '#lib/server/theme-queries.js';
+import type { ThemePage } from '#lib/theme/template.js';
 
 /**
- * Page data of a single entry with its comments and the data of its template's blocks. `path`
- * replaces the permalink when the entry is shown at another address (the static front page
- * lives at `/`, its canonical URL then).
+ * Page data of a single entry with its comments and the data of its template's blocks
+ * (`templateData`). `path` replaces the permalink when the entry is shown at another address
+ * (the static front page lives at `/`, its canonical URL then).
  */
 export const entryPage = async (
   api: ContentClient,
-  url: URL,
+  event: Pick<RequestEvent, 'url' | 'cookies'>,
   content: PublicContent,
   types: Promise<PublicContentType[]>,
   slots: Promise<SlotMap>,
-  theme: Promise<ThemeView>,
+  templateData: (page: ThemePage) => Promise<BlockData>,
   path = content.path,
 ) => {
   const view = { ...contentView(content), path };
@@ -24,11 +25,9 @@ export const entryPage = async (
   const [definitions, comments, unlockCaptcha, blocks, loadedSlots] =
     await Promise.all([
       types,
-      loadComments(api, content.id, url, captcha),
+      content.protected ? null : loadComments(api, content.id, event, captcha),
       content.protected ? captcha : null,
-      theme.then((loaded) =>
-        loadTemplateData(api, loaded, { kind: 'content', content: view }),
-      ),
+      templateData({ kind: 'content', content: view }),
       slots,
     ]);
   return {
@@ -41,7 +40,7 @@ export const entryPage = async (
     comments,
     unlockCaptcha,
     /** Set after a held comment was sent. */
-    moderation: url.searchParams.has('moderation'),
+    moderation: event.url.searchParams.has('moderation'),
     slots: loadedSlots,
     ...blocks,
   };
