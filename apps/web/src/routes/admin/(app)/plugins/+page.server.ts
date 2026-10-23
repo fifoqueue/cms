@@ -1,10 +1,14 @@
 import { fail } from '@sveltejs/kit';
-import { eachBounded, formIds } from '#lib/server/bulk.js';
+import { eachBounded, readSelection } from '#lib/server/bulk.js';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { adminFor } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
 
 const STATUSES = ['active', 'inactive', 'failed'] as const;
+
+/** Plugin ids follow the manifest contract: kebab-case, at most 64 characters. */
+const isPluginId = (id: string) =>
+  id.length <= 64 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id);
 
 export const load: PageServerLoad = async (event) => {
   const plugins = await adminFor(event).plugins.list();
@@ -83,24 +87,27 @@ export const actions: Actions = {
       return failFrom(caught);
     }
   },
-  /** Activates, deactivates or deletes every selected plugin, one at a time like the host does. */
+  /** Activates, deactivates or deletes every selected plugin and reports each outcome. */
   bulk: async (event) => {
     const form = await event.request.formData();
     const action = text(form, 'action');
     const plugins = adminFor(event).plugins;
-    const run =
-      action === 'enable'
-        ? plugins.enable
-        : action === 'disable'
-          ? plugins.disable
-          : action === 'remove'
-            ? plugins.remove
-            : null;
-    if (!run) return {};
+    if (!['enable', 'disable', 'remove'].includes(action)) return {};
+    const selection = readSelection(form, isPluginId);
+    if (selection.failure) return selection.failure;
     return {
-      bulk: await eachBounded(formIds(form), async (id) => {
-        await run(id);
-      }),
+      bulk: await eachBounded(
+        selection.ids,
+        async (id) => {
+          if (action === 'remove') return void (await plugins.remove(id));
+          if (action === 'disable') return void (await plugins.disable(id));
+          // The host isolates a failing activation and answers with status `failed`.
+          const plugin = await plugins.enable(id);
+          if (plugin.status !== 'active')
+            return plugin.error ?? Errors.PluginActivationFailed;
+        },
+        selection.invalid,
+      ),
     };
   },
 };

@@ -143,6 +143,32 @@ describe('user administration', () => {
     );
   });
 
+  test('role-only changes keep the profile, and concurrent deletions keep one administrator', async () => {
+    const { service, users } = await setup();
+    const boss = { id: 'boss', role: 'administrator' };
+    await users.insert(userRecord({ id: 'second', role: 'administrator' }));
+    // A profile edit landing between a bulk list read and the role change survives it.
+    const before = (await service.list(boss)).find((u) => u.id === 'writer')!;
+    users.rows.set('writer', {
+      ...(await users.findById('writer'))!,
+      name: 'NEW NAME',
+    });
+    await service.setRole('writer', { role: 'editor' }, boss);
+    const writer = await users.findById('writer');
+    expect(writer?.role).toBe('editor');
+    expect(writer?.name).toBe('NEW NAME');
+    expect(before.name).not.toBe('NEW NAME');
+
+    const results = await Promise.allSettled([
+      service.remove('admin', {}, boss),
+      service.remove('second', {}, boss),
+    ]);
+    expect(results.map((result) => result.status).sort()).toEqual([
+      'fulfilled',
+      'rejected',
+    ]);
+  });
+
   test('public registration requires membership and invites only subscribers', async () => {
     const settings = new MemorySeoSettingsRepository();
     const invitations: string[] = [];

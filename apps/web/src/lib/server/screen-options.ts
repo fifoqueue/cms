@@ -19,9 +19,16 @@ export const readScreenOptions = <Column extends string>(
   } catch {
     // A malformed cookie means the defaults.
   }
-  const size = Math.trunc(Number(stored.perPage));
+  // Only a plain integer counts; any other JSON shape (objects included) means the default.
+  const size = stored.perPage;
   return {
-    perPage: size >= 1 && size <= 100 ? size : perPage,
+    perPage:
+      typeof size === 'number' &&
+      Number.isInteger(size) &&
+      size >= 1 &&
+      size <= 100
+        ? size
+        : perPage,
     hidden: Array.isArray(stored.hidden)
       ? columns.filter((column) =>
           (stored.hidden as unknown[]).includes(column),

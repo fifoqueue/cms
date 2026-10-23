@@ -10,6 +10,7 @@ import type {
 import { checkContentParent } from '#api/domain/content/hierarchy';
 import { checkTermKinds } from '#api/domain/content/term-assignment';
 import { guardUnique } from '#api/infra/prisma/client';
+import { pendingIn } from '#api/infra/prisma/revision-repository';
 import {
   parseFields,
   featuredImageOf,
@@ -212,14 +213,7 @@ export class PrismaContentRepository implements ContentRepository {
       if (
         guard.autosaveOf &&
         current &&
-        (await tx.contentRevision.count({
-          where: {
-            contentId: record.id,
-            authorId: guard.autosaveOf,
-            kind: 'autosave',
-            createdAt: { gt: current.updatedAt },
-          },
-        }))
+        (await pendingIn(tx, record.id, guard.autosaveOf, current.updatedAt))
       )
         throw conflict(Errors.ContentAutosavePending);
       const { id, ...data } = toRow(next);
@@ -267,16 +261,40 @@ export class PrismaContentRepository implements ContentRepository {
     });
     const published: string[] = [];
     for (const { id } of due) {
-      // Conditional per entry: an edit that unscheduled it meanwhile wins.
-      const count = await this.db.$transaction(async (tx) => {
-        const { count: changed } = await tx.content.updateMany({
-          where: { id, status: 'scheduled', publishedAt: { lte: now } },
-          data: { status: 'published', updatedAt: now },
+      // Under the content write lock, rechecked there: an edit that unscheduled it meanwhile
+      // wins, and the version still strictly advances (no reuse of an earlier `updatedAt`).
+      const changed = await this.db.$transaction(async (tx) => {
+        await lockPermalinks(tx);
+        const current = await tx.content.findUnique({
+          where: { id },
+          select: {
+            status: true,
+            publishedAt: true,
+            trashedAt: true,
+            updatedAt: true,
+          },
         });
-        if (changed) await tx.searchOutbox.create({ data: { contentId: id } });
-        return changed;
+        if (
+          current?.status !== 'scheduled' ||
+          current.trashedAt ||
+          !current.publishedAt ||
+          current.publishedAt > now
+        )
+          return false;
+        await tx.content.update({
+          where: { id },
+          data: {
+            status: 'published',
+            updatedAt:
+              now > current.updatedAt
+                ? now
+                : new Date(current.updatedAt.getTime() + 1),
+          },
+        });
+        await tx.searchOutbox.create({ data: { contentId: id } });
+        return true;
       });
-      if (count) published.push(id);
+      if (changed) published.push(id);
     }
     return published;
   }

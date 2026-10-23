@@ -7,9 +7,10 @@ import {
 } from '@cms/sdk';
 import type { ContentStatus } from '@cms/sdk';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
-import { eachBounded, formIds } from '#lib/server/bulk.js';
+import { eachBounded, readSelection } from '#lib/server/bulk.js';
 import { bulkEditInput, readBulkChanges } from '#lib/server/bulk-edit.js';
 import { readQuickEdit } from '#lib/server/quick-edit.js';
+import { clampPage } from '#lib/server/page-range.js';
 import { readScreenOptions } from '#lib/server/screen-options.js';
 import { CONTENT_COLUMNS } from '#lib/admin/screen-options.js';
 import { adminFor } from '#lib/server/session.js';
@@ -113,6 +114,7 @@ export const load: PageServerLoad = async (event) => {
     }),
     counts,
   ]);
+  clampPage(event.url, content);
   return {
     filter: {
       type,
@@ -202,15 +204,19 @@ export const actions: Actions = {
   bulk: async (event) => {
     const form = await event.request.formData();
     const action = pick(BULK, text(form, 'action'));
-    const ids = formIds(form);
-    if (!action || !ids.length) return {};
+    const selection = readSelection(form);
+    if (selection.failure) return selection.failure;
+    if (!action) return {};
     const content = adminFor(event).content;
-    const result = await eachBounded(ids, (id) =>
-      action === 'trash'
-        ? content.trash(id)
-        : action === 'restore'
-          ? content.restore(id)
-          : content.remove(id),
+    const result = await eachBounded(
+      selection.ids,
+      (id) =>
+        action === 'trash'
+          ? content.trash(id)
+          : action === 'restore'
+            ? content.restore(id)
+            : content.remove(id),
+      selection.invalid,
     );
     return { bulk: result };
   },
@@ -220,20 +226,25 @@ export const actions: Actions = {
    */
   bulkEdit: async (event) => {
     const form = await event.request.formData();
-    const ids = formIds(form);
+    const selection = readSelection(form);
+    if (selection.failure) return selection.failure;
     const changes = readBulkChanges(form);
     const admin = adminFor(event);
-    const result = await eachBounded(ids, async (id) => {
-      const entry = await admin.content.get(id);
-      // The version the list showed, so a save made since then is not overwritten.
-      const input = bulkEditInput(
-        entry,
-        changes,
-        text(form, `version:${id}`) || entry.updatedAt,
-      );
-      if (!input) return Errors.FormInvalid;
-      await admin.content.update(id, input);
-    });
+    const result = await eachBounded(
+      selection.ids,
+      async (id) => {
+        const entry = await admin.content.get(id);
+        // The version the list showed, so a save made since then is not overwritten.
+        const input = bulkEditInput(
+          entry,
+          changes,
+          text(form, `version:${id}`) || entry.updatedAt,
+        );
+        if (!input) return Errors.FormInvalid;
+        await admin.content.update(id, input);
+      },
+      selection.invalid,
+    );
     return { bulk: result };
   },
 };

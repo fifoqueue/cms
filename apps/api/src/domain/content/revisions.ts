@@ -30,6 +30,15 @@ export interface RevisionRepository {
     contentId: string,
   ): Promise<Omit<RevisionRecord, 'document' | 'excerpt'>[]>;
   get(id: string): Promise<RevisionRecord | null>;
+  /**
+   * The user's autosave when it holds text newer than the entry's last text save: its newest
+   * revision, else `savedAt`. Status-only changes (scheduled publishing) never hide it.
+   */
+  pendingAutosave(
+    contentId: string,
+    authorId: string,
+    savedAt: Date,
+  ): Promise<RevisionRecord | null>;
   /** The user's autosave of the entry, if any. */
   findAutosave(
     contentId: string,

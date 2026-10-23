@@ -25,7 +25,6 @@ import {
   recordingLogger,
   sequentialIds,
 } from '#test/support/memory';
-import { MemoryRevisionRepository } from '#test/support/memory-revisions';
 import { Embeds, vimeo, youtube } from '#api/domain/content/embeds';
 import { MemoryPublishedContentRepository } from '#test/support/memory-published';
 import { createRuntime } from '#test/support/runtime';
@@ -175,7 +174,7 @@ describe('content.public filter output', () => {
       ids: sequentialIds(),
       clock: fixedClock(),
       users: noUsers,
-      revisions: new MemoryRevisionRepository(),
+      revisions: repository.revisions,
       hasher: plainHasher,
       types: testTypes(),
       fields: testFields(),
