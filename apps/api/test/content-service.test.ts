@@ -1,9 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  DEFAULT_ENTRY_SEO,
-  DEFAULT_PERMALINK_SETTINGS,
-  toPublicEntrySeo,
-} from '@cms/sdk';
+import { DEFAULT_ENTRY_SEO, DEFAULT_PERMALINK_SETTINGS } from '@cms/sdk';
 import type { ContentInput } from '@cms/sdk';
 import { ContentService } from '#api/domain/content/content-service';
 import { checkContentParent } from '#api/domain/content/hierarchy';
@@ -19,9 +15,6 @@ import { PreviewService } from '#api/domain/content/preview-service';
 import { RevisionService } from '#api/domain/content/revision-service';
 import { ContentTypeService } from '#api/domain/content/content-types';
 import { PermalinkResolver } from '#api/domain/permalinks/permalink-resolver';
-import type { Database } from '#api/infra/prisma/client';
-import { PrismaPublishedContentRepository } from '#api/infra/prisma/published-content-repository';
-import { toSeoColumns } from '#api/infra/prisma/seo-mapper';
 import { tiptapRenderer } from '#api/infra/system';
 import { SiteService } from '#api/domain/site/site-service';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
@@ -1163,126 +1156,6 @@ describe('content taxonomy and search', () => {
     const entry = await service.create(input({ tagIds: [hot.id] }), ADMIN);
     await taxonomy.remove('tag', hot.id);
     expect((await service.get(entry.id, ADMIN)).tags).toEqual([]);
-  });
-});
-
-describe('Prisma published content reads', () => {
-  test('filter drafts in the query and never fetch editor documents or private fields', async () => {
-    const term = (id: string, name: string, taxonomy: string) => ({
-      term: { id, name, slug: name.toLowerCase(), taxonomy },
-    });
-    // The document is not JSON: parsing it on a public read would throw.
-    const stored: Record<string, unknown> = {
-      id: 'c1',
-      type: 'post',
-      slug: 'live',
-      title: 'Live',
-      excerpt: 'Short',
-      html: '<p>Body</p>',
-      document: 'PRIVATE_DOCUMENT{',
-      searchText: 'PRIVATE_SEARCH',
-      authorId: 'PRIVATE_AUTHOR',
-      status: 'published',
-      publishedAt: new Date('2026-02-01T00:00:00.000Z'),
-      createdAt: new Date('2026-01-01T00:00:00.000Z'),
-      updatedAt: new Date('2026-03-01T00:00:00.000Z'),
-      ...toSeoColumns({
-        ...DEFAULT_ENTRY_SEO,
-        title: 'Public title',
-        focusKeyword: 'PRIVATE_FOCUS',
-      }),
-      sticky: false,
-      commentCount: 0,
-      summary: 'Generated',
-      passwordHash: null,
-      author: { name: 'Ann', slug: 'ann' },
-      featuredMedia: null,
-      fields: '{"secret":"PRIVATE_FIELD"}',
-      currentPath: { path: new TextEncoder().encode('/live') },
-      terms: [
-        term('t2', 'Zeta', 'category'),
-        term('t3', 'Hot', 'tag'),
-        term('t1', 'Alpha', 'category'),
-      ],
-    };
-    type Query = {
-      where: Record<string, unknown>;
-      select?: Record<string, unknown>;
-    };
-    const queries: Query[] = [];
-    const read = (query: Query) => {
-      queries.push(query);
-      return Object.fromEntries(
-        Object.keys(query.select!).map((key) => [key, stored[key]]),
-      );
-    };
-    const db = {
-      content: {
-        findUnique: async (query: Query) => read(query),
-        findMany: async (query: Query) => [read(query)],
-        count: async (query: Query) => (queries.push(query), 1),
-      },
-      $transaction: (calls: Promise<unknown>[]) => Promise.all(calls),
-    } as unknown as Database;
-    const reader = new PublishedContentReader(
-      new PrismaPublishedContentRepository(db),
-    );
-
-    const item = await reader.getBySlug('live');
-    expect(item).toEqual({
-      id: 'c1',
-      type: 'post',
-      slug: 'live',
-      path: '/live',
-      parentId: null,
-      title: 'Live',
-      excerpt: 'Short',
-      html: '<p>Body</p>',
-      publishedAt: '2026-02-01T00:00:00.000Z',
-      updatedAt: '2026-03-01T00:00:00.000Z',
-      extraTerms: [],
-      categories: [
-        { id: 't1', name: 'Alpha', slug: 'alpha' },
-        { id: 't2', name: 'Zeta', slug: 'zeta' },
-      ],
-      tags: [{ id: 't3', name: 'Hot', slug: 'hot' }],
-      author: { name: 'Ann', slug: 'ann' },
-      sticky: false,
-      commentCount: 0,
-      protected: false,
-      featuredImage: null,
-      fields: {},
-      seo: { ...toPublicEntrySeo(DEFAULT_ENTRY_SEO), title: 'Public title' },
-      meta: {},
-    });
-    expect(await reader.getById('c1')).toEqual(item);
-    const page = await reader.list({ search: '50%_off', status: 'draft' });
-    expect(page.items).toEqual([item!]);
-    expect(page.total).toBe(1);
-
-    expect(queries.map(({ where }) => where.status)).toEqual(
-      Array(4).fill('published'),
-    );
-    expect(queries[2]!.where.AND).toEqual([
-      { trashedAt: null },
-      {
-        OR: [
-          { title: { contains: '50\\%\\_off' } },
-          { excerpt: { contains: '50\\%\\_off' } },
-          { searchText: { contains: '50\\%\\_off' } },
-        ],
-      },
-    ]);
-    for (const { select = {} } of queries)
-      for (const key of [
-        'document',
-        'searchText',
-        'authorId',
-        'status',
-        'createdAt',
-        'seoFocusKeyword',
-      ])
-        expect(select).not.toHaveProperty(key);
   });
 });
 

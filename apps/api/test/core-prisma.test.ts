@@ -11,7 +11,7 @@ import { randomTokenIssuer } from '#api/infra/system';
 import { openJob, sealJob } from '#api/domain/jobs/payload';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { default as sharp } from 'sharp';
-import { DEFAULT_RATE_RULES } from '@cms/sdk';
+import { DEFAULT_RATE_RULES, DEFAULT_ENTRY_SEO } from '@cms/sdk';
 import { PatternService } from '#api/domain/content/pattern-service';
 import { PrismaPatternCatalog } from '#api/infra/prisma/pattern-catalog';
 import { ContentService } from '#api/domain/content/content-service';
@@ -215,6 +215,149 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     expect(await source.documents([entry.id])).toEqual([]);
     expect((await source.pending(10)).at(-1)?.contentId).toBe(entry.id);
   });
+
+  test(
+    'public projections keep relation metadata while hiding editorial and protected data',
+    async () => {
+      const { content } = services();
+      const mediaId = uuidV7.next();
+      await db.media.create({
+        data: {
+          id: mediaId,
+          uploaderId: ADMIN.id,
+          filename: 'projection.webp',
+          mime: 'image/webp',
+          size: 100,
+          width: 1200,
+          height: 800,
+          alt: 'Alt "<&한글>',
+          storageKey: `2026/04/${mediaId}.webp`,
+          variants: JSON.stringify({
+            thumbnail: {
+              key: `2026/04/${mediaId}-thumbnail.webp`,
+              width: 150,
+              height: 100,
+            },
+          }),
+          createdAt: systemClock.now(),
+        },
+      });
+      const parent = await content.create(
+        {
+          type: 'page',
+          title: 'Projection parent',
+          status: 'private',
+          document: paragraph('PRIVATE_PARENT_BODY'),
+        },
+        ADMIN,
+      );
+      const child = await content.create(
+        {
+          type: 'page',
+          title: 'Projection child',
+          slug: '한글-projection',
+          status: 'published',
+          parentId: parent.id,
+          featuredMediaId: mediaId,
+          document: paragraph('Visible child'),
+          seo: { ...DEFAULT_ENTRY_SEO, focusKeyword: 'SECRET_FOCUS' },
+        },
+        ADMIN,
+      );
+      await db.content.update({
+        where: { id: child.id },
+        data: {
+          document: 'SECRET_DOCUMENT{',
+          fields: '{"secret":"SECRET_FIELD"}',
+        },
+      });
+      const locked = await content.create(
+        {
+          type: 'post',
+          title: 'Projection protected',
+          status: 'published',
+          password: 'test-password',
+          document: paragraph('SECRET_BODY'),
+        },
+        ADMIN,
+      );
+      const draft = await content.create(
+        {
+          type: 'post',
+          title: 'Projection draft',
+          status: 'draft',
+          document: paragraph('DRAFT_BODY'),
+        },
+        ADMIN,
+      );
+      const repository = new PrismaPublishedContentRepository(db);
+      const reader = new PublishedContentReader(repository);
+      const item = await reader.getById(child.id);
+      expect(item).toMatchObject({
+        path: child.path,
+        parentId: null,
+        html: '<p>Visible child</p>',
+        fields: {},
+        featuredImage: { alt: 'Alt "<&한글>', width: 1200 },
+      });
+      expect(
+        item!.featuredImage!.sizes.some((size) => size.width === 150),
+      ).toBe(true);
+      expect(await reader.getById(parent.id)).toBeNull();
+      expect(await reader.getById(draft.id)).toBeNull();
+      expect((await reader.getById(locked.id))?.html).toBe('');
+      expect((await repository.privateById(parent.id))?.html).toBe(
+        '<p>PRIVATE_PARENT_BODY</p>',
+      );
+      const page = await reader.summaries({
+        include: [parent.id, child.id, locked.id, draft.id],
+        pageSize: 10,
+      });
+      expect(page.items.map(({ id }) => id).sort()).toEqual(
+        [child.id, locked.id].sort(),
+      );
+      for (const marker of [
+        'SECRET_DOCUMENT',
+        'SECRET_FIELD',
+        'SECRET_FOCUS',
+        'SECRET_BODY',
+        'PRIVATE_PARENT_BODY',
+        'DRAFT_BODY',
+      ])
+        expect(JSON.stringify(page)).not.toContain(marker);
+      for (const summary of page.items) {
+        expect(summary).not.toHaveProperty('html');
+        expect(summary).not.toHaveProperty('document');
+        expect(summary).not.toHaveProperty('authorId');
+      }
+      await db.content.update({
+        where: { id: parent.id },
+        data: { status: 'published', passwordHash: 'protected' },
+      });
+      expect((await reader.getById(child.id))?.parentId).toBeNull();
+      await db.content.update({
+        where: { id: parent.id },
+        data: { passwordHash: null, trashedAt: systemClock.now() },
+      });
+      expect((await reader.getById(child.id))?.parentId).toBeNull();
+      expect(await repository.byId(parent.id)).toBeNull();
+      await db.content.update({
+        where: { id: parent.id },
+        data: { trashedAt: null },
+      });
+      expect((await reader.getById(child.id))?.parentId).toBe(parent.id);
+      await db.content.update({
+        where: { id: parent.id },
+        data: { status: 'private', trashedAt: systemClock.now() },
+      });
+      expect(await repository.privateById(parent.id)).toBeNull();
+      const ids = [parent.id, child.id, locked.id, draft.id];
+      await db.content.deleteMany({ where: { id: { in: ids } } });
+      await db.searchOutbox.deleteMany({ where: { contentId: { in: ids } } });
+      await db.media.delete({ where: { id: mediaId } });
+    },
+    SLOW,
+  );
 
   test('approved comment counts follow every status change; deleting a parent keeps its replies', async () => {
     const { content, comments, repository } = services();
