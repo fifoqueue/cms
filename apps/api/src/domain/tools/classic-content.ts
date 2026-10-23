@@ -25,7 +25,7 @@ const bounded = (parts: Iterable<string>) => {
 /** Sticky matching consumes each attribute token once, including malformed attributes. */
 const attributes = (source: string) => {
   const pairs: [string, string][] = [];
-  const token = /\s*([\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s\]]+)))?/y;
+  const token = /([\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s\]]+)))?/y;
   for (let offset = 0; offset < source.length;) {
     token.lastIndex = offset;
     const match = token.exec(source);
@@ -65,8 +65,8 @@ const BLOCK_START =
 /** Paragraph conversion never splits or trims a preformatted region. */
 const paragraphs = (html: string) => {
   const normalized = html.replace(/\r\n?/g, '\n');
-  const lower = normalized.toLowerCase();
   const pre = /<pre\b/gi;
+  const closing = /<\/pre\s*>/gi;
   const plain = (text: string) =>
     bounded(
       text
@@ -84,9 +84,10 @@ const paragraphs = (html: string) => {
       let offset = 0;
       for (let match; (match = pre.exec(normalized));) {
         yield plain(normalized.slice(offset, match.index));
-        const close = lower.indexOf('</pre', pre.lastIndex);
-        const end = close === -1 ? -1 : normalized.indexOf('>', close + 5);
-        offset = end === -1 ? normalized.length : end + 1;
+        closing.lastIndex = pre.lastIndex;
+        offset = closing.exec(normalized)
+          ? closing.lastIndex
+          : normalized.length;
         yield normalized.slice(match.index, offset);
         pre.lastIndex = offset;
       }
@@ -114,7 +115,7 @@ export const classicHtml = (
 ): string => {
   if (encoder.encode(html).length > MAX_INPUT)
     throw invalidInput(Errors.ImportContentLimit);
-  const lower = html.toLowerCase();
+  const endings = { caption: /\[\/caption\]/gi, embed: /\[\/embed\]/gi };
   const opening = /\[(caption|gallery|embed|audio|video)\b/gi;
   const unclosed = new Set<string>();
   let work = 0;
@@ -141,9 +142,11 @@ export const classicHtml = (
         let output = html.slice(match.index, offset);
         if (kind === 'caption' || kind === 'embed') {
           const closing = `[/${kind}]`;
+          const ending = endings[kind];
+          ending.lastIndex = offset;
           const close = unclosed.has(kind)
             ? -1
-            : lower.indexOf(closing, offset);
+            : (ending.exec(html)?.index ?? -1);
           if (close === -1) unclosed.add(kind);
           else {
             const inner = html.slice(offset, close);
@@ -194,7 +197,11 @@ export const classicHtml = (
                 : (attrs.mp4 ?? attrs.webm ?? attrs.ogv ?? attrs.m4v)),
           );
           const closing = `[/${kind}]`;
-          if (lower.startsWith(closing, offset)) offset += closing.length;
+          if (
+            html.slice(offset, offset + closing.length).toLowerCase() ===
+            closing
+          )
+            offset += closing.length;
           output =
             src && src.length <= 2048
               ? block(`<${kind} src="${escape(src)}"></${kind}>`)
