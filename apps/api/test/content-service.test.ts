@@ -742,6 +742,33 @@ describe('ContentService', () => {
     expect((await child()).parentId).toBe(parent.id);
   });
 
+  test('calendar neighbours are the nearest months with posts, however old', async () => {
+    const { service, publicContent } = setup();
+    for (const [slug, at] of [
+      ['a', '2010-01-15'],
+      ['b', '2010-02-15'],
+      ['c', '2022-01-15'],
+    ] as const)
+      await service.create(
+        input({
+          title: slug,
+          slug,
+          status: 'published',
+          publishedAt: `${at}T00:00:00.000Z`,
+        }),
+        ADMIN,
+      );
+    expect(
+      await publicContent.monthNeighbours({ year: 2010, month: 1 }),
+    ).toEqual({ previous: null, next: { year: 2010, month: 2 } });
+    expect(
+      await publicContent.monthNeighbours({ year: 2015, month: 6 }),
+    ).toEqual({
+      previous: { year: 2010, month: 2 },
+      next: { year: 2022, month: 1 },
+    });
+  });
+
   test('slots requested by path get the content at its current path only', async () => {
     const { service, hooks, repository } = setup();
     const entry = await service.create(input({ status: 'published' }), ADMIN);

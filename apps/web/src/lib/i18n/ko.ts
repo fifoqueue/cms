@@ -1233,6 +1233,9 @@ export const ko: Messages = {
     `대체 텍스트를 라이브러리에 저장하지 못했습니다(${reason}). 여기에서만 쓰려면 버튼을 다시 누르세요.`,
   seoTabs: '검색 엔진 최적화 설정',
   // site-theme
+  contentPluginBlockInactive:
+    '이 블록을 쓰려면 비활성화된 플러그인을 켜야 합니다.',
+  oembedEmbedded: (site: string) => `${site}에서 가져옴`,
   importAuthors: '글쓴이 지정',
   importAuthorsHelp:
     '글쓴이는 이메일 주소나 로그인 이름으로 기존 사용자와 연결합니다. 일치하는 사용자가 없으면:',
@@ -1460,6 +1463,7 @@ export const ko: Messages = {
         spacer: '여백',
         codeBlock: '코드',
         embed: '임베드',
+        pluginBlock: '플러그인 블록',
         more: '더 보기(요약 구분)',
         pageBreak: '페이지 나누기',
       }) as Record<string, string>

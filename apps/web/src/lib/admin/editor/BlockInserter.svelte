@@ -1,12 +1,13 @@
 <script lang="ts">
   import type { Editor, JSONContent } from '@tiptap/core';
-  import type { AdminMedia, MediaKind } from '@cms/sdk';
+  import type { AdminMedia, MediaKind, PluginBlockInfo } from '@cms/sdk';
   import { Popover } from 'bits-ui';
   import { Plus } from '@lucide/svelte';
   import { tick } from 'svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import BlockOptions from '#lib/admin/editor/BlockOptions.svelte';
   import { mediaNode } from '#lib/admin/editor/blocks.js';
+  import { loadPluginBlocks } from '#lib/admin/editor/plugin-blocks.js';
   import { patternContent } from '#lib/admin/editor/patterns.js';
   import type { PatternChoice } from '#lib/admin/editor/patterns.js';
   import { Input } from '#lib/components/ui/input/index.js';
@@ -52,6 +53,12 @@
     'more',
     'pageBreak',
   ];
+  /** Blocks of active plugins, inserted as the shared `pluginBlock` node. */
+  let pluginBlocks = $state<PluginBlockInfo[]>([]);
+  void loadPluginBlocks().then((list) => (pluginBlocks = list));
+  const name = (type: string) =>
+    pluginBlocks.find((entry) => entry.block === type)?.title ??
+    m.contentBlockName(type);
   const patternMatches = $derived(
     patterns.filter((pattern) =>
       pattern.title.toLowerCase().includes(search.trim().toLowerCase()),
@@ -64,8 +71,8 @@
     insert(patternContent(pattern));
   };
   const matches = $derived(
-    blocks.filter((type) =>
-      `${m.contentBlockName(type)} ${type}`
+    [...blocks, ...pluginBlocks.map((entry) => entry.block)].filter((type) =>
+      `${name(type)} ${type}`
         .toLowerCase()
         .includes(search.trim().toLowerCase()),
     ),
@@ -125,6 +132,11 @@
               : 'image';
       await tick();
       picker.open();
+      return;
+    }
+    if (type.startsWith('plugin:')) {
+      // Declared defaults apply when it renders; Block settings changes them.
+      insert({ type: 'pluginBlock', attrs: { block: type, attrs: {} } });
       return;
     }
     const paragraph = { type: 'paragraph' };
@@ -217,7 +229,7 @@
               <button
                 type="button"
                 class="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
-                onclick={() => choose(type)}>{m.contentBlockName(type)}</button
+                onclick={() => choose(type)}>{name(type)}</button
               >
             </li>{/each}
         </ul>

@@ -2,6 +2,7 @@ import {
   adjacentQuerySchema,
   can,
   isJsonValue,
+  monthNeighboursQuerySchema,
   monthsQuerySchema,
   publicContentListQuerySchema,
   publicContentSchema,
@@ -13,6 +14,7 @@ import type {
   PublicContent,
   PublicContentSummary,
   PublicMonth,
+  PublicMonthNeighbours,
 } from '@cms/sdk';
 import { authorize } from '#api/domain/auth/authorization';
 import type { Actor } from '#api/domain/auth/authorization';
@@ -23,7 +25,7 @@ import type {
   PublishedRecord,
 } from '#api/domain/content/published-content-repository';
 import type { ContentLocks } from '#api/domain/content/content-locks';
-import type { Embeds } from '#api/domain/content/embeds';
+import type { HtmlExpander } from '#api/domain/content/embeds';
 import type { FieldService } from '#api/domain/content/fields';
 import type { ContentTypeService } from '#api/domain/content/content-types';
 import type { HookDispatcher } from '#api/domain/ports';
@@ -99,6 +101,11 @@ export class PublishedContentReader implements ContentReader {
     };
   }
 
+  /** The nearest months with published posts around one month. */
+  monthNeighbours(year: number, month: number) {
+    return this.repository.monthNeighbours(['post'], year, month);
+  }
+
   /** Months with published posts, newest first. */
   months(limit: number) {
     return this.repository.months(['post'], limit);
@@ -172,7 +179,7 @@ export class PublicContentService {
     private readonly hooks: HookDispatcher,
     private readonly locks: ContentLocks,
     /** Served-HTML expansion: embeds, responsive images. */
-    private readonly embeds: Pick<Embeds, 'expand'>,
+    private readonly embeds: HtmlExpander,
     private readonly fields: Pick<FieldService, 'present'>,
     private readonly types: Pick<ContentTypeService, 'list'>,
     private readonly search?: Pick<SearchService, 'find'>,
@@ -247,6 +254,11 @@ export class PublicContentService {
     };
   }
 
+  async monthNeighbours(query: unknown): Promise<PublicMonthNeighbours> {
+    const { year, month } = parseInput(monthNeighboursQuerySchema, query);
+    return this.reader.monthNeighbours(year, month);
+  }
+
   async months(query: unknown): Promise<PublicMonth[]> {
     const { limit } = parseInput(monthsQuerySchema, query);
     return this.reader.months(limit);
@@ -276,7 +288,18 @@ export class PublicContentService {
   private async present(content: PublicContent): Promise<PublicContent> {
     const filtered = await this.hooks.applyFilter(
       'content.public',
-      { ...content, html: await this.embeds.expand(content.html) },
+      {
+        ...content,
+        html: await this.embeds.expand(content.html, {
+          content: {
+            id: content.id,
+            type: content.type,
+            slug: content.slug,
+            path: content.path,
+            title: content.title,
+          },
+        }),
+      },
       isPublicContent,
     );
     // Plugins may decorate display content, but cannot move an entry or override crawler policy.

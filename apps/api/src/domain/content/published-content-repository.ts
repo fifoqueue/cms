@@ -75,6 +75,15 @@ export interface PublishedContentRepository {
   list(
     criteria: PublishedCriteria,
   ): Promise<{ items: PublishedRecord[]; total: number }>;
+  /** The nearest months (UTC) before and after `year`-`month` with public entries of `types`. */
+  monthNeighbours(
+    types: readonly string[],
+    year: number,
+    month: number,
+  ): Promise<{
+    previous: { year: number; month: number } | null;
+    next: { year: number; month: number } | null;
+  }>;
   /** Months with public entries of `types` (UTC), newest first, at most `limit`. */
   months(
     types: readonly string[],

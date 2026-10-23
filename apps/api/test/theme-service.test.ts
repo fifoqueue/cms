@@ -8,6 +8,7 @@ import {
 } from '#api/domain/theme/builtin-themes';
 import { ThemeService } from '#api/domain/theme/theme-service';
 import { zipThemeArchive } from '#api/infra/zip-theme-archive';
+import { sharpImages } from '#api/infra/sharp-images';
 import { DomainError } from '#api/shared/errors';
 
 /** Same contract as `PrismaSettingsRepository`: JSON values by key, a JSON round trip on write. */
@@ -146,18 +147,28 @@ describe('ThemeService archives', () => {
     );
   });
 
-  test('keeps a sniffed screenshot with the theme and drops it on upgrade or removal', async () => {
-    const { themes } = setup();
-    const png = new Uint8Array([
+  test('keeps a decodable screenshot with the theme and drops it on upgrade or removal', async () => {
+    const themes = new ThemeService(
+      new MemorySettings(),
+      zipThemeArchive,
+      sharpImages,
+    );
+    // A real 1×1 PNG; a PNG signature followed by junk is refused like any non-image.
+    const png = Uint8Array.from(
+      atob(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      ),
+      (char) => char.charCodeAt(0),
+    );
+    const fake = new Uint8Array([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 1, 2,
     ]);
-    expect(
-      await codeOf(
-        themes.install(
-          archive('shot', { 'screenshot.png': strToU8('<svg></svg>.......') }),
+    for (const screenshot of [strToU8('<svg></svg>.......'), fake])
+      expect(
+        await codeOf(
+          themes.install(archive('shot', { 'screenshot.png': screenshot })),
         ),
-      ),
-    ).toBe('invalid_input');
+      ).toBe('invalid_input');
 
     await themes.install(archive('shot', { 'screenshot.png': png }));
     const listed = (await themes.list()).find((theme) => theme.id === 'shot');

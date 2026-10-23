@@ -12,6 +12,7 @@ import type { HookBus } from '#api/plugin-runtime/hook-bus';
 import type { PluginScope } from '#api/plugin-runtime/plugin-scope';
 import type { PluginSettings } from '#api/plugin-runtime/plugin-settings';
 import type { EmbedRegistry } from '#api/plugin-runtime/embed-registry';
+import type { BlockRegistry } from '#api/plugin-runtime/block-registry';
 import type { AdminPageRegistry } from '#api/plugin-runtime/admin-page-registry';
 import type { DashboardWidgetRegistry } from '#api/plugin-runtime/dashboard-widget-registry';
 import type {
@@ -29,6 +30,7 @@ export interface PluginContextServices {
   slots: SlotRegistry;
   widgets: WidgetRegistry;
   embeds: EmbedRegistry;
+  blocks: BlockRegistry;
   scheduler: TaskScheduler;
   pages: AdminPageRegistry;
   dashboardWidgets: DashboardWidgetRegistry;
@@ -62,6 +64,7 @@ export class PluginContextFactory {
       slots,
       widgets,
       embeds,
+      blocks,
       scheduler,
       pages,
       dashboardWidgets,
@@ -76,6 +79,7 @@ export class PluginContextFactory {
     const slotRegistrar = slots.registrar(id);
     const widgetRegistrar = widgets.registrar(id);
     const embedRegistrar = embeds.registrar(id);
+    const blockRegistrar = blocks.registrar(id);
     const pageRegistrar = pages.registrar(id);
     const widgetBoxes = dashboardWidgets.registrar(id);
     const log = logger(id);
@@ -102,6 +106,10 @@ export class PluginContextFactory {
       },
       embeds: {
         register: (provider) => scope.track(embedRegistrar.register(provider)),
+      },
+      blocks: {
+        register: (key, block) =>
+          scope.track(blockRegistrar.register(key, block)),
       },
       tasks: {
         every: (name, intervalMs, task) => {

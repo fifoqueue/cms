@@ -35,6 +35,7 @@ const configurable = new Set([
   'spacer',
   'table',
   'embed',
+  'pluginBlock',
 ]);
 
 /** The selected atom plus configurable enclosing blocks, so gallery/column controls stay reachable. */

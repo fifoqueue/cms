@@ -8,6 +8,8 @@ import type { AppConfig } from '#api/config';
 import { hostname } from 'node:os';
 import { ContentLocks } from '#api/domain/content/content-locks';
 import { Embeds, vimeo, youtube } from '#api/domain/content/embeds';
+import type { HtmlExpander } from '#api/domain/content/embeds';
+import { BlockRegistry } from '#api/plugin-runtime/block-registry';
 import { ResponsiveImages } from '#api/domain/content/responsive-images';
 import { EmbedRegistry } from '#api/plugin-runtime/embed-registry';
 import { MediaService } from '#api/domain/media/media-service';
@@ -236,11 +238,13 @@ export const createContainer = async (
 
   const contentRepository = new PrismaContentRepository(db);
   const settingsRepository = new PrismaSettingsRepository(db);
+  const blockRegistry = new BlockRegistry({ timeoutMs, logger });
   const patterns = new PatternService({
     settings: settingsRepository,
     renderer: tiptapRenderer,
     ids: uuidV7,
     clock: systemClock,
+    blocks: blockRegistry,
   });
   const taxonomyRepository = new PrismaTaxonomyRepository(db);
   const taxonomyTypes = new TaxonomyTypeService(
@@ -266,10 +270,18 @@ export const createContainer = async (
   const responsiveImages = new ResponsiveImages((ids) =>
     mediaRepository.publicImages(ids),
   );
-  /** Body HTML as served: synced patterns, players for embeds, then responsive images. */
-  const served = {
-    expand: async (html: string) =>
-      responsiveImages.expand(await embeds.expand(await patterns.expand(html))),
+  /**
+   * Body HTML as served: synced patterns first (so blocks inside them are expanded too), then
+   * players for embeds, plugin blocks and responsive images.
+   */
+  const served: HtmlExpander = {
+    expand: async (html, context) =>
+      responsiveImages.expand(
+        await blockRegistry.expand(
+          await embeds.expand(await patterns.expand(html)),
+          context,
+        ),
+      ),
   };
   const activeSecret = secretKey(
     config.CMS_SECRET_KEY,
@@ -353,7 +365,11 @@ export const createContainer = async (
     new PrismaSeoDiscoveryRepository(db),
     seo,
   );
-  const themes = new ThemeService(settingsRepository, zipThemeArchive);
+  const themes = new ThemeService(
+    settingsRepository,
+    zipThemeArchive,
+    sharpImages,
+  );
   const themePreviews = new ThemePreviews({
     themes,
     signer,
@@ -505,6 +521,7 @@ export const createContainer = async (
     hasher: bunPasswordHasher,
     types: contentTypes,
     fields,
+    blocks: blockRegistry,
     defaultCategory: async () => {
       const id = (await writing.get()).defaultCategoryId;
       const term = id && (await taxonomyRepository.findById(id, 'all'));
@@ -650,6 +667,7 @@ export const createContainer = async (
       slots: slotRegistry,
       widgets: widgetRegistry,
       embeds: embedRegistry,
+      blocks: blockRegistry,
       scheduler,
       pages: pluginPages,
       dashboardWidgets,
@@ -750,6 +768,7 @@ export const createContainer = async (
       avatars,
       search,
       pluginPages,
+      pluginBlocks: blockRegistry,
       dashboardWidgets,
       webhooks,
       siteHealth,

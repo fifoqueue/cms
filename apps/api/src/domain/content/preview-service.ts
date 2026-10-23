@@ -5,7 +5,7 @@ import type { Actor } from '#api/domain/auth/authorization';
 import type { ContentService } from '#api/domain/content/content-service';
 import type { DocumentRenderer } from '#api/domain/content/content-repository';
 import type { RevisionRepository } from '#api/domain/content/revisions';
-import type { Embeds } from '#api/domain/content/embeds';
+import type { HtmlExpander } from '#api/domain/content/embeds';
 import type { FieldService } from '#api/domain/content/fields';
 import type { Clock, Signer } from '#api/domain/ports';
 import { notFound, Errors } from '#api/shared/errors';
@@ -24,7 +24,7 @@ export class PreviewService {
       renderer: DocumentRenderer;
       signer: Signer;
       clock: Clock;
-      embeds: Pick<Embeds, 'expand'>;
+      embeds: HtmlExpander;
       fields: Pick<FieldService, 'present'>;
     },
   ) {}

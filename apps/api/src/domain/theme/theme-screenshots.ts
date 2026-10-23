@@ -1,5 +1,6 @@
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import { sniffMediaType } from '#api/domain/media/sniff';
+import type { ImageProcessor } from '#api/domain/media/ports';
 import { invalidInput, Errors } from '#api/shared/errors';
 
 const INDEX_KEY = 'themes.screenshots';
@@ -31,13 +32,21 @@ const fromBase64 = (text: string) =>
  * settings beside the theme: one row per image plus a small index of versions for listings.
  */
 export class ThemeScreenshots {
-  constructor(private readonly settings: SettingsRepository) {}
+  constructor(
+    private readonly settings: SettingsRepository,
+    /** Decodes the image (bounded), so only screenshots that render are kept. */
+    private readonly images?: Pick<ImageProcessor, 'dimensions'>,
+  ) {}
 
-  /** The real type of uploaded screenshot bytes; throws for anything but PNG or WebP. */
-  check(bytes: Uint8Array): ScreenshotType {
+  /** The real type of uploaded screenshot bytes; throws unless it is a decodable PNG or WebP. */
+  async check(bytes: Uint8Array): Promise<ScreenshotType> {
     const type = sniffMediaType(bytes);
     if (!TYPES.includes(type as ScreenshotType))
       throw invalidInput(Errors.ThemeScreenshotInvalid);
+    if (this.images)
+      await this.images.dimensions(bytes).catch(() => {
+        throw invalidInput(Errors.ThemeScreenshotInvalid);
+      });
     return type as ScreenshotType;
   }
 
@@ -83,7 +92,7 @@ export class ThemeScreenshots {
   async save(id: string, bytes: Uint8Array | null): Promise<void> {
     const versions = await this.versions();
     if (bytes) {
-      const type = this.check(bytes);
+      const type = await this.check(bytes);
       await this.settings.set(keyOf(id), { type, data: toBase64(bytes) });
       versions[id] = fingerprint(bytes);
     } else {

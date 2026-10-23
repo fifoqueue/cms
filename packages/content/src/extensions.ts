@@ -18,7 +18,11 @@ import {
   Pullquote,
   Spacer,
   ContentTable,
+  PluginBlock,
 } from '#content/blocks';
+
+/** The admin editor extends this node with a placeholder view; the schema stays shared. */
+export { PluginBlock };
 import type { ContentDocument } from '@cms/sdk';
 import { Errors } from '#content/errors';
 import { DocumentNode, More, PageBreak, PatternRef } from '#content/breaks';
@@ -87,6 +91,7 @@ export const contentExtensions = [
   More,
   PageBreak,
   PatternRef,
+  PluginBlock,
 ];
 
 const schema = getSchema(contentExtensions);

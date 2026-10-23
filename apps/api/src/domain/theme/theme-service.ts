@@ -21,6 +21,7 @@ import { BUILTIN_THEMES } from '#api/domain/theme/builtin-themes';
 import { packageFromFiles } from '#api/domain/theme/theme-archive';
 import type { ThemeArchive } from '#api/domain/theme/theme-archive';
 import { ThemeScreenshots } from '#api/domain/theme/theme-screenshots';
+import type { ImageProcessor } from '#api/domain/media/ports';
 import {
   findTheme,
   isBuiltinTheme,
@@ -148,9 +149,10 @@ export class ThemeService {
   constructor(
     settings: SettingsRepository,
     private readonly archive: ThemeArchive,
+    images?: Pick<ImageProcessor, 'dimensions'>,
   ) {
     this.state = new ThemeStateStore(settings);
-    this.screenshots = new ThemeScreenshots(settings);
+    this.screenshots = new ThemeScreenshots(settings, images);
   }
 
   /** A theme's preview image (PNG or WebP), or null. */
@@ -191,7 +193,7 @@ export class ThemeService {
   async install(bytes: Uint8Array): Promise<AdminTheme> {
     const { files, screenshot } = this.archive.read(bytes);
     const theme = parseInput(themePackageSchema, packageFromFiles(files));
-    if (screenshot) this.screenshots.check(screenshot);
+    if (screenshot) await this.screenshots.check(screenshot);
 
     if (isBuiltinTheme(theme.manifest.id))
       throw conflict(Errors.ThemeBuiltinReplace);

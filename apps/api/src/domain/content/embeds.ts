@@ -1,4 +1,11 @@
 import type { Awaitable } from '@cms/sdk';
+import type { BlockRenderContext } from '@cms/sdk/plugin';
+
+/** Turns stored body HTML into what is served (players, plugin blocks, responsive images). */
+export interface HtmlExpander {
+  /** `context` names the entry being served, for plugin blocks. */
+  expand(html: string, context?: BlockRenderContext): Promise<string>;
+}
 
 /** Turns an embedded URL into player HTML, or declines with null. */
 export interface EmbedProvider {

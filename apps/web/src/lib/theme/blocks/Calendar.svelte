@@ -1,5 +1,6 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import { monthGrid, weekdayOrder } from '#lib/theme/calendar.js';
   import { formatMonth } from '#lib/theme/format.js';
   import { useScope } from '#lib/theme/scope.js';
 
@@ -11,9 +12,11 @@
   const calendar = $derived(scope().calendar);
   const locale = $derived(scope().site.locale);
 
-  /** Sunday-first weekday names in the site language. */
+  const weekStartsOn = $derived(scope().reading.weekStartsOn ?? 0);
+  /** Weekday names in the site language, from the configured first day. */
   const weekdays = $derived(
-    Array.from({ length: 7 }, (_, day) => {
+    weekdayOrder(weekStartsOn).map((day) => {
+      // 1 January 2023 was a Sunday.
       const date = new Date(Date.UTC(2023, 0, 1 + day));
       try {
         return {
@@ -35,22 +38,9 @@
     year: String(year),
     month: String(month).padStart(2, '0'),
   });
-  const weeks = $derived.by(() => {
-    if (!calendar) return [];
-    const first = new Date(
-      Date.UTC(calendar.year, calendar.month - 1, 1),
-    ).getUTCDay();
-    const length = new Date(
-      Date.UTC(calendar.year, calendar.month, 0),
-    ).getUTCDate();
-    const cells = [
-      ...Array.from({ length: first }, () => null),
-      ...Array.from({ length }, (_, index) => index + 1),
-    ];
-    return Array.from({ length: Math.ceil(cells.length / 7) }, (_, row) =>
-      Array.from({ length: 7 }, (_, column) => cells[row * 7 + column] ?? null),
-    );
-  });
+  const weeks = $derived(
+    calendar ? monthGrid(calendar.year, calendar.month, weekStartsOn) : [],
+  );
 </script>
 
 {#if calendar}

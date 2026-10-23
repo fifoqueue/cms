@@ -4,7 +4,7 @@ import {
   contentDocumentSchema,
   patternInputSchema,
 } from '@cms/sdk';
-import type { AdminPattern } from '@cms/sdk';
+import type { AdminPattern, ContentDocument } from '@cms/sdk';
 import { z } from 'zod';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
@@ -60,6 +60,8 @@ export class PatternService {
       renderer: DocumentRenderer;
       ids: IdGenerator;
       clock: Clock;
+      /** Checks the attributes of active plugins' blocks, like a content save. */
+      blocks?: { check(document: ContentDocument): void };
     },
   ) {}
 
@@ -154,6 +156,7 @@ export class PatternService {
     const data = parseInput(patternInputSchema, input);
     if (data.status === 'published' && !can(actor, 'content.publish'))
       throw forbidden();
+    this.deps.blocks?.check(data.document);
     // Rejects documents outside the editor schema, like a content save.
     return { ...data, html: this.deps.renderer.render(data.document) };
   }

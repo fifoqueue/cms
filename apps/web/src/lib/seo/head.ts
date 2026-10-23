@@ -24,6 +24,7 @@ import {
   feedPath,
   listingPath,
   markdownPath,
+  oembedPath,
 } from '#lib/seo/paths.js';
 import type { CrumbTarget, FeedTarget } from '#lib/seo/paths.js';
 import { lastPageOf } from '#lib/theme/pagination.js';
@@ -575,6 +576,14 @@ export const buildHead = ({
       type: 'text/markdown',
       title: content.title,
       href: href(markdownPath(content.slug)),
+    });
+  // oEmbed discovery, so other sites (WordPress among them) can embed this entry as a card.
+  if (content && !content.protected && selfUrl)
+    links.push({
+      rel: 'alternate',
+      type: 'application/json+oembed',
+      title: content.title,
+      href: absolute(oembedPath(selfUrl)),
     });
 
   // Without a configured origin, nodes are linked by blank-node ids instead of invented URLs.

@@ -78,9 +78,6 @@ export interface BlockContext {
   authors: string[];
 }
 
-/** Months of posts the calendar looks through for its previous and next links. */
-const CALENDAR_MONTHS = 60;
-
 /** Pages and calendar posts read at most (100 per request). */
 const LIST_MAX = 2_000;
 /** Distinct author profiles one page loads at most. */
@@ -339,28 +336,24 @@ export const loadBlockData = async (
     needs.calendar
       ? Promise.all([
           listAll(api, { type: 'post', ...month }),
-          // Newest first; months further back than this get no "previous" link.
-          api.months(CALENDAR_MONTHS).catch(() => []),
+          // Looked up around the shown month, so archives of any age link their neighbours.
+          api
+            .monthNeighbours(month.year, month.month)
+            .catch(() => ({ previous: null, next: null })),
         ])
-          .then(([items, listed]) => {
+          .then(([items, neighbours]) => {
             const days: Record<number, number> = {};
             for (const { publishedAt } of items) {
               const day = new Date(publishedAt).getUTCDate();
               days[day] = (days[day] ?? 0) + 1;
             }
-            const order = ({ year, month }: { year: number; month: number }) =>
-              year * 12 + month;
-            const near = (entry: (typeof listed)[number] | undefined) =>
-              entry ? { year: entry.year, month: entry.month } : null;
+            const near = (entry: { year: number; month: number } | null) =>
+              entry && { year: entry.year, month: entry.month };
             return {
               ...month,
               days,
-              previous: near(
-                listed.find((entry) => order(entry) < order(month)),
-              ),
-              next: near(
-                listed.findLast((entry) => order(entry) > order(month)),
-              ),
+              previous: near(neighbours.previous),
+              next: near(neighbours.next),
             };
           })
           .catch(() => null)

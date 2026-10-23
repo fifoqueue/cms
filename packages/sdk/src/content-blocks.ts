@@ -90,6 +90,18 @@ export const contentAttributeSchemas = {
   paragraph: z.strictObject({ textAlign }).partial(),
   heading: z.strictObject({ level: legacy, textAlign }).partial(),
   embed: z.strictObject({ url: legacy }).partial(),
+  /** A plugin's dynamic block (`plugin:<id>:<key>`), rendered by the plugin when served. */
+  pluginBlock: z
+    .strictObject({
+      block: z.string().regex(/^plugin:[a-z0-9-]{1,64}:[a-z0-9-]{1,64}$/),
+      attrs: z
+        .record(
+          z.string().max(64),
+          z.union([z.string().max(5000), z.number(), z.boolean()]),
+        )
+        .refine((attrs) => Object.keys(attrs).length <= 30),
+    })
+    .partial(),
   /** A synced pattern by id; the API puts the pattern's published body in its place. */
   patternRef: z
     .strictObject({

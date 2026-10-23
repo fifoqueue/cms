@@ -146,6 +146,7 @@ const app = await createApiApp({
     avatars: {} as ApiServices['avatars'],
     search: {} as ApiServices['search'],
     pluginPages: {} as ApiServices['pluginPages'],
+    pluginBlocks: {} as ApiServices['pluginBlocks'],
     dashboardWidgets: {} as ApiServices['dashboardWidgets'],
     webhooks: {} as ApiServices['webhooks'],
     siteHealth: {} as ApiServices['siteHealth'],

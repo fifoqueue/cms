@@ -95,6 +95,69 @@ export const settingValuesSchema = (fields: readonly SettingField[]) =>
     ),
   );
 
+/** An attribute of a plugin block: a setting field, or a choice among fixed options. */
+export const pluginBlockFieldSchema = z.union([
+  settingFieldSchema,
+  z.object({
+    ...fieldBase,
+    type: z.literal('select'),
+    options: z.array(z.string().min(1).max(100)).min(1).max(50),
+    default: z.string().max(100).optional(),
+  }),
+]);
+
+export type PluginBlockField = z.output<typeof pluginBlockFieldSchema>;
+
+/** `plugin:<plugin id>:<key>`, the block type stored in content. */
+export const PLUGIN_BLOCK = /^plugin:[a-z0-9-]{1,64}:[a-z0-9-]{1,64}$/;
+
+/** What a plugin declares for a block it renders (`blocks.register`). */
+export const pluginBlockDeclarationSchema = z.object({
+  title: z.string().trim().min(1).max(100),
+  description: z.string().max(500).default(''),
+  attributes: z
+    .array(pluginBlockFieldSchema)
+    .max(30)
+    .default([])
+    .refine(
+      (fields) =>
+        new Set(fields.map((field) => field.key)).size === fields.length,
+      'Attribute keys must be unique',
+    ),
+});
+
+/** An active plugin block as the editor lists it. */
+export const pluginBlockInfoSchema = pluginBlockDeclarationSchema.extend({
+  block: z.string().regex(PLUGIN_BLOCK),
+});
+export type PluginBlockInfo = z.output<typeof pluginBlockInfoSchema>;
+
+/** Validator for a plugin block's stored attributes, from its declaration. */
+export const pluginBlockAttrsSchema = (fields: readonly PluginBlockField[]) =>
+  z.strictObject(
+    Object.fromEntries(
+      fields.map((field) => [
+        field.key,
+        (field.type === 'select'
+          ? z.enum(field.options as [string, ...string[]])
+          : fieldValueSchema(field)
+        ).optional(),
+      ]),
+    ),
+  );
+
+/** Declared defaults overlaid with stored values, for rendering. */
+export const pluginBlockValues = (
+  fields: readonly PluginBlockField[],
+  stored: Record<string, unknown>,
+): SettingValues =>
+  Object.fromEntries(
+    fields.flatMap((field) => {
+      const value = stored[field.key] ?? field.default;
+      return value === undefined ? [] : [[field.key, value as SettingValue]];
+    }),
+  );
+
 export type PluginStatus = 'active' | 'inactive' | 'failed';
 
 /** A plugin as listed in the admin API. */

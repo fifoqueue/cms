@@ -41,6 +41,7 @@ const { actions: appearanceActions } =
   await import('#web/routes/admin/(app)/appearance/+page.server.js');
 const { removeApiSecrets } = await import('#web-env');
 const { GET: feed } = await import('#web/routes/feed.xml/+server.js');
+const { GET: oembed } = await import('#web/routes/oembed/+server.js');
 const { loadBlockData } = await import('#lib/server/theme-queries.js');
 const { contentApi } = await import('#lib/server/api.js');
 const { actions: editorActions } =
@@ -552,6 +553,46 @@ describe('public page data', () => {
     expect(data.pageTree!.map((entry) => entry.title)).not.toContain(
       'Title p2-0',
     );
+  });
+
+  test('oEmbed describes public, unlocked entries of this site only, as an escaped card', async () => {
+    override = ({ url }) => {
+      if (url.pathname === '/api/v1/seo')
+        return json({ ...SEO_SETTINGS_DEFAULTS, siteUrl: 'https://site.test' });
+      if (
+        url.pathname === '/api/v1/resolve' &&
+        url.searchParams.get('path') === '/locked'
+      )
+        return json({
+          content: { ...content('locked'), protected: true, title: '<x>' },
+          redirect: false,
+        });
+      if (
+        url.pathname === '/api/v1/resolve' &&
+        url.searchParams.get('path') === '/hello'
+      )
+        return json({
+          content: { ...content('hello'), title: 'A <b>bold</b> title' },
+          redirect: false,
+        });
+      return undefined;
+    };
+    const ask = (target: string) =>
+      oembed({
+        fetch: fakeFetch,
+        url: new URL(
+          `http://web.test/oembed?format=json&url=${encodeURIComponent(target)}`,
+        ),
+      } as never);
+    expect((await ask('https://other.test/hello')).status).toBe(404);
+    expect((await ask('https://site.test/locked')).status).toBe(404);
+    const card = (await (await ask('https://site.test/hello')).json()) as {
+      type: string;
+      html: string;
+    };
+    expect(card.type).toBe('rich');
+    expect(card.html).toContain('A &lt;b&gt;bold&lt;/b&gt; title');
+    expect(card.html).not.toContain('<iframe');
   });
 
   test('feeds refuse values that are not slugs instead of shortening them', async () => {

@@ -9,6 +9,7 @@ import {
 import type {
   AdminContentSummary,
   ContentData,
+  ContentDocument,
   ContentEntry,
   Paginated,
 } from '@cms/sdk';
@@ -54,6 +55,8 @@ export interface ContentServiceDeps {
   hasher: PasswordHasher;
   types: Pick<ContentTypeService, 'require'>;
   fields: Pick<FieldService, 'validate' | 'forType'>;
+  /** Checks the attributes of active plugins' blocks in a document. */
+  blocks?: { check(document: ContentDocument): void };
   /** Settings → Writing: the existing category a post saved without one gets (WordPress). */
   defaultCategory?: () => Promise<string | null>;
 }
@@ -234,6 +237,7 @@ export class ContentService {
   /** The stored fields derived from validated input alone. */
   private async fields(data: ContentData, current: ContentRecord | null) {
     const type = await this.deps.types.require(data.type);
+    this.deps.blocks?.check(data.document);
     const definitions = await this.deps.fields.forType(type.key);
     // Omitted values are kept on update; new entries still meet required fields.
     const fields =

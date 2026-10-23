@@ -3,7 +3,7 @@
   import type { ChainedCommands } from '@tiptap/core';
   import type { EditorView } from '@tiptap/pm/view';
   import { CONTENT_ALIGNMENTS, IMAGE_SIZES } from '@cms/sdk';
-  import type { AdminMedia, ContentDocument } from '@cms/sdk';
+  import type { AdminMedia, ContentDocument, PluginBlockInfo } from '@cms/sdk';
   import {
     Bold,
     Code,
@@ -30,6 +30,10 @@
     loadPatterns,
   } from '#lib/admin/editor/patterns.js';
   import type { PatternChoice } from '#lib/admin/editor/patterns.js';
+  import {
+    loadPluginBlocks,
+    pluginBlockView,
+  } from '#lib/admin/editor/plugin-blocks.js';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import type { MediaChoice } from '#lib/admin/MediaPicker.svelte';
   import { uploadFile } from '#lib/admin/upload.js';
@@ -136,10 +140,27 @@
     return true;
   };
 
+  /** Active plugin blocks; until they load, plugin blocks show as inactive. */
+  let pluginBlocks = $state<PluginBlockInfo[]>([]);
+  const pluginBlock = pluginBlockView(
+    (block) => pluginBlocks.find((entry) => entry.block === block)?.title,
+    () => m.contentPluginBlockInactive,
+  );
+
   onMount(() => {
+    void loadPluginBlocks().then((list) => {
+      pluginBlocks = list;
+      pluginBlock.refresh();
+    });
     const instance = new Editor({
       element,
-      extensions: editorExtensions(markerLabel),
+      // The shared schema with editor placeholders for markers, patterns and plugin blocks.
+      extensions: [
+        ...editorExtensions(markerLabel).filter(
+          (extension) => extension.name !== 'pluginBlock',
+        ),
+        pluginBlock.extension,
+      ],
       content: value,
       editorProps: {
         attributes: {

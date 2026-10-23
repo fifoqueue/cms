@@ -1263,6 +1263,9 @@ export const en = {
     `The alternative text could not be saved to the library (${reason}). Press the button again to use it here only.`,
   seoTabs: 'SEO settings',
   // site-theme
+  contentPluginBlockInactive:
+    'This block requires a plugin that is not active.',
+  oembedEmbedded: (site: string) => `Embedded from ${site}`,
   importAuthors: 'Assign authors',
   importAuthorsHelp:
     'Authors are matched to existing users by email address or login. For authors without a match:',
@@ -1504,6 +1507,7 @@ export const en = {
         spacer: 'Spacer',
         codeBlock: 'Code',
         embed: 'Embed',
+        pluginBlock: 'Plugin block',
         more: 'More (teaser break)',
         pageBreak: 'Page break',
       }) as Record<string, string>
