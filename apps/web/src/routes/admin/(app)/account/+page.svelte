@@ -34,7 +34,7 @@
   const identity = $derived(data.status.identity);
 
   const confirmUnlink: SubmitFunction = ({ cancel }) => {
-    if (!confirm('Stop signing in with this single sign-on account?')) cancel();
+    if (!confirm(m.ssoUnlinkConfirm)) cancel();
   };
 </script>
 
@@ -236,58 +236,58 @@
   </CardContent>
 </Card>
 
-<Card>
-  <CardHeader>
-    <CardTitle class="flex items-center gap-2">
-      Single sign-on
+<!-- Hidden while single sign-on is off, unless a link or assignment remains to show. -->
+{#if data.sso.enabled || identity || data.status.assigned}
+  <Card>
+    <CardHeader>
+      <CardTitle class="flex items-center gap-2">
+        {m.settingsSso}
+        {#if identity}
+          <Badge>{m.ssoLinked}</Badge>
+        {:else}
+          <Badge variant="secondary">{m.ssoNotLinked}</Badge>
+        {/if}
+      </CardTitle>
+      <CardDescription>
+        {#if data.sso.enabled}
+          {m.ssoLinkHelp(data.sso.name ?? '')}
+        {:else}
+          {m.ssoUnavailable}
+        {/if}
+      </CardDescription>
+    </CardHeader>
+    <CardContent class="space-y-4">
       {#if identity}
-        <Badge>Linked</Badge>
-      {:else}
-        <Badge variant="secondary">Not linked</Badge>
-      {/if}
-    </CardTitle>
-    <CardDescription>
-      {#if data.sso.enabled}
-        Link an account at {data.sso.name} to sign in to this account with it. Your
-        password keeps working.
-      {:else}
-        Single sign-on is not available on this site.
-      {/if}
-    </CardDescription>
-  </CardHeader>
-  <CardContent class="space-y-4">
-    {#if identity}
-      <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-        <dt class="text-muted-foreground">Provider</dt>
-        <dd class="break-all">{identity.issuer}</dd>
-        <dt class="text-muted-foreground">Account ID</dt>
-        <dd class="break-all">{identity.subject}</dd>
-        <dt class="text-muted-foreground">Linked</dt>
-        <dd>{new Date(identity.linkedAt).toLocaleString()}</dd>
-      </dl>
-    {/if}
-
-    {#if data.status.assigned}
-      <p class="text-sm text-muted-foreground">
-        The site operator has also assigned a single sign-on account to you.
-      </p>
-    {/if}
-
-    <div class="flex flex-wrap gap-2">
-      {#if data.sso.enabled}
-        <!-- Not enhanced: the browser has to follow the redirect to the provider. -->
-        <form method="POST" action="?/link">
-          <Button type="submit" variant="outline">
-            {identity ? 'Link a different account' : `Link ${data.sso.name}`}
-          </Button>
-        </form>
+        <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+          <dt class="text-muted-foreground">{m.ssoProvider}</dt>
+          <dd class="break-all">{identity.issuer}</dd>
+          <dt class="text-muted-foreground">{m.ssoAccountId}</dt>
+          <dd class="break-all">{identity.subject}</dd>
+          <dt class="text-muted-foreground">{m.ssoLinkedOn}</dt>
+          <dd>{new Date(identity.linkedAt).toLocaleString(i18n.language)}</dd>
+        </dl>
       {/if}
 
-      {#if identity}
-        <form method="POST" action="?/unlink" use:enhance={confirmUnlink}>
-          <Button type="submit" variant="destructive">Unlink</Button>
-        </form>
+      {#if data.status.assigned}
+        <p class="text-sm text-muted-foreground">{m.ssoAssigned}</p>
       {/if}
-    </div>
-  </CardContent>
-</Card>
+
+      <div class="flex flex-wrap gap-2">
+        {#if data.sso.enabled}
+          <!-- Not enhanced: the browser has to follow the redirect to the provider. -->
+          <form method="POST" action="?/link">
+            <Button type="submit" variant="outline">
+              {identity ? m.ssoLinkOther : m.ssoLinkWith(data.sso.name ?? '')}
+            </Button>
+          </form>
+        {/if}
+
+        {#if identity}
+          <form method="POST" action="?/unlink" use:enhance={confirmUnlink}>
+            <Button type="submit" variant="destructive">{m.ssoUnlink}</Button>
+          </form>
+        {/if}
+      </div>
+    </CardContent>
+  </Card>
+{/if}

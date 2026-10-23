@@ -83,8 +83,8 @@ export class UserService {
     return { name: author.name, slug: author.slug, bio: author.bio };
   }
 
-  /** Id and name of every user who can write, for the author picker. */
-  async authors(): Promise<{ id: string; name: string }[]> {
+  /** Id, name and public slug of every user who can write, for the author picker and filter. */
+  async authors(): Promise<{ id: string; name: string; slug: string }[]> {
     const roles = await this.deps.roles?.list();
     return (await this.deps.directory.list())
       .filter((user) =>
@@ -97,7 +97,7 @@ export class UserService {
           'content.create',
         ),
       )
-      .map(({ id, name }) => ({ id, name }));
+      .map(({ id, name, slug }) => ({ id, name, slug }));
   }
 
   /** With a password the account is usable at once; without one the user is invited by email. */
