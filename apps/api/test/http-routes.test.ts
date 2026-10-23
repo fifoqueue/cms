@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { AuthService } from '#api/domain/auth/auth-service';
 import type { SsoService } from '#api/domain/auth/sso-service';
 import type { ContentService } from '#api/domain/content/content-service';
+import { DashboardPreferencesService } from '#api/domain/dashboard/dashboard-preferences';
 import type { PublicContentService } from '#api/domain/content/public-content';
 import type { SiteService } from '#api/domain/site/site-service';
 import type { SeoSettingsService } from '#api/domain/seo/seo-settings-service';
@@ -21,7 +22,7 @@ import type { PluginHost } from '#api/plugin-runtime/plugin-host';
 import type { SlotService } from '#api/plugin-runtime/slot-service';
 import { conflict } from '#api/shared/errors';
 import type { UserService } from '#api/domain/users/user-service';
-import { profile } from '#test/support/memory';
+import { MemorySettings, profile } from '#test/support/memory';
 
 const TOKEN = 'admin-token';
 const user = profile({ id: 'u1', email: 'a@example.com', name: 'Admin' });
@@ -142,6 +143,7 @@ const app = await createApiApp({
       get: record('writing.get'),
       update: record('writing.update'),
     } as unknown as ApiServices['writing'],
+    dashboardPreferences: new DashboardPreferencesService(new MemorySettings()),
     patterns: {} as ApiServices['patterns'],
     menus: {} as ApiServices['menus'],
     widgets: {} as ApiServices['widgets'],
@@ -321,6 +323,69 @@ describe('API route compatibility', () => {
       ['admin.list', { page: '3' }, user],
       ['plugins.enable', 'p-1'],
     ]);
+  });
+
+  test('dashboard preferences belong only to the authenticated writer across requests', async () => {
+    const path = '/api/v1/admin/dashboard-preferences';
+    const layout = { order: ['draft', 'activity'], hidden: ['activity'] };
+    for (const method of ['GET', 'PUT']) {
+      expect((await call(method, path)).status).toBe(401);
+      expect((await call(method, path, { token: OPERATOR })).status).toBe(403);
+    }
+    const saved = await call('PUT', path, {
+      token: WRITER,
+      type: 'application/json',
+      body: JSON.stringify(layout),
+    });
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toEqual(layout);
+    expect(await (await call('GET', path, { token: TOKEN })).json()).toEqual({
+      order: [],
+      hidden: [],
+    });
+    const spoofed = await call('PUT', path, {
+      token: TOKEN,
+      type: 'application/json',
+      body: JSON.stringify({ ...layout, userId: accounts[WRITER]!.id }),
+    });
+    expect(spoofed.status).toBe(400);
+    expect(await (await call('GET', path, { token: TOKEN })).json()).toEqual({
+      order: [],
+      hidden: [],
+    });
+    const restored = await call('GET', path, { token: WRITER });
+    expect(restored.headers.get('cache-control')).toBe('private, no-store');
+    expect(await restored.json()).toEqual(layout);
+  });
+
+  test('dashboard layouts larger than a cookie persist; oversized settings never overwrite them', async () => {
+    const path = '/api/v1/admin/dashboard-preferences';
+    const order = Array.from(
+      { length: 15 },
+      (_, index) =>
+        `plugin:${'p'.repeat(64)}:${'w'.repeat(62)}${String(index).padStart(2, '0')}`,
+    );
+    const layout = { order, hidden: order };
+    expect(encodeURIComponent(JSON.stringify(layout)).length).toBeGreaterThan(
+      4096,
+    );
+    const put = (input: unknown) =>
+      call('PUT', path, {
+        token: TOKEN,
+        type: 'application/json',
+        body: JSON.stringify(input),
+      });
+    expect((await put(layout)).status).toBe(200);
+    for (const input of [
+      { ...layout, order: Array(101).fill('draft') },
+      { ...layout, hidden: Array(101).fill('draft') },
+      { ...layout, order: ['w'.repeat(201)] },
+      { ...layout, hidden: [null] },
+    ])
+      expect((await put(input)).status).toBe(400);
+    expect(await (await call('GET', path, { token: TOKEN })).json()).toEqual(
+      layout,
+    );
   });
 
   test('Writing settings: writers read them, settings operators change them', async () => {

@@ -1,9 +1,8 @@
-import { redirect } from '@sveltejs/kit';
-import { COMMENT_BULK_ACTIONS } from '@cms/sdk';
+import { fail, redirect } from '@sveltejs/kit';
+import { COMMENT_BULK_ACTIONS, dashboardPreferencesSchema } from '@cms/sdk';
 import { can } from '@cms/sdk/capabilities';
 import { mapBounded } from '#lib/server/bulk.js';
-import { readDashboardLayout } from '#lib/server/screen-options.js';
-import { failFrom, text } from '#lib/server/errors.js';
+import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { adminFor } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -51,6 +50,7 @@ export const load: PageServerLoad = async (event) => {
     approved,
     health,
     widgets,
+    layout,
   ] = await Promise.all([
     // One count per type, a few at a time; At a Glance lists the first 20 types.
     mapBounded(model.types.slice(0, 20), async (type) => ({
@@ -100,6 +100,7 @@ export const load: PageServerLoad = async (event) => {
       : null,
     // A plugin problem never takes the dashboard down: its widgets are simply left out.
     admin.plugins.dashboardWidgets().catch(() => []),
+    admin.dashboardPreferences.get(),
   ]);
   const comment = ({
     id,
@@ -138,11 +139,36 @@ export const load: PageServerLoad = async (event) => {
       title,
       blocks,
     })),
-    layout: readDashboardLayout(event.cookies),
+    layout: { order: layout.order, hidden: layout.hidden },
   };
 };
 
 export const actions: Actions = {
+  preferences: async (event) => {
+    const form = await event.request.formData();
+    const order = form.getAll('order');
+    const shown = form.getAll('shown');
+    const parsed = dashboardPreferencesSchema.safeParse({
+      order,
+      hidden: order.filter((id) => !shown.includes(id)),
+    });
+    if (!parsed.success)
+      return fail(400, {
+        dashboardPreferences: true,
+        message: Errors.FormInvalid,
+        code: 'invalid_input',
+        issues: parsed.error.issues.map(({ path, message }) => ({
+          path: path.map(String).join('.'),
+          message,
+        })),
+      });
+    try {
+      await adminFor(event).dashboardPreferences.update(parsed.data);
+    } catch (caught) {
+      return failFrom(caught, { dashboardPreferences: true });
+    }
+    return { dashboardPreferences: true, notice: 'dashboardOptionsSaved' };
+  },
   /** Approve, spam or trash one comment waiting for moderation. */
   moderate: async (event) => {
     const form = await event.request.formData();
