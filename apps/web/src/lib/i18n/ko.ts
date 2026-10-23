@@ -1555,4 +1555,5 @@ export const ko: Messages = {
   widgetDropHere: '여기에 놓으면 위젯이 맨 끝에 배치됩니다',
   commentNoticePartlyEmptied:
     '많은 댓글을 삭제했지만 아직 남아 있습니다. 계속하려면 다시 비우기를 누르세요.',
+  skipToContent: '본문으로 바로가기',
 };

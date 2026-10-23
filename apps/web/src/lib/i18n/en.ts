@@ -1603,4 +1603,5 @@ export const en = {
   widgetDropHere: 'Drop here to place the widget last',
   commentNoticePartlyEmptied:
     'Many comments were deleted, but some remain. Choose Empty again to continue.',
+  skipToContent: 'Skip to main content',
 } as const;
