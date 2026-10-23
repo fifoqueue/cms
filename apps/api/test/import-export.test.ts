@@ -144,6 +144,19 @@ test('classic shortcode boundaries preserve Unicode text and the following parag
   expect(html).toContain('<p>AFTER</p>');
 });
 
+test('classic shortcodes inside quoted HTML attributes remain inert', () => {
+  const attachments = {
+    url: () => 'https://example.com/a.jpg',
+    childImages: () => [],
+  };
+  for (const value of ['[gallery ids=1]', '> [gallery ids=1]']) {
+    const source = `<div data-note="${value}">keep this</div>`;
+    expect(
+      tiptapHtmlParser.parse(classicHtml(source, '', attachments)),
+    ).toEqual(tiptapHtmlParser.parse(source));
+  }
+});
+
 test('an over-budget author import creates no accounts or content', async () => {
   let created = 0;
   const target = await site({
