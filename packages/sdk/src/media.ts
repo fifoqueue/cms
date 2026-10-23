@@ -93,7 +93,7 @@ export const mediaListQuerySchema = z.object({
     .string()
     .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
     .optional(),
-  /** Only files that no entry shows. */
+  /** Only files that no entry or stored pattern shows. */
   unattached: z.stringbool().optional(),
   page: z.coerce.number().int().min(1).max(PAGINATION_MAX_PAGE).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(30),

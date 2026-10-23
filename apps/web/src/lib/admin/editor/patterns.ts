@@ -1,25 +1,49 @@
 import type { AnyExtension, JSONContent, Node } from '@tiptap/core';
 import { contentExtensions } from '@cms/content';
-import type { AdminPattern } from '@cms/sdk';
+import { adminPatternSchema, patternListSchema } from '@cms/sdk';
+import type { Paginated, PatternSummary } from '@cms/sdk';
+import { resolve } from '$app/paths';
 
-/** What the editor needs of a pattern. */
+/** The inserter receives metadata only; an unsynced copy is fetched on selection. */
 export type PatternChoice = Pick<
-  AdminPattern,
-  'id' | 'title' | 'synced' | 'document' | 'status'
+  PatternSummary,
+  'id' | 'title' | 'synced' | 'status'
 >;
 
-/** The library of patterns for the inserter; empty when it cannot be read. */
-export const loadPatterns = async (): Promise<PatternChoice[]> => {
-  const response = await fetch('/admin/patterns/api').catch(() => null);
-  if (!response?.ok || response.redirected) return [];
-  return ((await response.json()) as PatternChoice[]) ?? [];
+export const loadPatterns = async (
+  search = '',
+  page = 1,
+  signal?: AbortSignal,
+): Promise<Paginated<PatternChoice> | null> => {
+  const query = new URLSearchParams({ search, page: String(page) });
+  const response = await fetch(
+    `${resolve('/admin/(app)/patterns/api')}?${query}`,
+    { signal },
+  ).catch(() => null);
+  if (!response?.ok || response.redirected) return null;
+  const parsed = patternListSchema.safeParse(
+    await response.json().catch(() => null),
+  );
+  return parsed.success ? parsed.data : null;
 };
 
-/** A synced pattern goes in by reference; others are copied in as their blocks. */
-export const patternContent = (pattern: PatternChoice): JSONContent[] =>
-  pattern.synced
-    ? [{ type: 'patternRef', attrs: { ref: pattern.id } }]
-    : ((pattern.document.content ?? []) as JSONContent[]);
+/** Synced insertion needs only the id. Copies must pass the API's current draft-read guard. */
+export const patternContent = async (
+  pattern: PatternChoice,
+): Promise<JSONContent[] | null> => {
+  if (pattern.synced)
+    return [{ type: 'patternRef', attrs: { ref: pattern.id } }];
+  const response = await fetch(
+    `${resolve('/admin/(app)/patterns/api')}?id=${encodeURIComponent(pattern.id)}`,
+  ).catch(() => null);
+  if (!response?.ok || response.redirected) return null;
+  const parsed = adminPatternSchema
+    .pick({ id: true, title: true, synced: true, status: true, document: true })
+    .safeParse(await response.json().catch(() => null));
+  return parsed.success
+    ? ((parsed.data.document.content ?? []) as JSONContent[])
+    : null;
+};
 
 const MARKERS = new Set(['more', 'pageBreak', 'patternRef']);
 

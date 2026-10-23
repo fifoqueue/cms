@@ -317,7 +317,7 @@ export const ko: Messages = {
   mediaDimensions: '해상도',
   mediaUploadedBy: '올린 사람',
   mediaUsed: (count) =>
-    count ? `글 ${count}개에서 사용 중` : '아직 사용되지 않음',
+    count ? `글 또는 패턴 ${count}개에서 사용 중` : '아직 사용되지 않음',
   mediaDeleteUsed: '사용 중이어도 삭제',
   mediaChoose: '라이브러리에서 선택',
   mediaRemoveFeatured: '제거',
@@ -1577,4 +1577,6 @@ export const ko: Messages = {
     '모든 API 프로세스에 같은 제한이 적용됩니다. 제한을 끄려면 0을 입력하세요.',
   mediaUploadsPerHour: '사용자당 시간별 업로드 수',
   mediaFreeSpaceMb: '남겨 둘 여유 저장 공간(MB)',
+  // pattern-followup
+  patternLoadFailed: '패턴을 불러오지 못했습니다. 다시 선택해 주세요.',
 };

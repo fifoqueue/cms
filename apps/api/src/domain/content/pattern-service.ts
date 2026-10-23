@@ -3,8 +3,15 @@ import {
   can,
   contentDocumentSchema,
   patternInputSchema,
+  patternListQuerySchema,
 } from '@cms/sdk';
-import type { AdminPattern, ContentDocument } from '@cms/sdk';
+import type {
+  AdminPattern,
+  ContentDocument,
+  Paginated,
+  PatternSummary,
+} from '@cms/sdk';
+import type { PatternCatalog } from '#api/domain/content/pattern-catalog';
 import { z } from 'zod';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
@@ -19,6 +26,8 @@ const LIMIT = 500;
 /** References one served body may expand, and how deeply patterns may nest. */
 const EXPANSIONS = 50;
 const DEPTH = 4;
+const OUTPUT_BYTES = 1024 * 1024;
+const encoder = new TextEncoder();
 /** `PatternRef` markup as `@cms/content` renders it; the id is captured. */
 const REFERENCE =
   /<div class="cms-pattern" data-cms-pattern="([A-Za-z0-9-]{1,36})"><\/div>/g;
@@ -57,6 +66,7 @@ export class PatternService {
   constructor(
     private readonly deps: {
       settings: SettingsRepository;
+      catalog: PatternCatalog;
       renderer: DocumentRenderer;
       ids: IdGenerator;
       clock: Clock;
@@ -65,22 +75,35 @@ export class PatternService {
     },
   ) {}
 
-  async list(actor: Actor): Promise<AdminPattern[]> {
+  async list(query: unknown, actor: Actor): Promise<Paginated<PatternSummary>> {
     authorize(actor, 'content.create');
-    return (await this.all())
-      .sort((a, b) => a.title.localeCompare(b.title))
-      .map(toAdmin);
+    const criteria = parseInput(patternListQuerySchema, query);
+    const result = await this.deps.catalog.summaries({
+      ...criteria,
+      ...(!can(actor, 'content.editOthers') && { authorId: actor.id }),
+    });
+    return { ...result, page: criteria.page, pageSize: criteria.pageSize };
   }
 
   async get(id: string, actor: Actor): Promise<AdminPattern> {
     authorize(actor, 'content.create');
-    return toAdmin(await this.require(id));
+    const pattern = await this.require(id);
+    if (
+      pattern.status !== 'published' &&
+      pattern.authorId !== actor.id &&
+      !can(actor, 'content.editOthers')
+    )
+      throw notFound(Errors.PatternNotFound);
+    return toAdmin(pattern);
   }
 
   async create(input: unknown, actor: Actor): Promise<AdminPattern> {
     authorize(actor, 'content.create');
     const data = this.prepare(input, actor);
-    if ((await this.all()).length >= LIMIT)
+    if (
+      (await this.deps.catalog.summaries({ page: 1, pageSize: 1 })).total >=
+      LIMIT
+    )
       throw invalidInput(Errors.PatternLimit);
     const now = this.deps.clock.now().toISOString();
     const pattern: StoredPattern = {
@@ -126,29 +149,47 @@ export class PatternService {
    * Drafts, deleted patterns, cycles and nesting beyond the limit leave nothing behind.
    */
   async expand(html: string): Promise<string> {
+    if (!html.includes('data-cms-pattern=')) return html;
     const bodies = new Map<string, string | null>();
-    let budget = EXPANSIONS;
-    const body = async (id: string) => {
-      if (!bodies.has(id)) {
-        const pattern = budget-- > 0 ? await this.find(id) : null;
-        bodies.set(id, pattern?.status === 'published' ? pattern.html : null);
+    const chunks: string[] = [];
+    let references = EXPANSIONS;
+    let bytes = OUTPUT_BYTES;
+    let exhausted = false;
+    const append = (text: string) => {
+      if (exhausted) return;
+      // Reject before allocating an encoding larger than the remaining byte budget.
+      const size =
+        text.length <= bytes ? encoder.encode(text).byteLength : bytes + 1;
+      if (size > bytes) {
+        exhausted = true;
+        return;
       }
-      return bodies.get(id) ?? null;
+      bytes -= size;
+      chunks.push(text);
     };
-    const walk = async (text: string, chain: string[]): Promise<string> => {
-      const ids = [
-        ...new Set([...text.matchAll(REFERENCE)].map((match) => match[1]!)),
-      ];
-      if (!ids.length) return text;
-      const parts = new Map<string, string>();
-      for (const id of ids) {
-        const inner =
-          chain.includes(id) || chain.length >= DEPTH ? null : await body(id);
-        parts.set(id, inner === null ? '' : await walk(inner, [...chain, id]));
+    const walk = async (text: string, chain: string[]): Promise<void> => {
+      let start = 0;
+      for (const match of text.matchAll(REFERENCE)) {
+        append(text.slice(start, match.index));
+        if (exhausted) return;
+        start = match.index + match[0].length;
+        const id = match[1]!;
+        // Every occurrence consumes work, including cached references and cycles.
+        if (references-- <= 0 || chain.includes(id) || chain.length >= DEPTH)
+          continue;
+        if (!bodies.has(id)) {
+          const pattern = await this.find(id);
+          bodies.set(id, pattern?.status === 'published' ? pattern.html : null);
+        }
+        const inner = bodies.get(id);
+        if (inner) await walk(inner, [...chain, id]);
+        if (exhausted) return;
       }
-      return text.replace(REFERENCE, (_, id: string) => parts.get(id) ?? '');
+      append(text.slice(start));
     };
-    return walk(html, []);
+    await walk(html, []);
+    // Never serve truncated markup (it could leave a container or attribute open).
+    return exhausted ? '' : chunks.join('');
   }
 
   /** Validated input; publishing a pattern needs `content.publish`. */
@@ -164,10 +205,10 @@ export class PatternService {
   /** The author edits their own patterns; other users' need `content.editOthers`. */
   private async editable(id: string, actor: Actor) {
     const pattern = await this.require(id);
-    authorize(
-      actor,
-      pattern.authorId === actor.id ? 'content.create' : 'content.editOthers',
-    );
+    authorize(actor, 'content.create');
+    if (pattern.authorId !== actor.id) authorize(actor, 'content.editOthers');
+    else if (pattern.status === 'published')
+      authorize(actor, 'content.publish');
     return pattern;
   }
 

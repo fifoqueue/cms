@@ -203,7 +203,7 @@
     editor = instance;
     // Pattern boxes show their titles once the library is read.
     void loadPatterns().then((list) => {
-      patterns = list;
+      patterns = list?.items ?? [];
       for (const box of element.querySelectorAll<HTMLElement>(
         '[data-pattern-ref]',
       ))
@@ -502,7 +502,7 @@
 </script>
 
 <div class="rounded-md border bg-background">
-  <BlockInserter {editor} {patterns} />
+  <BlockInserter {editor} />
   <div
     class="flex flex-wrap gap-1 border-b p-1"
     role="toolbar"

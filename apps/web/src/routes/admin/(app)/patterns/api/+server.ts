@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
-import { can } from '@cms/sdk';
+import { can, patternListQuerySchema } from '@cms/sdk';
+import { notFoundFrom } from '#lib/server/errors.js';
 import { CmsApiError } from '@cms/sdk/client';
 import { adminFor, requireCapability } from '#lib/server/session.js';
 import type { RequestHandler } from './$types';
@@ -7,15 +8,44 @@ import type { RequestHandler } from './$types';
 /** The editor's pattern library: what the inserter shows and inserts. */
 export const GET: RequestHandler = async (event) => {
   requireCapability(event.locals, 'content.create');
-  const patterns = await adminFor(event).patterns.list();
-  return json(
-    patterns.map(({ id, title, synced, status, document }) => ({
-      id,
+  const id = event.url.searchParams.get('id');
+  const headers = { 'cache-control': 'private, no-store' };
+  if (id) {
+    const {
+      id: patternId,
       title,
       synced,
       status,
       document,
-    })),
+    } = await adminFor(event).patterns.get(id).catch(notFoundFrom);
+    return json(
+      { id: patternId, title, synced, status, document },
+      { headers },
+    );
+  }
+  const query = patternListQuerySchema.safeParse(
+    Object.fromEntries(event.url.searchParams),
+  );
+  const patterns = await adminFor(event).patterns.list(
+    query.success ? query.data : {},
+  );
+  return json(
+    {
+      items: patterns.items.map(
+        ({ id, title, synced, status, authorId, updatedAt }) => ({
+          id,
+          title,
+          synced,
+          status,
+          authorId,
+          updatedAt,
+        }),
+      ),
+      total: patterns.total,
+      page: patterns.page,
+      pageSize: patterns.pageSize,
+    },
+    { headers },
   );
 };
 

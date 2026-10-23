@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { default as sharp } from 'sharp';
 import { DEFAULT_RATE_RULES } from '@cms/sdk';
+import { PatternService } from '#api/domain/content/pattern-service';
+import { PrismaPatternCatalog } from '#api/infra/prisma/pattern-catalog';
 import { ContentService } from '#api/domain/content/content-service';
 import { ContentTypeService } from '#api/domain/content/content-types';
 import { FieldService } from '#api/domain/content/fields';
@@ -52,7 +54,7 @@ const meiliUrl = process.env.CMS_TEST_MEILISEARCH_URL;
 const SLOW = 60_000;
 
 const paragraph = (text: string) => ({
-  type: 'doc',
+  type: 'doc' as const,
   content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
 });
 
@@ -588,6 +590,171 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       expect(await search.find(query)).toBeNull();
       await search.sync();
       expect(await search.find(query)).toEqual({ ids: [], total: 0 });
+    },
+    SLOW,
+  );
+  test(
+    'pattern catalogs page metadata and keep other writers drafts private',
+    async () => {
+      const patterns = new PatternService({
+        settings: new PrismaSettingsRepository(db),
+        catalog: new PrismaPatternCatalog(db),
+        renderer: tiptapRenderer,
+        ids: uuidV7,
+        clock: systemClock,
+      });
+      const contributor = { id: 'contributor', role: 'contributor' };
+      const secret = await patterns.create(
+        {
+          title: 'Catalog A private',
+          status: 'draft',
+          document: paragraph('Administrator secret'),
+        },
+        ADMIN,
+      );
+      const own = await patterns.create(
+        {
+          title: 'Catalog B own',
+          status: 'draft',
+          document: paragraph('My draft'),
+        },
+        contributor,
+      );
+      const shared = await patterns.create(
+        { title: 'Catalog C shared', document: paragraph('x'.repeat(300_000)) },
+        ADMIN,
+      );
+      const first = await patterns.list(
+        { search: 'Catalog', pageSize: 1 },
+        contributor,
+      );
+      expect(first.total).toBe(2);
+      expect(first.items.map(({ id }) => id)).toEqual([own.id]);
+      const second = await patterns.list(
+        { search: 'Catalog', pageSize: 1, page: 2 },
+        contributor,
+      );
+      expect(second.items.map(({ id }) => id)).toEqual([shared.id]);
+      expect(JSON.stringify(second).length).toBeLessThan(1000);
+      expect(second.items[0]).not.toHaveProperty('document');
+      expect(second.items[0]).not.toHaveProperty('html');
+      await expect(patterns.get(secret.id, contributor)).rejects.toMatchObject({
+        code: 'not_found',
+      });
+      expect((await patterns.get(own.id, contributor)).document).toEqual(
+        paragraph('My draft'),
+      );
+      expect((await patterns.get(shared.id, contributor)).document).toEqual(
+        paragraph('x'.repeat(300_000)),
+      );
+      expect((await patterns.list({ search: 'Catalog' }, ADMIN)).total).toBe(3);
+      for (const pattern of [secret, own, shared])
+        await patterns.remove(pattern.id, ADMIN);
+    },
+    SLOW,
+  );
+
+  test(
+    'media used only by a nested pattern is attached and needs forced deletion',
+    async () => {
+      const repository = new PrismaMediaRepository(db);
+      const storage = new MemoryMediaStorage();
+      const media = new MediaService({
+        repository,
+        storage,
+        images: sharpImages,
+        ids: uuidV7,
+        clock: systemClock,
+        hooks: new HookBus({ timeoutMs: 50, logger: recordingLogger().logger }),
+        limiter: new PrismaRateLimitStore(db),
+        limits: async () => ({ uploadsPerHour: 60, freeSpaceMb: 256 }),
+        maxBytes: 1024 * 1024,
+      });
+      const patterns = new PatternService({
+        settings: new PrismaSettingsRepository(db),
+        catalog: new PrismaPatternCatalog(db),
+        renderer: tiptapRenderer,
+        ids: uuidV7,
+        clock: systemClock,
+      });
+      const id = uuidV7.next();
+      await repository.insert({
+        id,
+        uploaderId: ADMIN.id,
+        filename: 'pattern.webp',
+        mime: 'image/webp',
+        size: 1,
+        width: 1,
+        height: 1,
+        alt: '',
+        caption: '',
+        storageKey: `2026/06/${id}.webp`,
+        variants: {},
+        createdAt: new Date(),
+      });
+      const input = {
+        title: 'Image pattern',
+        document: {
+          type: 'doc',
+          content: [
+            {
+              type: 'image',
+              attrs: { src: '/media/pattern.webp', mediaId: id },
+            },
+          ],
+        },
+      };
+      const inner = await patterns.create(input, ADMIN);
+      const outer = await patterns.create(
+        {
+          title: 'Outer image pattern',
+          document: {
+            type: 'doc',
+            content: [{ type: 'patternRef', attrs: { ref: inner.id } }],
+          },
+        },
+        ADMIN,
+      );
+      const { content } = services();
+      await content.create(
+        {
+          type: 'post',
+          title: 'Pattern-only image',
+          status: 'published',
+          document: {
+            type: 'doc',
+            content: [{ type: 'patternRef', attrs: { ref: outer.id } }],
+          },
+        },
+        ADMIN,
+      );
+      expect((await media.get(id, ADMIN)).usageCount).toBe(1);
+      expect(
+        (await media.list({ unattached: 'true' }, ADMIN)).items.map(
+          (item) => item.id,
+        ),
+      ).not.toContain(id);
+      await expect(media.remove(id, false, ADMIN)).rejects.toMatchObject({
+        code: 'conflict',
+      });
+      await patterns.update(
+        inner.id,
+        { ...input, document: paragraph('No image') },
+        ADMIN,
+      );
+      expect((await media.get(id, ADMIN)).usageCount).toBe(0);
+      await patterns.update(inner.id, input, ADMIN);
+      await patterns.remove(inner.id, ADMIN);
+      expect(
+        (await media.list({ unattached: 'true' }, ADMIN)).items.map(
+          (item) => item.id,
+        ),
+      ).toContain(id);
+      const replacement = await patterns.create(input, ADMIN);
+      await media.remove(id, true, ADMIN);
+      expect(await repository.exists(id)).toBe(false);
+      await patterns.remove(replacement.id, ADMIN);
+      await patterns.remove(outer.id, ADMIN);
     },
     SLOW,
   );

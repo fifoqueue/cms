@@ -150,7 +150,7 @@ export class ImportService {
       ids: IdGenerator;
       clock: Clock;
       /** Imported `wp_block` items become patterns. */
-      patterns?: Pick<PatternService, 'create'>;
+      patterns?: Pick<PatternService, 'create' | 'update' | 'remove'>;
       /** Old addresses of imported entries. */
       redirects?: RedirectWriter;
       menus?: Pick<MenuService, 'get' | 'update'>;
@@ -210,31 +210,63 @@ export class ImportService {
     const created = new Map<string, string>();
     const featured = new Map<string, number>();
 
-    // Patterns first, so entries can point at their new ids.
+    // Stage every id before parsing bodies, so forward and cyclic references keep their targets.
     const patterns = new Map<string, string>();
-    for (const item of document.items) {
-      if (item.type !== 'wp_block' || !this.deps.patterns) continue;
-      const title = item.title.trim().slice(0, 191) || 'Pattern';
+    const staged: { item: WxrItem; id: string; title: string }[] = [];
+    if (this.deps.patterns) {
+      const pending = new Set<string>();
       try {
-        const pattern = await this.deps.patterns.create(
-          {
-            title,
-            document: this.deps.html.parse(
-              classicHtml(
-                fromWordPressHtml(item.html, patterns),
-                item.id,
-                library,
-              ),
-            ),
-            synced: item.meta?.wp_pattern_sync_status !== 'unsynced',
-            status: item.status === 'publish' ? 'published' : 'draft',
-          },
-          actor,
-        );
-        patterns.set(item.id, pattern.id);
-      } catch (error) {
-        if (!(error instanceof DomainError)) throw error;
-        result.skipped.push({ title, reason: error.message });
+        for (const item of document.items) {
+          if (item.type !== 'wp_block') continue;
+          const title = item.title.trim().slice(0, 191) || 'Pattern';
+          try {
+            const pattern = await this.deps.patterns.create(
+              {
+                title,
+                document: { type: 'doc', content: [{ type: 'paragraph' }] },
+                synced: item.meta?.wp_pattern_sync_status !== 'unsynced',
+                status: 'draft',
+              },
+              actor,
+            );
+            patterns.set(item.id, pattern.id);
+            staged.push({ item, id: pattern.id, title });
+            pending.add(pattern.id);
+          } catch (error) {
+            if (!(error instanceof DomainError)) throw error;
+            result.skipped.push({ title, reason: error.message });
+          }
+        }
+        for (const { item, id, title } of staged) {
+          try {
+            await this.deps.patterns.update(
+              id,
+              {
+                title,
+                document: this.deps.html.parse(
+                  classicHtml(
+                    fromWordPressHtml(item.html, patterns),
+                    item.id,
+                    library,
+                  ),
+                ),
+                synced: item.meta?.wp_pattern_sync_status !== 'unsynced',
+                status: item.status === 'publish' ? 'published' : 'draft',
+              },
+              actor,
+            );
+            pending.delete(id);
+          } catch (error) {
+            // A failed body must not leave a successful-looking empty pattern behind.
+            await this.deps.patterns.remove(id, actor);
+            pending.delete(id);
+            patterns.delete(item.id);
+            if (!(error instanceof DomainError)) throw error;
+            result.skipped.push({ title, reason: error.message });
+          }
+        }
+      } finally {
+        for (const id of pending) await this.deps.patterns.remove(id, actor);
       }
     }
 

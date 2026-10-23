@@ -332,10 +332,8 @@ export const en = {
   mediaDimensions: 'Dimensions',
   mediaUploadedBy: 'Uploaded by',
   mediaUsed: (count: number) =>
-    count
-      ? `Shown by ${count} ${count === 1 ? 'entry' : 'entries'}`
-      : 'Not used yet',
-  mediaDeleteUsed: 'Delete even though entries show it',
+    count ? `Used by ${count} entries or patterns` : 'Not used yet',
+  mediaDeleteUsed: 'Delete even though entries or patterns use it',
   mediaChoose: 'Choose from library',
   mediaRemoveFeatured: 'Remove',
   featuredImage: 'Featured image',
@@ -1626,4 +1624,6 @@ export const en = {
     'Limits apply across API processes. Use 0 to disable a limit.',
   mediaUploadsPerHour: 'Uploads per user per hour',
   mediaFreeSpaceMb: 'Reserved free storage (MB)',
+  // pattern-followup
+  patternLoadFailed: 'The pattern could not be loaded. Try selecting it again.',
 } as const;

@@ -6,7 +6,8 @@ import type {
 } from '#api/domain/media/ports';
 import { parseVariants, toPublicImage } from '#api/domain/media/media-mapper';
 import type { Database } from '#api/infra/prisma/client';
-import type { Media, Prisma } from '#api/infra/prisma/generated/client';
+import type { Media } from '#api/infra/prisma/generated/client';
+import { Prisma } from '#api/infra/prisma/generated/client';
 
 /** LIKE pattern text matching `value` literally. */
 const literal = (value: string) => value.replace(/[\\%_]/g, '\\$&');
@@ -41,6 +42,17 @@ const MIME_PREFIX = {
   document: 'application/',
 } as const;
 
+/** Extract each document once, without transporting its body or an unbounded id list to the API. */
+const patternFiles = Prisma.sql`
+  SELECT DISTINCT files.id, s.\`key\` AS pattern FROM settings s
+  JOIN JSON_TABLE(s.value, '$**.attrs' COLUMNS (
+    mediaId VARCHAR(36) PATH '$.mediaId', posterId VARCHAR(36) PATH '$.posterId'
+  )) AS refs
+  JOIN JSON_TABLE(JSON_ARRAY(refs.mediaId, refs.posterId), '$[*]' COLUMNS (
+    id VARCHAR(36) PATH '$'
+  )) AS files
+  WHERE s.\`key\` LIKE 'pattern.%' AND files.id IS NOT NULL`;
+
 export class PrismaMediaRepository implements MediaRepository {
   constructor(private readonly db: Database) {}
 
@@ -55,7 +67,12 @@ export class PrismaMediaRepository implements MediaRepository {
       where: { id },
       include: relations,
     });
-    return row && toRecord(row);
+    if (!row) return null;
+    const uses = await this.patternUses([id]);
+    return {
+      ...toRecord(row),
+      usageCount: row._count.usages + (uses.get(id) ?? 0),
+    };
   }
 
   async exists(id: string) {
@@ -75,33 +92,60 @@ export class PrismaMediaRepository implements MediaRepository {
     page,
     pageSize,
   }: MediaCriteria) {
-    const filters: Prisma.MediaWhereInput[] = [];
-    if (kind) filters.push({ mime: { startsWith: MIME_PREFIX[kind] } });
+    const filters: Prisma.Sql[] = [];
+    if (kind) filters.push(Prisma.sql`m.mime LIKE ${MIME_PREFIX[kind] + '%'}`);
     if (uploaded)
-      filters.push({ createdAt: { gte: uploaded.start, lt: uploaded.end } });
-    if (unattached) filters.push({ usages: { none: {} } });
+      filters.push(
+        Prisma.sql`m.created_at >= ${uploaded.start} AND m.created_at < ${uploaded.end}`,
+      );
+    if (unattached)
+      filters.push(Prisma.sql`
+      NOT EXISTS (SELECT 1 FROM content_media cm WHERE cm.media_id = m.id)
+      AND m.id NOT IN (SELECT id FROM (${patternFiles}) AS pattern_files)`);
     if (search) {
-      const contains = literal(search);
-      filters.push({
-        OR: [
-          { filename: { contains } },
-          { alt: { contains } },
-          { caption: { contains } },
-        ],
-      });
+      const contains = '%' + literal(search) + '%';
+      filters.push(
+        Prisma.sql`(m.filename LIKE ${contains} OR m.alt LIKE ${contains} OR m.caption LIKE ${contains})`,
+      );
     }
-    const where = { AND: filters };
-    const total = await this.db.media.count({ where });
+    const where = filters.length
+      ? Prisma.join(filters, ' AND ')
+      : Prisma.sql`TRUE`;
+    const [count] = await this.db.$queryRaw<{ total: bigint }[]>(
+      Prisma.sql`SELECT COUNT(*) AS total FROM media m WHERE ${where}`,
+    );
+    const total = Number(count?.total ?? 0);
     const skip = (page - 1) * pageSize;
     if (skip >= total) return { items: [], total };
+    const ids = await this.db.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT m.id FROM media m WHERE ${where}
+      ORDER BY m.created_at DESC, m.id DESC LIMIT ${pageSize} OFFSET ${skip}`);
     const rows = await this.db.media.findMany({
-      where,
+      where: { id: { in: ids.map(({ id }) => id) } },
       include: relations,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      skip,
-      take: pageSize,
     });
-    return { items: rows.map(toRecord), total };
+    const uses = unattached
+      ? new Map<string, number>()
+      : await this.patternUses(rows.map(({ id }) => id));
+    return {
+      items: rows.map((row) => ({
+        ...toRecord(row),
+        usageCount: row._count.usages + (uses.get(row.id) ?? 0),
+      })),
+      total,
+    };
+  }
+
+  /** Count direct uses, including draft patterns and targets reached through another pattern. */
+  private async patternUses(ids: readonly string[]) {
+    if (!ids.length) return new Map<string, number>();
+    const rows = await this.db.$queryRaw<
+      { id: string; count: bigint }[]
+    >(Prisma.sql`
+      SELECT id, COUNT(*) AS count FROM (${patternFiles}) AS pattern_files
+      WHERE id IN (${Prisma.join([...ids])}) GROUP BY id`);
+    return new Map(rows.map(({ id, count }) => [id, Number(count)]));
   }
 
   async neighbors(id: string) {
