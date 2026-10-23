@@ -125,6 +125,9 @@ export const Errors = {
   ImportItemUnsupported: (type: string, status: string) =>
     `Not imported: ${type} (${status})`,
   ImportInvalid: 'The file is not a WordPress export (WXR)',
+  ImportContentLimit: 'This entry exceeds the import content limit',
+  ImportAuthorsLimit:
+    'Import at most 1000 authors and create at most 100 accounts at a time',
   SsoSecretRequired:
     'Enter the client secret, or choose no client authentication',
   SsoSiteUrlRequired:

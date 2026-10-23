@@ -30,6 +30,7 @@ const parser = new XMLParser({
 });
 
 const MAX_ITEMS = 10_000;
+const MAX_AUTHORS = 1000;
 const MAX_TERMS = 20_000;
 const MAX_COMMENTS = 100_000;
 const MAX_META = 200_000;
@@ -162,11 +163,14 @@ export const fastXmlWxrParser: WxrParser = {
     const channel = (root.rss as Node | undefined)?.channel as Node | undefined;
     if (!channel || !('wp:wxr_version' in channel))
       throw invalidInput(Errors.ImportInvalid);
+    const authors = list(channel['wp:author']);
+    if (authors.length > MAX_AUTHORS)
+      throw invalidInput(Errors.ImportAuthorsLimit);
     const document = {
       title: str(channel.title),
       link: str(channel.link),
       baseUrl: str(channel['wp:base_site_url']) || str(channel.link),
-      authors: list(channel['wp:author']).map((author) => ({
+      authors: authors.map((author) => ({
         login: str(author['wp:author_login']),
         email: str(author['wp:author_email']),
         displayName: str(author['wp:author_display_name']),

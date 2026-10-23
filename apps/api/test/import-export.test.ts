@@ -6,6 +6,8 @@ import { PatternService } from '#api/domain/content/pattern-service';
 import { TaxonomyService } from '#api/domain/taxonomy/taxonomy-service';
 import { ExportService } from '#api/domain/tools/export-service';
 import { ImportService } from '#api/domain/tools/import-service';
+import { classicHtml } from '#api/domain/tools/classic-content';
+import type { UserService } from '#api/domain/users/user-service';
 import { tiptapHtmlParser, tiptapRenderer } from '#api/infra/system';
 import { fastXmlWxrParser } from '#api/infra/wxr-parser';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
@@ -28,7 +30,7 @@ import { MemoryUserDirectory } from '#test/support/memory-users';
 import { MemoryUsers } from '#test/support/sso-memory';
 
 /** One site on in-memory adapters. */
-const site = async () => {
+const site = async (accounts?: Pick<UserService, 'create'>) => {
   const content = new MemoryContentRepository();
   const ids = sequentialIds();
   const clock = fixedClock('2026-06-01T00:00:00.000Z');
@@ -80,6 +82,8 @@ const site = async () => {
       ids,
       clock,
       patterns,
+      accounts,
+      tokens: { issue: () => 'import-test-password' },
       redirects: content.permalinks,
       menus: {
         get: async () => menus,
@@ -100,6 +104,59 @@ const site = async () => {
     }),
   };
 };
+
+test('classic imports bound malformed shortcodes and generated galleries', () => {
+  const attachments = {
+    url: () => undefined,
+    childImages: () =>
+      Array.from(
+        { length: 100 },
+        () => `https://example.com/${'a'.repeat(1900)}.jpg`,
+      ),
+  };
+  expect(() =>
+    classicHtml('[caption]'.repeat(16_000), '', attachments),
+  ).toThrow('import content limit');
+  expect(() => classicHtml('[gallery]'.repeat(100), '', attachments)).toThrow(
+    'import content limit',
+  );
+  expect(classicHtml('[caption]Unclosed', '', attachments)).toContain(
+    '[caption]Unclosed',
+  );
+});
+
+test('classic imports retain blank lines and indentation inside preformatted code', () => {
+  const source = '<pre><code>first\n\n  second\n</code></pre>';
+  const html = classicHtml(source, '', {
+    url: () => undefined,
+    childImages: () => [],
+  });
+  expect(tiptapHtmlParser.parse(html)).toEqual(tiptapHtmlParser.parse(source));
+});
+
+test('an over-budget author import creates no accounts or content', async () => {
+  let created = 0;
+  const target = await site({
+    create: async () => {
+      created++;
+      throw new Error('unexpected account creation');
+    },
+  });
+  const records = Array.from(
+    { length: 101 },
+    (_, i) =>
+      `<wp:author><wp:author_login>user${i}</wp:author_login><wp:author_email>user${i}@example.com</wp:author_email></wp:author><item><dc:creator>user${i}</dc:creator><wp:post_type>post</wp:post_type><wp:status>draft</wp:status></item>`,
+  ).join('');
+  await expect(
+    target.importer.importWxr(
+      `<rss xmlns:wp="http://wordpress.org/export/1.2/" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><wp:wxr_version>1.2</wp:wxr_version>${records}</channel></rss>`,
+      ADMIN,
+      { authors: 'author' },
+    ),
+  ).rejects.toMatchObject({ code: 'invalid_input' });
+  expect(created).toBe(0);
+  expect(target.content.rows.size).toBe(0);
+});
 
 test('a WXR export imports into another site with terms, entries and threaded comments', async () => {
   const source = await site();
