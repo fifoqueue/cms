@@ -31,11 +31,10 @@
       }
     }),
   );
-  const monthPath = ({ year, month }: { year: number; month: number }) =>
-    resolve('/(site)/date/[year]/[[month]]', {
-      year: String(year),
-      month: String(month).padStart(2, '0'),
-    });
+  const monthParams = ({ year, month }: { year: number; month: number }) => ({
+    year: String(year),
+    month: String(month).padStart(2, '0'),
+  });
   const weeks = $derived.by(() => {
     if (!calendar) return [];
     const first = new Date(
@@ -75,7 +74,10 @@
             <td class="py-1">
               {#if day && calendar.days[day]}
                 <a
-                  href={monthPath(calendar)}
+                  href={resolve(
+                    '/(site)/date/[year]/[[month]]',
+                    monthParams(calendar),
+                  )}
                   class="font-semibold text-primary hover:underline">{day}</a
                 >
               {:else if day}{day}{/if}
@@ -89,7 +91,12 @@
         <tr>
           <td colspan="3" class="pt-2 text-left">
             {#if calendar.previous}
-              <a href={monthPath(calendar.previous)} class="hover:underline"
+              <a
+                href={resolve(
+                  '/(site)/date/[year]/[[month]]',
+                  monthParams(calendar.previous),
+                )}
+                class="hover:underline"
                 >« {formatMonth(
                   calendar.previous.year,
                   calendar.previous.month,
@@ -101,7 +108,12 @@
           <td></td>
           <td colspan="3" class="pt-2 text-right">
             {#if calendar.next}
-              <a href={monthPath(calendar.next)} class="hover:underline"
+              <a
+                href={resolve(
+                  '/(site)/date/[year]/[[month]]',
+                  monthParams(calendar.next),
+                )}
+                class="hover:underline"
                 >{formatMonth(calendar.next.year, calendar.next.month, locale)} »</a
               >
             {/if}
