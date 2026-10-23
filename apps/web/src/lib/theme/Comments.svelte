@@ -155,7 +155,6 @@
         `/comments/feed.xml?contentId=${encodeURIComponent(contentId)}`,
       )}
       type="application/rss+xml"
-      data-sveltekit-reload
       ><Rss class="size-4" aria-hidden="true" />{m.privacyCommentFeed}</a
     >
   </div>

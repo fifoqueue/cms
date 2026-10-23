@@ -45,7 +45,6 @@
         <!-- eslint-disable svelte/no-navigation-without-resolve -- external profile addresses chosen by admins -->
         <a
           href={link.attrs.url}
-          data-sveltekit-reload={link.attrs.service === 'rss'}
           rel="me noopener"
           class="cms-block-social-link inline-flex rounded-full border px-3 py-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
           >{link.attrs.label || name(link.attrs.service)}</a
