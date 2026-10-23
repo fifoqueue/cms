@@ -27,7 +27,7 @@ export const load: PageServerLoad = async ({ fetch, locals, url }) => {
 
 export const actions: Actions = {
   /** Sends the browser to the identity provider; the form is not enhanced so it navigates away. */
-  sso: async ({ fetch, cookies, getClientAddress }) => {
+  sso: async ({ fetch, cookies, getClientAddress, url }) => {
     let start;
 
     try {
@@ -39,7 +39,7 @@ export const actions: Actions = {
       return failFrom(caught);
     }
 
-    rememberSsoTransaction(cookies, start);
+    rememberSsoTransaction(cookies, start, url);
     redirect(303, start.authorizationUrl);
   },
 

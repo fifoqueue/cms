@@ -27,6 +27,7 @@ export * from '#sdk/search';
 export * from '#sdk/webhooks';
 export * from '#sdk/health';
 export * from '#sdk/sso-settings';
+export * from '#sdk/egress';
 
 export * from '#sdk/roles';
 

@@ -313,6 +313,11 @@
             capability: 'settings.manage',
           },
           {
+            href: resolve('/admin/(app)/settings/egress'),
+            label: (m) => m.settingsEgress,
+            capability: 'egress.manage',
+          },
+          {
             href: resolve('/admin/(app)/fields'),
             label: (m) => m.navFields,
             capability: 'fields.manage',

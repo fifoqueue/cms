@@ -34,6 +34,8 @@ export interface FormIssue {
 
 export interface FormFailure {
   message: string;
+  /** Catalog key used instead of the API's English fallback. */
+  messageKey?: string;
   issues?: FormIssue[];
   /** The API wants a solved captcha before it accepts the attempt. */
   captcha?: boolean;
@@ -62,6 +64,9 @@ export const failFrom = <Extra extends object = Record<never, never>>(
     const failure: FormFailure = {
       message: caught.message,
       issues: safeIssues(caught.issues),
+      ...(caught.code === 'destination_blocked' && {
+        messageKey: 'destinationBlocked',
+      }),
       ...(caught.code === CAPTCHA_REQUIRED && { captcha: true }),
     };
     return fail(caught.status, { ...extra, ...failure } as Extra & FormFailure);

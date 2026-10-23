@@ -124,7 +124,7 @@ export const commentAction = async (event: RequestEvent) => {
   try {
     result = await contentApi(
       event.fetch,
-      sessionToken(event.cookies),
+      sessionToken(event.cookies, event.url),
     ).comments.submit(
       {
         ...typed,
@@ -145,7 +145,7 @@ export const commentAction = async (event: RequestEvent) => {
     sameSite: 'lax' as const,
     secure: event.url.protocol === 'https:',
   };
-  if (!sessionToken(event.cookies) && typed.remember) {
+  if (!sessionToken(event.cookies, event.url) && typed.remember) {
     const saved = commenterSchema.safeParse(typed);
     if (saved.success) {
       event.cookies.set(COMMENTER_COOKIE, JSON.stringify(saved.data), {

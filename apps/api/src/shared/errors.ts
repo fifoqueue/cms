@@ -6,7 +6,8 @@ export type ErrorCode =
   | 'conflict'
   | 'rate_limited'
   | 'payload_too_large'
-  | 'captcha_required';
+  | 'captcha_required'
+  | 'destination_blocked';
 
 /** An expected failure that maps to a client error. Anything else is a bug. */
 export class DomainError extends Error {
@@ -69,6 +70,9 @@ export const Errors = {
   MediaTooLarge: (bytes: number) =>
     `The file is too large (at most ${Math.floor(bytes / 1024 / 1024)} MB)`,
   MediaStorageLow: 'The server does not have enough free storage for this file',
+  MediaStorageBusy: 'The media storage is busy; try the upload again',
+  MediaUploadRate: (max: number) =>
+    `You can upload ${max} files per hour. Please wait and try again.`,
   MediaTypeUnsupported:
     'This file type is not supported. Upload JPEG, PNG, GIF, WebP, AVIF, PDF, MP4 or WebM.',
   MediaInUse: (count: number) =>
@@ -82,6 +86,7 @@ export const Errors = {
   CommentNotFound: 'Comment not found',
   CommentsClosed: 'Comments are closed for this entry',
   CommentReplyInvalid: 'The comment you are replying to is not available',
+  AvatarNotFound: 'Avatar not found',
   SearchNotConfigured: 'Enter the Meilisearch address first',
   SearchUnavailable: (detail: string) =>
     `Meilisearch did not answer: ${detail}`,
@@ -92,6 +97,7 @@ export const Errors = {
   OutboundHostUnresolved: 'The outbound host could not be resolved',
   OutboundAddressBlocked: 'The outbound address is not permitted',
   OutboundRedirectBlocked: 'The outbound redirect is not permitted',
+  EgressAddressInvalid: 'Enter a valid IP address or CIDR range',
   WebhookNotFound: 'Webhook not found',
   WebhookInvalidJob: 'Invalid webhook delivery job',
   WebhookSecretUnreadable:
@@ -207,7 +213,11 @@ export const Errors = {
   CurrentPasswordWrong: 'The current password is not correct',
   ApiTokenNotFound: 'Token not found',
   JobKindUnknown: (kind: string) => `No handler for job kind "${kind}"`,
+  JobPayloadInvalid: 'The queued job payload is not valid',
+  JobPayloadUnreadable:
+    'The queued job is encrypted with a different site secret key',
   ConfigNotJsonObject: 'must be a JSON object',
+  ConfigNotJsonArray: 'must be a JSON array',
   ConfigSetTogether: (keys: readonly string[]) =>
     `${keys.join(', ')} must be set together`,
   ConfigPendingLimitTooHigh: 'must not exceed OIDC_MAX_PENDING_REQUESTS',
@@ -249,6 +259,9 @@ export const rateLimited = (message: string) =>
   new DomainError('rate_limited', message);
 export const payloadTooLarge = (message: string) =>
   new DomainError('payload_too_large', message);
+export const destinationBlocked = (
+  message: string = Errors.OutboundAddressBlocked,
+) => new DomainError('destination_blocked', message);
 /** The attempt needs a solved captcha first (or the one sent was not valid). */
 export const captchaRequired = (message: string = Errors.CaptchaRequired) =>
   new DomainError('captcha_required', message);

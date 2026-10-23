@@ -332,6 +332,8 @@ describe('public page data', () => {
     const env = {
       DATABASE_URL: 'mysql://secret',
       CMS_SECRET_KEY: SECRET,
+      CMS_SECRET_KEY_PREVIOUS: `${SECRET}-previous`,
+      CMS_EGRESS_ALLOWLIST: '[{"host":"internal"}]',
       CMS_API_URL: 'http://api',
     };
     removeApiSecrets(env);

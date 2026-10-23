@@ -35,6 +35,8 @@ export const CAPABILITIES = [
   'users.manage',
   /** Site, reading, discussion, SEO, permalinks, security, email and search settings. */
   'settings.manage',
+  /** Private-network destinations. Kept separate from ordinary service settings. */
+  'egress.manage',
   'plugins.manage',
   /** Import, export, webhooks and site health. */
   'tools.manage',

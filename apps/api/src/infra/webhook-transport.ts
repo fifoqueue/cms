@@ -1,16 +1,22 @@
 import { createHmac } from 'node:crypto';
 import { WEBHOOK_HEADERS } from '@cms/sdk';
 import type { WebhookTransport } from '#api/domain/webhooks/webhook-service';
-import { publicFetch } from '#api/infra/egress-policy';
+import { outbound, publicFetch } from '#api/infra/egress-policy';
+
+type HttpFetch = typeof publicFetch;
 
 /** Signed JSON POSTs. Redirects are not followed, so a delivery reaches only the saved address. */
-export const httpWebhookTransport: WebhookTransport = {
+export const createHttpWebhookTransport = (
+  fetcher: HttpFetch,
+  check: (url: string) => Promise<void>,
+): WebhookTransport => ({
+  check,
   async send({ url, secret, event, deliveryId, body }) {
     const timestamp = Math.floor(Date.now() / 1000);
     const signature = createHmac('sha256', secret)
       .update(`${timestamp}.${body}`)
       .digest('hex');
-    const response = await publicFetch(url, {
+    const response = await fetcher(url, {
       method: 'POST',
       redirect: 'manual',
       signal: AbortSignal.timeout(10_000),
@@ -26,4 +32,9 @@ export const httpWebhookTransport: WebhookTransport = {
     await response.body?.cancel();
     return response.status;
   },
-};
+});
+
+export const httpWebhookTransport = createHttpWebhookTransport(
+  publicFetch,
+  (url) => outbound.check(url),
+);

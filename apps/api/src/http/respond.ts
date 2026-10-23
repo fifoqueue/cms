@@ -13,6 +13,7 @@ const STATUS: Record<ErrorCode, number> = {
   rate_limited: 429,
   payload_too_large: 413,
   captcha_required: 403,
+  destination_blocked: 400,
 };
 
 export const json = (data: unknown, status = 200) =>

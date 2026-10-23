@@ -28,6 +28,7 @@ import type {
   CommentRepository,
   CommentTarget,
 } from '#api/domain/comments/ports';
+import type { AvatarService } from '#api/domain/comments/avatar-service';
 import type { ContentLocks } from '#api/domain/content/content-locks';
 import type { ContentTypeService } from '#api/domain/content/content-types';
 import { templates } from '#api/domain/email/templates';
@@ -102,7 +103,7 @@ export interface CommentServiceDeps {
   repository: CommentRepository;
   locks: Pick<ContentLocks, 'unlocked'>;
   signer: Signer;
-  digest: (value: string) => string;
+  avatar: Pick<AvatarService, 'url'>;
   settings: SettingsRepository;
   types: Pick<ContentTypeService, 'list'>;
   protection: Pick<ProtectionService, 'check'>;
@@ -301,13 +302,11 @@ export class CommentService {
    * Keys are never email addresses, so public URLs carry no reusable email digest.
    */
   async avatar(key: string): Promise<string | null> {
-    return this.avatarUrl(key, await this.discussion());
+    return this.deps.avatar.url(key, await this.discussion());
   }
 
   private avatarUrl(key: string, settings: DiscussionSettings) {
-    return settings.showAvatars
-      ? `https://www.gravatar.com/avatar/${this.deps.digest(key)}?d=${settings.avatarDefault}&s=96`
-      : null;
+    return this.deps.avatar.url(key, settings);
   }
 
   /** Newest approved comments on public entries, for the recent comments widget. */

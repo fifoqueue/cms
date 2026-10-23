@@ -1476,4 +1476,23 @@ export const en = {
   themeDetails: 'Theme details',
   themeDetailsOf: (name: string) => `Theme details: ${name}`,
   themeLivePreview: 'Live Preview',
+
+  // security-hardening
+  settingsEgress: 'Outbound access',
+  egressTitle: 'Private network destinations',
+  egressDescription:
+    'Allow only the internal services this site must contact. Metadata and reserved destinations stay blocked.',
+  egressRules: 'Allowed destinations',
+  egressHelp:
+    'One per line: service host port address[,address]. Services: oidc, search, smtp, webhook. Addresses may use CIDR.',
+  egressEnvironment: 'Server-defined destinations',
+  egressEnvironmentHelp:
+    'These read-only rules come from the server environment.',
+  destinationBlocked:
+    'This destination is blocked. Ask an administrator to allow its host, port, and IP address under Outbound access.',
+  mediaAdmissionTitle: 'Media upload limits',
+  mediaAdmissionHelp:
+    'Limits apply across API processes. Use 0 to disable a limit.',
+  mediaUploadsPerHour: 'Uploads per user per hour',
+  mediaFreeSpaceMb: 'Reserved free storage (MB)',
 } as const;

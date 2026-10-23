@@ -4,6 +4,7 @@ import { AuthService } from '#api/domain/auth/auth-service';
 import { RoleService } from '#api/domain/users/role-service';
 import { UserService } from '#api/domain/users/user-service';
 import type { UserServiceDeps } from '#api/domain/users/user-service';
+import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
 import type { DomainError } from '#api/shared/errors';
 import {
   MemoryContentRepository,
@@ -13,6 +14,8 @@ import {
 } from '#test/support/memory';
 import { MemoryUserDirectory } from '#test/support/memory-users';
 import { MemorySeoSettingsRepository } from '#test/support/memory-seo';
+import { MemoryJobQueue } from '#test/support/memory-jobs';
+import { aesSecretBox } from '#api/infra/secret-box';
 import {
   MemorySessions,
   MemoryUsers,
@@ -28,6 +31,7 @@ const codeOf = async (promise: Promise<unknown>) =>
 const setup = async (overrides: Partial<UserServiceDeps> = {}) => {
   const users = new MemoryUsers();
   const content = new MemoryContentRepository();
+  const jobs = new MemoryJobQueue();
   const service = new UserService({
     users,
     directory: new MemoryUserDirectory(users, content),
@@ -38,12 +42,13 @@ const setup = async (overrides: Partial<UserServiceDeps> = {}) => {
     tokens: { issue: () => 'token' },
     ids: sequentialIds(),
     clock: fixedClock(),
+    sealedJobs: new SealedJobs(jobs, aesSecretBox('test-registration-key')),
     invitations: { available: async () => false, send: async () => {} },
     ...overrides,
   });
   await users.insert(userRecord({ id: 'admin' }));
   await users.insert(userRecord({ id: 'writer', role: 'author' }));
-  return { service, users };
+  return { jobs, service, users };
 };
 
 const admin = { id: 'admin', role: 'administrator' };
@@ -85,7 +90,7 @@ describe('user administration', () => {
     const settings = new MemorySeoSettingsRepository();
     const invitations: string[] = [];
     let hashes = 0;
-    const { service, users } = await setup({
+    const { jobs, service, users } = await setup({
       settings,
       roles: new RoleService(settings),
       hasher: {
@@ -118,12 +123,18 @@ describe('user administration', () => {
 
     await service.configureMembership({ enabled: true }, admin);
     await service.register(input, attempt);
+    expect(await users.findByEmail('reader@example.com')).toBeNull();
+    expect(JSON.stringify([...jobs.rows.values()][0]?.payload)).not.toContain(
+      'reader@example.com',
+    );
+    await service.completeRegistration([...jobs.rows.values()][0]!.payload);
     const reader = await users.findByEmail('reader@example.com');
     expect(reader?.role).toBe('subscriber');
     expect(reader?.passwordHash).toBe('hash:token');
     expect(invitations).toEqual(['reader@example.com']);
 
     await service.register(input, attempt);
+    await service.completeRegistration([...jobs.rows.values()].at(-1)!.payload);
     expect(hashes).toBe(2);
     expect(invitations).toEqual(['reader@example.com']);
   });

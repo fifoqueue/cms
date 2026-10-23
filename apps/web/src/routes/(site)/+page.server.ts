@@ -20,7 +20,7 @@ import type { Actions, PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async (event) => {
   const { fetch, url, cookies, parent } = event;
-  const api = contentApi(fetch, sessionToken(cookies));
+  const api = contentApi(fetch, sessionToken(cookies, url));
   // Block data is public: it never uses the visitor's session.
   const publicApi = contentApi(fetch);
   const page = pageParam(url);

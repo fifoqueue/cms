@@ -594,3 +594,4 @@ export const createInstallationClient = (options: ClientOptions) => {
 export type { AuthorOption } from '#sdk/clients/users';
 export type { ClientProof, Visitor } from '#sdk/clients/security';
 export { createMediaClient } from '#sdk/clients/media';
+export { createAvatarClient } from '#sdk/clients/media';

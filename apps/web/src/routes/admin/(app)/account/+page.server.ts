@@ -78,7 +78,7 @@ export const actions: Actions = {
   },
 
   /** Sends the signed-in user to the provider; the callback links the account they choose there. */
-  link: async ({ fetch, locals, cookies }) => {
+  link: async ({ fetch, locals, cookies, url }) => {
     let start;
 
     try {
@@ -87,7 +87,7 @@ export const actions: Actions = {
       return failFrom(caught);
     }
 
-    rememberSsoTransaction(cookies, start);
+    rememberSsoTransaction(cookies, start, url);
     redirect(303, start.authorizationUrl);
   },
 

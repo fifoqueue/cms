@@ -1440,4 +1440,22 @@ export const ko: Messages = {
   themeDetails: '테마 상세',
   themeDetailsOf: (name: string) => `테마 상세: ${name}`,
   themeLivePreview: '실시간 미리보기',
+
+  // security-hardening
+  settingsEgress: '외부 연결',
+  egressTitle: '사설망 연결 대상',
+  egressDescription:
+    '이 사이트가 꼭 연결해야 하는 내부 서비스만 허용하세요. 메타데이터와 예약 주소는 계속 차단됩니다.',
+  egressRules: '허용할 대상',
+  egressHelp:
+    '한 줄에 하나씩 입력하세요: 서비스 호스트 포트 주소[,주소]. 서비스: oidc, search, smtp, webhook. 주소에는 CIDR을 쓸 수 있습니다.',
+  egressEnvironment: '서버에서 지정한 대상',
+  egressEnvironmentHelp: '서버 환경에서 지정한 읽기 전용 규칙입니다.',
+  destinationBlocked:
+    '차단된 연결 대상입니다. 관리자에게 외부 연결 설정에서 호스트, 포트, IP 주소를 허용해 달라고 요청하세요.',
+  mediaAdmissionTitle: '미디어 업로드 제한',
+  mediaAdmissionHelp:
+    '모든 API 프로세스에 같은 제한이 적용됩니다. 제한을 끄려면 0을 입력하세요.',
+  mediaUploadsPerHour: '사용자당 시간별 업로드 수',
+  mediaFreeSpaceMb: '남겨 둘 여유 저장 공간(MB)',
 };

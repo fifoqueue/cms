@@ -27,6 +27,7 @@ const setup = () => {
     tokens: { issue: () => 'whsec-1' },
     jobs,
     transport: {
+      check: async () => {},
       send: async (delivery) => {
         sent.push(delivery);
         return answer;

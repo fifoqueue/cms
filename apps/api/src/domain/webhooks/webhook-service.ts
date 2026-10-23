@@ -42,6 +42,8 @@ const deliverySchema = z.object({
 
 /** Sends one signed delivery; resolves with the receiver's HTTP status. */
 export interface WebhookTransport {
+  /** Resolves and checks the configured destination without sending a delivery. */
+  check(url: string): Promise<void>;
   send(delivery: {
     url: string;
     secret: string;
@@ -83,6 +85,7 @@ export class WebhookService {
   async create(input: unknown, actor: Actor): Promise<WebhookWithSecret> {
     authorize(actor, 'tools.manage');
     const data = parseInput(webhookInputSchema, input);
+    if (data.enabled) await this.deps.transport.check(data.url);
     const secret = this.deps.tokens.issue();
     const hook: StoredWebhook = {
       ...data,
@@ -96,6 +99,7 @@ export class WebhookService {
   async update(id: string, input: unknown, actor: Actor) {
     authorize(actor, 'tools.manage');
     const data = parseInput(webhookInputSchema, input);
+    if (data.enabled) await this.deps.transport.check(data.url);
     const hooks = await this.stored();
     const hook = hooks.find((candidate) => candidate.id === id);
     if (!hook) throw notFound(Errors.WebhookNotFound);
@@ -129,6 +133,7 @@ export class WebhookService {
     authorize(actor, 'tools.manage');
     const hook = (await this.stored()).find((candidate) => candidate.id === id);
     if (!hook) throw notFound(Errors.WebhookNotFound);
+    await this.deps.transport.check(hook.url);
     await this.enqueue(hook, 'ping', { webhookId: id });
   }
 

@@ -80,6 +80,20 @@ const captchaModesSchema = z.object(
   ) as Record<ProtectedAction, z.ZodEnum<{ [K in CaptchaMode]: K }>>,
 );
 
+export const mediaAdmissionSchema = z.object({
+  /** Per-user uploads in a rolling fixed one-hour window; zero disables the limit. */
+  uploadsPerHour: z.number().int().min(0).max(100_000),
+  /** Free storage retained after every committed upload; zero disables the floor. */
+  freeSpaceMb: z.number().int().min(0).max(1_048_576),
+});
+
+export type MediaAdmission = z.output<typeof mediaAdmissionSchema>;
+
+export const DEFAULT_MEDIA_ADMISSION: MediaAdmission = {
+  uploadsPerHour: 60,
+  freeSpaceMb: 256,
+};
+
 const siteKey = z.string().trim().max(200);
 
 /** Security settings as administrators see them; the captcha secret is never returned. */
@@ -93,6 +107,7 @@ export const adminSecuritySettingsSchema = z.object({
     modes: captchaModesSchema,
   }),
   rules: rulesSchema,
+  media: mediaAdmissionSchema.default(DEFAULT_MEDIA_ADMISSION),
 });
 
 export type AdminSecuritySettings = z.output<
@@ -109,6 +124,7 @@ export const securitySettingsInputSchema = z.object({
     modes: captchaModesSchema,
   }),
   rules: rulesSchema,
+  media: mediaAdmissionSchema.default(DEFAULT_MEDIA_ADMISSION),
 });
 
 export type SecuritySettingsInput = z.input<typeof securitySettingsInputSchema>;
@@ -127,6 +143,7 @@ export const DEFAULT_SECURITY_SETTINGS: AdminSecuritySettings = {
     },
   },
   rules: DEFAULT_RATE_RULES,
+  media: DEFAULT_MEDIA_ADMISSION,
 };
 
 /** What a frontend needs to render the widget. `provider` is `none` until a site key and secret exist. */

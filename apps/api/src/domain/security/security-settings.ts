@@ -80,7 +80,7 @@ export class SecuritySettingsService {
           ? this.secrets.seal(secretKey)
           : '';
     await this.settings.set(KEY, {
-      settings: { captcha, rules: data.rules },
+      settings: { captcha, rules: data.rules, media: data.media },
       secret,
     } satisfies Stored);
     return this.getAdmin();
@@ -110,8 +110,13 @@ export class SecuritySettingsService {
               modes: parsed.data.captcha.modes,
             },
             rules: parsed.data.rules,
+            media: parsed.data.media,
           }
-        : { captcha, rules: DEFAULT_SECURITY_SETTINGS.rules },
+        : {
+            captcha,
+            rules: DEFAULT_SECURITY_SETTINGS.rules,
+            media: DEFAULT_SECURITY_SETTINGS.media,
+          },
       secret: typeof raw?.secret === 'string' ? raw.secret : '',
     };
   }

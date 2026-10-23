@@ -10,11 +10,7 @@ import {
 } from '#lib/server/api.js';
 import { frontendSecret, pairFrontend } from '#lib/server/frontend-secret.js';
 import { RETURN_PARAM } from '#lib/server/return-path.js';
-import {
-  endSession,
-  migrateSession,
-  sessionToken,
-} from '#lib/server/session-cookie.js';
+import { endSession, sessionToken } from '#lib/server/session-cookie.js';
 
 const OPEN_ADMIN_PATHS = [
   '/admin/login',
@@ -144,7 +140,7 @@ let installed = false;
 
 /** Resolves the session once per admin request and keeps signed-out users out of the admin area. */
 const guardAdmin: Handle = async ({ event, resolve }) => {
-  event.locals.token = sessionToken(event.cookies);
+  event.locals.token = sessionToken(event.cookies, event.url);
   event.locals.user = null;
 
   if (!installed) {
@@ -171,7 +167,6 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
       endSession(event.cookies);
       event.locals.token = null;
     } else {
-      migrateSession(event.cookies, event.locals.token, event.url);
       if (!frontendSecret() && can(event.locals.user, 'settings.manage'))
         await pairFrontend(adminApi(event.fetch, event.locals.token));
     }

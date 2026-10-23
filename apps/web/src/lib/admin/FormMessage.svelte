@@ -13,8 +13,14 @@
 
   let {
     form,
-  }: { form?: { message?: string; issues?: unknown; notice?: string } | null } =
-    $props();
+  }: {
+    form?: {
+      message?: string;
+      messageKey?: string;
+      issues?: unknown;
+      notice?: string;
+    } | null;
+  } = $props();
 
   const i18n = useI18n();
 
@@ -29,11 +35,17 @@
     const entry = (i18n.m as Record<string, unknown>)[value];
     return typeof entry === 'string' ? entry : value;
   });
+
+  const message = $derived.by(() => {
+    const key = form?.messageKey;
+    const entry = key && (i18n.m as Record<string, unknown>)[key];
+    return typeof entry === 'string' ? entry : form?.message;
+  });
 </script>
 
-{#if form?.message}
+{#if message}
   <Alert variant="destructive">
-    <AlertTitle>{form.message}</AlertTitle>
+    <AlertTitle>{message}</AlertTitle>
     {#if issues.length}
       <AlertDescription>
         <ul class="list-disc pl-4">

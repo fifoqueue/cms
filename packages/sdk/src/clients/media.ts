@@ -63,3 +63,16 @@ export const createMediaClient = ({
       { headers: range ? { range } : {} },
     ),
 });
+
+/** Same-origin frontend proxy for a signed avatar identifier. */
+export const createAvatarClient = ({
+  baseUrl,
+  fetch: fetcher = fetch,
+}: ClientOptions) => ({
+  file: (id: string, size: string | null) =>
+    fetcher(
+      `${baseUrl}/api/v1/avatars/${encodeURIComponent(id)}${
+        size ? `?s=${encodeURIComponent(size)}` : ''
+      }`,
+    ),
+});

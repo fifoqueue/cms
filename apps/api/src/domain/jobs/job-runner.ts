@@ -12,6 +12,11 @@ export class PermanentJobError extends Error {
   override name = 'PermanentJobError';
 }
 
+/** Encrypted input that can be retried after the site's previous secret key is restored. */
+export class RecoverableJobError extends Error {
+  override name = 'RecoverableJobError';
+}
+
 export interface JobRunnerDeps {
   queue: JobQueue;
   clock: Clock;
@@ -46,8 +51,9 @@ export class JobRunner {
     return { name: 'jobs', intervalMs, run: () => this.drain() };
   }
 
-  /** Removes metadata for jobs that gave up; their sensitive payload was already blanked. */
-  purge(): Promise<number> {
+  /** Scrubs historical plaintext payloads, then removes expired failure metadata. */
+  async purge(): Promise<number> {
+    await this.deps.queue.scrubFailed([Errors.JobPayloadUnreadable], 500);
     return this.deps.queue.purge(
       new Date(this.deps.clock.now().getTime() - FAILED_RETENTION_MS),
     );
@@ -66,14 +72,17 @@ export class JobRunner {
           await queue.complete(job.id, owner);
         } catch (error) {
           const attempt = job.attempts + 1;
+          const recoverable = error instanceof RecoverableJobError;
           const retry =
-            !(error instanceof PermanentJobError) && attempt < maxAttempts
+            !(error instanceof PermanentJobError) &&
+            !recoverable &&
+            attempt < maxAttempts
               ? new Date(clock.now().getTime() + backoffMs(attempt))
               : null;
           logger.warn(
             `Job ${job.kind} failed (attempt ${attempt}): ${messageOf(error)}`,
           );
-          await queue.fail(job.id, owner, messageOf(error), retry);
+          await queue.fail(job.id, owner, messageOf(error), retry, recoverable);
         }
       }),
     );

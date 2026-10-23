@@ -24,6 +24,7 @@ import type {
 } from '#api/domain/auth/ports';
 import { slugify, uniqueSlug } from '#api/domain/content/slug';
 import type { Clock, IdGenerator } from '#api/domain/ports';
+import type { SealedJobs } from '#api/domain/jobs/sealed-jobs';
 import { toProfile } from '#api/domain/users/user-mapper';
 import type {
   UserDirectory,
@@ -48,7 +49,8 @@ export interface UserServiceDeps {
   tokens: Pick<TokenIssuer, 'issue'>;
   ids: IdGenerator;
   clock: Clock;
-  /** Avatar image of an email address (Settings → Discussion), or null. */
+  sealedJobs: SealedJobs;
+  /** Signed same-origin avatar URL for a public author key, or null. */
   avatar?: (key: string) => Promise<string | null>;
   /** Invitations by email to choose a password. */
   invitations: {
@@ -67,6 +69,12 @@ const toSummary = (user: UserListItem): AdminUserSummary => ({
   role: user.role as AdminUserSummary['role'],
   createdAt: user.createdAt.toISOString(),
   contentCount: user.contentCount,
+});
+
+export const REGISTRATION_JOB = 'user.register';
+const registrationJobSchema = registrationSchema.pick({
+  email: true,
+  name: true,
 });
 
 /** Accounts of the people who run the site. */
@@ -174,8 +182,19 @@ export class UserService {
       action: 'passwordReset',
       account: data.email.toLowerCase(),
     });
+    if (!(await this.deps.invitations.available()))
+      throw invalidInput(Errors.EmailDisabled);
+    await this.deps.sealedJobs.enqueue(REGISTRATION_JOB, {
+      email: data.email.toLowerCase(),
+      name: data.name,
+    });
+  }
+
+  /** Creates the account after the public request has returned. */
+  async completeRegistration(payload: unknown) {
+    const data = this.deps.sealedJobs.open(payload, registrationJobSchema);
     const [existing, passwordHash] = await Promise.all([
-      this.deps.users.findByEmail(data.email.toLowerCase()),
+      this.deps.users.findByEmail(data.email),
       this.deps.hasher.hash(this.deps.tokens.issue()),
     ]);
     if (existing) return;

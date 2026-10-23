@@ -24,7 +24,7 @@ import type { Actions, PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async (event) => {
   const { fetch, url, cookies, parent } = event;
-  const api = contentApi(fetch, sessionToken(cookies));
+  const api = contentApi(fetch, sessionToken(cookies, url));
   // The lookup and the slots start with the layout instead of waiting for it; archive paths
   // discard the lookup and reuse the slots.
   const resolving = api.resolvePath(url.pathname, unlockProofs(cookies));

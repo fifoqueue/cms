@@ -1,5 +1,7 @@
 import { z } from 'zod';
+import { egressRuleSchema } from '@cms/sdk';
 import { Errors } from '#api/shared/errors';
+import { parseRange } from '#api/shared/ip-address';
 
 export const databaseUrlSchema = z.url({ protocol: /^(mysql|mariadb)$/ });
 
@@ -27,6 +29,33 @@ const subjectAllowlistSchema = z
         .transform((email) => email.toLowerCase()),
     ),
   );
+
+/** JSON array of the same scoped rules shown in Settings → Outbound access. */
+const egressAllowlistSchema = z
+  .string()
+  .transform((value, ctx) => {
+    try {
+      return JSON.parse(value) as unknown;
+    } catch {
+      ctx.issues.push({
+        code: 'custom',
+        message: Errors.ConfigNotJsonArray,
+        input: value,
+      });
+      return z.NEVER;
+    }
+  })
+  .pipe(z.array(egressRuleSchema).max(64))
+  .superRefine((rules, ctx) => {
+    for (const [ruleIndex, rule] of rules.entries())
+      for (const [addressIndex, address] of rule.addresses.entries())
+        if (!parseRange(address))
+          ctx.addIssue({
+            code: 'custom',
+            path: [ruleIndex, 'addresses', addressIndex],
+            message: Errors.EgressAddressInvalid,
+          });
+  });
 
 const urlWithoutQuery = (protocol: RegExp) =>
   z
@@ -62,6 +91,10 @@ const configSchema = z
      * created in `data/` on first use; keep it with your database backups.
      */
     CMS_SECRET_KEY: z.string().min(32).optional(),
+    /** Previous key used only to drain or reseal data during deliberate rotation. */
+    CMS_SECRET_KEY_PREVIOUS: z.string().min(32).optional(),
+    /** Optional administrator-equivalent outbound exceptions, visible but read-only in Settings. */
+    CMS_EGRESS_ALLOWLIST: egressAllowlistSchema.default([]),
 
     // OpenID Connect single sign-on. Off unless issuer, client id and redirect URI are all set.
     OIDC_ISSUER: urlWithoutQuery(/^https$/)

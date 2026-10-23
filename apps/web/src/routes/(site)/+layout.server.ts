@@ -10,7 +10,7 @@ import {
   themeView,
   widgetsView,
 } from '#lib/server/public-view.js';
-import { sessionToken } from '#lib/server/session-cookie.js';
+import { SESSION_COOKIE } from '#lib/server/session-cookie.js';
 import { themePreviewToken } from '#lib/server/theme-preview.js';
 import type { LayoutServerLoad } from './$types';
 
@@ -22,7 +22,8 @@ import type { LayoutServerLoad } from './$types';
  */
 export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
   const api = contentApi(fetch);
-  const token = sessionToken(cookies);
+  // Public layouts do not read `url`; HTTP development still authenticates page actions/routes.
+  const token = cookies.get(SESSION_COOKIE) ?? null;
   const [layout, user] = await Promise.all([
     api.layout(themePreviewToken(cookies)),
     token

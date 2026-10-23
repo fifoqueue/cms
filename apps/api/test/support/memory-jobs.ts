@@ -129,7 +129,13 @@ export class MemoryJobQueue implements JobQueue {
     return this.rows.get(id)?.lockedBy === owner ? this.rows.delete(id) : false;
   }
 
-  async fail(id: string, owner: string, error: string, retryAt: Date | null) {
+  async fail(
+    id: string,
+    owner: string,
+    error: string,
+    retryAt: Date | null,
+    preservePayload = false,
+  ) {
     const row = this.rows.get(id)!;
     if (row.lockedBy !== owner) return false;
     row.attempts += 1;
@@ -139,9 +145,52 @@ export class MemoryJobQueue implements JobQueue {
     if (retryAt) row.runAt = retryAt;
     else {
       row.failedAt = this.now();
-      row.payload = null;
+      if (!preservePayload) row.payload = null;
     }
     return true;
+  }
+
+  async failedPayloads(kind: string, error: string, limit: number) {
+    return [...this.rows.values()]
+      .filter(
+        (row) =>
+          row.failedAt &&
+          row.kind === kind &&
+          row.error === error &&
+          row.payload,
+      )
+      .slice(0, limit)
+      .map(({ id, payload }) => ({ id, payload: structuredClone(payload) }));
+  }
+
+  async retry(ids: readonly string[]) {
+    let count = 0;
+    for (const id of ids) {
+      const row = this.rows.get(id);
+      if (!row?.failedAt) continue;
+      row.failedAt = null;
+      row.error = null;
+      row.attempts = 0;
+      row.runAt = this.now();
+      count += 1;
+    }
+    return count;
+  }
+
+  async scrubFailed(preserveErrors: readonly string[], limit: number) {
+    let count = 0;
+    for (const row of this.rows.values()) {
+      if (
+        count >= limit ||
+        !row.failedAt ||
+        row.payload === null ||
+        (row.error && preserveErrors.includes(row.error))
+      )
+        continue;
+      row.payload = null;
+      count += 1;
+    }
+    return count;
   }
 
   async failures(limit: number) {

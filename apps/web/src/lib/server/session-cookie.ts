@@ -14,15 +14,9 @@ const options = (secure: boolean) => ({
 const nameFor = (url: URL) =>
   url.protocol === 'https:' ? SESSION_COOKIE : LEGACY_SESSION_COOKIE;
 
-/** New host-bound cookie first, then the old name during the migration window. */
-export const sessionToken = (cookies: Pick<Cookies, 'getAll'>) => {
-  const values = cookies.getAll();
-  return (
-    values.find(({ name }) => name === SESSION_COOKIE)?.value ??
-    values.find(({ name }) => name === LEGACY_SESSION_COOKIE)?.value ??
-    null
-  );
-};
+/** HTTPS trusts only the host-bound name; HTTP keeps its separate development session. */
+export const sessionToken = (cookies: Pick<Cookies, 'get'>, url: URL) =>
+  cookies.get(nameFor(url)) ?? null;
 
 export const startSession = (
   cookies: Cookies,
@@ -38,18 +32,6 @@ export const startSession = (
     ...options(name === SESSION_COOKIE),
     expires: new Date(grant.expiresAt),
   });
-};
-
-/** Moves a valid legacy HTTPS session without forcing an existing user to sign in again. */
-export const migrateSession = (cookies: Cookies, token: string, url: URL) => {
-  if (
-    url.protocol !== 'https:' ||
-    cookies.get(SESSION_COOKIE) ||
-    cookies.get(LEGACY_SESSION_COOKIE) !== token
-  )
-    return;
-  cookies.set(SESSION_COOKIE, token, options(true));
-  cookies.delete(LEGACY_SESSION_COOKIE, options(false));
 };
 
 export const endSession = (cookies: Cookies) => {

@@ -8,6 +8,7 @@ import type {
 import { AuthService } from '#api/domain/auth/auth-service';
 import { PasswordService } from '#api/domain/auth/password-service';
 import { EmailService } from '#api/domain/email/email-service';
+import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
 import { ProtectionService } from '#api/domain/security/protection-service';
 import { SecuritySettingsService } from '#api/domain/security/security-settings';
 import { aesSecretBox } from '#api/infra/secret-box';
@@ -223,6 +224,10 @@ describe('password reset', () => {
     });
     const settings = new MemorySeoSettingsRepository();
     const queue = new MemoryJobQueue();
+    const sealedJobs = new SealedJobs(
+      queue,
+      aesSecretBox('test-email-job-secret'),
+    );
     const sent: string[] = [];
     const secrets = aesSecretBox('test-email-job-secret');
     const email = new EmailService({
@@ -231,7 +236,7 @@ describe('password reset', () => {
       mailer: {
         send: async (_transport, message) => void sent.push(message.text),
       },
-      jobs: queue,
+      sealedJobs,
     });
     await email.update({
       enabled: true,
@@ -267,6 +272,7 @@ describe('password reset', () => {
         verify: async () => true,
       },
       email,
+      sealedJobs,
       protection: new ProtectionService({
         settings: new SecuritySettingsService(settings, plainSecretBox),
         store: new MemoryRateLimitStore(),
@@ -283,12 +289,17 @@ describe('password reset', () => {
     const visitor = { client: null, address: null, captchaToken: null };
 
     await passwords.requestReset({ email: 'nobody@example.com' }, visitor);
-    expect(queue.rows.size).toBe(0);
+    const unknown = [...queue.rows.values()].at(-1)!;
+    expect(JSON.stringify(unknown.payload)).not.toContain('nobody@example.com');
+    await passwords.deliverResetRequest(unknown.payload);
     await passwords.requestReset({ email: 'Admin@Example.com' }, visitor);
-    const [job] = [...queue.rows.values()];
-    expect(JSON.stringify(job!.payload)).not.toContain(issued);
-    expect(hashes).toBe(2);
-    await email.deliver(job!.payload);
+    const request = [...queue.rows.values()].at(-1)!;
+    expect(JSON.stringify(request.payload)).not.toContain('admin@example.com');
+    await passwords.deliverResetRequest(request.payload);
+    const job = [...queue.rows.values()].at(-1)!;
+    expect(JSON.stringify(job.payload)).not.toContain(issued);
+    expect(hashes).toBe(0);
+    await email.deliver(job.payload);
     expect(sent[0]).toContain(issued);
 
     // Jobs queued before encrypted envelopes were introduced still drain after an upgrade.

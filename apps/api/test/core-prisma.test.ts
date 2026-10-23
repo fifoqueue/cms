@@ -12,7 +12,7 @@ import { PermalinkResolver } from '#api/domain/permalinks/permalink-resolver';
 import { SearchService } from '#api/domain/search/search-service';
 import { TaxonomyService } from '#api/domain/taxonomy/taxonomy-service';
 import { ExportService } from '#api/domain/tools/export-service';
-import { meilisearchEngine } from '#api/infra/meilisearch-engine';
+import { createMeilisearchEngine } from '#api/infra/meilisearch-engine';
 import { PrismaUserRepository } from '#api/infra/prisma/auth-repositories';
 import { PrismaArchivePaths } from '#api/infra/prisma/archive-paths';
 import type { Database } from '#api/infra/prisma/client';
@@ -324,6 +324,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       clock: systemClock,
       hooks: new HookBus({ timeoutMs: 50, logger: recordingLogger().logger }),
       limiter: new PrismaRateLimitStore(db),
+      limits: async () => ({ uploadsPerHour: 60, freeSpaceMb: 256 }),
       maxBytes: 1024 * 1024,
     });
     const png = await sharp({
@@ -557,7 +558,8 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       const search = new SearchService({
         settings,
         secrets: plainSecretBox,
-        engine: meilisearchEngine,
+        // This adapter test supplies its own test endpoint; egress policy has a separate suite.
+        engine: createMeilisearchEngine((input, init) => fetch(input, init)),
         source,
         clock: systemClock,
         logger: recordingLogger().logger,

@@ -5,7 +5,6 @@ import { CommentService } from '#api/domain/comments/comment-service';
 import { ContentLocks } from '#api/domain/content/content-locks';
 import { MemoryPublishedContentRepository } from '#test/support/memory-published';
 import { hmacSigner } from '#api/infra/hmac-signer';
-import { randomTokenIssuer } from '#api/infra/system';
 import { ContentService } from '#api/domain/content/content-service';
 import { ProtectionService } from '#api/domain/security/protection-service';
 import { SecuritySettingsService } from '#api/domain/security/security-settings';
@@ -72,7 +71,12 @@ const setup = () => {
   const comments = new CommentService({
     locks,
     signer,
-    digest: randomTokenIssuer.digest,
+    avatar: {
+      url: (key, discussion) =>
+        discussion.showAvatars
+          ? `/avatars/${encodeURIComponent(key)}.signed?s=96`
+          : null,
+    },
     repository: store,
     settings,
     types,
@@ -184,10 +188,7 @@ describe('CommentService', () => {
     );
     const avatars = await comments.publicPage(entry.id, 1);
     expect(avatars.items[0]?.avatarUrl).toBe(
-      `https://www.gravatar.com/avatar/${randomTokenIssuer.digest(`comment:${sent.comment!.id}`)}?d=identicon&s=96`,
-    );
-    expect(avatars.items[0]?.avatarUrl).not.toContain(
-      randomTokenIssuer.digest('ann@example.com'),
+      `/avatars/comment%3A${sent.comment!.id}.signed?s=96`,
     );
     expect(JSON.stringify(avatars)).not.toContain('example.com');
   });

@@ -2,6 +2,7 @@
 import { API_PORT, CMS_API_URL } from '$app/env/private';
 import {
   createAdminClient,
+  createAvatarClient,
   createAuthClient,
   createContentClient,
   createInstallationClient,
@@ -27,3 +28,6 @@ export const installationApi = (fetch: Fetch) =>
 
 export const mediaFiles = (fetch: Fetch) =>
   createMediaClient({ baseUrl: apiUrl, fetch });
+
+export const avatarFiles = (fetch: Fetch) =>
+  createAvatarClient({ baseUrl: apiUrl, fetch });

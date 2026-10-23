@@ -3,8 +3,10 @@ import { resolve } from '$app/paths';
 import type { SsoStart } from '@cms/sdk';
 import { createSsoClient } from '@cms/sdk/client';
 import { apiUrl } from '#lib/server/api.js';
-
-const TRANSACTION_COOKIE = 'cms_sso';
+import {
+  consumeSsoTransaction,
+  setSsoTransaction,
+} from '#lib/server/sso-cookie.js';
 
 /** Only the callback ever reads the cookie; the path includes any configured base path. */
 const transactionPath = () => resolve('/admin/(auth)/sso/callback');
@@ -16,18 +18,15 @@ export const ssoApi = (fetch: typeof globalThis.fetch, token?: string | null) =>
  * Binds the pending sign-in to this browser: the callback is accepted only with this cookie,
  * so a provider response replayed into another browser fails. `lax` survives the provider redirect.
  */
-export const rememberSsoTransaction = (cookies: Cookies, start: SsoStart) =>
-  cookies.set(TRANSACTION_COOKIE, start.transaction, {
-    path: transactionPath(),
-    httpOnly: true,
-    sameSite: 'lax',
-    expires: new Date(start.expiresAt),
-  });
+export const rememberSsoTransaction = (
+  cookies: Cookies,
+  start: SsoStart,
+  url: URL,
+) => {
+  setSsoTransaction(cookies, start, url, transactionPath());
+};
 
 /** Returns the pending transaction once and forgets it. */
-export const takeSsoTransaction = (cookies: Cookies) => {
-  const transaction = cookies.get(TRANSACTION_COOKIE) ?? null;
-  cookies.delete(TRANSACTION_COOKIE, { path: transactionPath() });
-
-  return transaction;
+export const takeSsoTransaction = (cookies: Cookies, url: URL) => {
+  return consumeSsoTransaction(cookies, url, transactionPath());
 };

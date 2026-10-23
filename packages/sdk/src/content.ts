@@ -407,8 +407,8 @@ export const publicAuthorSchema = z.object({
   name: z.string(),
   slug: z.string(),
   bio: z.string(),
-  /** Gravatar image while Settings → Discussion shows avatars; never the email address. */
-  avatarUrl: z.url().nullable().default(null),
+  /** Same-origin proxy URL while Settings → Discussion shows avatars; never an email digest. */
+  avatarUrl: z.string().startsWith('/avatars/').nullable().default(null),
 });
 
 export type PublicAuthor = z.output<typeof publicAuthorSchema>;

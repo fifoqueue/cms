@@ -27,12 +27,17 @@ import { join } from 'node:path';
 import { AuthService } from '#api/domain/auth/auth-service';
 import type { AuthServiceDeps } from '#api/domain/auth/auth-service';
 import { ApiTokenService } from '#api/domain/auth/api-tokens';
-import { PasswordService } from '#api/domain/auth/password-service';
+import {
+  PASSWORD_RESET_REQUEST_JOB,
+  PasswordService,
+} from '#api/domain/auth/password-service';
 import { EMAIL_JOB, EmailService } from '#api/domain/email/email-service';
 import { JobRunner } from '#api/domain/jobs/job-runner';
+import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
 import { Scheduler } from '#api/domain/jobs/scheduler';
 import { ProtectionService } from '#api/domain/security/protection-service';
 import { SecuritySettingsService } from '#api/domain/security/security-settings';
+import { EgressSettingsService } from '#api/domain/security/egress-settings';
 import { httpCaptchaVerifier } from '#api/infra/captcha-verifier';
 import { API_DIRECTORY } from '#api/infra/installation/config-store';
 import { PrismaApiTokenRepository } from '#api/infra/prisma/api-tokens';
@@ -42,7 +47,7 @@ import { PrismaCredentialRepository } from '#api/infra/prisma/credentials';
 import { PrismaRateLimitStore } from '#api/infra/prisma/rate-limit-store';
 import { PrismaTaskLeases } from '#api/infra/prisma/task-leases';
 import { aesSecretBox, secretKey } from '#api/infra/secret-box';
-import { smtpMailer } from '#api/infra/smtp-mailer';
+import { createSmtpMailer } from '#api/infra/smtp-mailer';
 import type { SessionRepository, UserRepository } from '#api/domain/auth/ports';
 import { InstallationService } from '#api/domain/installation/installation-service';
 import { ContentService } from '#api/domain/content/content-service';
@@ -81,7 +86,7 @@ import { PrismaContentRepository } from '#api/infra/prisma/content-repository';
 import { PrismaPublishedContentRepository } from '#api/infra/prisma/published-content-repository';
 import { PrismaTaxonomyRepository } from '#api/infra/prisma/taxonomy-repository';
 import { PrismaUserDirectory } from '#api/infra/prisma/user-directory';
-import { UserService } from '#api/domain/users/user-service';
+import { REGISTRATION_JOB, UserService } from '#api/domain/users/user-service';
 import {
   PrismaPluginDataRepository,
   PrismaPluginStateRepository,
@@ -109,21 +114,24 @@ import { WidgetRegistry } from '#api/plugin-runtime/widget-registry';
 import { AdminPageRegistry } from '#api/plugin-runtime/admin-page-registry';
 import { WidgetService } from '#api/domain/appearance/widget-service';
 import { CommentService } from '#api/domain/comments/comment-service';
+import { AvatarService } from '#api/domain/comments/avatar-service';
 import { SearchService } from '#api/domain/search/search-service';
 import {
   WEBHOOK_JOB,
   WebhookService,
 } from '#api/domain/webhooks/webhook-service';
-import { httpWebhookTransport } from '#api/infra/webhook-transport';
+import { createHttpWebhookTransport } from '#api/infra/webhook-transport';
 import { SiteHealthService } from '#api/domain/tools/site-health';
 import { SsoSettingsService } from '#api/domain/auth/sso-settings';
 import { ThemePreviews } from '#api/domain/theme/theme-previews';
 import { ImportService } from '#api/domain/tools/import-service';
 import { ExportService } from '#api/domain/tools/export-service';
 import { fastXmlWxrParser } from '#api/infra/wxr-parser';
-import { meilisearchEngine } from '#api/infra/meilisearch-engine';
+import { createMeilisearchEngine } from '#api/infra/meilisearch-engine';
 import { PrismaSearchSource } from '#api/infra/prisma/search-source';
 import { PrismaCommentRepository } from '#api/infra/prisma/comment-repository';
+import { PrismaAvatarDirectory } from '#api/infra/prisma/avatar-directory';
+import { GravatarSource } from '#api/infra/gravatar-source';
 import { SlotService } from '#api/plugin-runtime/slot-service';
 import { consoleLogger } from '#api/shared/logger';
 import type { Logger } from '#api/shared/logger';
@@ -133,6 +141,9 @@ import { RoleService } from '#api/domain/users/role-service';
 import { SsoService } from '#api/domain/auth/sso-service';
 import { MemoryRateLimiter } from '#api/infra/memory-rate-limiter';
 import { OpenIdClientProvider } from '#api/infra/oidc/openid-client-provider';
+import type { OidcClientSettings } from '#api/infra/oidc/openid-client-provider';
+import { outbound } from '#api/infra/egress-policy';
+import type { EgressRule, EgressService } from '@cms/sdk';
 import {
   PrismaIdentityRepository,
   PrismaSsoTransactionRepository,
@@ -162,7 +173,11 @@ const TRASH_DAYS = 30;
 const SSO_TRANSACTION_TTL_MS = 10 * 60 * 1000;
 
 /** Single sign-on is enabled only when the issuer, client id and redirect URI are configured. */
-const createOidcProvider = (config: AppConfig, logger: Logger) => {
+const createOidcProvider = (
+  config: AppConfig,
+  logger: Logger,
+  fetcher: NonNullable<OidcClientSettings['fetch']>,
+) => {
   const { OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_REDIRECT_URI, OIDC_CLIENT_SECRET } =
     config;
 
@@ -179,6 +194,7 @@ const createOidcProvider = (config: AppConfig, logger: Logger) => {
         (OIDC_CLIENT_SECRET ? 'client_secret_basic' : 'none'),
       redirectUri: OIDC_REDIRECT_URI,
       scope: config.OIDC_SCOPES,
+      fetch: fetcher,
     },
     logger,
   );
@@ -245,13 +261,33 @@ export const createContainer = async (
     expand: async (html: string) =>
       responsiveImages.expand(await embeds.expand(html)),
   };
-  const signer = hmacSigner(
-    secretKey(config.CMS_SECRET_KEY, join(API_DIRECTORY, 'data/secret.key')),
+  const activeSecret = secretKey(
+    config.CMS_SECRET_KEY,
+    join(API_DIRECTORY, 'data/secret.key'),
   );
-  const secrets = aesSecretBox(
-    secretKey(config.CMS_SECRET_KEY, join(API_DIRECTORY, 'data/secret.key')),
+  const signer = hmacSigner(activeSecret);
+  const secrets = aesSecretBox(activeSecret, config.CMS_SECRET_KEY_PREVIOUS);
+  const avatars = new AvatarService(
+    new PrismaAvatarDirectory(db),
+    new GravatarSource(),
+    signer,
   );
   const security = new SecuritySettingsService(settingsRepository, secrets);
+  const egress = new EgressSettingsService(
+    settingsRepository,
+    config.CMS_EGRESS_ALLOWLIST,
+  );
+  const access = async (service: EgressService) => ({
+    service,
+    rules: await egress.rules(service),
+  });
+  const egressFetch =
+    (service: EgressService) =>
+    async (input: string | URL | Request, init?: RequestInit) =>
+      outbound.fetch(input, init, await access(service));
+  const checkUrl = async (service: EgressService, url: string) =>
+    outbound.check(url, await access(service));
+  const meilisearchEngine = createMeilisearchEngine(egressFetch('search'));
   const rateLimits = new PrismaRateLimitStore(db);
   const protection = new ProtectionService({
     settings: security,
@@ -266,6 +302,7 @@ export const createContainer = async (
     source: new PrismaSearchSource(db),
     clock: systemClock,
     logger,
+    checkDestination: (url) => checkUrl('search', url),
   });
   const locks = new ContentLocks({
     repository: publishedRepository,
@@ -314,6 +351,7 @@ export const createContainer = async (
   const owner = `${hostname()}:${process.pid}:${uuidV7.next().slice(-12)}`;
   const revisions = new PrismaRevisionRepository(db);
   const jobQueue = new PrismaJobQueue(db, uuidV7);
+  const sealedJobs = new SealedJobs(jobQueue, secrets);
   const taskLeases = new PrismaTaskLeases(db);
   const scheduler = new Scheduler({
     leases: taskLeases,
@@ -332,8 +370,41 @@ export const createContainer = async (
   const email = new EmailService({
     settings: settingsRepository,
     secrets,
-    mailer: smtpMailer,
-    jobs: jobQueue,
+    mailer: createSmtpMailer(async (host, port, signal) =>
+      outbound.resolveHost(host, port, {
+        ...(await access('smtp')),
+        signal,
+      }),
+    ),
+    sealedJobs,
+    checkDestination: async (host, port) => {
+      await outbound.resolveHost(host, port, await access('smtp'));
+    },
+  });
+  await egress.initialize(async () => {
+    const [searchSettings, emailSettings] = await Promise.all([
+      search.getAdmin(),
+      email.getAdmin(),
+    ]);
+    const rules: EgressRule[] = [];
+    if (searchSettings.host) {
+      const url = new URL(searchSettings.host);
+      const rule = await outbound.compatibilityRule(
+        'search',
+        url.hostname,
+        url.port ? Number(url.port) : url.protocol === 'https:' ? 443 : 80,
+      );
+      if (rule) rules.push(rule);
+    }
+    if (emailSettings.host) {
+      const rule = await outbound.compatibilityRule(
+        'smtp',
+        emailSettings.host,
+        emailSettings.port,
+      );
+      if (rule) rules.push(rule);
+    }
+    return rules;
   });
   jobs.handle(EMAIL_JOB, (payload) => email.deliver(payload));
   const webhooks = new WebhookService({
@@ -341,7 +412,9 @@ export const createContainer = async (
     secrets,
     tokens: randomTokenIssuer,
     jobs: jobQueue,
-    transport: httpWebhookTransport,
+    transport: createHttpWebhookTransport(egressFetch('webhook'), (url) =>
+      checkUrl('webhook', url),
+    ),
     ids: uuidV7,
     clock: systemClock,
   });
@@ -370,6 +443,7 @@ export const createContainer = async (
     issuer: randomTokenIssuer,
     hasher: bunPasswordHasher,
     email,
+    sealedJobs,
     protection,
     clock: systemClock,
     site: async () => ({
@@ -386,6 +460,11 @@ export const createContainer = async (
       await sessions.deleteExpired(now);
       await passwordTokens.purge(now);
       await rateLimits.purge(now);
+      await sealedJobs.recover([
+        EMAIL_JOB,
+        PASSWORD_RESET_REQUEST_JOB,
+        REGISTRATION_JOB,
+      ]);
       await jobs.purge();
     },
   });
@@ -398,6 +477,7 @@ export const createContainer = async (
     clock: systemClock,
     hooks,
     limiter: rateLimits,
+    limits: async () => (await security.policy()).media,
     maxBytes: config.MEDIA_MAX_MB * 1024 * 1024,
   });
 
@@ -450,6 +530,7 @@ export const createContainer = async (
     tokens: randomTokenIssuer,
     ids: uuidV7,
     clock: systemClock,
+    sealedJobs,
     // `comments` is created below; the avatar is only read on requests.
     avatar: (key) => comments.avatar(key),
     invitations: {
@@ -462,7 +543,7 @@ export const createContainer = async (
   const comments = new CommentService({
     locks,
     signer,
-    digest: randomTokenIssuer.digest,
+    avatar: avatars,
     roles,
     repository: commentRepository,
     settings: settingsRepository,
@@ -478,6 +559,12 @@ export const createContainer = async (
     ids: uuidV7,
     clock: systemClock,
   });
+  jobs.handle(PASSWORD_RESET_REQUEST_JOB, (payload) =>
+    passwords.deliverResetRequest(payload),
+  );
+  jobs.handle(REGISTRATION_JOB, (payload) =>
+    userAdmin.completeRegistration(payload),
+  );
   scheduler.add({
     name: 'search.sync',
     intervalMs: 5_000,
@@ -497,12 +584,16 @@ export const createContainer = async (
     plugins: widgetRegistry,
   });
 
-  const ssoProvider = createOidcProvider(config, logger);
+  const oidcFetch: NonNullable<OidcClientSettings['fetch']> = (url, options) =>
+    egressFetch('oidc')(url, options as RequestInit);
+  const ssoProvider = createOidcProvider(config, logger, oidcFetch);
   const ssoSettings = new SsoSettingsService({
     settings: settingsRepository,
     secrets,
     siteUrl: async () => (await seo.getPublic()).siteUrl,
-    connect: (client) => new OpenIdClientProvider(client, logger),
+    connect: (client) =>
+      new OpenIdClientProvider({ ...client, fetch: oidcFetch }, logger),
+    checkIssuer: (issuer) => checkUrl('oidc', issuer),
     environment: ssoProvider && {
       provider: ssoProvider,
       name: config.OIDC_NAME,
@@ -630,6 +721,7 @@ export const createContainer = async (
       menus,
       widgets,
       comments,
+      avatars,
       search,
       pluginPages,
       webhooks,
@@ -647,6 +739,7 @@ export const createContainer = async (
       passwords,
       apiTokens,
       security,
+      egress,
       email,
       publicContent,
       slots: new SlotService({

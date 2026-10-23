@@ -35,6 +35,7 @@ const setup = () => {
     clock: fixedClock(),
     hooks: new HookBus({ timeoutMs: 50, logger: recordingLogger().logger }),
     limiter: new MemoryRateLimitStore(),
+    limits: async () => ({ uploadsPerHour: 60, freeSpaceMb: 256 }),
     maxBytes: 1024,
   });
   return { media, repository, storage };
@@ -128,7 +129,7 @@ describe('media library', () => {
 
   test('uploads stop before exhausting storage or one user floods the site', async () => {
     const low = setup();
-    low.storage.freeBytes = 0;
+    low.storage.freeBytes = 256 * 1024 * 1024 + 17;
     expect(await codeOf(low.media.upload(PNG, 'cat.png', author))).toBe(
       'conflict',
     );

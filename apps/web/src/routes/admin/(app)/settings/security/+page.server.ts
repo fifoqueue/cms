@@ -69,6 +69,10 @@ export const actions: Actions = {
           } satisfies RateRule,
         ]),
       ) as SecuritySettingsInput['rules'],
+      media: {
+        uploadsPerHour: Math.max(0, integer(form, 'media.uploadsPerHour')),
+        freeSpaceMb: Math.max(0, integer(form, 'media.freeSpaceMb')),
+      },
     };
     try {
       await adminFor(event).security.update(input);

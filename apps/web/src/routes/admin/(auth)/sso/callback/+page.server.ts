@@ -8,7 +8,7 @@ import type { PageServerLoad } from './$types';
 
 /** The identity provider redirects here. Only the API sees the code; it verifies everything. */
 export const load: PageServerLoad = async ({ url, cookies, fetch, locals }) => {
-  const transaction = takeSsoTransaction(cookies);
+  const transaction = takeSsoTransaction(cookies, url);
   // Linking starts from the account page, so a signed-in user goes back there.
   const back = locals.user ? 'account' : 'login';
 

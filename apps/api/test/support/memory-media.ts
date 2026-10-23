@@ -85,12 +85,15 @@ export class MemoryMediaStorage implements MediaStorage {
   readonly files = new Map<string, Uint8Array>();
   freeBytes = Number.POSITIVE_INFINITY;
 
-  async available() {
-    return this.freeBytes;
-  }
-
-  async write(key: string, bytes: Uint8Array) {
-    this.files.set(key, bytes);
+  async commit(
+    files: readonly { key: string; bytes: Uint8Array }[],
+    freeBytes: number,
+  ) {
+    const bytes = files.reduce((total, file) => total + file.bytes.length, 0);
+    if (this.freeBytes < freeBytes + bytes) return 'low_space' as const;
+    for (const file of files) this.files.set(file.key, file.bytes);
+    this.freeBytes -= bytes;
+    return 'stored' as const;
   }
 
   async read(key: string, range?: { start: number; end?: number }) {

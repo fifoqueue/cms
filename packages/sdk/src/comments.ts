@@ -13,6 +13,7 @@ export const AVATAR_DEFAULTS = [
   'robohash',
   'blank',
 ] as const;
+export type AvatarDefault = (typeof AVATAR_DEFAULTS)[number];
 
 export const COMMENT_STATUSES = [
   'pending',
@@ -108,7 +109,7 @@ export const publicCommentSchema = z.strictObject({
   authorUrl: z.string().nullable(),
   /** Written by the entry's author. */
   byAuthor: z.boolean(),
-  avatarUrl: z.url().nullable().default(null),
+  avatarUrl: z.string().startsWith('/avatars/').nullable().default(null),
   pending: z.boolean().default(false),
   body: z.string(),
   createdAt: z.string(),

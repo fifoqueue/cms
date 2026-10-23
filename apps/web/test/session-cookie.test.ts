@@ -4,10 +4,13 @@ import {
   LEGACY_SESSION_COOKIE,
   SESSION_COOKIE,
   endSession,
-  migrateSession,
   sessionToken,
   startSession,
 } from '#lib/server/session-cookie.js';
+import {
+  consumeSsoTransaction,
+  setSsoTransaction,
+} from '#lib/server/sso-cookie.js';
 
 const cookies = (initial: Record<string, string> = {}) => {
   const values = new Map(Object.entries(initial));
@@ -50,19 +53,44 @@ describe('session cookie', () => {
     expect(local.options.get(LEGACY_SESSION_COOKIE)?.secure).toBe(false);
   });
 
-  test('a valid legacy HTTPS session migrates once and logout clears both names', () => {
+  test('HTTPS ignores a legacy cookie and logout clears both names', () => {
     const state = cookies({ [LEGACY_SESSION_COOKIE]: 'old-token' });
-    migrateSession(
-      state.api,
-      'old-token',
-      new URL('https://cms.example/admin'),
-    );
-
-    expect(sessionToken(state.api)).toBe('old-token');
-    expect(state.values.has(LEGACY_SESSION_COOKIE)).toBe(false);
-    expect(state.options.get(SESSION_COOKIE)?.secure).toBe(true);
+    expect(
+      sessionToken(state.api, new URL('https://cms.example/admin')),
+    ).toBeNull();
+    expect(
+      sessionToken(state.api, new URL('http://localhost:5173/admin')),
+    ).toBe('old-token');
 
     endSession(state.api);
-    expect(sessionToken(state.api)).toBeNull();
+    expect(
+      sessionToken(state.api, new URL('http://localhost:5173/admin')),
+    ).toBeNull();
+  });
+
+  test('HTTPS SSO uses only its host-bound transaction cookie', () => {
+    const state = cookies({ cms_sso: 'planted' });
+    const url = new URL('https://cms.example/admin/login');
+    setSsoTransaction(
+      state.api,
+      {
+        transaction: 'real',
+        expiresAt: '2030-01-01T00:00:00.000Z',
+      } as never,
+      url,
+      '/admin/sso/callback',
+    );
+
+    expect(state.values.get('__Host-cms_sso')).toBe('real');
+    expect(state.options.get('__Host-cms_sso')).toMatchObject({
+      path: '/',
+      secure: true,
+    });
+    expect(consumeSsoTransaction(state.api, url, '/admin/sso/callback')).toBe(
+      'real',
+    );
+    expect(
+      consumeSsoTransaction(state.api, url, '/admin/sso/callback'),
+    ).toBeNull();
   });
 });

@@ -20,6 +20,8 @@ export const Errors = {
     'Enter the provider address and client ID to turn on single sign-on',
   EmailServerRequired:
     'Enter the mail server and sender address to enable email',
+  EgressHostInvalid: 'Enter one host name or IP address',
+  EgressAddressInvalid: 'Enter an IP address or CIDR range',
   BlocksNotList: 'Must be a list of blocks',
   BlocksTooDeep: 'Blocks are nested too deeply',
   BlocksTooMany: 'Too many blocks',

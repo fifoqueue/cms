@@ -125,6 +125,7 @@ const app = await createApiApp({
     menus: {} as ApiServices['menus'],
     widgets: {} as ApiServices['widgets'],
     comments: {} as ApiServices['comments'],
+    avatars: {} as ApiServices['avatars'],
     search: {} as ApiServices['search'],
     pluginPages: {} as ApiServices['pluginPages'],
     webhooks: {} as ApiServices['webhooks'],
@@ -138,6 +139,7 @@ const app = await createApiApp({
     fields: {} as ApiServices['fields'],
     apiTokens: {} as ApiServices['apiTokens'],
     security: {} as ApiServices['security'],
+    egress: {} as ApiServices['egress'],
     email: {} as ApiServices['email'],
     plugins: {
       list: record('plugins.list', []),

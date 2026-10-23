@@ -3,6 +3,7 @@ import {
   passwordResetRequestSchema,
   passwordResetSchema,
 } from '@cms/sdk';
+import { z } from 'zod';
 import type { Actor } from '#api/domain/auth/authorization';
 import type {
   PasswordHasher,
@@ -14,6 +15,7 @@ import type {
 } from '#api/domain/auth/ports';
 import type { EmailService } from '#api/domain/email/email-service';
 import { templates } from '#api/domain/email/templates';
+import type { SealedJobs } from '#api/domain/jobs/sealed-jobs';
 import type { Clock } from '#api/domain/ports';
 import type {
   Attempt,
@@ -23,6 +25,8 @@ import { invalidInput, notFound, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 
 const HOUR = 60 * 60 * 1000;
+export const PASSWORD_RESET_REQUEST_JOB = 'password.reset.request';
+const resetRequestSchema = z.strictObject({ email: z.email() });
 const LIFETIME: Record<PasswordTokenPurpose, number> = {
   reset: HOUR,
   invite: 7 * 24 * HOUR,
@@ -35,6 +39,7 @@ export interface PasswordServiceDeps {
   issuer: TokenIssuer;
   hasher: PasswordHasher;
   email: EmailService;
+  sealedJobs: SealedJobs;
   protection: ProtectionService;
   clock: Clock;
   /** Public origin and display settings used in links and mail copy. */
@@ -94,13 +99,17 @@ export class PasswordService {
     await this.deps.protection.check(protectedAttempt);
     if (!(await this.deps.email.enabled()))
       throw invalidInput(Errors.EmailDisabled);
-    const site = await this.site();
-    const [user] = await Promise.all([
-      this.deps.users.findByEmail(account),
-      // Unknown and known accounts pay the same dominant password-hash cost.
-      this.deps.hasher.hash('password-reset-timing-cover'),
-    ]);
+    await this.deps.sealedJobs.enqueue(PASSWORD_RESET_REQUEST_JOB, {
+      email: account,
+    });
+  }
+
+  /** Background account lookup keeps the public response independent of existence. */
+  async deliverResetRequest(payload: unknown) {
+    const { email } = this.deps.sealedJobs.open(payload, resetRequestSchema);
+    const user = await this.deps.users.findByEmail(email);
     if (!user) return;
+    const site = await this.site();
     const link = await this.link(user, 'reset', site.siteUrl);
     await this.deps.email.queue({
       to: user.email,
