@@ -521,6 +521,8 @@ export class CommentService {
     known: boolean,
     moderator: boolean,
   ): CommentDraft['status'] {
+    if (moderator) return 'approved';
+
     const text = [data.authorName, data.authorEmail, data.authorUrl, data.body]
       .join('\n')
       .toLowerCase();
@@ -530,7 +532,6 @@ export class CommentService {
       links(data.body) > settings.maxLinks
     )
       return 'pending';
-    if (moderator) return 'approved';
     if (settings.moderation === 'auto') return 'approved';
     if (settings.moderation === 'manual') return 'pending';
     return known ? 'approved' : 'pending';

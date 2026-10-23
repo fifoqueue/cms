@@ -351,7 +351,7 @@ describe('CommentService', () => {
     expect(store.rows.get(first.comment!.id)?.body).toBe('Edited');
   });
 
-  test('only authenticated moderators bypass ordinary holds, keeping abuse and entry checks', async () => {
+  test('only authenticated moderators bypass approval rules, keeping trust and entry checks', async () => {
     const { comments, publish, store } = setup();
     const entry = await publish();
     const moderator = {
@@ -421,7 +421,8 @@ describe('CommentService', () => {
             moderator,
           )
         ).status,
-      ).toBe('pending');
+      ).toBe('approved');
+    await comments.submit(comment(entry.id, { body: 'casino' }), visitor);
     expect([...store.rows.values()].some((row) => row.status === 'spam')).toBe(
       true,
     );
