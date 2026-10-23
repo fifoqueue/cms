@@ -1233,6 +1233,21 @@ export const ko: Messages = {
     `대체 텍스트를 라이브러리에 저장하지 못했습니다(${reason}). 여기에서만 쓰려면 버튼을 다시 누르세요.`,
   seoTabs: '검색 엔진 최적화 설정',
   // site-theme
+  importAuthors: '글쓴이 지정',
+  importAuthorsHelp:
+    '글쓴이는 이메일 주소나 로그인 이름으로 기존 사용자와 연결합니다. 일치하는 사용자가 없으면:',
+  importAuthorMode: (mode: string) =>
+    mode === 'author'
+      ? '글쓴이 역할의 새 사용자 만들기'
+      : mode === 'subscriber'
+        ? '구독자 역할의 새 사용자 만들기'
+        : '내 글로 지정하기',
+  importMoreSummary: (users: number, menus: number, redirects: number) =>
+    `사용자 ${users}명과 메뉴 ${menus}개를 만들었고, 이전 주소 ${redirects}개를 새 주소로 연결했습니다.`,
+  importAttachments: (count: number) => `업로드할 미디어 파일 ${count}개`,
+  importAttachmentsHelp:
+    '미디어 파일은 복사하지 않았습니다. 글에는 이전 사이트의 파일이 그대로 표시되니 미디어 라이브러리에 올린 뒤 대표 이미지와 함께 바꿔 주세요.',
+  importFeatured: (count: number) => `글 ${count}개의 대표 이미지`,
   adminBarEditCategory: '카테고리 편집',
   adminBarEditTag: '태그 편집',
   adminBarEditTerm: '항목 편집',

@@ -17,6 +17,7 @@ const ARRAYS = new Set([
   'rss.channel.wp:tag',
   'rss.channel.item.category',
   'rss.channel.item.wp:comment',
+  'rss.channel.item.wp:postmeta',
 ]);
 
 const parser = new XMLParser({
@@ -31,6 +32,11 @@ const parser = new XMLParser({
 const MAX_ITEMS = 10_000;
 const MAX_TERMS = 20_000;
 const MAX_COMMENTS = 100_000;
+const MAX_META = 200_000;
+
+/** Post meta the importer uses; everything else (plugin data, edit locks) is ignored. */
+const META_KEY =
+  /^(_thumbnail_id|_menu_item_(type|object|object_id|url|menu_item_parent|target))$/;
 
 /** Text content of a parsed value (plain text, CDATA or an element with attributes). */
 const str = (value: unknown): string => {
@@ -73,8 +79,15 @@ const comment = (node: Node): WxrComment => ({
     new Date(0),
 });
 
-const decodedSlug = (value: unknown) =>
-  decodeURIComponent(str(value)).normalize('NFC');
+/** WordPress stores non-ASCII slugs percent-encoded; malformed escapes stay as written. */
+const decodedSlug = (value: unknown) => {
+  const raw = str(value);
+  try {
+    return decodeURIComponent(raw).normalize('NFC');
+  } catch {
+    return raw.normalize('NFC');
+  }
+};
 
 const item = (node: Node): WxrItem => {
   const terms = list(node.category);
@@ -99,18 +112,36 @@ const item = (node: Node): WxrItem => {
     categories: slugs('category'),
     tags: slugs('post_tag'),
     comments: list(node['wp:comment']).map(comment),
+    link: str(node.link),
+    parentId: str(node['wp:post_parent']),
+    menuOrder: Number(str(node['wp:menu_order'])) || 0,
+    attachmentUrl: str(node['wp:attachment_url']),
+    meta: Object.fromEntries(
+      list(node['wp:postmeta']).flatMap((meta) => {
+        const key = str(meta['wp:meta_key']);
+        return META_KEY.test(key) ? [[key, str(meta['wp:meta_value'])]] : [];
+      }),
+    ),
+    menus: terms
+      .filter((term) => str(term['@_domain']) === 'nav_menu')
+      .map((term) => ({
+        slug: decodedSlug(term['@_nicename']),
+        name: str(term),
+      })),
   };
 };
 
 const term = (node: Node, kind: 'category' | 'tag'): WxrTerm =>
   kind === 'category'
     ? {
+        id: str(node['wp:term_id']),
         slug: decodedSlug(node['wp:category_nicename']),
         name: str(node['wp:cat_name']),
         description: str(node['wp:category_description']),
         parent: decodedSlug(node['wp:category_parent']) || null,
       }
     : {
+        id: str(node['wp:term_id']),
         slug: decodedSlug(node['wp:tag_slug']),
         name: str(node['wp:tag_name']),
         description: str(node['wp:tag_description']),
@@ -134,6 +165,7 @@ export const fastXmlWxrParser: WxrParser = {
     const document = {
       title: str(channel.title),
       link: str(channel.link),
+      baseUrl: str(channel['wp:base_site_url']) || str(channel.link),
       authors: list(channel['wp:author']).map((author) => ({
         login: str(author['wp:author_login']),
         email: str(author['wp:author_email']),
@@ -151,7 +183,11 @@ export const fastXmlWxrParser: WxrParser = {
       document.items.reduce(
         (total, entry) => total + entry.comments.length,
         0,
-      ) > MAX_COMMENTS
+      ) > MAX_COMMENTS ||
+      list(channel.item).reduce(
+        (total, entry) => total + list(entry['wp:postmeta']).length,
+        0,
+      ) > MAX_META
     )
       throw invalidInput(Errors.ImportInvalid);
     return document;

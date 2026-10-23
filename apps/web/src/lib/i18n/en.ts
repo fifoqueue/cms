@@ -1263,6 +1263,25 @@ export const en = {
     `The alternative text could not be saved to the library (${reason}). Press the button again to use it here only.`,
   seoTabs: 'SEO settings',
   // site-theme
+  importAuthors: 'Assign authors',
+  importAuthorsHelp:
+    'Authors are matched to existing users by email address or login. For authors without a match:',
+  importAuthorMode: (mode: string) =>
+    mode === 'author'
+      ? 'Create a new user with the Author role'
+      : mode === 'subscriber'
+        ? 'Create a new user with the Subscriber role'
+        : 'Assign their posts to me',
+  importMoreSummary: (users: number, menus: number, redirects: number) =>
+    `${users} users and ${menus} menus created; ${redirects} old addresses now redirect.`,
+  importAttachments: (count: number) =>
+    count === 1 ? '1 media file to upload' : `${count} media files to upload`,
+  importAttachmentsHelp:
+    'Media files were not copied. Entries still show them from the old site; upload them to the media library and replace them, including featured images.',
+  importFeatured: (count: number) =>
+    count === 1
+      ? 'featured image of 1 entry'
+      : `featured image of ${count} entries`,
   adminBarEditCategory: 'Edit category',
   adminBarEditTag: 'Edit tag',
   adminBarEditTerm: 'Edit term',
