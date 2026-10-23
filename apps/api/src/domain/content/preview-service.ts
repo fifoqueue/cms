@@ -24,7 +24,7 @@ export class PreviewService {
       renderer: DocumentRenderer;
       signer: Signer;
       clock: Clock;
-      embeds: Embeds;
+      embeds: Pick<Embeds, 'expand'>;
       fields: Pick<FieldService, 'present'>;
     },
   ) {}

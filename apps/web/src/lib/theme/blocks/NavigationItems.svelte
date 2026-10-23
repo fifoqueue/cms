@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import { ChevronDown } from '@lucide/svelte';
   import type { MenuItemView } from '#lib/server/public-view.js';
   import NavigationItems from '#lib/theme/blocks/NavigationItems.svelte';
@@ -33,10 +34,11 @@
         href={item.url}
         target={item.newTab ? '_blank' : undefined}
         rel={item.newTab ? 'noopener' : undefined}
+        aria-current={item.url === page.url.pathname ? 'page' : undefined}
         aria-haspopup={orientation === 'horizontal' && item.children.length
           ? 'true'
           : undefined}
-        class="flex items-center gap-1 rounded-[calc(var(--radius)*0.75)] px-3 py-2 text-muted-foreground transition hover:bg-muted hover:text-foreground {orientation ===
+        class="flex items-center gap-1 rounded-[calc(var(--radius)*0.75)] px-3 py-2 text-muted-foreground transition hover:bg-muted hover:text-foreground aria-[current=page]:font-medium aria-[current=page]:text-foreground {orientation ===
           'horizontal' && nested
           ? 'justify-between'
           : ''}"

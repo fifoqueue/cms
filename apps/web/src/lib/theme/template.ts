@@ -35,6 +35,11 @@ export type ThemePage =
     }
   | { kind: 'error'; status: number; message: string };
 
+/** `/` is the front page whether it lists posts or shows the static front page. */
+export const isFrontPage = (page: ThemePage) =>
+  (page.kind === 'home' && !page.path && page.type === 'post') ||
+  (page.kind === 'content' && page.content.path === '/');
+
 // Names are only looked up in the theme's validated template record; unknown names fall through.
 const suffix = (value: string) => [value];
 

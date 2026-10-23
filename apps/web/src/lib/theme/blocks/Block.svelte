@@ -6,6 +6,8 @@
   import type { SitePage } from '#lib/seo/head.js';
   import { useI18n } from '#lib/i18n/index.js';
   import WidgetArea from '#lib/theme/WidgetArea.svelte';
+  import BlockList from '#lib/theme/blocks/BlockList.svelte';
+  import Buttons from '#lib/theme/blocks/Buttons.svelte';
   import Columns from '#lib/theme/blocks/Columns.svelte';
   import CommentsBlock from '#lib/theme/blocks/CommentsBlock.svelte';
   import ContentTypeNav from '#lib/theme/blocks/ContentTypeNav.svelte';
@@ -16,11 +18,13 @@
   import PostFeaturedImage from '#lib/theme/blocks/PostFeaturedImage.svelte';
   import PostFields from '#lib/theme/blocks/PostFields.svelte';
   import PostMeta from '#lib/theme/blocks/PostMeta.svelte';
+  import PostNavigation from '#lib/theme/blocks/PostNavigation.svelte';
   import PostTerms from '#lib/theme/blocks/PostTerms.svelte';
   import PostTitle from '#lib/theme/blocks/PostTitle.svelte';
   import Query from '#lib/theme/blocks/Query.svelte';
   import QueryTitle from '#lib/theme/blocks/QueryTitle.svelte';
   import SearchForm from '#lib/theme/blocks/SearchForm.svelte';
+  import SocialLinks from '#lib/theme/blocks/SocialLinks.svelte';
   import TemplatePart from '#lib/theme/blocks/TemplatePart.svelte';
   import { useScope } from '#lib/theme/scope.js';
 
@@ -87,6 +91,27 @@
       {scope().site.description}
     </p>
   {/if}
+{:else if block.name === 'site-logo'}
+  {@const logo = scope().site.logo}
+  {#if logo}
+    <svelte:element
+      this={block.attrs.link ? 'a' : 'div'}
+      href={block.attrs.link ? resolve('/(site)') : undefined}
+      class="cms-block-site-logo block shrink-0"
+      style:width="{block.attrs.width}px"
+    >
+      <img
+        src={logo.sizes.find((size) => size.width >= block.attrs.width * 2)
+          ?.url ?? logo.url}
+        alt={block.attrs.link ? scope().site.title : logo.alt}
+        width={block.attrs.width}
+        height={logo.width && logo.height
+          ? Math.round((block.attrs.width * logo.height) / logo.width)
+          : undefined}
+        class="h-auto w-full"
+      />
+    </svelte:element>
+  {/if}
 {:else if block.name === 'navigation'}
   <Navigation {block} />
 {:else if block.name === 'search'}
@@ -117,6 +142,8 @@
   <PostFields />
 {:else if block.name === 'comments'}
   <CommentsBlock />
+{:else if block.name === 'post-navigation'}
+  <PostNavigation {block} />
 {:else if block.name === 'breadcrumbs'}
   {@const page = scope().page}
   {#if page.kind === 'content' || page.kind === 'term'}
@@ -155,6 +182,27 @@
     class="cms-block-spacer {SPACER[block.attrs.size]}"
     aria-hidden="true"
   ></div>
+{:else if block.name === 'buttons'}
+  <Buttons {block} />
+{:else if block.name === 'social-links'}
+  <SocialLinks {block} />
+{:else if block.name === 'latest-posts' || block.name === 'categories' || block.name === 'tag-cloud' || block.name === 'archives'}
+  <BlockList {block} />
+{:else if block.name === 'loginout'}
+  {#if scope().signedIn}
+    <form
+      method="POST"
+      action={resolve('/admin/logout')}
+      class="cms-block-loginout text-sm"
+    >
+      <button type="submit" class="hover:underline">{i18n.m.signOut}</button>
+    </form>
+  {:else}
+    <a
+      href={resolve('/admin/(auth)/login')}
+      class="cms-block-loginout text-sm hover:underline">{i18n.m.themeSignIn}</a
+    >
+  {/if}
 {:else if block.name === 'copyright'}
   <p class="cms-block-copyright text-sm text-muted-foreground">
     © {new Date().getFullYear()}

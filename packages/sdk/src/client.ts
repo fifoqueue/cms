@@ -97,8 +97,17 @@ import {
   pluginPageSummarySchema,
   pluginUpdateSchema,
 } from '#sdk/plugins';
-import type { PublicSiteDto, SiteSettings } from '#sdk/site';
-import { publicSiteSchema, siteSettingsSchema } from '#sdk/site';
+import type {
+  AdminSiteDto,
+  PublicSiteDto,
+  SiteSettings,
+  SiteSettingsInput,
+} from '#sdk/site';
+import {
+  adminSiteSchema,
+  publicSiteSchema,
+  siteSettingsSchema,
+} from '#sdk/site';
 import type { SlotMap, SlotQuery } from '#sdk/slots';
 import { slotMapSchema } from '#sdk/slots';
 import type {
@@ -414,7 +423,11 @@ export const createAdminClient = (options: ClientOptions, token: string) => {
       ...contentWorkflowClient(request),
     },
     site: {
-      update: (input: SiteSettings) =>
+      get: () =>
+        request<AdminSiteDto>('GET', '/api/v1/admin/site', {
+          response: adminSiteSchema,
+        }),
+      update: (input: SiteSettingsInput) =>
         request<SiteSettings>('PUT', '/api/v1/admin/site', {
           json: input,
           response: siteSettingsSchema,

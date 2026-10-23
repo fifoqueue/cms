@@ -1,11 +1,19 @@
 import {
+  adjacentQuerySchema,
   can,
   isJsonValue,
+  monthsQuerySchema,
   publicContentListQuerySchema,
   publicContentSchema,
   publicContentSummarySchema,
 } from '@cms/sdk';
-import type { Paginated, PublicContent, PublicContentSummary } from '@cms/sdk';
+import type {
+  Paginated,
+  PublicAdjacent,
+  PublicContent,
+  PublicContentSummary,
+  PublicMonth,
+} from '@cms/sdk';
 import { authorize } from '#api/domain/auth/authorization';
 import type { Actor } from '#api/domain/auth/authorization';
 import type { ContentReader } from '@cms/sdk/plugin';
@@ -83,6 +91,19 @@ export class PublishedContentReader implements ContentReader {
     });
   }
 
+  async adjacent(id: string) {
+    const { previous, next } = await this.repository.adjacent(id);
+    return {
+      previous: previous && toPublicSummary(previous),
+      next: next && toPublicSummary(next),
+    };
+  }
+
+  /** Months with published posts, newest first. */
+  months(limit: number) {
+    return this.repository.months(['post'], limit);
+  }
+
   /**
    * `unlock` decides whether a protected body may be shown (by default it stays locked);
    * `fields` projects the stored custom fields (by default none are served).
@@ -150,7 +171,8 @@ export class PublicContentService {
     private readonly reader: PublishedContentReader,
     private readonly hooks: HookDispatcher,
     private readonly locks: ContentLocks,
-    private readonly embeds: Embeds,
+    /** Served-HTML expansion: embeds, responsive images. */
+    private readonly embeds: Pick<Embeds, 'expand'>,
     private readonly fields: Pick<FieldService, 'present'>,
     private readonly types: Pick<ContentTypeService, 'list'>,
     private readonly search?: Pick<SearchService, 'find'>,
@@ -213,6 +235,21 @@ export class PublicContentService {
       );
     }
     return content ? this.present(content) : null;
+  }
+
+  /** Previous and next entries of the same type, after the summary filter. */
+  async adjacent(query: unknown): Promise<PublicAdjacent> {
+    const { contentId } = parseInput(adjacentQuerySchema, query);
+    const { previous, next } = await this.reader.adjacent(contentId);
+    return {
+      previous: previous && (await this.summarize(previous)),
+      next: next && (await this.summarize(next)),
+    };
+  }
+
+  async months(query: unknown): Promise<PublicMonth[]> {
+    const { limit } = parseInput(monthsQuerySchema, query);
+    return this.reader.months(limit);
   }
 
   private async indexed(

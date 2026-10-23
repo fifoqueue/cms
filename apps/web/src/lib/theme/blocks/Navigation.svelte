@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { afterNavigate } from '$app/navigation';
   import { Menu, X } from '@lucide/svelte';
   import type { Block } from '@cms/sdk';
   import { useI18n } from '#lib/i18n/index.js';
@@ -26,6 +27,12 @@
         }))
       : [];
   });
+  let menu = $state<HTMLDetailsElement>();
+  // The page changes without a reload, so the open menu must close itself.
+  afterNavigate(() => {
+    if (menu) menu.open = false;
+  });
+
   const label = $derived(
     a.location === 'primary' ? m.primaryNavigation : m.footerNavigation,
   );
@@ -37,7 +44,7 @@
       <div class="hidden md:block">
         <NavigationItems {items} orientation="horizontal" />
       </div>
-      <details class="group/menu relative md:hidden">
+      <details bind:this={menu} class="group/menu relative md:hidden">
         <summary
           class="flex size-9 cursor-pointer list-none items-center justify-center rounded-full hover:bg-muted [&::-webkit-details-marker]:hidden"
           aria-label={m.themeMenu}

@@ -40,6 +40,7 @@ const { actions: editContentActions } =
 const { actions: appearanceActions } =
   await import('#web/routes/admin/(app)/appearance/+page.server.js');
 const { removeApiSecrets } = await import('#web-env');
+const { GET: feed } = await import('#web/routes/feed.xml/+server.js');
 const { actions: editorActions } =
   await import('#web/routes/admin/(app)/appearance/editor/+page.server.js');
 
@@ -284,6 +285,7 @@ const publicEvent = (
     cookies: { getAll: () => [], get: () => undefined },
     parent: async () => ({
       reading,
+      theme,
       archives: {
         bases: { category: '/category', tag: '/tag' },
         history: { category: [], tag: [] },
@@ -421,6 +423,71 @@ describe('public page data', () => {
         (thrown: unknown) => thrown,
       ),
     ).toMatchObject({ status: 502 });
+  });
+
+  test('block data shared by the error template and the page, and archive slots, load once', async () => {
+    const footer = [{ name: 'latest-posts', attrs: { count: 5 } }];
+    const shared = {
+      ...theme,
+      templates: {
+        index: [{ name: 'template-part', attrs: { slug: 'footer' } }],
+        single: [
+          { name: 'post-navigation' },
+          { name: 'template-part', attrs: { slug: 'footer' } },
+        ],
+      },
+      parts: [{ slug: 'footer', area: 'footer', blocks: footer }],
+    };
+    override = ({ url }) =>
+      url.pathname === '/api/v1/layout'
+        ? json({
+            site: { title: 'Site', description: '', locale: 'en' },
+            seo: SEO_SETTINGS_DEFAULTS,
+            theme: shared,
+            reading,
+            menus: { primary: null, footer: null },
+            widgets: { sidebar: [], footer: [] },
+            archives: {
+              bases: { category: '/topics', tag: '/tag' },
+              history: { category: [], tag: [] },
+            },
+          })
+        : url.pathname === '/api/v1/adjacent'
+          ? json({ previous: null, next: null })
+          : undefined;
+    const layout = await loadSiteLayout(publicEvent('/'));
+    const withLayout = (path: string) =>
+      ({
+        ...(publicEvent(path) as object),
+        parent: async () => layout,
+      }) as never;
+    const entry = await loadEntry(withLayout('/hello'));
+    const latest = calls.filter(
+      ({ url }) =>
+        url.pathname === '/api/v1/content' &&
+        url.searchParams.get('pageSize') === '5',
+    );
+    expect(latest).toHaveLength(1);
+    expect(entry).toMatchObject({ adjacent: { previous: null, next: null } });
+
+    calls = [];
+    expect(await loadEntry(withLayout('/topics/news'))).toMatchObject({
+      kind: 'term',
+    });
+    const paths = calls.map(({ url }) => url.pathname);
+    expect(paths.filter((path) => path === '/api/v1/slots')).toHaveLength(1);
+    expect(paths).not.toContain('/api/v1/content-types');
+  });
+
+  test('feeds refuse values that are not slugs instead of shortening them', async () => {
+    const response = await feed({
+      fetch: fakeFetch,
+      url: new URL(`http://web.test/feed.xml?category=${'a'.repeat(192)}`),
+    } as never);
+    expect(response.status).toBe(404);
+    expect(
+      calls.some(({ url }) => url.pathname.startsWith('/api/v1/taxonomies')),
+    ).toBe(false);
   });
 });
 
