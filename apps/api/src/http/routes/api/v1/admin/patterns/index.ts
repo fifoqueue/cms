@@ -5,7 +5,9 @@ import { session } from '#api/http/session';
 
 export const routes = (app: ApiApp) =>
   session(app)
-    .get('', async ({ patterns, user }) => json(await patterns.list(user)))
+    .get('', async ({ patterns, query, user }) =>
+      json(await patterns.list(query, user)),
+    )
     .post('', async ({ patterns, request, user }) =>
       json(
         await patterns.create(

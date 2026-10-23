@@ -1,5 +1,6 @@
 // In-memory adapters for tests. They honour the same port contracts as the Prisma adapters.
-import { stringifyJson } from '@cms/sdk';
+import { stringifyJson, patternSummarySchema } from '@cms/sdk';
+import type { PatternCriteria } from '#api/domain/content/pattern-catalog';
 import type { TaxonomyType, UserProfile } from '@cms/sdk';
 import type { UserRecord } from '#api/domain/auth/ports';
 import { ContentLocks } from '#api/domain/content/content-locks';
@@ -607,6 +608,30 @@ export const testLocks = (
 
 /** Plain settings storage for services that keep definitions in core settings. */
 export class MemorySettings {
+  async summaries({ page, pageSize, search, authorId }: PatternCriteria) {
+    const rows = [...this.values]
+      .flatMap(([key, value]) => {
+        const parsed = key.startsWith('pattern.')
+          ? patternSummarySchema.safeParse(value)
+          : null;
+        return parsed?.success ? [parsed.data] : [];
+      })
+      .filter(
+        (row) =>
+          (authorId === undefined ||
+            row.status === 'published' ||
+            row.authorId === authorId) &&
+          (!search || row.title.toLowerCase().includes(search.toLowerCase())),
+      )
+      .sort(
+        (a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id),
+      );
+    return {
+      items: rows.slice((page - 1) * pageSize, page * pageSize),
+      total: rows.length,
+    };
+  }
+
   async list(prefix: string): Promise<Record<string, unknown>> {
     return Object.fromEntries(
       [...this.values]

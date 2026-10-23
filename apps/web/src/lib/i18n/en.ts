@@ -332,10 +332,8 @@ export const en = {
   mediaDimensions: 'Dimensions',
   mediaUploadedBy: 'Uploaded by',
   mediaUsed: (count: number) =>
-    count
-      ? `Shown by ${count} ${count === 1 ? 'entry' : 'entries'}`
-      : 'Not used yet',
-  mediaDeleteUsed: 'Delete even though entries show it',
+    count ? `Used by ${count} entries or patterns` : 'Not used yet',
+  mediaDeleteUsed: 'Delete even though entries or patterns use it',
   mediaChoose: 'Choose from library',
   mediaRemoveFeatured: 'Remove',
   featuredImage: 'Featured image',
@@ -1671,4 +1669,6 @@ export const en = {
       }) as Record<string, string>
     )[status] ?? status,
   skipToContent: 'Skip to main content',
+  // pattern-followup
+  patternLoadFailed: 'The pattern could not be loaded. Try selecting it again.',
 } as const;

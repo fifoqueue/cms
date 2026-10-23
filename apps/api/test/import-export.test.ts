@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { MenusSettings } from '@cms/sdk';
+import { CONTENT_DOCUMENT_LIMITS } from '@cms/sdk';
 import { ContentService } from '#api/domain/content/content-service';
 import { PatternService } from '#api/domain/content/pattern-service';
 import { TaxonomyService } from '#api/domain/taxonomy/taxonomy-service';
@@ -11,6 +12,7 @@ import { HookBus } from '#api/plugin-runtime/hook-bus';
 import {
   ADMIN,
   MemoryContentRepository,
+  MemorySettings,
   fixedClock,
   noUsers,
   plainHasher,
@@ -21,7 +23,6 @@ import {
   userRecord,
 } from '#test/support/memory';
 import { MemoryCommentRepository } from '#test/support/memory-comments';
-import { MemorySeoSettingsRepository } from '#test/support/memory-seo';
 import { MemoryTaxonomyRepository } from '#test/support/memory-taxonomy';
 import { MemoryUserDirectory } from '#test/support/memory-users';
 import { MemoryUsers } from '#test/support/sso-memory';
@@ -46,8 +47,10 @@ const site = async () => {
     fields: testFields(),
   });
   const comments = new MemoryCommentRepository(content);
+  const settings = new MemorySettings();
   const patterns = new PatternService({
-    settings: new MemorySeoSettingsRepository(),
+    settings,
+    catalog: settings,
     renderer: tiptapRenderer,
     ids,
     clock,
@@ -65,6 +68,7 @@ const site = async () => {
     taxonomy,
     comments,
     patterns,
+    clock,
     importer: new ImportService({
       parser: fastXmlWxrParser,
       html: tiptapHtmlParser,
@@ -218,6 +222,16 @@ test('patterns, teaser and page breaks survive a WXR round trip, and synced edit
     },
     ADMIN,
   );
+  const outer = await source.patterns.create(
+    {
+      title: 'Outer',
+      document: {
+        type: 'doc',
+        content: [{ type: 'patternRef', attrs: { ref: pattern.id } }],
+      },
+    },
+    ADMIN,
+  );
   await source.service.create(
     {
       type: 'post',
@@ -230,7 +244,7 @@ test('patterns, teaser and page breaks survive a WXR round trip, and synced edit
           { type: 'more' },
           paragraph('Rest'),
           { type: 'pageBreak' },
-          { type: 'patternRef', attrs: { ref: pattern.id } },
+          { type: 'patternRef', attrs: { ref: outer.id } },
         ],
       },
     },
@@ -239,6 +253,7 @@ test('patterns, teaser and page breaks survive a WXR round trip, and synced edit
   const [entry] = [...source.content.rows.values()];
   // The teaser is the summary; the served body shows the pattern's current text.
   expect(entry?.summary).toBe('Teaser text');
+  source.clock.set('2026-06-02T00:00:00.000Z');
   await source.patterns.update(
     pattern.id,
     {
@@ -254,8 +269,17 @@ test('patterns, teaser and page breaks survive a WXR round trip, and synced edit
   expect(xml).toContain('<!--nextpage-->');
 
   const target = await site();
-  await target.importer.importWxr(xml, ADMIN);
-  const [copy] = await target.patterns.list(ADMIN);
+  expect(xml.indexOf('<title><![CDATA[Outer]]>')).toBeLessThan(
+    xml.indexOf('<title><![CDATA[Signup]]>'),
+  );
+  const result = await target.importer.importWxr(xml, ADMIN);
+  expect(result.skipped).toEqual([]);
+  const { items } = await target.patterns.list({}, ADMIN);
+  const copy = items.find((item) => item.title === 'Outer');
+  const inner = items.find((item) => item.title === 'Signup');
+  expect(
+    (await target.patterns.get(copy!.id, ADMIN)).document.content?.[0]?.attrs,
+  ).toEqual({ ref: inner!.id });
   const imported = [...target.content.rows.values()][0]!;
   expect(imported.document.content?.map((node) => node.type)).toEqual([
     'paragraph',
@@ -420,4 +444,110 @@ second line
       },
     ],
   });
+});
+
+test('pattern expansion counts repeated cached references, including nested occurrences', async () => {
+  const { patterns } = await site();
+  let current = await patterns.create(
+    {
+      title: 'Leaf',
+      document: {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'x'.repeat(1024) }],
+          },
+        ],
+      },
+    },
+    ADMIN,
+  );
+  for (let depth = 0; depth < 3; depth++) {
+    current = await patterns.create(
+      {
+        title: `Level ${depth}`,
+        document: {
+          type: 'doc',
+          content: Array.from({ length: 20 }, () => ({
+            type: 'patternRef',
+            attrs: { ref: current.id },
+          })),
+        },
+      },
+      ADMIN,
+    );
+  }
+  const html = await patterns.expand(
+    `<div class="cms-pattern" data-cms-pattern="${current.id}"></div>`,
+  );
+  expect(html.length).toBeGreaterThan(1024);
+  expect(html.length).toBeLessThanOrEqual(50 * 1031);
+  expect(html).not.toContain('data-cms-pattern');
+});
+
+test('pattern expansion rejects aggregate bytes before returning partial markup', async () => {
+  const { patterns } = await site();
+  const pattern = await patterns.create(
+    {
+      title: 'Large',
+      document: {
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: '한'.repeat(100_000) }],
+          },
+        ],
+      },
+    },
+    ADMIN,
+  );
+  const marker = `<div class="cms-pattern" data-cms-pattern="${pattern.id}"></div>`;
+  expect(
+    new TextEncoder().encode(await patterns.expand(marker.repeat(3))).length,
+  ).toBeLessThan(1024 * 1024);
+  expect(await patterns.expand(marker.repeat(4))).toBe('');
+});
+
+test('contributors cannot change or remove their pattern after an editor publishes it', async () => {
+  const { patterns } = await site();
+  const contributor = { id: 'contributor', role: 'contributor' };
+  const input = {
+    title: 'Reviewed',
+    status: 'draft',
+    document: { type: 'doc', content: [{ type: 'paragraph' }] },
+  };
+  const pattern = await patterns.create(input, contributor);
+  await patterns.update(pattern.id, { ...input, status: 'published' }, ADMIN);
+  await expect(
+    patterns.update(pattern.id, input, contributor),
+  ).rejects.toMatchObject({ code: 'forbidden' });
+  await expect(patterns.remove(pattern.id, contributor)).rejects.toMatchObject({
+    code: 'forbidden',
+  });
+  expect((await patterns.get(pattern.id, ADMIN)).status).toBe('published');
+});
+
+test('a rejected imported pattern body removes its staged draft and reports the failure', async () => {
+  const source = await site();
+  await source.patterns.create(
+    {
+      title: 'Invalid nested body',
+      document: {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'too deep' }] },
+        ],
+      },
+    },
+    ADMIN,
+  );
+  const xml = (await source.exporter.exportWxr(ADMIN)).replace(
+    '<p>too deep</p>',
+    `${'<blockquote>'.repeat(CONTENT_DOCUMENT_LIMITS.depth)}<p>too deep</p>${'</blockquote>'.repeat(CONTENT_DOCUMENT_LIMITS.depth)}`,
+  );
+  const target = await site();
+  expect((await target.importer.importWxr(xml, ADMIN)).skipped).toHaveLength(1);
+  expect((await target.patterns.list({}, ADMIN)).total).toBe(0);
 });

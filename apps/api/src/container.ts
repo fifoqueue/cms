@@ -16,6 +16,7 @@ import { MediaService } from '#api/domain/media/media-service';
 import { ReadingService } from '#api/domain/site/reading-service';
 import { WritingService } from '#api/domain/site/writing-service';
 import { DashboardPreferencesService } from '#api/domain/dashboard/dashboard-preferences';
+import { PrismaPatternCatalog } from '#api/infra/prisma/pattern-catalog';
 import { PatternService } from '#api/domain/content/pattern-service';
 import { MenuService } from '#api/domain/appearance/menu-service';
 import { ContentTypeService } from '#api/domain/content/content-types';
@@ -244,6 +245,7 @@ export const createContainer = async (
   const blockRegistry = new BlockRegistry({ timeoutMs, logger });
   const patterns = new PatternService({
     settings: settingsRepository,
+    catalog: new PrismaPatternCatalog(db),
     renderer: tiptapRenderer,
     ids: uuidV7,
     clock: systemClock,

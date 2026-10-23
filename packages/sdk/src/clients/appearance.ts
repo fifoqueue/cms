@@ -13,8 +13,14 @@ import type {
 } from '#sdk/menus';
 import { publicReadingSchema, readingSettingsSchema } from '#sdk/reading';
 import { writingSettingsSchema } from '#sdk/writing';
-import { adminPatternSchema } from '#sdk/patterns';
-import type { AdminPattern, PatternInput } from '#sdk/patterns';
+import { adminPatternSchema, patternListSchema } from '#sdk/patterns';
+import type { Paginated } from '#sdk/common';
+import type {
+  AdminPattern,
+  PatternInput,
+  PatternSummary,
+  PatternListQuery,
+} from '#sdk/patterns';
 import type { WritingSettings, WritingSettingsInput } from '#sdk/writing';
 import type {
   PublicReading,
@@ -63,9 +69,10 @@ export const publicAppearanceClient = (request: Request) => ({
 export const appearanceAdminClient = (request: Request) => ({
   /** Patterns: writers list and use them; changing another user's needs `content.editOthers`. */
   patterns: {
-    list: () =>
-      request<AdminPattern[]>('GET', '/api/v1/admin/patterns', {
-        response: z.array(adminPatternSchema),
+    list: (query: PatternListQuery = {}) =>
+      request<Paginated<PatternSummary>>('GET', '/api/v1/admin/patterns', {
+        query,
+        response: patternListSchema,
       }),
     get: (id: string) =>
       request<AdminPattern>(

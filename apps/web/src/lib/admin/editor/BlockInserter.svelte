@@ -8,16 +8,13 @@
   import BlockOptions from '#lib/admin/editor/BlockOptions.svelte';
   import { mediaNode } from '#lib/admin/editor/blocks.js';
   import { loadPluginBlocks } from '#lib/admin/editor/plugin-blocks.js';
-  import { patternContent } from '#lib/admin/editor/patterns.js';
+  import { loadPatterns, patternContent } from '#lib/admin/editor/patterns.js';
   import type { PatternChoice } from '#lib/admin/editor/patterns.js';
   import { Input } from '#lib/components/ui/input/index.js';
   import { useI18n } from '#lib/i18n/index.js';
   import '#lib/theme/site.css';
 
-  let {
-    editor,
-    patterns = [],
-  }: { editor: Editor | null; patterns?: PatternChoice[] } = $props();
+  let { editor }: { editor: Editor | null } = $props();
   const i18n = useI18n();
   const m = $derived(i18n.m);
   let open = $state(false);
@@ -59,16 +56,71 @@
   const name = (type: string) =>
     pluginBlocks.find((entry) => entry.block === type)?.title ??
     m.contentBlockName(type);
-  const patternMatches = $derived(
-    patterns.filter((pattern) =>
-      pattern.title.toLowerCase().includes(search.trim().toLowerCase()),
-    ),
-  );
-  const insertPattern = (pattern: PatternChoice) => {
+  let library = $state<PatternChoice[]>([]);
+  let patternPage = $state(1);
+  let patternTotal = $state(0);
+  let patternLoading = $state(false);
+  let patternError = $state('');
+  let inserting = $state(false);
+  let lastSearch = '';
+  $effect(() => {
+    if (!open) return;
+    const query = search.trim();
+    if (query !== lastSearch) {
+      lastSearch = query;
+      patternPage = 1;
+    }
+    const page = patternPage;
+    const controller = new AbortController();
+    patternLoading = true;
+    patternError = '';
+    const timer = setTimeout(async () => {
+      const result = await loadPatterns(query, page, controller.signal);
+      if (controller.signal.aborted) return;
+      patternLoading = false;
+      if (!result) {
+        library = [];
+        patternTotal = 0;
+        patternError = m.patternLoadFailed;
+        return;
+      }
+      library = result.items;
+      patternTotal = Math.ceil(result.total / result.pageSize);
+    }, 200);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  });
+
+  const insertPattern = async (pattern: PatternChoice) => {
+    if (!editor || inserting) return;
+    const current = editor;
+    const state = current.state;
+    inserting = true;
+    const content = await patternContent(pattern);
+    inserting = false;
+    if (
+      !open ||
+      !content ||
+      current.isDestroyed ||
+      editor !== current ||
+      current.state.doc !== state.doc
+    ) {
+      patternError = m.patternLoadFailed;
+      return;
+    }
     chosen = true;
     open = false;
     search = '';
-    insert(patternContent(pattern));
+    current
+      .chain()
+      .focus()
+      .insertContentAt(
+        { from: state.selection.from, to: state.selection.to },
+        content,
+      )
+      .run();
   };
   const matches = $derived(
     [...blocks, ...pluginBlocks.map((entry) => entry.block)].filter((type) =>
@@ -236,15 +288,16 @@
         {#if !matches.length}<p class="p-3 text-sm text-muted-foreground">
             {m.contentNoBlocks}
           </p>{/if}
-        {#if patternMatches.length}
+        {#if library.length}
           <h3 class="mt-3 px-1 text-xs font-medium text-muted-foreground">
             {m.patternsTitle}
           </h3>
           <ul class="mt-1 grid max-h-40 gap-1 overflow-y-auto">
-            {#each patternMatches as pattern (pattern.id)}<li>
+            {#each library as pattern (pattern.id)}<li>
                 <button
                   type="button"
                   class="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+                  disabled={inserting || patternLoading}
                   onclick={() => insertPattern(pattern)}
                   >{pattern.title}{pattern.synced
                     ? ` · ${m.patternSyncedShort}`
@@ -252,6 +305,27 @@
                 >
               </li>{/each}
           </ul>
+        {/if}
+        {#if patternError}<p role="alert" class="mt-2 text-sm text-destructive">
+            {patternError}
+          </p>{/if}
+        {#if patternTotal > 1}
+          <div
+            class="mt-2 flex items-center justify-between text-xs"
+            aria-busy={patternLoading}
+          >
+            <button
+              type="button"
+              disabled={patternPage <= 1 || patternLoading}
+              onclick={() => patternPage--}>{m.previous}</button
+            >
+            <span>{m.pageOf(patternPage, patternTotal)}</span>
+            <button
+              type="button"
+              disabled={patternPage >= patternTotal || patternLoading}
+              onclick={() => patternPage++}>{m.next}</button
+            >
+          </div>
         {/if}
       </Popover.Content>
     </Popover.Portal>
