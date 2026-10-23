@@ -164,6 +164,7 @@ export const actions: Actions = {
         {
           entry: contentId ? { id: contentId, author: author || null } : null,
           month: null,
+          authors: [],
         },
       );
     } catch (caught) {

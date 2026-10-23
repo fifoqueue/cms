@@ -41,6 +41,8 @@ const { actions: appearanceActions } =
   await import('#web/routes/admin/(app)/appearance/+page.server.js');
 const { removeApiSecrets } = await import('#web-env');
 const { GET: feed } = await import('#web/routes/feed.xml/+server.js');
+const { loadBlockData } = await import('#lib/server/theme-queries.js');
+const { contentApi } = await import('#lib/server/api.js');
 const { actions: editorActions } =
   await import('#web/routes/admin/(app)/appearance/editor/+page.server.js');
 
@@ -509,6 +511,34 @@ describe('public page data', () => {
     const paths = calls.map(({ url }) => url.pathname);
     expect(paths.filter((path) => path === '/api/v1/slots')).toHaveLength(1);
     expect(paths).not.toContain('/api/v1/content-types');
+  });
+
+  test('the page list reads every page and leaves out locked ones', async () => {
+    override = ({ url }) => {
+      if (url.pathname !== '/api/v1/content') return undefined;
+      const page = Number(url.searchParams.get('page'));
+      const items = Array.from(
+        { length: page === 1 ? 100 : 50 },
+        (_, index) => {
+          const {
+            html: _html,
+            fields: _fields,
+            ...item
+          } = content(`p${page}-${index}`, 'page');
+          return { ...item, protected: page === 2 && index === 0 };
+        },
+      );
+      return json({ items, total: 150, page, pageSize: 100 });
+    };
+    const { parseBlocks } = await import('@cms/sdk');
+    const data = await loadBlockData(
+      contentApi(fakeFetch),
+      parseBlocks([{ name: 'page-list' }]).blocks,
+    );
+    expect(data.pageTree).toHaveLength(149);
+    expect(data.pageTree!.map((entry) => entry.title)).not.toContain(
+      'Title p2-0',
+    );
   });
 
   test('feeds refuse values that are not slugs instead of shortening them', async () => {
