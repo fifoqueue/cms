@@ -355,13 +355,12 @@
   <NativeSelect id="bulk-action" name="action" size="sm">
     {#if trash}
       <NativeSelectOption value="restore">{m.restore}</NativeSelectOption>
-      <NativeSelectOption value="delete"
-        >{m.deletePermanently}</NativeSelectOption
-      >
     {:else}
       <NativeSelectOption value="edit">{m.edit}</NativeSelectOption>
       <NativeSelectOption value="trash">{m.moveToTrash}</NativeSelectOption>
     {/if}
+    <NativeSelectOption value="delete">{m.deletePermanently}</NativeSelectOption
+    >
   </NativeSelect>
   <Button type="submit" variant="outline" size="sm" disabled={!selected.length}
     >{m.apply}</Button
@@ -494,16 +493,6 @@
                       >{m.restore}</button
                     >
                   </form>
-                  <form
-                    method="POST"
-                    action="?/delete"
-                    use:enhance={confirmDelete}
-                  >
-                    <input type="hidden" name="id" value={item.id} />
-                    <button type="submit" class="row-action text-destructive"
-                      >{m.deletePermanently}</button
-                    >
-                  </form>
                 {:else}
                   <a
                     href={resolve('/admin/(app)/content/[id]', {
@@ -543,6 +532,18 @@
                       >
                     </form>
                   {/if}
+                {/if}
+                {#if editable}
+                  <form
+                    method="POST"
+                    action="?/delete"
+                    use:enhance={confirmDelete}
+                  >
+                    <input type="hidden" name="id" value={item.id} />
+                    <button type="submit" class="row-action text-destructive"
+                      >{m.deletePermanently}</button
+                    >
+                  </form>
                 {/if}
               </div>
             </TableCell>

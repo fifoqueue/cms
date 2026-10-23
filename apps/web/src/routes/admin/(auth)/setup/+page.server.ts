@@ -44,7 +44,7 @@ export const actions: Actions = {
     }
     redirect(303, '/admin/setup');
   },
-  complete: async ({ request, fetch, cookies }) => {
+  complete: async ({ request, fetch, cookies, url }) => {
     const form = await request.formData();
     const values = {
       title: text(form, 'title'),
@@ -61,6 +61,7 @@ export const actions: Actions = {
     try {
       const grant = await installationApi(fetch).complete({
         token: text(form, 'token') || cookies.get(INSTALL_KEY_COOKIE) || '',
+        siteUrl: url.origin,
         admin: {
           name: values.name,
           email: values.email,

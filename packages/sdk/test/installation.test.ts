@@ -40,6 +40,7 @@ test('installation client uses the shared HTTP contract', async () => {
   };
   const complete = {
     token: 'key',
+    siteUrl: 'https://cms.example.com',
     admin: {
       name: '관리자',
       email: 'admin@example.com',

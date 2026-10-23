@@ -751,6 +751,11 @@ export const createBootstrap = async () => {
             runtime!.hooks,
             async () => new Map(),
           ).update(input.site);
+          const seo = new SeoSettingsService(settings);
+          await seo.update({
+            ...(await seo.getAdmin()),
+            siteUrl: input.siteUrl,
+          });
           return grant;
         }),
     },
