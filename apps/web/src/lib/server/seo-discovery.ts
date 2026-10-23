@@ -14,6 +14,7 @@ import { SEO_SITEMAP_PAGE_SIZE } from '@cms/sdk';
 import type { ContentClient } from '@cms/sdk/client';
 import { Errors } from '#lib/server/errors.js';
 import { contentMarkdown, markdownInline } from '#lib/server/markdown.js';
+import { markdownPath } from '#lib/seo/paths.js';
 
 export const SITEMAP_KINDS = ['content', 'category', 'tag'] as const;
 export type SitemapKind = (typeof SITEMAP_KINDS)[number];
@@ -252,9 +253,9 @@ export const llmsTxt = (
   const intro = markdownInline(
     settings.llmsIntro || settings.homeDescription || site.description,
   ).trim();
-  // Slugs are kebab-case, so these URLs hold nothing that could end a Markdown destination.
+  // Encoded slugs hold nothing that could end a Markdown destination.
   const links = items.map((content) => {
-    const url = absoluteUrl(origin, `/${content.slug}.md`);
+    const url = absoluteUrl(origin, markdownPath(content.slug));
     const summary = markdownInline(
       content.seo.description || content.excerpt,
     ).trim();

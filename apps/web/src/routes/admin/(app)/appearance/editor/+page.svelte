@@ -250,7 +250,7 @@
           name="slug"
           placeholder={m.editorTemplateSlug}
           aria-label={m.editorTemplateSlug}
-          pattern="[a-z0-9]+(-[a-z0-9]+)*"
+          pattern={'[\\p{L}\\p{N}][\\p{L}\\p{N}\\p{M}]*(-[\\p{L}\\p{N}][\\p{L}\\p{N}\\p{M}]*)*'}
           class="h-8"
         />
         <Button type="submit" variant="outline" size="sm" class="w-full"

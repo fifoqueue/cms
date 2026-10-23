@@ -13,7 +13,9 @@ import type {
 import { guardUnique } from '#api/infra/prisma/client';
 import { PUBLIC_CONTENT } from '#api/infra/prisma/content-criteria';
 import type { Database } from '#api/infra/prisma/client';
-import type { Prisma, TaxonomyTerm } from '#api/infra/prisma/generated/client';
+import { Prisma } from '#api/infra/prisma/generated/client';
+import type { TaxonomyTerm } from '#api/infra/prisma/generated/client';
+import { takenSlugs } from '#api/infra/prisma/taken-slugs';
 import { fromSeoColumns, toSeoColumns } from '#api/infra/prisma/seo-mapper';
 import { Errors } from '#api/shared/errors';
 
@@ -72,11 +74,12 @@ export class PrismaTaxonomyRepository implements TaxonomyRepository {
   }
 
   async takenSlugs(taxonomy: TaxonomyType, slugs: readonly string[]) {
-    const rows = await this.db.taxonomyTerm.findMany({
-      where: { taxonomy, slug: { in: [...slugs] } },
-      select: { slug: true },
-    });
-    return new Set(rows.map((row) => row.slug));
+    return takenSlugs(
+      this.db,
+      'taxonomy_terms',
+      slugs,
+      Prisma.sql`AND t.taxonomy = ${taxonomy}`,
+    );
   }
 
   async insert(record: TaxonomyTermRecord) {

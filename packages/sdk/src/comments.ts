@@ -69,11 +69,14 @@ const authorUrlSchema = z
   )
   .default('');
 
+/** Stored comment author names are shorter than profile names (191). */
+export const COMMENT_AUTHOR_NAME_MAX = 100;
+
 /** A visitor's comment. `website` is a honeypot field that people never see or fill in. */
 export const commentInputSchema = z.object({
   contentId: z.string().min(1).max(36),
   parentId: z.string().max(36).nullable().default(null),
-  authorName: z.string().trim().min(1).max(100),
+  authorName: z.string().trim().min(1).max(COMMENT_AUTHOR_NAME_MAX),
   authorEmail: z.email().trim().toLowerCase().max(191),
   authorUrl: authorUrlSchema,
   body: z.string().trim().min(1).max(5000),

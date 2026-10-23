@@ -17,7 +17,7 @@ import type {
   PublicComment,
   PublicCommentPage,
 } from '@cms/sdk';
-import { PAGINATION_MAX_PAGE } from '@cms/sdk';
+import { COMMENT_AUTHOR_NAME_MAX, PAGINATION_MAX_PAGE } from '@cms/sdk';
 import { can } from '@cms/sdk/capabilities';
 import type { CommentDraft, PluginComment } from '@cms/sdk/plugin';
 import { z } from 'zod';
@@ -57,6 +57,13 @@ const draftSchema = z.object({
   body: z.string().trim().min(1).max(5000),
   status: z.enum(['pending', 'approved', 'spam']),
 });
+
+/** Profile names may exceed the comment column; cut on a code point, never mid-surrogate. */
+const authorName = (name: string) =>
+  name
+    .slice(0, COMMENT_AUTHOR_NAME_MAX)
+    .replace(/[\uD800-\uDBFF]$/, '')
+    .trim();
 
 const links = (text: string) => (text.match(/https?:\/\//gi) ?? []).length;
 
@@ -192,7 +199,7 @@ export class CommentService {
             commentInputSchema.omit({ authorName: true, authorEmail: true }),
             input,
           ),
-          authorName: user.name,
+          authorName: authorName(user.name),
           authorEmail: user.email,
         })
       : parseInput(commentInputSchema, input);
@@ -316,7 +323,7 @@ export class CommentService {
       contentId: parent.contentId,
       parentId: parent.id,
       userId: user.id,
-      authorName: user.name,
+      authorName: authorName(user.name),
       authorEmail: user.email,
       authorUrl: '',
       body,

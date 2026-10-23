@@ -110,7 +110,7 @@ export interface ContentCriteria {
  */
 export interface ContentRepository {
   findById(id: string): Promise<ContentRecord | null>;
-  /** The subset of `slugs` already used by stored content, in one read. */
+  /** The subset of `slugs` already used by stored content, in one read, compared as the store's unique index compares them. */
   takenSlugs(slugs: readonly string[]): Promise<Set<string>>;
   /** `total` counts every item matching the criteria. */
   list(

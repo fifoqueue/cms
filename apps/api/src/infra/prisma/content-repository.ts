@@ -18,6 +18,7 @@ import {
 } from '#api/infra/prisma/content-criteria';
 import type { Database } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
+import { takenSlugs } from '#api/infra/prisma/taken-slugs';
 import type { Content } from '#api/infra/prisma/generated/client';
 import { invalidInput, Errors } from '#api/shared/errors';
 import { fromSeoColumns, toSeoColumns } from '#api/infra/prisma/seo-mapper';
@@ -144,11 +145,7 @@ export class PrismaContentRepository implements ContentRepository {
   }
 
   async takenSlugs(slugs: readonly string[]) {
-    const rows = await this.db.content.findMany({
-      where: { slug: { in: [...slugs] } },
-      select: { slug: true },
-    });
-    return new Set(rows.map((row) => row.slug));
+    return takenSlugs(this.db, 'contents', slugs);
   }
 
   async list({ page, pageSize, orderBy, ...filters }: ContentCriteria) {

@@ -344,14 +344,21 @@ describe('ContentService', () => {
   });
 
   test('a protected body stays hidden, unsearchable and unlockable only with its current password', async () => {
-    const { service, publicContent, protectedActions } = setup();
+    const { service, publicContent, protectedActions, repository } = setup();
     const entry = await service.create(
       input({ status: 'published', password: 'open-sesame' }),
       ADMIN,
     );
+    repository.commentCounts.set(entry.id, 2);
 
     const locked = await publicContent.getBySlug('hello-world');
-    expect(locked).toMatchObject({ protected: true, html: '', excerpt: '' });
+    expect(locked).toMatchObject({
+      protected: true,
+      html: '',
+      excerpt: '',
+      commentCount: 0,
+    });
+    expect((await publicContent.list({})).items[0]!.commentCount).toBe(0);
     expect((await publicContent.list({ search: 'Body' })).total).toBe(0);
     expect(
       await codeOf(publicContent.unlock(entry.id, { password: 'no' })),
@@ -362,9 +369,9 @@ describe('ContentService', () => {
       password: 'open-sesame',
     });
     const proof = `${entry.id}.${token}`;
-    expect(
-      (await publicContent.getBySlug('hello-world', [proof])).html,
-    ).toContain('Body');
+    const unlocked = await publicContent.getBySlug('hello-world', [proof]);
+    expect(unlocked.html).toContain('Body');
+    expect(unlocked.commentCount).toBe(2);
     // Proofs are bound to the entry: another entry's id never matches.
     expect(
       (await publicContent.getBySlug('hello-world', [`other.${token}`])).html,
