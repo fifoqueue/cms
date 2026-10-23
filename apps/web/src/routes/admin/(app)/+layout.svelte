@@ -53,7 +53,13 @@
       class={['flex-col gap-4 px-2 pb-3 md:flex', expanded ? 'flex' : 'hidden']}
     >
       <nav aria-label={i18n.m.navMenu}>
-        <AdminMenu user={data.user} pluginPages={data.pluginPages} />
+        <AdminMenu
+          user={data.user}
+          pluginPages={data.pluginPages}
+          types={data.types}
+          taxonomies={data.taxonomies}
+          counts={data.counts}
+        />
       </nav>
       <div class="space-y-1 border-t pt-3">
         <a

@@ -71,6 +71,14 @@ export const typeLabel = (m: Messages, type: string) =>
   ({ post: m.typePost, article: m.typeArticle, page: m.typePage })[type] ??
   type;
 
+/** A content type's plural name; built-in types use the catalog. */
+export const pluralLabel = (
+  m: Messages,
+  type: { key: string; pluralName: string },
+) =>
+  ({ post: m.navPosts, article: m.navArticles, page: m.navPages })[type.key] ??
+  type.pluralName;
+
 export const fieldKindLabel = (m: Messages, kind: FieldType) =>
   ({
     text: m.fieldKindText,

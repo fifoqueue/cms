@@ -75,15 +75,36 @@ const termChoice = ({ id, name, slug, parentId }: AdminTaxonomyTerm) => ({
   parentId,
 });
 
-/** Every category and tag, for assigning terms to content and filtering by them. */
-export const loadTermChoices = async (
+/** Every category, tag and custom taxonomy term, for filtering content by them. */
+export const loadTaxonomyChoices = async (
   event: Omit<AdminEvent, 'request' | 'url'>,
 ) => {
   const admin = adminFor(event);
-  const [categories, tags] = await Promise.all([
+  const [categories, tags, types] = await Promise.all([
     admin.taxonomy.list('category'),
     admin.taxonomy.list('tag'),
+    admin.taxonomyTypes.list(),
   ]);
+  const extraTaxonomies = await Promise.all(
+    types
+      .filter((type) => type.key !== 'category' && type.key !== 'tag')
+      .map(async (definition) => ({
+        key: definition.key,
+        name: definition.name,
+        hierarchical: definition.hierarchical,
+        terms: (await admin.taxonomy.list(definition.key)).map(termChoice),
+      })),
+  );
+  return {
+    extraTaxonomies,
+    categories: categories.map(termChoice),
+    tags: tags.map(termChoice),
+  };
+};
+
+/** Every page, as parent choices in the editor. */
+const loadParentPages = async (event: Omit<AdminEvent, 'request' | 'url'>) => {
+  const admin = adminFor(event);
   const parentPages: { id: string; title: string }[] = [];
   for (let page = 1; ; page++) {
     const result = await admin.content.list({
@@ -94,23 +115,18 @@ export const loadTermChoices = async (
     parentPages.push(...result.items.map(({ id, title }) => ({ id, title })));
     if (page * result.pageSize >= result.total) break;
   }
-  const definitions = (await admin.taxonomyTypes.list()).filter(
-    (type) => type.key !== 'category' && type.key !== 'tag',
-  );
-  const extraTaxonomies = await Promise.all(
-    definitions.map(async (definition) => ({
-      key: definition.key,
-      name: definition.name,
-      hierarchical: definition.hierarchical,
-      terms: (await admin.taxonomy.list(definition.key)).map(termChoice),
-    })),
-  );
-  return {
-    parentPages,
-    extraTaxonomies,
-    categories: categories.map(termChoice),
-    tags: tags.map(termChoice),
-  };
+  return parentPages;
+};
+
+/** Every term and page, for assigning terms and a parent to content in the editor. */
+export const loadTermChoices = async (
+  event: Omit<AdminEvent, 'request' | 'url'>,
+) => {
+  const [terms, parentPages] = await Promise.all([
+    loadTaxonomyChoices(event),
+    loadParentPages(event),
+  ]);
+  return { ...terms, parentPages };
 };
 
 const readTermForm = (
