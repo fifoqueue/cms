@@ -6,6 +6,7 @@ import type {
   SearchEngine,
   SearchQuery,
 } from '#api/domain/search/ports';
+import { configuredFetch } from '#api/infra/egress-policy';
 import { Errors } from '#api/shared/errors';
 
 const TASK_TIMEOUT_MS = 120_000;
@@ -18,8 +19,21 @@ const SETTINGS = {
   pagination: { maxTotalHits: 10_000 },
 };
 
+const request = async (...args: Parameters<typeof configuredFetch>) => {
+  const response = await configuredFetch(...args);
+  const text = await response.text();
+  if (!response.ok)
+    throw new Error(Errors.SearchRequestFailed(response.status));
+  return text ? (JSON.parse(text) as unknown) : undefined;
+};
+
 const client = ({ host, apiKey }: SearchConnection) =>
-  new Meilisearch({ host, apiKey: apiKey || undefined, timeout: 10_000 });
+  new Meilisearch({
+    host,
+    apiKey: apiKey || undefined,
+    timeout: 10_000,
+    httpClient: request,
+  });
 
 /** Waits for the task; a failed or canceled task throws. */
 const done = async (

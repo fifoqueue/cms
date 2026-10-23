@@ -374,6 +374,7 @@ export const createContainer = async (
       await sessions.deleteExpired(now);
       await passwordTokens.purge(now);
       await rateLimits.purge(now);
+      await jobs.purge();
     },
   });
 
@@ -384,6 +385,7 @@ export const createContainer = async (
     ids: uuidV7,
     clock: systemClock,
     hooks,
+    limiter: rateLimits,
     maxBytes: config.MEDIA_MAX_MB * 1024 * 1024,
   });
 

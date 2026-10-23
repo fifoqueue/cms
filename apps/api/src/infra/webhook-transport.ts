@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { WEBHOOK_HEADERS } from '@cms/sdk';
 import type { WebhookTransport } from '#api/domain/webhooks/webhook-service';
+import { publicFetch } from '#api/infra/egress-policy';
 
 /** Signed JSON POSTs. Redirects are not followed, so a delivery reaches only the saved address. */
 export const httpWebhookTransport: WebhookTransport = {
@@ -9,7 +10,7 @@ export const httpWebhookTransport: WebhookTransport = {
     const signature = createHmac('sha256', secret)
       .update(`${timestamp}.${body}`)
       .digest('hex');
-    const response = await fetch(url, {
+    const response = await publicFetch(url, {
       method: 'POST',
       redirect: 'manual',
       signal: AbortSignal.timeout(10_000),

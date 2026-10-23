@@ -22,6 +22,7 @@ export interface JobRunnerDeps {
 
 const BATCH = 4;
 const LEASE_MS = 2 * 60 * 1000;
+const FAILED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Exponential backoff: 1, 2, 4 … minutes, at most an hour. */
 const backoffMs = (attempt: number) =>
@@ -43,6 +44,13 @@ export class JobRunner {
   /** The recurring task that drains the queue. */
   task(intervalMs: number): RecurringTask {
     return { name: 'jobs', intervalMs, run: () => this.drain() };
+  }
+
+  /** Removes metadata for jobs that gave up; their sensitive payload was already blanked. */
+  purge(): Promise<number> {
+    return this.deps.queue.purge(
+      new Date(this.deps.clock.now().getTime() - FAILED_RETENTION_MS),
+    );
   }
 
   async drain(): Promise<void> {

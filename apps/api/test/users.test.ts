@@ -84,9 +84,17 @@ describe('user administration', () => {
   test('public registration requires membership and invites only subscribers', async () => {
     const settings = new MemorySeoSettingsRepository();
     const invitations: string[] = [];
+    let hashes = 0;
     const { service, users } = await setup({
       settings,
       roles: new RoleService(settings),
+      hasher: {
+        hash: async (value) => {
+          hashes += 1;
+          return `hash:${value}`;
+        },
+        verify: async () => true,
+      },
       invitations: {
         available: async () => true,
         send: async (user) => {
@@ -113,6 +121,10 @@ describe('user administration', () => {
     const reader = await users.findByEmail('reader@example.com');
     expect(reader?.role).toBe('subscriber');
     expect(reader?.passwordHash).toBe('hash:token');
+    expect(invitations).toEqual(['reader@example.com']);
+
+    await service.register(input, attempt);
+    expect(hashes).toBe(2);
     expect(invitations).toEqual(['reader@example.com']);
   });
 

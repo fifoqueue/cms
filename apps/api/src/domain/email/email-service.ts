@@ -37,6 +37,11 @@ const messageSchema = z.object({
   text: z.string(),
 });
 
+const envelopeSchema = z.strictObject({
+  version: z.literal(1),
+  sealed: z.string(),
+});
+
 /**
  * Outgoing mail. Messages are queued and sent by the job runner with retries, so a slow or
  * failing mail server never delays the request that caused the message.
@@ -85,7 +90,10 @@ export class EmailService {
   /** Queues `message`; throws `invalid_input` while email is disabled. */
   async queue(message: EmailMessage): Promise<void> {
     if (!(await this.enabled())) throw invalidInput(Errors.EmailDisabled);
-    await this.deps.jobs.enqueue(EMAIL_JOB, message);
+    await this.deps.jobs.enqueue(EMAIL_JOB, {
+      version: 1,
+      sealed: this.deps.secrets.seal(JSON.stringify(message)),
+    });
   }
 
   /** Sends a test message now, so the administrator sees the server's answer. */
@@ -102,12 +110,29 @@ export class EmailService {
 
   /** The job handler for `EMAIL_JOB`. */
   async deliver(payload: unknown): Promise<void> {
-    const message = messageSchema.safeParse(payload);
-    if (!message.success) throw new PermanentJobError(Errors.EmailInvalidJob);
+    const message = this.message(payload);
+    if (!message) throw new PermanentJobError(Errors.EmailInvalidJob);
     const transport = await this.transport();
     // Disabled or misconfigured mail fails for now; enabling it lets queued messages go out.
     if (!transport) throw new Error(Errors.EmailDisabled);
-    await this.deps.mailer.send(transport, message.data);
+    await this.deps.mailer.send(transport, message);
+  }
+
+  /** Opens new envelopes and accepts plaintext jobs queued before this upgrade. */
+  private message(payload: unknown): EmailMessage | null {
+    const envelope = envelopeSchema.safeParse(payload);
+    let value = payload;
+    if (envelope.success) {
+      const plain = this.deps.secrets.open(envelope.data.sealed);
+      if (plain === null) return null;
+      try {
+        value = JSON.parse(plain) as unknown;
+      } catch {
+        return null;
+      }
+    }
+    const message = messageSchema.safeParse(value);
+    return message.success ? message.data : null;
   }
 
   private async transport(): Promise<MailTransport | null> {

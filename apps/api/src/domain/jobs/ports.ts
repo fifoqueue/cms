@@ -68,4 +68,6 @@ export interface JobQueue {
   failures(
     limit: number,
   ): Promise<{ kind: string; error: string; failedAt: Date }[]>;
+  /** Deletes failed-job metadata older than `before`; final failures already have no payload. */
+  purge(before: Date): Promise<number>;
 }

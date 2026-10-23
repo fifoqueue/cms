@@ -106,7 +106,10 @@ export class UserService {
     return this.createAccount(input);
   }
 
-  private async createAccount(input: unknown): Promise<AdminUserSummary> {
+  private async createAccount(
+    input: unknown,
+    preparedHash?: string,
+  ): Promise<AdminUserSummary> {
     const data = parseInput(userCreateSchema, input);
     await this.deps.roles?.require(data.role);
     const email = data.email.toLowerCase();
@@ -121,9 +124,11 @@ export class UserService {
       email,
       name: data.name,
       // An invited user cannot sign in until they choose a password.
-      passwordHash: await this.deps.hasher.hash(
-        data.password ?? this.deps.tokens.issue(),
-      ),
+      passwordHash:
+        preparedHash ??
+        (await this.deps.hasher.hash(
+          data.password ?? this.deps.tokens.issue(),
+        )),
       role: data.role,
       slug: data.slug ?? (await this.newSlug(data.name, id)),
       bio: '',
@@ -162,9 +167,13 @@ export class UserService {
       action: 'passwordReset',
       account: data.email.toLowerCase(),
     });
-    if (await this.deps.users.findByEmail(data.email.toLowerCase())) return;
+    const [existing, passwordHash] = await Promise.all([
+      this.deps.users.findByEmail(data.email.toLowerCase()),
+      this.deps.hasher.hash(this.deps.tokens.issue()),
+    ]);
+    if (existing) return;
     try {
-      await this.createAccount({ ...data, role: 'subscriber' });
+      await this.createAccount({ ...data, role: 'subscriber' }, passwordHash);
     } catch (caught) {
       if (!(caught instanceof DomainError) || caught.code !== 'conflict')
         throw caught;

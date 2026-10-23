@@ -58,6 +58,8 @@ export interface MediaRepository {
 
 /** Bytes of uploaded files by key. Shared by every API instance. */
 export interface MediaStorage {
+  /** Bytes available on the backing volume before a write starts. */
+  available(): Promise<number>;
   write(key: string, bytes: Uint8Array): Promise<void>;
   /** The file, or the byte range `[start, end]`; null when missing. */
   read(

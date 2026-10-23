@@ -2,7 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { resolve } from '$app/paths';
 import { CmsApiError } from '@cms/sdk/client';
 import { Errors } from '#lib/server/errors.js';
-import { startSession } from '#lib/server/session.js';
+import { startSession } from '#lib/server/session-cookie.js';
 import { ssoApi, takeSsoTransaction } from '#lib/server/sso.js';
 import type { PageServerLoad } from './$types';
 
@@ -33,6 +33,6 @@ export const load: PageServerLoad = async ({ url, cookies, fetch, locals }) => {
 
   if (result.kind === 'linked') redirect(303, resolve('/admin/(app)/account'));
 
-  startSession(cookies, result.session);
+  startSession(cookies, result.session, url);
   redirect(303, resolve('/admin/(app)'));
 };

@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { authApi } from '#lib/server/api.js';
-import { endSession } from '#lib/server/session.js';
+import { endSession } from '#lib/server/session-cookie.js';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ fetch, locals, cookies }) => {

@@ -7,6 +7,7 @@ import type { PasswordHasher, TokenIssuer } from '#api/domain/auth/ports';
 import type { DocumentRenderer } from '#api/domain/content/content-repository';
 import type { HtmlParser } from '#api/domain/tools/import-service';
 import type { Clock, IdGenerator } from '#api/domain/ports';
+import { publicFetch } from '#api/infra/egress-policy';
 import type { UpdateFeed, VersionPolicy } from '#api/plugin-runtime/ports';
 import { invalidInput, Errors } from '#api/shared/errors';
 
@@ -52,7 +53,7 @@ export const httpsUpdateFeed: UpdateFeed = {
   async read(url) {
     if (!url.startsWith('https://'))
       throw new Error(Errors.PluginUpdateUnavailable);
-    const response = await fetch(url, {
+    const response = await publicFetch(url, {
       redirect: 'error',
       signal: AbortSignal.timeout(5000),
       headers: { accept: 'application/json' },

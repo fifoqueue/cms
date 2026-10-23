@@ -59,6 +59,7 @@ DB/사용자 자체를 생성하거나 기존 데이터를 초기화하지는 �
 - `bun run --filter @cms/web start`(`apps/web/server.js`)는 업로드를 위해 `BODY_SIZE_LIMIT`을 기본 64MB로 두되, 훅이 일반 폼 64KB·콘텐츠 2MB·플러그인 6MB·WXR 17MB로 먼저 제한합니다. API JSON은 기본 512KB(공개 인증·댓글 32KB, 콘텐츠 1MB), WXR은 16MB입니다.
 - 웹 시작 시 루트 `.env`를 읽은 뒤 DB 주소·API 비밀 키·OIDC 클라이언트 비밀 같은 API 전용 변수를 제거하고 앱을 불러옵니다. 웹 런타임에는 `WEB_*`, `CMS_API_URL`, 방문자 증명 비밀 등 필요한 값만 남아야 합니다.
 - 비밀 키는 자동입니다. `CMS_SECRET_KEY`가 없으면 `apps/api/data/secret.key`를 만들어 씁니다(DB와 함께 백업; API 인스턴스가 여러 개면 같은 값을 공유).
+- 비밀번호 재설정·초대 링크를 포함한 이메일 잡 본문은 `SecretBox`로 봉인해 저장합니다. 최종 실패한 잡은 본문을 즉시 지우고, 실패 기록은 30일 뒤 정리합니다.
 - 웹↔API 방문자 증명 비밀은 비밀 키에서 파생되며, 관리자가 로그인하면 웹 서버가 `GET /api/v1/admin/frontend-secret`으로 받아 `apps/web/data/frontend.secret`(0600)에 보관합니다. 그 전까지 방문자는 공용 할당량을 나눠 씁니다. 두 서버에 같은 `CMS_FRONTEND_SECRET`(32자 이상)을 두면 이 과정을 건너뜁니다.
 - 선택적 재정의(루트 `.env.example`): `DATABASE_URL`, `API_PORT`/`API_HOST`, `WEB_PORT`/`WEB_HOST`, `CMS_API_URL`, `MEDIA_DIR`/`PLUGINS_DIR`(인스턴스가 여러 개면 공유 저장소), `MEDIA_MAX_MB`, `SESSION_TTL_HOURS`, `PLUGIN_TIMEOUT_MS`, `SCHEDULER_INTERVAL_MS`, `OIDC_*`(서버에서 SSO를 고정할 때; 있으면 관리자 SSO 설정보다 우선).
 
@@ -247,7 +248,7 @@ manifest의 `requires: { cms?: '<semver 범위>', plugins?: { '<id>': '<범위>'
 
 1. **API로만 통신**: `@cms/sdk/client`의 클라이언트만 사용합니다. DB, `@cms/api`, 플러그인 코드 import 금지.
 2. **서버에서만 호출**: API 호출은 `+page.server.ts`/`+layout.server.ts`/form action/`hooks.server.ts`에서만 합니다. 브라우저는 API 주소나 토큰을 모릅니다.
-3. **세션**: 로그인 시 받은 토큰을 httpOnly 쿠키(`cms_session`)에 저장하고 `Authorization: Bearer`로 전달합니다. `/admin` 보호는 `hooks.server.ts` 한 곳에서 합니다.
+3. **세션**: 로그인 시 받은 토큰을 HTTPS에서는 host-bound httpOnly 쿠키(`__Host-cms_session`), 평문 localhost에서는 `cms_session`에 저장하고 `Authorization: Bearer`로 전달합니다. 기존 `cms_session`은 유효성을 확인한 첫 HTTPS 관리자 요청에서 새 이름으로 옮깁니다. `/admin` 보호는 `hooks.server.ts` 한 곳에서 합니다.
 4. **슬롯 렌더링 의무**: 모든 테마는 `SLOT_NAMES`의 **모든 슬롯**을 정해진 위치에 렌더링해야 합니다 — `head`(문서 head), `site.header`(헤더 끝), `site.footer`(푸터), `content.before`/`content.after`(본문 앞/뒤), `comments.before`/`comments.after`(댓글 영역 앞/뒤, 댓글 영역이 있을 때). 블록 테마에서는 코어 렌더러가 위치를 보장합니다: `site.header`/`site.footer`는 header/footer 영역 템플릿 파트 뒤(템플릿에 없으면 페이지 처음/끝), `content.*`는 `post-content` 블록, `comments.*`는 `comments` 블록이 출력합니다. `GET /api/v1/slots?path=&contentId=`로 받고 `SlotOutlet`으로 출력합니다. 슬롯 조회 실패는 빈 슬롯으로 처리합니다(`loadSlots`). 슬롯은 페이지마다 다르므로 각 페이지 load가 받습니다. `contentId`를 생략하면 API가 `path`의 현재 주소 콘텐츠를 찾으므로, 콘텐츠 페이지는 주소 조회와 슬롯을 함께 요청합니다. 공개 레이아웃 load는 `url`·`route`를 읽지 않습니다(읽으면 클라이언트 이동·링크 미리 로드 때마다 레이아웃 API 호출이 모두 다시 실행됩니다). 오류 페이지에는 슬롯이 없습니다.
 5. **플러그인을 모름**: 프론트는 특정 플러그인의 존재를 가정하지 않습니다. 플러그인 효과는 슬롯 HTML, 필터된 콘텐츠(`html`, `meta`), 위젯 HTML, 관리자 화면의 범용 설정 폼과 블록 기반 플러그인 페이지로만 나타납니다. `meta`는 어떤 형태든 견딥니다.
 6. **콘텐츠 HTML**: `PublicContent.html`은 API가 스키마 검증 후 렌더링한 것이므로 그대로 `{@html}` 합니다. 프론트에서 Tiptap JSON을 직접 렌더링하지 않습니다.
@@ -309,7 +310,7 @@ manifest의 `requires: { cms?: '<semver 범위>', plugins?: { '<id>': '<범위>'
 
 - Statuses: `draft`, `pending`, `scheduled`, `published`, `private`; trash is separate (`trashedAt`, emptied after 30 days). Scheduled entries publish through the `content.publishScheduled` task. Revisions and autosaves are kept per entry; preview links are signed and expire.
 - Password-protected entries serve an empty body and excerpt until the visitor sends a signed unlock proof (httpOnly cookie on the web). Unlock attempts use the same visitor proof, atomic rate limit and captcha path as other public security actions. Search text is not stored for locked bodies.
-- Editor documents are limited to depth 100 and 10,000 JSON nodes; category/tag assignments are limited to 100 each. Media uploads stream through the web process, stop at `MEDIA_MAX_MB`, and image transforms run one at a time with a 40-megapixel decode limit.
+- Editor documents are limited to depth 100 and 10,000 JSON nodes; category/tag assignments are limited to 100 each. Media uploads stream through the web process, stop at `MEDIA_MAX_MB`, allow at most 60 attempts per user each hour, preserve a 256 MB filesystem floor, and run image transforms one at a time with a 40-megapixel decode limit.
 - Media: uploads are sniffed by content, images get metadata stripped and WebP sizes; files live under `MEDIA_DIR` and are served through the web `/media/…` proxy. Content keeps media links for usage and the featured image.
 - Content types and custom fields are core settings. Field values are validated against definitions; only public fields reach public DTOs (single reads only).
 
@@ -332,7 +333,7 @@ manifest의 `requires: { cms?: '<semver 범위>', plugins?: { '<id>': '<범위>'
 
 ### 6.9 Webhooks, import/export, site health and caching
 
-- Webhooks (Tools → Webhooks, `tools.manage`) subscribe to core action events and are delivered as jobs: JSON POST to https only, no redirects, header `X-CMS-Signature: t=<unix>,v1=<hex HMAC-SHA256("<t>.<body>")>`, retried with backoff; 4xx other than 408/429 stop retries. The secret is shown once at creation or rotation.
+- Webhooks (Tools → Webhooks, `tools.manage`) subscribe to core action events and are delivered as jobs: JSON POST to public-network https only, no redirects, header `X-CMS-Signature: t=<unix>,v1=<hex HMAC-SHA256("<t>.<body>")>`, retried with backoff; 4xx other than 408/429 stop retries. The secret is shown once at creation or rotation. The shared egress policy resolves and pins HTTP destinations and blocks private, loopback, link-local and metadata addresses; OIDC discovery and plugin update checks use the same policy. The exact Meilisearch and SMTP hosts saved by an administrator are explicit private-host allowlist entries so existing local services keep working.
 - Import/export (Tools → Import & export) speaks WordPress WXR 1.2. Import is capped at 16MB, 10,000 entries, 20,000 terms and 100,000 comments; it creates data through the core services and refuses DTDs. Export reads content and comments with id cursors and streams XML through API and web without collecting the site in memory. Entry passwords remain omitted.
 - Site health (Tools → Site health) reports site address, email, search, overdue or failing tasks, failed deliveries, failed plugins and visitor proof.
 - Page caching: Settings → Reading `cacheSeconds` (0 = off). The web adds `s-maxage` to anonymous public GETs, re-reading the setting at most once a minute.

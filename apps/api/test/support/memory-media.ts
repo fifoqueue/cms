@@ -81,6 +81,11 @@ export class MemoryMediaRepository implements MediaRepository {
 
 export class MemoryMediaStorage implements MediaStorage {
   readonly files = new Map<string, Uint8Array>();
+  freeBytes = Number.POSITIVE_INFINITY;
+
+  async available() {
+    return this.freeBytes;
+  }
 
   async write(key: string, bytes: Uint8Array) {
     this.files.set(key, bytes);

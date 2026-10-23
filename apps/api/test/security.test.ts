@@ -10,6 +10,7 @@ import { PasswordService } from '#api/domain/auth/password-service';
 import { EmailService } from '#api/domain/email/email-service';
 import { ProtectionService } from '#api/domain/security/protection-service';
 import { SecuritySettingsService } from '#api/domain/security/security-settings';
+import { aesSecretBox } from '#api/infra/secret-box';
 import type { DomainError } from '#api/shared/errors';
 import { fixedClock, sequentialIds, userRecord } from '#test/support/memory';
 import { MemorySeoSettingsRepository } from '#test/support/memory-seo';
@@ -222,10 +223,14 @@ describe('password reset', () => {
     });
     const settings = new MemorySeoSettingsRepository();
     const queue = new MemoryJobQueue();
+    const sent: string[] = [];
+    const secrets = aesSecretBox('test-email-job-secret');
     const email = new EmailService({
       settings,
-      secrets: plainSecretBox,
-      mailer: { send: async () => {} },
+      secrets,
+      mailer: {
+        send: async (_transport, message) => void sent.push(message.text),
+      },
       jobs: queue,
     });
     await email.update({
@@ -239,6 +244,8 @@ describe('password reset', () => {
     });
     const passwordTokens = new MemoryPasswordTokens();
     let apiTokensRevoked = false;
+    let hashes = 0;
+    let issued = '';
     const passwords = new PasswordService({
       users,
       tokens: passwordTokens,
@@ -248,9 +255,15 @@ describe('password reset', () => {
         passwordTokens,
         () => (apiTokensRevoked = true),
       ),
-      issuer: tokens,
+      issuer: {
+        issue: () => (issued = 'reset-token-0123456789abcdef'),
+        digest: (token) => `digest:${token}`,
+      },
       hasher: {
-        hash: async (value) => `hash:${value}`,
+        hash: async (value) => {
+          hashes += 1;
+          return `hash:${value}`;
+        },
         verify: async () => true,
       },
       email,
@@ -273,16 +286,27 @@ describe('password reset', () => {
     expect(queue.rows.size).toBe(0);
     await passwords.requestReset({ email: 'Admin@Example.com' }, visitor);
     const [job] = [...queue.rows.values()];
-    const token = /token=([^\s]+)/.exec(
-      (job!.payload as { text: string }).text,
-    )![1]!;
+    expect(JSON.stringify(job!.payload)).not.toContain(issued);
+    expect(hashes).toBe(2);
+    await email.deliver(job!.payload);
+    expect(sent[0]).toContain(issued);
 
-    await passwords.reset({ token, password: 'new-password' });
+    // Jobs queued before encrypted envelopes were introduced still drain after an upgrade.
+    await email.deliver({
+      to: 'admin@example.com',
+      subject: 'Legacy',
+      text: 'Legacy body',
+    });
+    expect(sent).toHaveLength(2);
+
+    await passwords.reset({ token: issued, password: 'new-password' });
     expect(users.rows.get('admin')!.passwordHash).toBe('hash:new-password');
     expect(sessions.rows.size).toBe(0);
     expect(apiTokensRevoked).toBe(true);
     expect(
-      await codeOf(passwords.reset({ token, password: 'other-password' })),
+      await codeOf(
+        passwords.reset({ token: issued, password: 'other-password' }),
+      ),
     ).toBe('invalid_input');
   });
 });

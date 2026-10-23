@@ -64,6 +64,7 @@ export const Errors = {
   MediaKeyInvalid: 'Invalid media key',
   MediaTooLarge: (bytes: number) =>
     `The file is too large (at most ${Math.floor(bytes / 1024 / 1024)} MB)`,
+  MediaStorageLow: 'The server does not have enough free storage for this file',
   MediaTypeUnsupported:
     'This file type is not supported. Upload JPEG, PNG, GIF, WebP, AVIF, PDF, MP4 or WebM.',
   MediaInUse: (count: number) =>
@@ -80,6 +81,12 @@ export const Errors = {
   SearchUnavailable: (detail: string) =>
     `Meilisearch did not answer: ${detail}`,
   SearchTaskFailed: (detail: string) => `Meilisearch task failed: ${detail}`,
+  SearchRequestFailed: (status: number) =>
+    `Meilisearch answered HTTP ${status}`,
+  OutboundUrlInvalid: 'The outbound address is invalid',
+  OutboundHostUnresolved: 'The outbound host could not be resolved',
+  OutboundAddressBlocked: 'The outbound address is not permitted',
+  OutboundRedirectBlocked: 'The outbound redirect is not permitted',
   WebhookNotFound: 'Webhook not found',
   WebhookInvalidJob: 'Invalid webhook delivery job',
   WebhookSecretUnreadable:

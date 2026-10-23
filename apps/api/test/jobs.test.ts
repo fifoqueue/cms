@@ -38,7 +38,7 @@ describe('scheduler and jobs', () => {
 
   test('failed jobs retry with backoff and give up when permanent', async () => {
     const clock = fixedClock();
-    const queue = new MemoryJobQueue();
+    const queue = new MemoryJobQueue(clock.now);
     const runner = new JobRunner({
       queue,
       clock,
@@ -58,6 +58,9 @@ describe('scheduler and jobs', () => {
     await runner.drain();
     expect(attempts).toBe(1);
     expect(await queue.failures(10)).toMatchObject([{ kind: 'broken' }]);
+    expect(
+      [...queue.rows.values()].find((row) => row.kind === 'broken')?.payload,
+    ).toBeNull();
 
     // Not due until the backoff has passed.
     await runner.drain();
@@ -66,6 +69,10 @@ describe('scheduler and jobs', () => {
     await runner.drain();
     expect(attempts).toBe(2);
     expect([...queue.rows.values()].map((row) => row.kind)).toEqual(['broken']);
+
+    clock.set('2026-02-01T00:00:00.001Z');
+    expect(await runner.purge()).toBe(1);
+    expect(queue.rows.size).toBe(0);
   });
 
   test('an expired owner cannot complete a job reclaimed elsewhere', async () => {

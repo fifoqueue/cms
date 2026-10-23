@@ -1,4 +1,4 @@
-import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, stat, statfs, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { MediaStorage } from '#api/domain/media/ports';
@@ -10,6 +10,12 @@ export class FsMediaStorage implements MediaStorage {
 
   constructor(root: string) {
     this.root = resolve(root);
+  }
+
+  async available() {
+    await mkdir(this.root, { recursive: true });
+    const space = await statfs(this.root);
+    return space.bavail * space.bsize;
   }
 
   async write(key: string, bytes: Uint8Array) {

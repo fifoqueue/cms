@@ -86,6 +86,8 @@ export class MemoryJobQueue implements JobQueue {
   readonly rows = new Map<string, Row>();
   private sequence = 0;
 
+  constructor(private readonly now: () => Date = () => new Date()) {}
+
   async enqueue(kind: string, payload: unknown, runAt = new Date(0)) {
     const id = `job-${++this.sequence}`;
     this.rows.set(id, {
@@ -135,7 +137,10 @@ export class MemoryJobQueue implements JobQueue {
     row.lockedUntil = null;
     row.lockedBy = null;
     if (retryAt) row.runAt = retryAt;
-    else row.failedAt = new Date();
+    else {
+      row.failedAt = this.now();
+      row.payload = null;
+    }
     return true;
   }
 
@@ -148,5 +153,15 @@ export class MemoryJobQueue implements JobQueue {
         error: row.error ?? '',
         failedAt: row.failedAt!,
       }));
+  }
+
+  async purge(before: Date) {
+    let purged = 0;
+    for (const [id, row] of this.rows)
+      if (row.failedAt && row.failedAt < before) {
+        this.rows.delete(id);
+        purged += 1;
+      }
+    return purged;
   }
 }

@@ -21,6 +21,7 @@ import type {
 } from '#api/domain/auth/sso-ports';
 import { messageOf, unauthorized, Errors } from '#api/shared/errors';
 import type { Logger } from '#api/shared/logger';
+import { publicFetch } from '#api/infra/egress-policy';
 
 export type OidcClientAuthMethod =
   'client_secret_basic' | 'client_secret_post' | 'none';
@@ -109,6 +110,9 @@ export class OpenIdClientProvider implements OidcProvider {
 
   /** Discovers once; a failed discovery is retried on the next request. */
   private discover() {
+    const fetcher: CustomFetch =
+      this.settings.fetch ??
+      ((url, options) => publicFetch(url, options as unknown as RequestInit));
     this.configuration ??= discovery(
       new URL(this.settings.issuer),
       this.settings.clientId,
@@ -116,7 +120,7 @@ export class OpenIdClientProvider implements OidcProvider {
       clientAuth(this.settings),
       {
         execute: [enableNonRepudiationChecks],
-        ...(this.settings.fetch && { [customFetch]: this.settings.fetch }),
+        [customFetch]: fetcher,
       },
     ).catch((error: unknown) => {
       this.configuration = undefined;

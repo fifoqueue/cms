@@ -5,7 +5,13 @@ import {
   mediaListQuerySchema,
   mediaUpdateSchema,
 } from '@cms/sdk';
-import type { AdminMedia, ImageSizeName, MediaType, Paginated } from '@cms/sdk';
+import type {
+  AdminMedia,
+  ImageSizeName,
+  MediaType,
+  Paginated,
+  RateRule,
+} from '@cms/sdk';
 import { can } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
@@ -19,11 +25,13 @@ import type {
 } from '#api/domain/media/ports';
 import { sniffMediaType } from '#api/domain/media/sniff';
 import type { Clock, HookDispatcher, IdGenerator } from '#api/domain/ports';
+import type { RateLimitStore } from '#api/domain/security/ports';
 import {
   conflict,
   forbidden,
   invalidInput,
   notFound,
+  rateLimited,
   Errors,
 } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
@@ -35,9 +43,19 @@ export interface MediaServiceDeps {
   ids: IdGenerator;
   clock: Clock;
   hooks: HookDispatcher;
+  limiter: Pick<RateLimitStore, 'hit'>;
   /** Largest accepted upload, in bytes. */
   maxBytes: number;
 }
+
+const FREE_SPACE_BYTES = 256 * 1024 * 1024;
+const UPLOAD_RULE = {
+  enabled: true,
+  max: 60,
+  windowSeconds: 60 * 60,
+  blockSeconds: 60 * 60,
+  enforcement: 'block',
+} as const satisfies RateRule;
 
 /** Images re-encoded on upload; GIFs keep their animation and carry no camera metadata. */
 const CLEANED: readonly MediaType[] = [
@@ -95,9 +113,20 @@ export class MediaService {
     actor: Actor,
   ): Promise<AdminMedia> {
     authorize(actor, 'media.upload');
+    if (
+      await this.deps.limiter.hit(
+        `mediaUpload:${actor.id}`,
+        UPLOAD_RULE,
+        this.deps.clock.now(),
+      )
+    )
+      throw rateLimited(Errors.TooManyAttempts);
     if (bytes.byteLength === 0) throw invalidInput(Errors.MediaEmpty);
     if (bytes.byteLength > this.deps.maxBytes)
       throw invalidInput(Errors.MediaTooLarge(this.deps.maxBytes));
+    // shortcut: free-space checks can race; add shared byte reservations if upload volume grows.
+    if ((await this.deps.storage.available()) < FREE_SPACE_BYTES + bytes.length)
+      throw conflict(Errors.MediaStorageLow);
     const mime = sniffMediaType(bytes);
     if (!mime) throw invalidInput(Errors.MediaTypeUnsupported);
 

@@ -9,7 +9,7 @@ import {
   themeView,
   widgetsView,
 } from '#lib/server/public-view.js';
-import { SESSION_COOKIE } from '#lib/server/session.js';
+import { sessionToken } from '#lib/server/session-cookie.js';
 import { themePreviewToken } from '#lib/server/theme-preview.js';
 import type { LayoutServerLoad } from './$types';
 
@@ -21,9 +21,7 @@ import type { LayoutServerLoad } from './$types';
  */
 export const load: LayoutServerLoad = async ({ fetch, cookies }) => {
   const api = contentApi(fetch);
-  const token = cookies
-    .getAll()
-    .find(({ name }) => name === SESSION_COOKIE)?.value;
+  const token = sessionToken(cookies);
   const [layout, user] = await Promise.all([
     api.layout(themePreviewToken(cookies)),
     token

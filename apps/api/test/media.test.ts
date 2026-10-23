@@ -12,6 +12,7 @@ import {
   MemoryMediaStorage,
   fakeImages,
 } from '#test/support/memory-media';
+import { MemoryRateLimitStore } from '#test/support/memory-security';
 
 const codeOf = async (promise: Promise<unknown>) =>
   promise.then(
@@ -33,6 +34,7 @@ const setup = () => {
     ids: sequentialIds(),
     clock: fixedClock(),
     hooks: new HookBus({ timeoutMs: 50, logger: recordingLogger().logger }),
+    limiter: new MemoryRateLimitStore(),
     maxBytes: 1024,
   });
   return { media, repository, storage };
@@ -122,6 +124,22 @@ describe('media library', () => {
     const key = image.url.slice('/media/'.length);
     expect(storage.files.get(key)?.at(-1)).toBe(0);
     expect(await media.file('../config.json')).toBeNull();
+  });
+
+  test('uploads stop before exhausting storage or one user floods the site', async () => {
+    const low = setup();
+    low.storage.freeBytes = 0;
+    expect(await codeOf(low.media.upload(PNG, 'cat.png', author))).toBe(
+      'conflict',
+    );
+    expect(low.storage.files.size).toBe(0);
+
+    const flood = setup();
+    for (let index = 0; index < 60; index += 1)
+      await flood.media.upload(PNG, `${index}.png`, author);
+    expect(await codeOf(flood.media.upload(PNG, 'last.png', author))).toBe(
+      'rate_limited',
+    );
   });
 
   test('only the uploader or managers change a file, and used files need force', async () => {

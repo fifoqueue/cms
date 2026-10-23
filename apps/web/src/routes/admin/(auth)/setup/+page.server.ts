@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { installationApi } from '#lib/server/api.js';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
-import { startSession } from '#lib/server/session.js';
+import { startSession } from '#lib/server/session-cookie.js';
 import type { Actions, PageServerLoad } from './$types';
 
 const INSTALL_KEY_COOKIE = 'cms_install_key';
@@ -44,7 +44,7 @@ export const actions: Actions = {
     }
     redirect(303, '/admin/setup');
   },
-  complete: async ({ request, fetch, cookies }) => {
+  complete: async ({ request, fetch, cookies, url }) => {
     const form = await request.formData();
     const values = {
       title: text(form, 'title'),
@@ -72,7 +72,7 @@ export const actions: Actions = {
           locale: values.locale,
         },
       });
-      startSession(cookies, grant);
+      startSession(cookies, grant, url);
       cookies.delete(INSTALL_KEY_COOKIE, { path: '/admin/setup' });
     } catch (caught) {
       const failure = failFrom(caught);

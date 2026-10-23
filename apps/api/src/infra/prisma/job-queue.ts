@@ -66,7 +66,9 @@ export class PrismaJobQueue implements JobQueue {
         lastError: error.slice(0, 2000),
         lockedUntil: null,
         lockedBy: null,
-        ...(retryAt ? { runAt: retryAt } : { failedAt: new Date() }),
+        ...(retryAt
+          ? { runAt: retryAt }
+          : { failedAt: new Date(), payload: 'null' }),
       },
     });
     return count === 1;
@@ -84,5 +86,12 @@ export class PrismaJobQueue implements JobQueue {
       error: row.lastError ?? '',
       failedAt: row.failedAt!,
     }));
+  }
+
+  async purge(before: Date) {
+    const { count } = await this.db.job.deleteMany({
+      where: { failedAt: { lt: before } },
+    });
+    return count;
   }
 }

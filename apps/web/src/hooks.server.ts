@@ -9,7 +9,11 @@ import {
   installationApi,
 } from '#lib/server/api.js';
 import { frontendSecret, pairFrontend } from '#lib/server/frontend-secret.js';
-import { SESSION_COOKIE, endSession } from '#lib/server/session.js';
+import {
+  endSession,
+  migrateSession,
+  sessionToken,
+} from '#lib/server/session-cookie.js';
 
 const OPEN_ADMIN_PATHS = [
   '/admin/login',
@@ -58,11 +62,17 @@ const requestSize: Handle = async ({ event, resolve }) => {
  * entries get their robots meta from the page itself. Headers are copied because a returned
  * response may have immutable headers.
  */
-const robotsHeader: Handle = async ({ event, resolve }) => {
+const responseSecurity: Handle = async ({ event, resolve }) => {
   const response = await resolve(event);
-  if (!isAdmin(event.url.pathname) && response.status < 400) return response;
+  const admin = isAdmin(event.url.pathname);
+  if (!admin && response.status < 400) return response;
   const headers = new Headers(response.headers);
   headers.set('x-robots-tag', 'noindex, nofollow');
+  if (admin) {
+    headers.set('cache-control', 'no-store');
+    headers.append('content-security-policy', "frame-ancestors 'none'");
+    headers.set('x-frame-options', 'DENY');
+  }
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -71,7 +81,8 @@ const robotsHeader: Handle = async ({ event, resolve }) => {
 };
 
 /** Cookies that make a public page differ per visitor (sessions, unlocked entries, previews). */
-const PERSONAL_COOKIE = /^(cms_session|cms_unlock_|cms_theme_preview)/;
+const PERSONAL_COOKIE =
+  /^(?:__Host-cms_session|cms_session|cms_unlock_|cms_theme_preview)/;
 
 /** Settings → Reading `cacheSeconds`, re-read at most once a minute. */
 let caching = { seconds: 0, until: 0 };
@@ -123,7 +134,7 @@ let installed = false;
 
 /** Resolves the session once per admin request and keeps signed-out users out of the admin area. */
 const guardAdmin: Handle = async ({ event, resolve }) => {
-  event.locals.token = event.cookies.get(SESSION_COOKIE) ?? null;
+  event.locals.token = sessionToken(event.cookies);
   event.locals.user = null;
 
   if (!installed) {
@@ -149,8 +160,11 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
     if (!event.locals.user) {
       endSession(event.cookies);
       event.locals.token = null;
-    } else if (!frontendSecret() && can(event.locals.user, 'settings.manage'))
-      await pairFrontend(adminApi(event.fetch, event.locals.token));
+    } else {
+      migrateSession(event.cookies, event.locals.token, event.url);
+      if (!frontendSecret() && can(event.locals.user, 'settings.manage'))
+        await pairFrontend(adminApi(event.fetch, event.locals.token));
+    }
   }
 
   if (isProtected(event.url.pathname) && !event.locals.user) {
@@ -165,6 +179,6 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
 export const handle = sequence(
   requestSize,
   publicCache,
-  robotsHeader,
+  responseSecurity,
   guardAdmin,
 );

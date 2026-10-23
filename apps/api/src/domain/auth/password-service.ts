@@ -95,7 +95,11 @@ export class PasswordService {
     if (!(await this.deps.email.enabled()))
       throw invalidInput(Errors.EmailDisabled);
     const site = await this.site();
-    const user = await this.deps.users.findByEmail(account);
+    const [user] = await Promise.all([
+      this.deps.users.findByEmail(account),
+      // Unknown and known accounts pay the same dominant password-hash cost.
+      this.deps.hasher.hash('password-reset-timing-cover'),
+    ]);
     if (!user) return;
     const link = await this.link(user, 'reset', site.siteUrl);
     await this.deps.email.queue({

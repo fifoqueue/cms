@@ -323,6 +323,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       ids: uuidV7,
       clock: systemClock,
       hooks: new HookBus({ timeoutMs: 50, logger: recordingLogger().logger }),
+      limiter: new PrismaRateLimitStore(db),
       maxBytes: 1024 * 1024,
     });
     const png = await sharp({

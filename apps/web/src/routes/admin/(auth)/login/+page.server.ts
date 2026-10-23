@@ -1,7 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { authApi, contentApi } from '#lib/server/api.js';
 import { failFrom, text } from '#lib/server/errors.js';
-import { startSession } from '#lib/server/session.js';
+import { startSession } from '#lib/server/session-cookie.js';
 import { rememberSsoTransaction, ssoApi } from '#lib/server/sso.js';
 import { clientProof, visitorOf } from '#lib/server/visitor.js';
 import type { Actions, PageServerLoad } from './$types';
@@ -46,6 +46,7 @@ export const actions: Actions = {
           { email, password: text(form, 'password') },
           visitorOf(event, form),
         ),
+        event.url,
       );
     } catch (caught) {
       return failFrom(caught, { email });
