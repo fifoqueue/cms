@@ -2,7 +2,7 @@
   import { enhance } from '$app/forms';
   import { WIDGET_AREAS } from '@cms/sdk';
   import type { Widget, WidgetArea } from '@cms/sdk';
-  import { ArrowDown, ArrowUp, Trash2 } from '@lucide/svelte';
+  import { ArrowDown, ArrowUp, GripVertical, Trash2 } from '@lucide/svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import { confirmLeave } from '#lib/admin/unsaved.js';
@@ -62,6 +62,27 @@
     const target = index + by;
     if (target < 0 || target >= list.length) return;
     [list[index], list[target]] = [list[target]!, list[index]!];
+  };
+
+  /** Widget being dragged; the arrow and move buttons stay for keyboards. */
+  let dragging = $state<{ area: WidgetArea; index: number } | null>(null);
+  /** Drops the dragged widget in front of `index` in `to` (any area). */
+  const dropAt = (event: DragEvent, to: WidgetArea, index: number) => {
+    event.preventDefault();
+    if (!dragging) return;
+    const { area: from, index: start } = dragging;
+    dragging = null;
+    const [widget] = areas[from].splice(start, 1);
+    if (!widget) return;
+    areas[to].splice(
+      from === to && start < index ? index - 1 : index,
+      0,
+      widget,
+    );
+  };
+  const transfer = (from: WidgetArea, index: number, to: WidgetArea) => {
+    const [widget] = areas[from].splice(index, 1);
+    if (widget) areas[to].push(widget);
   };
 
   const add = () => {
@@ -136,12 +157,40 @@
       <CardHeader><CardTitle>{areaNames[name]}</CardTitle></CardHeader>
       <CardContent class="grid gap-3">
         {#each areas[name] as widget, index (widget.id)}
-          <div class="grid gap-3 rounded-md border bg-background p-3">
+          <div
+            class="grid gap-3 rounded-md border bg-background p-3 {dragging?.area ===
+              name && dragging.index === index
+              ? 'opacity-50'
+              : ''}"
+            role="group"
+            aria-label={names[widget.type] ?? widget.type}
+            draggable="true"
+            ondragstart={(event) => {
+              dragging = { area: name, index };
+              event.dataTransfer?.setData('text/plain', widget.id);
+            }}
+            ondragend={() => (dragging = null)}
+            ondragover={(event) => event.preventDefault()}
+            ondrop={(event) => dropAt(event, name, index)}
+          >
             <div class="flex flex-wrap items-center gap-2">
+              <GripVertical
+                class="size-4 shrink-0 cursor-grab text-muted-foreground"
+                aria-hidden="true"
+              />
               <span class="text-sm font-medium"
                 >{names[widget.type] ?? widget.type}</span
               >
-              <span class="ml-auto flex gap-1">
+              <span class="ml-auto flex flex-wrap gap-1">
+                {#each WIDGET_AREAS.filter((other) => other !== name) as other (other)}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onclick={() => transfer(name, index, other)}
+                    >{m.widgetMoveTo(areaNames[other])}</Button
+                  >
+                {/each}
                 <Button
                   type="button"
                   size="icon"
@@ -290,6 +339,16 @@
         {:else}
           <p class="text-sm text-muted-foreground">{m.widgetEmpty}</p>
         {/each}
+        <div
+          class="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground {dragging
+            ? ''
+            : 'hidden'}"
+          aria-hidden="true"
+          ondragover={(event) => event.preventDefault()}
+          ondrop={(event) => dropAt(event, name, areas[name].length)}
+        >
+          {m.widgetDropHere}
+        </div>
       </CardContent>
     </Card>
   {/each}

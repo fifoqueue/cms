@@ -5,7 +5,7 @@
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
   import { CONTENT_STATUSES, UNPUBLISHED_STATUSES } from '@cms/sdk';
-  import type { ContentStatus } from '@cms/sdk';
+  import type { ContentOrder, ContentStatus } from '@cms/sdk';
   import { can } from '@cms/sdk/capabilities';
   import { Plus, Search } from '@lucide/svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
@@ -98,6 +98,15 @@
     typeInfo ? pluralLabel(m, typeInfo) : m.contentTitle,
   );
 
+  /** The list's sort: modified, newest first, unless a column was chosen. */
+  const direction = $derived(data.filter.order ?? 'desc');
+  const ariaSort = (column: ContentOrder) =>
+    (data.filter.orderby ?? 'updatedAt') === column
+      ? direction === 'asc'
+        ? 'ascending'
+        : 'descending'
+      : undefined;
+
   /** A status view is listed while it has entries (or is the current one). */
   const listed = (count: number | null, current: boolean) =>
     current || count === null || count > 0;
@@ -127,6 +136,7 @@
     comments: m.navComments,
     status: m.columnStatus,
     date: m.columnDate,
+    modified: m.columnModified,
   });
   /** Title and checkbox are always shown; colspan of full-width rows. */
   const span = $derived(
@@ -187,6 +197,19 @@
   hidden={data.screen.hidden}
   perPage={data.screen.perPage}
 />
+
+{#snippet sortLink(column: ContentOrder, label: string)}
+  {@const current = (data.filter.orderby ?? 'updatedAt') === column}
+  <a
+    href={resolve(
+      `/admin/(app)/content${query({ orderby: column, order: current ? (direction === 'asc' ? 'desc' : 'asc') : column === 'title' || column === 'author' ? 'asc' : 'desc', page: 1 })}`,
+    )}
+    class="inline-flex items-center gap-1 hover:underline"
+    >{label}{#if current}<span aria-hidden="true"
+        >{direction === 'asc' ? '▲' : '▼'}</span
+      >{/if}</a
+  >
+{/snippet}
 
 {#snippet count(value: number | null)}{#if value !== null}
     <span class="text-muted-foreground">({value})</span>{/if}{/snippet}
@@ -372,9 +395,13 @@
               (selected = event.currentTarget.checked ? selectable : [])}
           />
         </TableHead>
-        <TableHead>{m.columnTitle}</TableHead>
-        {#if !hidden.has('author')}<TableHead class="hidden md:table-cell"
-            >{m.columnAuthor}</TableHead
+        <TableHead aria-sort={ariaSort('title')}
+          >{@render sortLink('title', m.columnTitle)}</TableHead
+        >
+        {#if !hidden.has('author')}<TableHead
+            class="hidden md:table-cell"
+            aria-sort={ariaSort('author')}
+            >{@render sortLink('author', m.columnAuthor)}</TableHead
           >{/if}
         {#if !hidden.has('categories')}<TableHead class="hidden lg:table-cell"
             >{m.columnCategories}</TableHead
@@ -383,10 +410,19 @@
             >{m.columnTags}</TableHead
           >{/if}
         {#if !hidden.has('comments')}<TableHead
-            class="hidden text-right md:table-cell">{m.navComments}</TableHead
+            class="hidden text-right md:table-cell"
+            aria-sort={ariaSort('commentCount')}
+            >{@render sortLink('commentCount', m.navComments)}</TableHead
           >{/if}
         {#if !hidden.has('status')}<TableHead>{m.columnStatus}</TableHead>{/if}
-        {#if !hidden.has('date')}<TableHead>{m.columnDate}</TableHead>{/if}
+        {#if !hidden.has('date')}<TableHead aria-sort={ariaSort('publishedAt')}
+            >{@render sortLink('publishedAt', m.columnDate)}</TableHead
+          >{/if}
+        {#if !hidden.has('modified')}<TableHead
+            class="hidden xl:table-cell"
+            aria-sort={ariaSort('updatedAt')}
+            >{@render sortLink('updatedAt', m.columnModified)}</TableHead
+          >{/if}
       </TableRow>
     </TableHeader>
     <TableBody>
@@ -568,6 +604,12 @@
                   {date(item.publishedAt ?? item.updatedAt)}
                 {/if}
               </TableCell>
+            {/if}
+            {#if !hidden.has('modified')}
+              <TableCell
+                class="hidden align-top text-sm text-muted-foreground xl:table-cell"
+                >{date(item.updatedAt)}</TableCell
+              >
             {/if}
           </TableRow>
         {/if}

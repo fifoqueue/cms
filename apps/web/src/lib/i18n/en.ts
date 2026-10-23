@@ -1530,4 +1530,34 @@ export const en = {
   themeDetails: 'Theme details',
   themeDetailsOf: (name: string) => `Theme details: ${name}`,
   themeLivePreview: 'Live Preview',
+
+  // admin-screens wave 3
+  columnModified: 'Last modified',
+  usersEntriesOf: (name: string, count: number) =>
+    count === 1 ? `1 entry by ${name}` : `${count} entries by ${name}`,
+  rolesDelete: 'Delete role',
+  rolesReassign: 'Give its users the role',
+  rolesDeleteConfirm: (name: string) =>
+    `Delete the role ${name}? Its users get the role you chose.`,
+  usersAccountManagement: 'Account management',
+  usersSignOutEverywhere: 'Log out everywhere',
+  usersSignOutConfirm: (name: string) => `Sign ${name} out of every session?`,
+  usersSignedOut: 'The user was signed out everywhere.',
+  sessionsTitle: 'Sessions',
+  sessionsHelp:
+    'Where you are signed in. Sign out any session you do not recognize.',
+  sessionStarted: (date: string) => `Signed in ${date}`,
+  sessionExpires: (date: string) => `Expires ${date}`,
+  sessionCurrent: 'This session',
+  sessionRevoke: 'Sign out',
+  sessionRevoked: 'The session was signed out.',
+  dashboardBoxes: 'Boxes to show, in order',
+  moveUpItem: (name: string) => `Move ${name} up`,
+  moveDownItem: (name: string) => `Move ${name} down`,
+  pluginSettingsLink: 'Settings',
+  pluginSettingsOf: (name: string) => `${name} settings`,
+  pluginNoSettings: 'This plugin has no settings.',
+  menuDeleteConfirm: (name: string) => `Delete the menu “${name}”?`,
+  widgetMoveTo: (area: string) => `Move to ${area}`,
+  widgetDropHere: 'Drop here to place the widget last',
 } as const;

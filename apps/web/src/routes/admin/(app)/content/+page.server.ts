@@ -1,4 +1,9 @@
-import { CONTENT_STATUSES, can, contentListQuerySchema } from '@cms/sdk';
+import {
+  CONTENT_ORDERS,
+  CONTENT_STATUSES,
+  can,
+  contentListQuerySchema,
+} from '@cms/sdk';
 import type { ContentStatus } from '@cms/sdk';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { eachBounded, formIds } from '#lib/server/bulk.js';
@@ -68,6 +73,11 @@ export const load: PageServerLoad = async (event) => {
     year && contentListQuerySchema.safeParse({ year, month }).success;
   const dated = parsed ? { year: Number(year), month: Number(month) } : null;
   const page = Math.max(1, Math.trunc(Number(params.get('page'))) || 1);
+  // Sorting: only the SDK's allowlisted columns; anything else is the default order.
+  const orderby = pick(CONTENT_ORDERS, params.get('orderby'));
+  const order = orderby
+    ? pick(['asc', 'desc'] as const, params.get('order'))
+    : undefined;
   const screen = readScreenOptions(
     event.cookies,
     'content',
@@ -95,6 +105,8 @@ export const load: PageServerLoad = async (event) => {
       year: dated?.year,
       month: dated?.month,
       search,
+      orderBy: orderby,
+      order,
       page,
       pageSize: screen.perPage,
     }),
@@ -111,6 +123,8 @@ export const load: PageServerLoad = async (event) => {
       term,
       author,
       m: dated ? `${year}-${month}` : undefined,
+      orderby,
+      order,
       q: search,
     },
     counts: {

@@ -42,6 +42,12 @@ export const usersClient = (request: Request) => {
         json: input,
         response: adminUserSummarySchema,
       }),
+    /** Signs the user out of every session; API tokens keep working. */
+    signOutEverywhere: (id: string) =>
+      request<void>('DELETE', `${path(id)}/sessions`),
+    /** Emails the user a password reset link (limited per administrator). */
+    sendPasswordReset: (id: string) =>
+      request<void>('POST', `${path(id)}/password-reset`),
     /** Without `reassignTo`, their content is deleted with them. */
     remove: (id: string, reassignTo?: string) =>
       request<void>('DELETE', path(id), { query: { reassignTo } }),

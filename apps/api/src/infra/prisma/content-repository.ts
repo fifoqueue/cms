@@ -166,7 +166,13 @@ export class PrismaContentRepository implements ContentRepository {
       where,
       omit: listOmit,
       include: withRelations,
-      orderBy: [{ [orderBy]: order }, { id: order }],
+      // Allowlisted columns only (the SDK enum); id keeps pages stable on ties.
+      orderBy: [
+        orderBy === 'author'
+          ? { author: { name: order } }
+          : { [orderBy]: order },
+        { id: order },
+      ],
       skip,
       take: pageSize,
     });

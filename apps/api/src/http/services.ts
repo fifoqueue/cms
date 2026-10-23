@@ -18,6 +18,7 @@ import type { ThemePreviews } from '#api/domain/theme/theme-previews';
 import type { ImportService } from '#api/domain/tools/import-service';
 import type { ExportService } from '#api/domain/tools/export-service';
 import type { AdminPageRegistry } from '#api/plugin-runtime/admin-page-registry';
+import type { DashboardWidgetRegistry } from '#api/plugin-runtime/dashboard-widget-registry';
 import type { ContentTypeService } from '#api/domain/content/content-types';
 import type { FieldService } from '#api/domain/content/fields';
 import type { MediaService } from '#api/domain/media/media-service';
@@ -67,6 +68,7 @@ export type ApiServices = {
   comments: CommentService;
   search: SearchService;
   pluginPages: AdminPageRegistry;
+  dashboardWidgets: DashboardWidgetRegistry;
   webhooks: WebhookService;
   siteHealth: SiteHealthService;
   ssoSettings: SsoSettingsService;
