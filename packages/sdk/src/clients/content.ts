@@ -8,6 +8,7 @@ import {
   publicAdjacentSchema,
   publicAuthorSchema,
   publicContentSchema,
+  publicMonthNeighboursSchema,
   publicMonthSchema,
   publicRecentCommentSchema,
 } from '#sdk/content';
@@ -22,6 +23,7 @@ import type {
   PublicAuthor,
   PublicContent,
   PublicMonth,
+  PublicMonthNeighbours,
   PublicRecentComment,
 } from '#sdk/content';
 import { adminContentSchema } from '#sdk/content';
@@ -73,6 +75,12 @@ export const publicEntriesClient = (request: Request) => ({
     request<PublicRecentComment[]>('GET', '/api/v1/comments/recent', {
       query: { limit },
       response: z.array(publicRecentCommentSchema),
+    }),
+  /** The nearest months with published posts before and after one month. */
+  monthNeighbours: (year: number, month: number) =>
+    request<PublicMonthNeighbours>('GET', '/api/v1/month-neighbours', {
+      query: { year, month },
+      response: publicMonthNeighboursSchema,
     }),
   /** Months with published posts, newest first. */
   months: (limit = 12) =>

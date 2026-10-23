@@ -314,7 +314,11 @@ export const createContainer = async (
     new PrismaSeoDiscoveryRepository(db),
     seo,
   );
-  const themes = new ThemeService(settingsRepository, zipThemeArchive);
+  const themes = new ThemeService(
+    settingsRepository,
+    zipThemeArchive,
+    sharpImages,
+  );
   const themePreviews = new ThemePreviews({
     themes,
     signer,

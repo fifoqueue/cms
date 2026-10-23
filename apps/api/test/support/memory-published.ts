@@ -92,6 +92,31 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
     };
   }
 
+  async monthNeighbours(types: readonly string[], year: number, month: number) {
+    const anchor = year * 12 + month;
+    const months = (
+      await this.summaries({ types, page: 1, pageSize: 1e6 })
+    ).items.flatMap(({ publishedAt }) =>
+      publishedAt
+        ? [
+            {
+              year: publishedAt.getUTCFullYear(),
+              month: publishedAt.getUTCMonth() + 1,
+            },
+          ]
+        : [],
+    );
+    const order = (entry: { year: number; month: number }) =>
+      entry.year * 12 + entry.month;
+    const before = months
+      .filter((entry) => order(entry) < anchor)
+      .sort((a, b) => order(b) - order(a));
+    const after = months
+      .filter((entry) => order(entry) > anchor)
+      .sort((a, b) => order(a) - order(b));
+    return { previous: before[0] ?? null, next: after[0] ?? null };
+  }
+
   async summaries(criteria: PublishedCriteria) {
     const { items, total } = await this.content.list({
       ...criteria,

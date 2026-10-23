@@ -2,6 +2,7 @@ import {
   adjacentQuerySchema,
   can,
   isJsonValue,
+  monthNeighboursQuerySchema,
   monthsQuerySchema,
   publicContentListQuerySchema,
   publicContentSchema,
@@ -13,6 +14,7 @@ import type {
   PublicContent,
   PublicContentSummary,
   PublicMonth,
+  PublicMonthNeighbours,
 } from '@cms/sdk';
 import { authorize } from '#api/domain/auth/authorization';
 import type { Actor } from '#api/domain/auth/authorization';
@@ -97,6 +99,11 @@ export class PublishedContentReader implements ContentReader {
       previous: previous && toPublicSummary(previous),
       next: next && toPublicSummary(next),
     };
+  }
+
+  /** The nearest months with published posts around one month. */
+  monthNeighbours(year: number, month: number) {
+    return this.repository.monthNeighbours(['post'], year, month);
   }
 
   /** Months with published posts, newest first. */
@@ -245,6 +252,11 @@ export class PublicContentService {
       previous: previous && (await this.summarize(previous)),
       next: next && (await this.summarize(next)),
     };
+  }
+
+  async monthNeighbours(query: unknown): Promise<PublicMonthNeighbours> {
+    const { year, month } = parseInput(monthNeighboursQuerySchema, query);
+    return this.reader.monthNeighbours(year, month);
   }
 
   async months(query: unknown): Promise<PublicMonth[]> {

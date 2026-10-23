@@ -218,6 +218,8 @@ export type ReadingView = ReturnType<typeof readingView>;
 export const readingView = (reading: PublicReading) => ({
   postsPerPage: reading.postsPerPage,
   dateFormat: reading.dateFormat,
+  /** First day of the week in calendars (0 Sunday … 6 Saturday). */
+  weekStartsOn: reading.weekStartsOn,
   timeZone: reading.timeZone,
   frontPagePath: reading.frontPagePath,
   postsPagePath: reading.postsPagePath,

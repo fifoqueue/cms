@@ -355,6 +355,24 @@ export const publicRecentCommentSchema = z.strictObject({
 
 export type PublicRecentComment = z.output<typeof publicRecentCommentSchema>;
 
+const monthOfSchema = z
+  .strictObject({ year: z.number().int(), month: z.number().int() })
+  .nullable();
+
+/** The nearest months with published posts before and after one month (calendar links). */
+export const publicMonthNeighboursSchema = z.strictObject({
+  previous: monthOfSchema,
+  next: monthOfSchema,
+});
+export type PublicMonthNeighbours = z.output<
+  typeof publicMonthNeighboursSchema
+>;
+
+export const monthNeighboursQuerySchema = z.object({
+  year: z.coerce.number().int().min(1970).max(9999),
+  month: z.coerce.number().int().min(1).max(12),
+});
+
 export const monthsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(60).default(12),
 });

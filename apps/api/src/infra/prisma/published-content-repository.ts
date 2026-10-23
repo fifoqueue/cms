@@ -308,6 +308,29 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
     };
   }
 
+  async monthNeighbours(types: readonly string[], year: number, month: number) {
+    const start = new Date(Date.UTC(year, month - 1, 1));
+    const end = new Date(Date.UTC(year, month, 1));
+    const near = (publishedAt: { lt: Date } | { gte: Date }) =>
+      this.db.content.findFirst({
+        where: { ...PUBLIC_CONTENT, type: { in: [...types] }, publishedAt },
+        select: { publishedAt: true },
+        orderBy: { publishedAt: 'lt' in publishedAt ? 'desc' : 'asc' },
+      });
+    const [previous, next] = await Promise.all([
+      near({ lt: start }),
+      near({ gte: end }),
+    ]);
+    const monthOf = (row: { publishedAt: Date | null } | null) =>
+      row?.publishedAt
+        ? {
+            year: row.publishedAt.getUTCFullYear(),
+            month: row.publishedAt.getUTCMonth() + 1,
+          }
+        : null;
+    return { previous: monthOf(previous), next: monthOf(next) };
+  }
+
   async passwordHash(id: string) {
     const row = await this.db.content.findFirst({
       where: { id, ...PUBLIC_CONTENT },
