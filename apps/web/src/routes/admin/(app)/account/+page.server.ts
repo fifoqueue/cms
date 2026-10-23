@@ -8,13 +8,25 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ fetch, locals }) => {
   const sso = ssoApi(fetch, locals.token);
-  const [info, status, tokens] = await Promise.all([
+  const auth = authApi(fetch, locals.token);
+  const [info, status, tokens, sessions] = await Promise.all([
     sso.info(),
     sso.identity(),
-    authApi(fetch, locals.token).tokens.list(),
+    auth.tokens.list(),
+    auth.sessions.list(),
   ]);
 
-  return { sso: info, status, tokens };
+  return {
+    sso: info,
+    status,
+    tokens,
+    sessions: sessions.map(({ id, createdAt, expiresAt, current }) => ({
+      id,
+      createdAt,
+      expiresAt,
+      current,
+    })),
+  };
 };
 
 const locale = (value: string): AdminLocale | '' =>
@@ -49,6 +61,17 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+  },
+
+  /** Signs out one of the user's other sessions. */
+  sessionRevoke: async ({ fetch, locals, request }) => {
+    const form = await request.formData();
+    try {
+      await authApi(fetch, locals.token).sessions.revoke(text(form, 'id'));
+    } catch (caught) {
+      return failFrom(caught);
+    }
+    return { notice: 'sessionRevoked' };
   },
 
   tokenRevoke: async ({ fetch, locals, request }) => {

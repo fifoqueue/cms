@@ -1,7 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import { eachBounded, formIds } from '#lib/server/bulk.js';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
-import { readPluginSettings } from '#lib/server/plugin-settings-form.js';
 import { adminFor } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -83,23 +82,6 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
-  },
-  settings: async (event) => {
-    const form = await event.request.formData();
-    const id = text(form, 'id');
-    const admin = adminFor(event);
-    const plugin = (await admin.plugins.list()).find(
-      (candidate) => candidate.id === id,
-    );
-    if (!plugin) return fail(404, { message: Errors.PluginNotFound });
-    return attempt(
-      () =>
-        admin.plugins.updateSettings(
-          id,
-          readPluginSettings(plugin.settings, form),
-        ),
-      'saved',
-    );
   },
   /** Activates, deactivates or deletes every selected plugin, one at a time like the host does. */
   bulk: async (event) => {

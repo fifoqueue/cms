@@ -1502,4 +1502,33 @@ export const ko: Messages = {
   themeDetails: '테마 상세',
   themeDetailsOf: (name: string) => `테마 상세: ${name}`,
   themeLivePreview: '실시간 미리보기',
+
+  // admin-screens wave 3
+  columnModified: '최근 수정',
+  usersEntriesOf: (name: string, count: number) => `${name}의 글 ${count}개`,
+  rolesDelete: '역할 삭제',
+  rolesReassign: '이 역할의 사용자에게 줄 역할',
+  rolesDeleteConfirm: (name: string) =>
+    `${name} 역할을 삭제할까요? 이 역할의 사용자는 선택한 역할로 바뀝니다.`,
+  usersAccountManagement: '계정 관리',
+  usersSignOutEverywhere: '모든 곳에서 로그아웃',
+  usersSignOutConfirm: (name: string) =>
+    `${name}님을 모든 세션에서 로그아웃할까요?`,
+  usersSignedOut: '사용자를 모든 곳에서 로그아웃했습니다.',
+  sessionsTitle: '세션',
+  sessionsHelp: '로그인되어 있는 곳입니다. 모르는 세션은 로그아웃하세요.',
+  sessionStarted: (date: string) => `${date}에 로그인`,
+  sessionExpires: (date: string) => `${date}에 만료`,
+  sessionCurrent: '현재 세션',
+  sessionRevoke: '로그아웃',
+  sessionRevoked: '세션을 로그아웃했습니다.',
+  dashboardBoxes: '표시할 상자와 순서',
+  moveUpItem: (name: string) => `${name} 위로 이동`,
+  moveDownItem: (name: string) => `${name} 아래로 이동`,
+  pluginSettingsLink: '설정',
+  pluginSettingsOf: (name: string) => `${name} 설정`,
+  pluginNoSettings: '이 플러그인에는 설정이 없습니다.',
+  menuDeleteConfirm: (name: string) => `“${name}” 메뉴를 삭제할까요?`,
+  widgetMoveTo: (area: string) => `${area}(으)로 이동`,
+  widgetDropHere: '여기에 놓으면 위젯이 맨 끝에 배치됩니다',
 };

@@ -244,7 +244,7 @@
                     >
                   {/if}
                   <form method="POST" action="?/reset" use:enhance>
-                    <input type="hidden" name="email" value={user.email} />
+                    <input type="hidden" name="id" value={user.id} />
                     <button type="submit" class="text-primary hover:underline"
                       >{m.usersSendReset}</button
                     >
@@ -255,9 +255,18 @@
                 >{user.email}</TableCell
               >
               <TableCell>{roleName(user.role)}</TableCell>
-              <TableCell class="hidden text-right md:table-cell"
-                >{user.contentCount}</TableCell
-              >
+              <TableCell class="hidden text-right md:table-cell">
+                {#if user.contentCount}
+                  <a
+                    href={resolve(
+                      `/admin/(app)/content?author=${encodeURIComponent(user.slug)}`,
+                    )}
+                    class="hover:underline"
+                    aria-label={m.usersEntriesOf(user.name, user.contentCount)}
+                    >{user.contentCount}</a
+                  >
+                {:else}0{/if}
+              </TableCell>
               <TableCell class="hidden md:table-cell"
                 >{new Date(user.createdAt).toLocaleDateString(
                   i18n.language,
@@ -411,6 +420,34 @@
       {/key}
       <Button type="submit">{m.save}</Button>
     </form>
+    {#if selectedRole}
+      <form
+        method="POST"
+        action="?/deleteRole"
+        use:enhance={({ cancel }) => {
+          if (!confirm(m.rolesDeleteConfirm(selectedRole.name)))
+            return cancel();
+          return async ({ update }) => {
+            roleKey = '';
+            await update();
+          };
+        }}
+        class="mt-6 flex flex-wrap items-end gap-3 border-t pt-4"
+      >
+        <input type="hidden" name="key" value={selectedRole.key} />
+        <div class="grid gap-1">
+          <Label for="role-reassign">{m.rolesReassign}</Label>
+          <NativeSelect id="role-reassign" name="reassignTo" required>
+            {#each data.roles.filter((role) => role.key !== selectedRole.key) as role (role.key)}
+              <NativeSelectOption value={role.key}
+                >{roleName(role.key)}</NativeSelectOption
+              >
+            {/each}
+          </NativeSelect>
+        </div>
+        <Button type="submit" variant="destructive">{m.rolesDelete}</Button>
+      </form>
+    {/if}
   </CardContent>
 </Card>
 

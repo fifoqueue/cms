@@ -168,6 +168,19 @@ export interface AdminPageRegistrar {
   page(key: string, page: AdminPageDefinition): Unsubscribe;
 }
 
+/** A box on the admin dashboard, described as display blocks (no `form` blocks). */
+export interface DashboardWidgetDefinition {
+  title: string;
+  /** Who sees it. Default `plugins.manage`. */
+  capability?: Capability;
+  render(): Awaitable<AdminBlock[]>;
+}
+
+export interface DashboardWidgetRegistrar {
+  /** `key` is kebab-case. A failing or invalid widget is left off the dashboard. */
+  dashboardWidget(key: string, widget: DashboardWidgetDefinition): Unsubscribe;
+}
+
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export interface PluginRequest {
@@ -224,7 +237,7 @@ export interface PluginContext {
   readonly widgets: WidgetRegistrar;
   readonly embeds: EmbedRegistrar;
   readonly tasks: TaskRegistrar;
-  readonly admin: AdminPageRegistrar;
+  readonly admin: AdminPageRegistrar & DashboardWidgetRegistrar;
   readonly routes: RouteRegistrar;
   readonly settings: SettingsReader;
   readonly storage: KeyValueStore;

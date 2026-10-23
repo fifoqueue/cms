@@ -3,7 +3,10 @@ import {
   passwordResetRequestSchema,
   passwordResetSchema,
 } from '@cms/sdk';
+import type { RateRule } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
+import { authorize } from '#api/domain/auth/authorization';
+import type { RateLimitStore } from '#api/domain/security/ports';
 import type {
   PasswordHasher,
   PasswordTokenPurpose,
@@ -19,10 +22,24 @@ import type {
   Attempt,
   ProtectionService,
 } from '#api/domain/security/protection-service';
-import { invalidInput, notFound, Errors } from '#api/shared/errors';
+import {
+  invalidInput,
+  notFound,
+  rateLimited,
+  Errors,
+} from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 
 const HOUR = 60 * 60 * 1000;
+
+/** Reset emails one administrator may send per hour. */
+const ADMIN_RESET_RULE: RateRule = {
+  enabled: true,
+  max: 20,
+  windowSeconds: 3600,
+  blockSeconds: 0,
+  enforcement: 'block',
+};
 const LIFETIME: Record<PasswordTokenPurpose, number> = {
   reset: HOUR,
   invite: 7 * 24 * HOUR,
@@ -36,6 +53,8 @@ export interface PasswordServiceDeps {
   hasher: PasswordHasher;
   email: EmailService;
   protection: ProtectionService;
+  /** Counts the reset emails each administrator sends (`sendReset`). */
+  limits: RateLimitStore;
   clock: Clock;
   /** Public origin and display settings used in links and mail copy. */
   site: () => Promise<{ siteUrl: string; title: string; locale: string }>;
@@ -97,6 +116,32 @@ export class PasswordService {
     const site = await this.site();
     const user = await this.deps.users.findByEmail(account);
     if (!user) return;
+    const link = await this.link(user, 'reset', site.siteUrl);
+    await this.deps.email.queue({
+      to: user.email,
+      ...templates(site.locale).reset(site.title, link),
+    });
+  }
+
+  /**
+   * Emails a user a reset link on an administrator's behalf (`users.manage`). No captcha or
+   * visitor limit applies; instead each administrator may send 20 an hour.
+   */
+  async sendReset(userId: string, actor: Actor) {
+    authorize(actor, 'users.manage');
+    const user = await this.deps.users.findById(userId);
+    if (!user) throw notFound(Errors.UserNotFound);
+    if (!(await this.deps.email.enabled()))
+      throw invalidInput(Errors.EmailDisabled);
+    if (
+      await this.deps.limits.hit(
+        `adminPasswordReset:${actor.id}`,
+        ADMIN_RESET_RULE,
+        this.deps.clock.now(),
+      )
+    )
+      throw rateLimited(Errors.PasswordResetLimit);
+    const site = await this.site();
     const link = await this.link(user, 'reset', site.siteUrl);
     await this.deps.email.queue({
       to: user.email,

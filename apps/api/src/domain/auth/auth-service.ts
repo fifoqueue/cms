@@ -1,11 +1,14 @@
 import { loginSchema, setupSchema } from '@cms/sdk';
 import type {
   Capability,
+  SessionInfo,
   SessionGrant,
   SetupStatus,
   UserProfile,
 } from '@cms/sdk';
-import { conflict, unauthorized, Errors } from '#api/shared/errors';
+import { conflict, notFound, unauthorized, Errors } from '#api/shared/errors';
+import type { Actor } from '#api/domain/auth/authorization';
+import { authorize } from '#api/domain/auth/authorization';
 import { parseInput } from '#api/shared/validation';
 import { toProfile } from '#api/domain/users/user-mapper';
 import { slugify } from '#api/domain/content/slug';
@@ -104,6 +107,41 @@ export class AuthService {
     await this.deps.sessions.delete(this.deps.tokens.digest(token));
   }
 
+  /** The opaque id a session is listed under: derived from its digest, never the digest itself. */
+  private sessionId(tokenHash: string) {
+    return this.deps.tokens.digest(`session:${tokenHash}`).slice(0, 32);
+  }
+
+  /** The signed-in user's own sessions, marking the one making this request. */
+  async sessions(actor: Actor, token: string): Promise<SessionInfo[]> {
+    const current = this.deps.tokens.digest(token);
+    return (
+      await this.deps.sessions.listForUser(actor.id, this.deps.clock.now())
+    ).map((session) => ({
+      id: this.sessionId(session.tokenHash),
+      createdAt: session.createdAt.toISOString(),
+      expiresAt: session.expiresAt.toISOString(),
+      current: session.tokenHash === current,
+    }));
+  }
+
+  /** Signs out one of the user's own sessions; unknown ids are a 404. */
+  async revokeSession(actor: Actor, id: string): Promise<void> {
+    const session = (
+      await this.deps.sessions.listForUser(actor.id, this.deps.clock.now())
+    ).find((candidate) => this.sessionId(candidate.tokenHash) === id);
+    if (!session) throw notFound(Errors.SessionNotFound);
+    await this.deps.sessions.delete(session.tokenHash);
+  }
+
+  /** Signs a user out of every session (`users.manage`). API tokens are kept. */
+  async signOutEverywhere(userId: string, actor: Actor): Promise<void> {
+    authorize(actor, 'users.manage');
+    if (!(await this.deps.users.findById(userId)))
+      throw notFound(Errors.UserNotFound);
+    await this.deps.sessions.deleteForUser(userId);
+  }
+
   /** The user of a session token or, when enabled, an application password. */
   async authenticate(token: string): Promise<UserProfile | null> {
     const apiUser = await this.deps.apiTokens?.authenticate(token);
@@ -140,6 +178,7 @@ export class AuthService {
       tokenHash: this.deps.tokens.digest(token),
       userId: user.id,
       identityId,
+      createdAt: now,
       expiresAt,
     });
     return {

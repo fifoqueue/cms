@@ -31,6 +31,9 @@ export const Errors = {
   CaptchaRequired: 'Please confirm that you are not a robot.',
   CaptchaInvalid: 'The robot check failed. Please try again.',
   UserNotFound: 'User not found',
+  SessionNotFound: 'Session not found',
+  PasswordResetLimit:
+    'Too many password reset emails were sent. Try again later.',
   PasswordRequired:
     'Enter a password, or set up email delivery to send an invitation',
   LastAdministrator: 'The site needs at least one administrator',

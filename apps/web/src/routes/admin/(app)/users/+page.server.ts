@@ -4,7 +4,6 @@ import type { Capability } from '@cms/sdk';
 import { eachBounded, formIds } from '#lib/server/bulk.js';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { adminFor, requireCapability } from '#lib/server/session.js';
-import { visitorOf } from '#lib/server/visitor.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
@@ -89,19 +88,30 @@ export const actions: Actions = {
     }
     return { notice: 'created' };
   },
-  /** Emails a password reset link, the same one the sign-in screen sends. */
+  /** Emails a password reset link through the administrator endpoint (limited per administrator). */
   reset: async (event) => {
     requireCapability(event.locals, 'users.manage');
     const form = await event.request.formData();
     try {
-      await authApi(event.fetch).password.forgot(
-        text(form, 'email'),
-        visitorOf(event, form),
-      );
+      await adminFor(event).users.sendPasswordReset(text(form, 'id'));
     } catch (caught) {
       return failFrom(caught);
     }
     return { notice: 'usersResetSent' };
+  },
+  /** Deletes a custom role after moving its users to another role. */
+  deleteRole: async (event) => {
+    requireCapability(event.locals, 'users.manage');
+    const form = await event.request.formData();
+    try {
+      await adminFor(event).roles.remove(
+        text(form, 'key'),
+        text(form, 'reassignTo'),
+      );
+    } catch (caught) {
+      return failFrom(caught);
+    }
+    return { notice: 'deleted' };
   },
   /** Changes the role of, or deletes, every selected user except the signed-in one. */
   bulk: async (event) => {
