@@ -40,8 +40,11 @@ const { actions: editContentActions } =
 const { actions: appearanceActions } =
   await import('#web/routes/admin/(app)/appearance/+page.server.js');
 const { removeApiSecrets } = await import('#web-env');
+const { GET: feed } = await import('#web/routes/feed.xml/+server.js');
 const { actions: editorActions } =
   await import('#web/routes/admin/(app)/appearance/editor/+page.server.js');
+
+const { commentAction } = await import('#lib/server/comments.js');
 
 const SECRET = 'SECRET-SENTINEL-7f3a';
 const TOKEN = 'TOKEN-SENTINEL-91c2';
@@ -278,18 +281,11 @@ const publicEvent = (
     route: { id: route },
     params,
     locals: forbidden('locals'),
-    // Only unlock proofs may be read; any session cookie access fails the test.
-    cookies: new Proxy(
-      { getAll: () => [] },
-      {
-        get(target, key) {
-          if (key === 'getAll') return target.getAll;
-          throw new Error(`public loader read cookies.${String(key)}`);
-        },
-      },
-    ),
+    // Public entry reads may forward visitor proofs and an optional session to the API.
+    cookies: { getAll: () => [], get: () => undefined },
     parent: async () => ({
       reading,
+      theme,
       archives: {
         bases: { category: '/category', tag: '/tag' },
         history: { category: [], tag: [] },
@@ -428,6 +424,129 @@ describe('public page data', () => {
       ),
     ).toMatchObject({ status: 502 });
   });
+
+  test('block data shared by the error template and the page, and archive slots, load once', async () => {
+    const footer = [{ name: 'latest-posts', attrs: { count: 5 } }];
+    const shared = {
+      ...theme,
+      templates: {
+        index: [{ name: 'template-part', attrs: { slug: 'footer' } }],
+        single: [
+          { name: 'post-navigation' },
+          { name: 'template-part', attrs: { slug: 'footer' } },
+        ],
+      },
+      parts: [{ slug: 'footer', area: 'footer', blocks: footer }],
+    };
+    override = ({ url }) =>
+      url.pathname === '/api/v1/layout'
+        ? json({
+            site: { title: 'Site', description: '', locale: 'en' },
+            seo: SEO_SETTINGS_DEFAULTS,
+            theme: shared,
+            reading,
+            menus: { primary: null, footer: null },
+            widgets: { sidebar: [], footer: [] },
+            archives: {
+              bases: { category: '/topics', tag: '/tag' },
+              history: { category: [], tag: [] },
+            },
+          })
+        : url.pathname === '/api/v1/adjacent'
+          ? json({ previous: null, next: null })
+          : undefined;
+    const layout = await loadSiteLayout(publicEvent('/'));
+    const withLayout = (path: string) =>
+      ({
+        ...(publicEvent(path) as object),
+        parent: async () => layout,
+      }) as never;
+    const entry = await loadEntry(withLayout('/hello'));
+    const latest = calls.filter(
+      ({ url }) =>
+        url.pathname === '/api/v1/content' &&
+        url.searchParams.get('pageSize') === '5',
+    );
+    expect(latest).toHaveLength(1);
+    expect(entry).toMatchObject({ adjacent: { previous: null, next: null } });
+
+    calls = [];
+    expect(await loadEntry(withLayout('/topics/news'))).toMatchObject({
+      kind: 'term',
+    });
+    const paths = calls.map(({ url }) => url.pathname);
+    expect(paths.filter((path) => path === '/api/v1/slots')).toHaveLength(1);
+    expect(paths).not.toContain('/api/v1/content-types');
+  });
+
+  test('feeds refuse values that are not slugs instead of shortening them', async () => {
+    const response = await feed({
+      fetch: fakeFetch,
+      url: new URL(`http://web.test/feed.xml?category=${'a'.repeat(192)}`),
+    } as never);
+    expect(response.status).toBe(404);
+    expect(
+      calls.some(({ url }) => url.pathname.startsWith('/api/v1/taxonomies')),
+    ).toBe(false);
+  });
+});
+
+test('failed replies retain their parent and retry redirects to the returned comment page', async () => {
+  const fields = {
+    contentId: 'id-hello',
+    parentId: 'parent',
+    parentName: 'Ann',
+    authorName: 'Reader',
+    authorEmail: 'reader@example.com',
+    body: 'Reply',
+  };
+  const event = () =>
+    ({
+      ...(adminEvent('/hello?/comment&cpage=2', fields) as object),
+      getClientAddress: () => '203.0.113.1',
+      cookies: {
+        get: () => undefined,
+        getAll: () => [],
+        delete: () => undefined,
+      },
+    }) as Parameters<typeof commentAction>[0];
+  override = ({ url }) =>
+    url.pathname === '/api/v1/comments'
+      ? json(
+          { error: { code: 'captcha_required', message: 'Solve captcha' } },
+          403,
+        )
+      : undefined;
+  const failure = failureData(await commentAction(event()));
+  expect(failure).toMatchObject({
+    parentId: 'parent',
+    parentName: 'Ann',
+    captcha: true,
+  });
+  override = ({ url, body }) => {
+    if (url.pathname !== '/api/v1/comments') return undefined;
+    expect(JSON.parse(body).parentId).toBe(failure.parentId);
+    return json({
+      status: 'approved',
+      page: 2,
+      pendingProof: null,
+      comment: {
+        id: 'reply',
+        parentId: 'parent',
+        depth: 1,
+        authorName: 'Reader',
+        authorUrl: null,
+        byAuthor: false,
+        avatarUrl: null,
+        pending: false,
+        body: 'Reply',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+  };
+  expect(
+    await commentAction(event()).catch((error: unknown) => error),
+  ).toMatchObject({ status: 303, location: '/hello?cpage=2#comment-reply' });
 });
 
 describe('admin form failures', () => {

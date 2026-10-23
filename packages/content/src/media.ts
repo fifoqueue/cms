@@ -79,9 +79,8 @@ export const ContentImage = Image.extend({
         title: a.title,
         width: a.width,
         height: a.height,
+        // Loading hints and srcset are added when the API serves the content (responsive images).
         'data-media-id': a.mediaId,
-        loading: 'lazy',
-        decoding: 'async',
       },
     ];
     const href = safeLinkHref(a.href);

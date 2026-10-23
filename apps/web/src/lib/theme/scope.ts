@@ -1,6 +1,7 @@
 import { getContext, setContext } from 'svelte';
 import type { ArchivePathsState, SlotMap } from '@cms/sdk';
 import type { CommentSection } from '#lib/server/comments.js';
+import type { BlockData } from '#lib/server/theme-queries.js';
 import type {
   MenuItemView,
   PostSummary,
@@ -16,6 +17,10 @@ import type { ThemePage } from '#lib/theme/template.js';
 export interface SiteScope {
   archives?: ArchivePathsState;
   queries?: Record<string, PostList>;
+  terms: BlockData['terms'];
+  months: BlockData['months'];
+  /** Previous and next entry of a single entry page. */
+  adjacent: BlockData['adjacent'];
   theme: ThemeView;
   site: SiteView;
   reading: ReadingView;
@@ -28,6 +33,8 @@ export interface SiteScope {
   fieldLabels: { key: string; label: string; type: string }[];
   comments: CommentSection | null;
   moderation: boolean;
+  /** Whether the visitor is signed in (the toolbar shows). */
+  signedIn: boolean;
 }
 
 const SCOPE = Symbol('site-scope');

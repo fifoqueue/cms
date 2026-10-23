@@ -1,9 +1,10 @@
 <script lang="ts">
   import { Editor } from '@tiptap/core';
   import type { ChainedCommands } from '@tiptap/core';
+  import type { EditorView } from '@tiptap/pm/view';
   import { contentExtensions } from '@cms/content';
-  import type { ContentDocument } from '@cms/sdk';
-  import type { AdminMedia } from '@cms/sdk';
+  import { CONTENT_ALIGNMENTS, IMAGE_SIZES } from '@cms/sdk';
+  import type { AdminMedia, ContentDocument } from '@cms/sdk';
   import {
     Bold,
     Code,
@@ -25,8 +26,14 @@
   } from '@lucide/svelte';
   import BlockInserter from '#lib/admin/editor/BlockInserter.svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
+  import type { MediaChoice } from '#lib/admin/MediaPicker.svelte';
+  import { uploadFile } from '#lib/admin/upload.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import { Input } from '#lib/components/ui/input/index.js';
+  import {
+    NativeSelect,
+    NativeSelectOption,
+  } from '#lib/components/ui/native-select/index.js';
   import { useI18n } from '#lib/i18n/index.js';
   import type { Component } from 'svelte';
   import { onMount } from 'svelte';
@@ -35,9 +42,11 @@
     /** Form field that receives the document as JSON. */
     name: string;
     value: ContentDocument;
+    /** Accessible name of the writing area (the visible field label). */
+    label: string;
   }
 
-  let { name, value = $bindable() }: Props = $props();
+  let { name, value = $bindable(), label }: Props = $props();
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
@@ -45,11 +54,74 @@
   let picker: ReturnType<typeof MediaPicker>;
   let embedDialog: HTMLDialogElement;
   let embedUrl = $state('');
+  let linkDialog: HTMLDialogElement;
+  let linkUrl = $state('');
+  let uploading = $state(0);
+  let uploadErrors = $state<string[]>([]);
 
   let element: HTMLDivElement;
   let editor = $state.raw<Editor | null>(null);
   // Bumped on every transaction so toolbar state re-renders.
   let revision = $state(0);
+
+  /** Image node attributes for a library file at the chosen size. */
+  const imageNode = (media: AdminMedia, choice: MediaChoice) => ({
+    type: 'image',
+    attrs: {
+      src: choice.variant?.url ?? media.url,
+      alt: choice.alt,
+      mediaId: media.id,
+      width: choice.variant?.width ?? media.width,
+      height: choice.variant?.height ?? media.height,
+    },
+  });
+
+  const isImage = (file: File) => file.type.startsWith('image/');
+  /** Where pending uploads go; every transaction maps them, so edits meanwhile keep them in place. */
+  let markers: { pos: number }[] = [];
+
+  /** Uploads dropped or pasted image files and inserts them at `position`. */
+  const uploadInto = (view: EditorView, files: File[], position: number) => {
+    const images = files.filter(isImage);
+    if (!images.length) return false;
+    const marker = { pos: position };
+    markers.push(marker);
+    void (async () => {
+      uploadErrors = [];
+      uploading += images.length;
+      for (const file of images) {
+        const result = await uploadFile(file);
+        uploading--;
+        // The server decides the kind from the file's bytes, not the browser's type.
+        if (!('media' in result) || result.media.kind !== 'image') {
+          uploadErrors = [
+            ...uploadErrors,
+            'media' in result
+              ? m.mediaWrongKind(file.name)
+              : m.mediaUploadFailed(file.name, result.error),
+          ];
+          continue;
+        }
+        const media = result.media;
+        if (!editor || view.isDestroyed) break;
+        // Mapping moves the marker past each inserted image, so the next one follows it.
+        editor
+          .chain()
+          .insertContentAt(
+            marker.pos,
+            imageNode(media, {
+              alt: media.alt,
+              variant: media.variants.find(
+                (variant) => variant.name === 'large',
+              ),
+            }),
+          )
+          .run();
+      }
+      markers = markers.filter((other) => other !== marker);
+    })();
+    return true;
+  };
 
   onMount(() => {
     const instance = new Editor({
@@ -60,9 +132,35 @@
         attributes: {
           class:
             'prose max-w-none min-h-80 px-4 py-3 focus:outline-none dark:prose-invert',
+          role: 'textbox',
+          'aria-multiline': 'true',
+          'aria-label': label,
+        },
+        handleDrop: (view, event, _slice, moved) => {
+          if (moved || !event.dataTransfer?.files.length) return false;
+          const position = view.posAtCoords({
+            left: event.clientX,
+            top: event.clientY,
+          })?.pos;
+          if (position === undefined) return false;
+          if (!uploadInto(view, [...event.dataTransfer.files], position))
+            return false;
+          event.preventDefault();
+          return true;
+        },
+        handlePaste: (view, event) => {
+          const files = [...(event.clipboardData?.files ?? [])];
+          if (!files.some(isImage)) return false;
+          // Pasting replaces the selection, as it does for text.
+          view.dispatch(view.state.tr.deleteSelection());
+          return uploadInto(view, files, view.state.selection.from);
         },
       },
-      onTransaction: () => revision++,
+      onTransaction: ({ transaction }) => {
+        revision++;
+        for (const marker of markers)
+          marker.pos = transaction.mapping.map(marker.pos);
+      },
       onUpdate: ({ editor: current }) =>
         (value = current.getJSON() as ContentDocument),
     });
@@ -78,10 +176,12 @@
     revision >= 0 && (editor?.isActive(type, attributes) ?? false);
 
   const editLink = () => {
-    const previous =
-      (editor?.getAttributes('link').href as string | undefined) ?? '';
-    const href = window.prompt('Link URL (empty to remove)', previous);
-    if (href === null) return;
+    linkUrl = (editor?.getAttributes('link').href as string | undefined) ?? '';
+    linkDialog.showModal();
+  };
+
+  const applyLink = (href: string) => {
+    linkDialog.close();
     run((chain) =>
       href
         ? chain.extendMarkRange('link').setLink({ href })
@@ -89,22 +189,17 @@
     );
   };
 
+  /** Whether the picker swaps the selected image's file instead of inserting one. */
+  let replacing = false;
+
   /** Inserts a library image; the media id keeps usage tracking accurate. */
-  const insertImage = (media: AdminMedia) =>
-    run((chain) =>
-      chain.insertContent({
-        type: 'image',
-        attrs: {
-          src:
-            media.variants.find((variant) => variant.name === 'large')?.url ??
-            media.url,
-          alt: media.alt,
-          mediaId: media.id,
-          width: media.width,
-          height: media.height,
-        },
-      }),
-    );
+  const insertImage = (media: AdminMedia, choice: MediaChoice) => {
+    const node = imageNode(media, choice);
+    // Replacing keeps the caption, alignment and link of the selected image.
+    if (replacing) setImage(node.attrs);
+    else run((chain) => chain.insertContent(node));
+    replacing = false;
+  };
 
   const insertEmbed = () => {
     const url = embedUrl.trim();
@@ -118,6 +213,60 @@
     revision >= 0 && (editor?.isActive('table') ?? false),
   );
 
+  /** Attributes of the selected image, when an image is selected. */
+  const image = $derived(
+    revision >= 0 && editor?.isActive('image')
+      ? editor.getAttributes('image')
+      : null,
+  );
+
+  /** Updates the selected image without moving focus out of the settings field. */
+  const setImage = (attributes: Record<string, unknown>) =>
+    editor?.chain().updateAttributes('image', attributes).run();
+
+  /** Enter returns to the text instead of submitting the content form. */
+  const returnToText = (event: KeyboardEvent) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    editor?.commands.focus();
+  };
+
+  /** Size of the selected image's file, read from the loaded picture. */
+  const natural = () => {
+    if (!editor) return null;
+    const node = editor.view.nodeDOM(editor.state.selection.from);
+    const picture =
+      node instanceof HTMLImageElement
+        ? node
+        : node instanceof HTMLElement
+          ? node.querySelector('img')
+          : null;
+    return picture?.naturalWidth
+      ? { width: picture.naturalWidth, height: picture.naturalHeight }
+      : null;
+  };
+
+  const imageSize = $derived(
+    image?.width === IMAGE_SIZES.thumbnail
+      ? 'thumbnail'
+      : image?.width === IMAGE_SIZES.medium
+        ? 'medium'
+        : '',
+  );
+
+  const resize = (size: string) => {
+    const full = natural();
+    if (!full) return;
+    const width =
+      size === 'thumbnail' || size === 'medium'
+        ? Math.min(IMAGE_SIZES[size], full.width)
+        : full.width;
+    setImage({
+      width,
+      height: Math.round((width * full.height) / full.width),
+    });
+  };
+
   interface Tool {
     label: string;
     icon: Component;
@@ -125,96 +274,97 @@
     action: () => void;
   }
 
-  const tools: Tool[] = [
+  const tools: Tool[] = $derived([
     {
-      label: 'Bold',
+      label: m.editorBold,
       icon: Bold,
       active: () => isActive('bold'),
       action: () => run((c) => c.toggleBold()),
     },
     {
-      label: 'Italic',
+      label: m.editorItalic,
       icon: Italic,
       active: () => isActive('italic'),
       action: () => run((c) => c.toggleItalic()),
     },
     {
-      label: 'Strikethrough',
+      label: m.editorStrike,
       icon: Strikethrough,
       active: () => isActive('strike'),
       action: () => run((c) => c.toggleStrike()),
     },
     {
-      label: 'Inline code',
+      label: m.editorCode,
       icon: Code,
       active: () => isActive('code'),
       action: () => run((c) => c.toggleCode()),
     },
     {
-      label: 'Link',
+      label: m.editorLink,
       icon: Link,
       active: () => isActive('link'),
       action: editLink,
     },
     {
-      label: 'Heading 2',
+      label: m.editorHeading(2),
       icon: Heading2,
       active: () => isActive('heading', { level: 2 }),
       action: () => run((c) => c.toggleHeading({ level: 2 })),
     },
     {
-      label: 'Heading 3',
+      label: m.editorHeading(3),
       icon: Heading3,
       active: () => isActive('heading', { level: 3 }),
       action: () => run((c) => c.toggleHeading({ level: 3 })),
     },
     {
-      label: 'Bullet list',
+      label: m.editorBulletList,
       icon: List,
       active: () => isActive('bulletList'),
       action: () => run((c) => c.toggleBulletList()),
     },
     {
-      label: 'Numbered list',
+      label: m.editorOrderedList,
       icon: ListOrdered,
       active: () => isActive('orderedList'),
       action: () => run((c) => c.toggleOrderedList()),
     },
     {
-      label: 'Quote',
+      label: m.editorQuote,
       icon: Quote,
       active: () => isActive('blockquote'),
       action: () => run((c) => c.toggleBlockquote()),
     },
     {
-      label: 'Code block',
+      label: m.editorCodeBlock,
       icon: SquareCode,
       active: () => isActive('codeBlock'),
       action: () => run((c) => c.toggleCodeBlock()),
     },
-    { label: 'Image', icon: Image, action: () => picker.open() },
     {
-      get label() {
-        return m.mediaAudio;
+      label: m.editorImage,
+      icon: Image,
+      action: () => {
+        replacing = false;
+        picker.open();
       },
-      icon: Music,
-      action: () => audioPicker.open(),
     },
+    { label: m.mediaAudio, icon: Music, action: () => audioPicker.open() },
     {
-      label: 'Table',
+      label: m.editorTable,
       icon: Table,
       active: () => isActive('table'),
       action: () =>
         run((c) => c.insertTable({ rows: 3, cols: 3, withHeaderRow: true })),
     },
     {
-      label: 'Embed',
+      label: m.insertEmbed,
       icon: SquarePlay,
       action: () => embedDialog.showModal(),
     },
-    { label: 'Undo', icon: Undo, action: () => run((c) => c.undo()) },
-    { label: 'Redo', icon: Redo, action: () => run((c) => c.redo()) },
-  ];
+    { label: m.editorUndo, icon: Undo, action: () => run((c) => c.undo()) },
+    { label: m.editorRedo, icon: Redo, action: () => run((c) => c.redo()) },
+  ]);
 </script>
 
 <div class="rounded-md border bg-background">
@@ -222,9 +372,9 @@
   <div
     class="flex flex-wrap gap-1 border-b p-1"
     role="toolbar"
-    aria-label="Formatting"
+    aria-label={m.editorToolbar}
   >
-    {#each tools as tool (tool.label)}
+    {#each tools as tool, index (index)}
       {@const Icon = tool.icon}
       <button
         type="button"
@@ -270,11 +420,105 @@
       >
     </div>
   {/if}
+  {#if image}
+    <div
+      class="flex flex-wrap items-end gap-3 border-b bg-muted/40 p-2 text-sm"
+      role="group"
+      aria-label={m.editorImageSettings}
+    >
+      <label class="grid min-w-48 flex-1 gap-1">
+        {m.mediaAlt}
+        <Input
+          class="h-8"
+          maxlength={500}
+          value={image.alt ?? ''}
+          oninput={(event) => setImage({ alt: event.currentTarget.value })}
+          onkeydown={returnToText}
+        />
+      </label>
+      <label class="grid gap-1">
+        {m.imageSize}
+        <NativeSelect
+          class="h-8"
+          value={imageSize}
+          onchange={(event) => resize(event.currentTarget.value)}
+        >
+          <NativeSelectOption value="thumbnail"
+            >{m.sizeThumbnail}</NativeSelectOption
+          >
+          <NativeSelectOption value="medium">{m.sizeMedium}</NativeSelectOption>
+          <NativeSelectOption value="">{m.sizeFull}</NativeSelectOption>
+        </NativeSelect>
+      </label>
+      <label class="grid gap-1">
+        {m.contentAlignment}
+        <NativeSelect
+          class="h-8"
+          value={image.align ?? 'center'}
+          onchange={(event) => setImage({ align: event.currentTarget.value })}
+        >
+          {#each CONTENT_ALIGNMENTS as align (align)}<NativeSelectOption
+              value={align}>{m.contentAlignmentName(align)}</NativeSelectOption
+            >{/each}
+        </NativeSelect>
+      </label>
+      <label class="grid min-w-48 flex-1 gap-1">
+        {m.contentCaption}
+        <Input
+          class="h-8"
+          maxlength={2000}
+          value={image.caption ?? ''}
+          oninput={(event) => setImage({ caption: event.currentTarget.value })}
+          onkeydown={returnToText}
+        />
+      </label>
+      <label class="grid min-w-48 flex-1 gap-1">
+        {m.contentLink}
+        <Input
+          class="h-8"
+          type="url"
+          maxlength={2048}
+          placeholder="https://"
+          value={image.href ?? ''}
+          oninput={(event) =>
+            setImage({ href: event.currentTarget.value.trim() || null })}
+          onkeydown={returnToText}
+        />
+      </label>
+      <label class="flex h-8 items-center gap-2">
+        <input
+          type="checkbox"
+          checked={image.newTab === true}
+          onchange={(event) =>
+            setImage({ newTab: event.currentTarget.checked })}
+        />{m.contentNewTab}
+      </label>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onclick={() => {
+          replacing = true;
+          picker.open();
+        }}>{m.mediaChoose}</Button
+      >
+    </div>
+  {/if}
   <div bind:this={element}></div>
+  {#if uploading || uploadErrors.length}
+    <div class="border-t p-2 text-xs" aria-live="polite">
+      {#if uploading}<p class="text-muted-foreground">
+          {m.editorUploading(uploading)}
+        </p>{/if}
+      {#each uploadErrors as error (error)}<p class="text-destructive">
+          {error}
+        </p>{/each}
+    </div>
+  {/if}
 </div>
 <input type="hidden" {name} value={JSON.stringify(value)} />
 
-<MediaPicker bind:this={picker} onpick={insertImage} />
+<MediaPicker bind:this={picker} sizes onpick={insertImage} />
 <MediaPicker
   kind="audio"
   bind:this={audioPicker}
@@ -286,6 +530,45 @@
       }),
     )}
 />
+
+<dialog
+  bind:this={linkDialog}
+  class="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-lg border bg-background p-4 text-foreground shadow-lg backdrop:bg-black/40"
+  aria-label={m.editorLink}
+>
+  <!-- Not a <form>: the editor sits inside the content form, and forms cannot nest. -->
+  <div class="space-y-3">
+    <label class="grid gap-2 text-sm">
+      {m.linkUrl}
+      <Input
+        type="url"
+        bind:value={linkUrl}
+        placeholder="https://"
+        onkeydown={(event) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          applyLink(linkUrl.trim());
+        }}
+      />
+    </label>
+    <div class="flex flex-wrap justify-end gap-2">
+      {#if isActive('link')}
+        <Button
+          type="button"
+          variant="ghost"
+          class="mr-auto"
+          onclick={() => applyLink('')}>{m.linkRemove}</Button
+        >
+      {/if}
+      <Button type="button" variant="ghost" onclick={() => linkDialog.close()}
+        >{m.cancel}</Button
+      >
+      <Button type="button" onclick={() => applyLink(linkUrl.trim())}
+        >{m.apply}</Button
+      >
+    </div>
+  </div>
+</dialog>
 
 <dialog
   bind:this={embedDialog}

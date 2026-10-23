@@ -91,7 +91,7 @@
         <p class="font-medium">
           {m.contentBlockSettings(m.contentBlockName(type))}
         </p>
-        {#if type === 'image' || type === 'video' || type === 'file' || type === 'gallery'}
+        {#if type === 'video' || type === 'file' || type === 'gallery'}
           <Popover.Close
             type="button"
             class="rounded-md border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50"
@@ -102,7 +102,7 @@
               : m.mediaChoose}</Popover.Close
           >
         {/if}
-        {#if ['image', 'video', 'gallery', 'table'].includes(type)}
+        {#if ['video', 'gallery', 'table'].includes(type)}
           <label class="grid gap-1"
             >{m.contentCaption}<Input
               value={text(target, 'caption')}
@@ -112,17 +112,7 @@
             /></label
           >
         {/if}
-        {#if type === 'image'}
-          <label class="grid gap-1"
-            >{m.mediaAlt}<Input
-              value={text(target, 'alt')}
-              maxlength={2000}
-              oninput={(event) =>
-                update(target, { alt: event.currentTarget.value })}
-            /></label
-          >
-        {/if}
-        {#if type === 'image' || type === 'gallery'}
+        {#if type === 'gallery'}
           <label class="grid gap-1"
             >{m.contentAlignment}<NativeSelect
               value={text(target, 'align')}
@@ -136,7 +126,7 @@
             </NativeSelect></label
           >
         {/if}
-        {#if type === 'image' || type === 'button'}
+        {#if type === 'button'}
           <label class="grid gap-1"
             >{m.contentLink}<Input
               value={text(target, 'href')}

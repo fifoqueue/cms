@@ -1,7 +1,13 @@
 import { z } from 'zod';
 import { KEBAB_CASE } from '#sdk/common';
 import { Errors } from '#sdk/errors';
-import { parseBlocks, walkBlocks, SLUG, TEMPLATE_NAME } from '#sdk/blocks';
+import {
+  isIndependentQuery,
+  parseBlocks,
+  walkBlocks,
+  SLUG,
+  TEMPLATE_NAME,
+} from '#sdk/blocks';
 import type { Block } from '#sdk/blocks';
 
 /**
@@ -226,8 +232,7 @@ export const themePackageSchema = z
           ...Object.values(theme.templates).flat(),
           ...Object.values(theme.parts).flat(),
         ]),
-      ].filter((block) => block.name === 'query' && !block.attrs.inherit)
-        .length > 32
+      ].filter(isIndependentQuery).length > 32
     )
       ctx.addIssue({ code: 'custom', message: Errors.ThemeQueriesLimit });
     if (!theme.templates.index)
@@ -298,8 +303,7 @@ export const publicThemeSchema = z
           ...Object.values(theme.templates).flat(),
           ...theme.parts.flatMap((part) => part.blocks),
         ]),
-      ].filter((block) => block.name === 'query' && !block.attrs.inherit)
-        .length > 32
+      ].filter(isIndependentQuery).length > 32
     )
       ctx.addIssue({ code: 'custom', message: Errors.ThemeQueriesLimit });
   });

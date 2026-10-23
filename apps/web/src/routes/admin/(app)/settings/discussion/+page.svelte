@@ -1,4 +1,9 @@
 <script lang="ts">
+  import { AVATAR_DEFAULTS } from '@cms/sdk';
+  import {
+    NativeSelect,
+    NativeSelectOption,
+  } from '#lib/components/ui/native-select/index.js';
   import { enhance } from '$app/forms';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -45,6 +50,34 @@
         <input type="checkbox" name="enabled" checked={settings.enabled} />
         {m.discussionEnabled}
       </label>
+      <label class="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          name="requireLogin"
+          checked={settings.requireLogin}
+        />
+        {m.discussionRequireLogin}
+      </label>
+      <label class="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          name="showAvatars"
+          checked={settings.showAvatars}
+        />
+        {m.discussionAvatars}
+      </label>
+      <div class="grid gap-2">
+        <Label for="avatarDefault">{m.discussionAvatarDefault}</Label>
+        <NativeSelect
+          id="avatarDefault"
+          name="avatarDefault"
+          value={settings.avatarDefault}
+        >
+          {#each AVATAR_DEFAULTS as style (style)}<NativeSelectOption
+              value={style}>{m.avatarStyle(style)}</NativeSelectOption
+            >{/each}
+        </NativeSelect>
+      </div>
       <fieldset class="grid gap-2">
         <legend class="mb-2 text-sm font-medium"
           >{m.discussionModeration}</legend

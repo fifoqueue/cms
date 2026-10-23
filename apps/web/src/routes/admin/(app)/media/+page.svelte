@@ -4,7 +4,7 @@
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { MEDIA_KINDS } from '@cms/sdk';
   import type { MediaKind } from '@cms/sdk';
-  import { FileText, Film, Search, Upload } from '@lucide/svelte';
+  import { FileText, Film, Music, Search, Upload } from '@lucide/svelte';
   import { uploadFile } from '#lib/admin/upload.js';
   import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -17,9 +17,10 @@
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
-  let busy = $state(false);
   let notice = $state('');
   let errors = $state<string[]>([]);
+  let uploads = $state<{ name: string; progress: number }[]>([]);
+  let dragging = $state(false);
 
   const kindLabel = (m: Messages, kind: MediaKind) =>
     ({
@@ -42,17 +43,21 @@
     return `?${params}` as const;
   };
 
-  const upload = async (files: FileList | null) => {
-    if (!files?.length) return;
-    busy = true;
+  const upload = async (files: FileList | null | undefined) => {
+    if (!files?.length || uploads.length) return;
     errors = [];
+    notice = '';
+    uploads = [...files].map((file) => ({ name: file.name, progress: 0 }));
     let done = 0;
-    for (const file of files) {
-      const result = await uploadFile(file);
+    for (const [index, file] of [...files].entries()) {
+      const result = await uploadFile(file, (fraction) => {
+        uploads[index]!.progress = fraction;
+      });
       if ('media' in result) done++;
       else errors = [...errors, m.mediaUploadFailed(file.name, result.error)];
+      uploads[index]!.progress = 1;
     }
-    busy = false;
+    uploads = [];
     notice = done ? m.mediaUploaded(done) : '';
     await invalidateAll();
   };
@@ -66,15 +71,56 @@
     class="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md bg-primary px-4 text-sm text-primary-foreground focus-within:ring-2 focus-within:ring-ring"
   >
     <Upload class="size-4" />
-    {busy ? m.mediaUploading : m.mediaUpload}
+    {uploads.length ? m.mediaUploading : m.mediaUpload}
     <input
       type="file"
       multiple
       class="sr-only"
-      disabled={busy}
-      onchange={(event) => upload(event.currentTarget.files)}
+      disabled={uploads.length > 0}
+      onchange={(event) => {
+        void upload(event.currentTarget.files);
+        // Choosing the same file again must still upload it.
+        event.currentTarget.value = '';
+      }}
     />
   </label>
+</div>
+
+<div
+  role="region"
+  aria-label={m.mediaDropHere}
+  class="rounded-md border-2 border-dashed p-6 text-center text-sm text-muted-foreground {dragging
+    ? 'border-primary bg-muted'
+    : ''}"
+  ondragover={(event) => {
+    event.preventDefault();
+    dragging = true;
+  }}
+  ondragleave={() => (dragging = false)}
+  ondrop={(event) => {
+    event.preventDefault();
+    dragging = false;
+    void upload(event.dataTransfer?.files);
+  }}
+>
+  {m.mediaDropHere}
+  {#if uploads.length}
+    <ul class="mx-auto mt-3 max-w-md space-y-1 text-left" aria-live="polite">
+      {#each uploads as item, index (index)}
+        <li class="flex items-center gap-3">
+          <span id="upload-{index}" class="min-w-0 flex-1 truncate"
+            >{item.name}</span
+          >
+          <progress
+            class="w-32"
+            max="1"
+            value={item.progress}
+            aria-labelledby="upload-{index}"
+          ></progress>
+        </li>
+      {/each}
+    </ul>
+  {/if}
 </div>
 
 {#if notice}<Alert><AlertTitle>{notice}</AlertTitle></Alert>{/if}
@@ -145,6 +191,8 @@
               class="flex aspect-square flex-col items-center justify-center gap-2 p-2 text-center text-xs break-all text-muted-foreground"
             >
               {#if media.kind === 'video'}<Film
+                  class="size-8"
+                />{:else if media.kind === 'audio'}<Music
                   class="size-8"
                 />{:else}<FileText class="size-8" />{/if}
               {media.filename}

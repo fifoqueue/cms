@@ -75,9 +75,9 @@ const site = async () => {
 
 test('a WXR export imports into another site with terms, entries and threaded comments', async () => {
   const source = await site();
-  const news = await source.taxonomy.create('category', { name: 'News' });
+  const news = await source.taxonomy.create('category', { name: '소식' });
   const local = await source.taxonomy.create('category', {
-    name: 'Local',
+    name: '지역',
     parentId: news.id,
   });
   const tag = await source.taxonomy.create('tag', { name: 'Rain & <Snow>' });
@@ -85,6 +85,7 @@ test('a WXR export imports into another site with terms, entries and threaded co
     {
       type: 'post',
       title: 'Storm ]]> warning',
+      slug: '폭풍-경보',
       status: 'published',
       sticky: true,
       categoryIds: [local.id],
@@ -135,7 +136,9 @@ test('a WXR export imports into another site with terms, entries and threaded co
     createdAt: new Date('2026-05-02T00:00:00.000Z'),
   });
 
-  const xml = await source.exporter.exportWxr(ADMIN);
+  const xml = (await source.exporter.exportWxr(ADMIN))
+    .replaceAll('지역', encodeURIComponent('지역'))
+    .replaceAll('소식', encodeURIComponent('소식'));
   const target = await site();
   expect(await target.importer.importWxr(xml, ADMIN)).toEqual({
     content: 1,
@@ -152,7 +155,7 @@ test('a WXR export imports into another site with terms, entries and threaded co
     slug: post.slug,
     status: 'published',
     sticky: true,
-    categories: [{ slug: 'local' }],
+    categories: [{ slug: '지역' }],
     tags: [{ name: 'Rain & <Snow>' }],
   });
   expect(entry.html).toContain('Heavy rain');
@@ -164,13 +167,13 @@ test('a WXR export imports into another site with terms, entries and threaded co
   expect(entry.html).toContain('Storm footage');
   expect(entry.html).toContain('https://example.com/report.pdf');
   const [importedLocal] = (await target.taxonomy.list('category')).filter(
-    (term) => term.slug === 'local',
+    (term) => term.slug === '지역',
   );
   expect(
     (await target.taxonomy.list('category')).find(
       (term) => term.id === importedLocal!.parentId,
     )?.slug,
-  ).toBe('news');
+  ).toBe('소식');
   const thread = (await target.comments.thread(entry.id, 1, 10, 3)).items;
   expect(thread.map((comment) => [comment.body, comment.depth])).toEqual([
     ['Stay safe', 0],

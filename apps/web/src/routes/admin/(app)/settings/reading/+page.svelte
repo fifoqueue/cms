@@ -141,6 +141,22 @@
           />
         </div>
         <div class="grid gap-2">
+          <Label for="feedContent">{m.readingFeedContent}</Label>
+          <NativeSelect
+            class="w-full"
+            id="feedContent"
+            name="feedContent"
+            value={data.reading.feedContent}
+          >
+            <NativeSelectOption value="full"
+              >{m.readingFeedFull}</NativeSelectOption
+            >
+            <NativeSelectOption value="excerpt"
+              >{m.readingFeedExcerpt}</NativeSelectOption
+            >
+          </NativeSelect>
+        </div>
+        <div class="grid gap-2">
           <Label for="dateFormat">{m.readingDateFormat}</Label>
           <NativeSelect
             class="w-full"

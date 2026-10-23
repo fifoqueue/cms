@@ -44,7 +44,7 @@ export interface TaxonomyRepository {
     slug: string,
     scope: TermCountScope,
   ): Promise<CountedTermRecord | null>;
-  /** The subset of `slugs` already used in `taxonomy`, in one read. */
+  /** The subset of `slugs` already used in `taxonomy`, in one read, compared as the store's unique index compares them. */
   takenSlugs(
     taxonomy: TaxonomyType,
     slugs: readonly string[],

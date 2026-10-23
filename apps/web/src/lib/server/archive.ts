@@ -11,6 +11,8 @@ import {
   termArchiveView,
 } from '#lib/server/public-view.js';
 import { loadSlots } from '#lib/server/slots.js';
+import { loadTemplateData } from '#lib/server/theme-queries.js';
+import type { LayoutBlockData } from '#lib/server/theme-queries.js';
 
 /** A category or tag archive: the term (404 when unknown) and all assigned published content. */
 export const loadTermArchive = async (
@@ -18,11 +20,19 @@ export const loadTermArchive = async (
   url: URL,
   taxonomy: TaxonomyType,
   slug: string,
-  pageSize: number,
-  archives?: ArchivePathsState,
+  layout: Promise<
+    LayoutBlockData & {
+      reading: { postsPerPage: number };
+      archives?: ArchivePathsState;
+    }
+  >,
+  /** Already requested by a caller that learned late that the path is an archive. */
+  slots = loadSlots(contentApi(fetch), { path: url.pathname }),
 ) => {
   const api = contentApi(fetch);
-  const slots = loadSlots(api, { path: url.pathname });
+  const loaded = await layout;
+  const { reading, archives } = loaded;
+  const pageSize = reading.postsPerPage;
   const list = (termSlug: string) =>
     api.list({
       ...(taxonomy === 'category' || taxonomy === 'tag'
@@ -47,12 +57,16 @@ export const loadTermArchive = async (
   const term = await api.taxonomy.getBySlug(taxonomy, slug).catch(notFoundFrom);
   // The term lookup ignores case and padding; list by the stored slug when spelled differently.
   const posts = await (term.slug === slug ? guess : list(term.slug));
-  return {
+  const page = {
     kind: 'term' as const,
     term: { ...termArchiveView(term), path: canonicalPath },
     posts: listView(posts),
-    slots: await slots,
   };
+  const [blocks, loadedSlots] = await Promise.all([
+    loadTemplateData(api, loaded, page),
+    slots,
+  ]);
+  return { ...page, slots: loadedSlots, ...blocks };
 };
 
 /** Latest entries of `type`; sticky ones lead the first page and are left out of the rest (WordPress). */

@@ -15,6 +15,13 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
     return published(await this.content.findById(id));
   }
 
+  async privateById(id: string) {
+    const record = await this.content.findById(id);
+    return record?.status === 'private' && !record.trashedAt
+      ? { ...project(record), html: record.html, fields: record.fields }
+      : null;
+  }
+
   async bySlug(slug: string) {
     return published(await this.content.findBySlug(slug));
   }
@@ -64,6 +71,21 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
     return [...counts.values()]
       .sort((a, b) => b.year - a.year || b.month - a.month)
       .slice(0, limit);
+  }
+
+  async adjacent(id: string) {
+    const entry = await this.byId(id);
+    if (!entry?.publishedAt) return { previous: null, next: null };
+    const { items } = await this.summaries({
+      type: entry.type,
+      page: 1,
+      pageSize: 1e6,
+    });
+    const index = items.findIndex((item) => item.id === id);
+    return {
+      previous: items[index + 1] ?? null,
+      next: items[index - 1] ?? null,
+    };
   }
 
   async summaries(criteria: PublishedCriteria) {

@@ -42,9 +42,13 @@ const header = ({ masthead }: Variant): BlockInput[] => [
             'group',
             { layout: 'flex', justify: 'between', gap: 'medium' },
             [
-              block('group', { layout: 'stack', gap: 'none', align: 'start' }, [
-                block('site-title'),
-                block('site-tagline'),
+              block('group', { layout: 'flex', gap: 'small', wrap: false }, [
+                block('site-logo', { width: 40 }),
+                block(
+                  'group',
+                  { layout: 'stack', gap: 'none', align: 'start' },
+                  [block('site-title'), block('site-tagline')],
+                ),
               ]),
               block('group', { layout: 'flex', gap: 'medium', wrap: false }, [
                 block('navigation'),
@@ -55,6 +59,7 @@ const header = ({ masthead }: Variant): BlockInput[] => [
         ]
       : [
           block('group', { layout: 'stack', gap: 'small', align: 'center' }, [
+            block('site-logo', { width: 72 }),
             block('site-title', { size: 'large' }),
             block('site-tagline'),
           ]),
@@ -175,6 +180,7 @@ const templates = (variant: Variant): Record<string, BlockInput[]> => ({
       block('post-content'),
       block('post-fields'),
       block('post-terms', { taxonomy: 'tag' }),
+      block('post-navigation'),
       block('comments'),
     ],
     variant.entry,

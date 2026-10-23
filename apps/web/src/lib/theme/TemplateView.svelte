@@ -2,6 +2,7 @@
   import { walkBlocks } from '@cms/sdk';
   import type { ArchivePathsState, Block, SlotMap } from '@cms/sdk';
   import type { CommentSection } from '#lib/server/comments.js';
+  import type { BlockData } from '#lib/server/theme-queries.js';
   import type {
     MenuItemView,
     PostList,
@@ -13,7 +14,11 @@
   import Blocks from '#lib/theme/blocks/Blocks.svelte';
   import SlotOutlet from '#lib/theme/SlotOutlet.svelte';
   import { provideScope } from '#lib/theme/scope.js';
-  import { pickTemplate, templateCandidates } from '#lib/theme/template.js';
+  import {
+    isFrontPage,
+    pickTemplate,
+    templateCandidates,
+  } from '#lib/theme/template.js';
   import type { ThemePage } from '#lib/theme/template.js';
 
   interface Props {
@@ -21,6 +26,9 @@
     data: {
       archives?: ArchivePathsState;
       queries?: Record<string, PostList>;
+      terms?: BlockData['terms'];
+      months?: BlockData['months'];
+      adjacent?: BlockData['adjacent'];
       theme: ThemeView;
       site: SiteView;
       reading: ReadingView;
@@ -31,6 +39,7 @@
       fieldLabels?: { key: string; label: string; type: string }[];
       comments?: CommentSection | null;
       moderation?: boolean;
+      toolbar?: unknown;
     };
     page: ThemePage;
     previewBlocks?: Block[];
@@ -41,6 +50,9 @@
   provideScope(() => ({
     archives: data.archives,
     queries: data.queries,
+    terms: data.terms ?? { category: null, tag: null },
+    months: data.months ?? null,
+    adjacent: data.adjacent ?? null,
     theme: data.theme,
     site: data.site,
     reading: data.reading,
@@ -52,16 +64,15 @@
     fieldLabels: data.fieldLabels ?? [],
     comments: data.comments ?? null,
     moderation: data.moderation ?? false,
+    signedIn: !!data.toolbar,
   }));
 
-  /** `/` is the front page whether it lists posts or shows the static front page. */
-  const front = $derived(
-    (page.kind === 'home' && !page.path && page.type === 'post') ||
-      (page.kind === 'content' && page.content.path === '/'),
-  );
   const blocks = $derived(
     previewBlocks ??
-      pickTemplate(data.theme.templates, templateCandidates(page, front)),
+      pickTemplate(
+        data.theme.templates,
+        templateCandidates(page, isFrontPage(page)),
+      ),
   );
 
   // Header and footer slots follow the header/footer template parts; templates without them

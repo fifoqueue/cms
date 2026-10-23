@@ -3,6 +3,7 @@
   import { afterNavigate } from '$app/navigation';
   import { ExternalLink, LogOut, Menu, X } from '@lucide/svelte';
   import AdminMenu from '#lib/admin/AdminMenu.svelte';
+  import { claimBackups, clearBackups } from '#lib/admin/editor-backup.js';
   import ColorModeToggle from '#lib/admin/ColorModeToggle.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import { provideI18n } from '#lib/i18n/index.js';
@@ -18,6 +19,9 @@
   afterNavigate(() => {
     expanded = false;
   });
+
+  // Another account's editor backups never reach this one (a shared browser tab).
+  $effect(() => claimBackups(data.user.id));
 </script>
 
 <div
@@ -53,7 +57,13 @@
       class={['flex-col gap-4 px-2 pb-3 md:flex', expanded ? 'flex' : 'hidden']}
     >
       <nav aria-label={i18n.m.navMenu}>
-        <AdminMenu user={data.user} pluginPages={data.pluginPages} />
+        <AdminMenu
+          user={data.user}
+          pluginPages={data.pluginPages}
+          types={data.types}
+          taxonomies={data.taxonomies}
+          counts={data.counts}
+        />
       </nav>
       <div class="space-y-1 border-t pt-3">
         <a
@@ -63,7 +73,11 @@
           <ExternalLink class="size-4" />
           {i18n.m.viewSite}
         </a>
-        <form method="POST" action="/admin/logout">
+        <form
+          method="POST"
+          action="/admin/logout"
+          onsubmit={() => clearBackups()}
+        >
           <Button
             type="submit"
             variant="ghost"

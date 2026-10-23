@@ -109,7 +109,13 @@ describe('PluginHost lifecycle', () => {
       (
         await runtime.slots.render({
           path: '/',
-          site: { title: 't', description: '', locale: 'en' },
+          site: {
+            title: 't',
+            description: '',
+            locale: 'en',
+            iconId: null,
+            logoId: null,
+          },
           content: null,
         })
       ).head,
@@ -395,7 +401,7 @@ describe('PluginHost lifecycle', () => {
     };
     const service = new SlotService({
       registry: runtime.slots,
-      site: new SiteService(settings, runtime.hooks),
+      site: new SiteService(settings, runtime.hooks, async () => new Map()),
       content: new PublishedContentReader(
         new MemoryPublishedContentRepository(repository),
       ),

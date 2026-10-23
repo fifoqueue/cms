@@ -50,6 +50,8 @@ export const Errors = {
     'Contact an administrator to change your email address.',
 
   ContentNotFound: 'Content not found',
+  ContentChanged:
+    'This entry was changed since you opened it. Reload the page and try again.',
   ContentPathMissing: 'Content has no current path',
   SlugConflict: 'Slug is already in use',
   SlugInUse: (slug: string) => `Slug "${slug}" is already in use`,
@@ -73,6 +75,7 @@ export const Errors = {
   ContentTypeExists: 'A content type with this key exists',
   ContentTypeNotFound: 'Content type not found',
   ContentTypeInUse: 'Entries of this type exist; delete or change them first',
+  CommentLoginRequired: 'You must be logged in to post a comment',
   CommentNotFound: 'Comment not found',
   CommentsClosed: 'Comments are closed for this entry',
   CommentReplyInvalid: 'The comment you are replying to is not available',
@@ -218,6 +221,8 @@ export const Errors = {
     '설정 파일을 읽을 수 없습니다. 파일 접근 권한을 확인해 주세요.',
   InstallConfigCorrupt:
     '설정 파일이 손상되었습니다. 기존 설정을 복구해 주세요.',
+  // site-theme
+  SiteImageInvalid: 'Choose an image from the media library.',
 } as const;
 
 export const invalidInput = (message: string, issues?: unknown) =>

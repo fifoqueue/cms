@@ -78,7 +78,7 @@ const item = (node: Node): WxrItem => {
   const slugs = (domain: string) =>
     terms
       .filter((term) => str(term['@_domain']) === domain)
-      .map((term) => str(term['@_nicename']))
+      .map((term) => decodeURIComponent(str(term['@_nicename'])))
       .filter(Boolean);
   return {
     id: str(node['wp:post_id']),

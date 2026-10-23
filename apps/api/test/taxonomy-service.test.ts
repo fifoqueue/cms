@@ -364,6 +364,14 @@ describe('SEO discovery', () => {
       name: 'Canonical',
       seo: { ...DEFAULT_ENTRY_SEO, canonicalUrl: 'https://example.com/other' },
     });
+    // Unicode slugs are percent-encoded in sitemap paths and self-canonical checks.
+    const unicode = await admin.create('tag', {
+      name: '소식',
+      seo: {
+        ...DEFAULT_ENTRY_SEO,
+        canonicalUrl: 'https://example.com/tag/소식',
+      },
+    });
     await content.permalinks.saveSettings({
       ...DEFAULT_PERMALINK_SETTINGS,
       article: '/articles/%title%',
@@ -373,7 +381,7 @@ describe('SEO discovery', () => {
         type: 'article',
         status: 'published',
         categoryIds: [child.id],
-        tagIds: [tag.id, hidden.id, canonical.id],
+        tagIds: [tag.id, hidden.id, canonical.id, unicode.id],
         seo: {
           ...DEFAULT_ENTRY_SEO,
           title: 'Search title',
@@ -446,7 +454,7 @@ describe('SEO discovery', () => {
     ).toEqual(['/category/root']);
     expect(
       (await discovery.list({ kind: 'tag' })).items.map((item) => item.path),
-    ).toEqual(['/tag/tag']);
+    ).toEqual(['/tag/%EC%86%8C%EC%8B%9D', '/tag/tag']);
     expect(
       await codeOf(
         discovery.list({

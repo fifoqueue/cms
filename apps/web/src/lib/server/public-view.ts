@@ -5,6 +5,7 @@ import type {
   PublicContent,
   PublicContentSummary,
   PublicEntrySeo,
+  PublicImage,
   PublicSeoSettings,
   PublicSiteDto,
   PublicTaxonomyTerm,
@@ -18,10 +19,27 @@ import type {
 import { PAGINATION_MAX_PAGE } from '@cms/sdk';
 import type { HomeListType } from '#lib/theme/pagination.js';
 
-export const siteView = ({ title, description, locale }: PublicSiteDto) => ({
+/** A public image with its responsive sizes. */
+export const imageView = (image: PublicImage) => ({
+  url: image.url,
+  alt: image.alt,
+  width: image.width,
+  height: image.height,
+  sizes: image.sizes.map(({ url, width }) => ({ url, width })),
+});
+
+export const siteView = ({
   title,
   description,
   locale,
+  icon,
+  logo,
+}: PublicSiteDto) => ({
+  title,
+  description,
+  locale,
+  icon: icon && imageView(icon),
+  logo: logo && imageView(logo),
 });
 
 /** Site-wide settings the public `<head>` uses; AI/llms.txt prose stays with the discovery routes. */
@@ -147,16 +165,7 @@ export const summaryView = (content: PublicContentSummary) => ({
   sticky: content.sticky,
   commentCount: content.commentCount,
   protected: content.protected,
-  featuredImage: content.featuredImage && {
-    url: content.featuredImage.url,
-    alt: content.featuredImage.alt,
-    width: content.featuredImage.width,
-    height: content.featuredImage.height,
-    sizes: content.featuredImage.sizes.map(({ url, width }) => ({
-      url,
-      width,
-    })),
-  },
+  featuredImage: content.featuredImage && imageView(content.featuredImage),
 });
 
 /** A single published entry with its API-rendered body. */

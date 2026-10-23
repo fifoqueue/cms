@@ -47,9 +47,10 @@ export const actions: Actions = {
   save: async (event) => {
     const form = await event.request.formData();
     try {
+      // A field the form did not send keeps its stored text.
       await adminFor(event).media.update(event.params.id, {
-        alt: text(form, 'alt'),
-        caption: text(form, 'caption'),
+        alt: form.has('alt') ? text(form, 'alt') : undefined,
+        caption: form.has('caption') ? text(form, 'caption') : undefined,
       });
     } catch (caught) {
       return failFrom(caught);

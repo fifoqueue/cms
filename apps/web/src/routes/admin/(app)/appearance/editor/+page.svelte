@@ -2,7 +2,7 @@
   import '#lib/theme/site.css';
   import TemplateView from '#lib/theme/TemplateView.svelte';
   import { themeStyle } from '#lib/theme/style.js';
-  import { queryKey } from '#lib/theme/queries.js';
+  import { queryKey, selectionOf } from '#lib/theme/queries.js';
   import { untrack } from 'svelte';
   import type { Block } from '@cms/sdk';
   import { resolve } from '$app/paths';
@@ -12,6 +12,7 @@
     THEME_FONT_SIZES,
     THEME_LINE_HEIGHTS,
     THEME_RADII,
+    isIndependentQuery,
     walkBlocks,
   } from '@cms/sdk';
   import {
@@ -22,6 +23,7 @@
   } from '@lucide/svelte';
   import BlockTreeEditor from '#lib/admin/BlockTreeEditor.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import { confirmLeave } from '#lib/admin/unsaved.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
@@ -69,15 +71,39 @@
   );
   const parts = $derived(editor.parts.map((part) => part.slug));
   let dirty = $state(false);
+  let stylesDirty = $state(false);
+  confirmLeave(
+    () => dirty || stylesDirty,
+    () => m.unsavedLeave,
+  );
   let canvasBlocks = $state<Block[] | undefined>();
-  let canvasQueries = $state<typeof data.canvas.queries | undefined>();
+  type CanvasData = Pick<
+    typeof data.canvas,
+    'queries' | 'terms' | 'months' | 'adjacent'
+  >;
+  let canvasData = $state<CanvasData | undefined>();
   let previewError = $state<{ message?: string } | undefined>();
   let mobile = $state(false);
 
-  const querySignature = $derived(
+  /** Changes whenever the data the edited blocks show changes (lists, terms, months, neighbours). */
+  const dataSignature = $derived(
     JSON.stringify(
       [...walkBlocks(canvasBlocks ?? [])].flatMap((block) =>
-        block.name === 'query' && !block.attrs.inherit ? [queryKey(block)] : [],
+        isIndependentQuery(block)
+          ? [
+              queryKey(
+                selectionOf(
+                  block as Extract<Block, { name: 'query' | 'latest-posts' }>,
+                ),
+              ),
+            ]
+          : block.name === 'archives'
+            ? [`archives:${block.attrs.months}`]
+            : block.name === 'categories' ||
+                block.name === 'tag-cloud' ||
+                block.name === 'post-navigation'
+              ? [block.name]
+              : [],
       ),
     ),
   );
@@ -89,13 +115,14 @@
         : selected.kind === 'part'
           ? selected.part.blocks
           : undefined;
-    canvasQueries = data.canvas.queries;
+    canvasData = undefined;
     previewError = undefined;
     dirty = false;
+    stylesDirty = false;
   });
 
   $effect(() => {
-    const signature = querySignature;
+    const signature = dataSignature;
     const theme = editor.id;
     const selection = selected;
     const blocks = untrack(() => canvasBlocks);
@@ -114,6 +141,9 @@
           : selection.part.slug,
       );
       body.set('blocks', JSON.stringify(blocks));
+      // The published sample entry, for its previous and next entries.
+      if (data.previewPage?.kind === 'content')
+        body.set('contentId', data.previewPage.content.id);
 
       try {
         const response = await fetch('?/preview', {
@@ -122,13 +152,12 @@
           signal: controller.signal,
           headers: { 'x-sveltekit-action': 'true' },
         });
-        const result = deserialize<
-          { queries: typeof data.canvas.queries },
-          { message?: string }
-        >(await response.text());
+        const result = deserialize<CanvasData, { message?: string }>(
+          await response.text(),
+        );
         if (!current) return;
         if (result.type === 'success') {
-          canvasQueries = result.data?.queries;
+          canvasData = result.data;
           previewError = undefined;
         } else if (result.type === 'failure') {
           previewError = result.data;
@@ -250,7 +279,7 @@
           name="slug"
           placeholder={m.editorTemplateSlug}
           aria-label={m.editorTemplateSlug}
-          pattern="[a-z0-9]+(-[a-z0-9]+)*"
+          pattern={'[\\p{L}\\p{N}][\\p{L}\\p{N}\\p{M}]*(-[\\p{L}\\p{N}][\\p{L}\\p{N}\\p{M}]*)*'}
           class="h-8"
         />
         <Button type="submit" variant="outline" size="sm" class="w-full"
@@ -311,7 +340,13 @@
           <form
             method="POST"
             action="?/saveStyles"
-            use:enhance
+            use:enhance={() =>
+              async ({ result, update }) => {
+                if (result.type === 'success') stylesDirty = false;
+                await update();
+              }}
+            oninput={() => (stylesDirty = true)}
+            onchange={() => (stylesDirty = true)}
             class="space-y-6"
           >
             <input type="hidden" name="theme" value={editor.id} />
@@ -520,7 +555,7 @@
                     <TemplateView
                       data={{
                         ...data.canvas,
-                        queries: canvasQueries ?? data.canvas.queries,
+                        ...canvasData,
                       }}
                       page={data.previewPage}
                       previewBlocks={canvasBlocks ?? item.blocks}
