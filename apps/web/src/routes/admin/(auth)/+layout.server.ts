@@ -6,6 +6,10 @@ import type { LayoutServerLoad } from './$types';
  * browser's preferred language is used.
  */
 export const load: LayoutServerLoad = async ({ fetch, request }) => ({
+  privacyPolicy: await contentApi(fetch)
+    .privacy()
+    .then((privacy) => privacy.policy)
+    .catch(() => null),
   language: await contentApi(fetch)
     .site()
     .then((site) => site.locale)

@@ -1,3 +1,4 @@
+import { aesSecretBox } from '#api/infra/secret-box';
 import { describe, expect, test } from 'bun:test';
 import { DEFAULT_SECURITY_SETTINGS } from '@cms/sdk';
 import { ApiTokenService } from '#api/domain/auth/api-tokens';
@@ -222,10 +223,16 @@ describe('password reset', () => {
     });
     const settings = new MemorySeoSettingsRepository();
     const queue = new MemoryJobQueue();
+    const sent: { text: string }[] = [];
+    const secrets = aesSecretBox('privacy-mail-test');
     const email = new EmailService({
       settings,
-      secrets: plainSecretBox,
-      mailer: { send: async () => {} },
+      secrets,
+      mailer: {
+        send: async (_transport, message) => {
+          sent.push(message);
+        },
+      },
       jobs: queue,
     });
     await email.update({
@@ -273,9 +280,10 @@ describe('password reset', () => {
     expect(queue.rows.size).toBe(0);
     await passwords.requestReset({ email: 'Admin@Example.com' }, visitor);
     const [job] = [...queue.rows.values()];
-    const token = /token=([^\s]+)/.exec(
-      (job!.payload as { text: string }).text,
-    )![1]!;
+    expect(JSON.stringify(job!.payload)).not.toContain('admin@example.com');
+    expect(JSON.stringify(job!.payload)).not.toContain('token=');
+    await email.deliver(job!.payload);
+    const token = /token=([^\s]+)/.exec(sent[0]!.text)![1]!;
 
     await passwords.reset({ token, password: 'new-password' });
     expect(users.rows.get('admin')!.passwordHash).toBe('hash:new-password');

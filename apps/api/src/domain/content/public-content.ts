@@ -169,7 +169,15 @@ export class PublicContentService {
             .map((type) => type.key)
         : undefined;
     const page =
-      (criteria.search && !criteria.author && !criteria.taxonomy
+      (criteria.search &&
+      !criteria.author &&
+      !criteria.taxonomy &&
+      !criteria.year &&
+      !criteria.include &&
+      !criteria.exclude &&
+      criteria.parent === undefined &&
+      criteria.orderBy === 'publishedAt' &&
+      criteria.order === 'desc'
         ? await this.indexed({
             ...criteria,
             text: criteria.search,

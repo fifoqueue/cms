@@ -1,4 +1,5 @@
 import type {
+  ContentCounts,
   PublicImage,
   AdminEntrySeo,
   ContentDocument,
@@ -11,6 +12,7 @@ import type {
 /** Stored content as read back, with its assigned terms ordered by `compareTerms`. */
 export interface ContentRecord {
   parentId?: string | null;
+  menuOrder?: number;
   id: string;
   type: ContentType;
   slug: string;
@@ -78,6 +80,10 @@ export interface ContentWrite extends Omit<
 }
 
 export interface ContentCriteria {
+  include?: readonly string[];
+  exclude?: readonly string[];
+  parent?: string | null;
+  day?: number;
   taxonomy?: string;
   term?: string;
   type?: ContentType;
@@ -95,13 +101,13 @@ export interface ContentCriteria {
   category?: string;
   /** Tag slug. Unknown slugs match nothing. */
   tag?: string;
-  /** Published in this UTC year (and `month`, 1–12; ignored without a year). */
+  /** Published in this site-local year (and `month`, 1–12; ignored without a year). */
   year?: number;
   month?: number;
   page: number;
   pageSize: number;
   /** Sort field (then id); newest first unless `order` is `asc`. */
-  orderBy: 'publishedAt' | 'updatedAt';
+  orderBy: 'publishedAt' | 'updatedAt' | 'menuOrder' | 'title' | 'id';
   order?: 'asc' | 'desc';
 }
 
@@ -110,6 +116,7 @@ export interface ContentCriteria {
  * entry for the search index in the same transaction (`SearchOutbox`).
  */
 export interface ContentRepository {
+  counts(type?: string): Promise<ContentCounts>;
   findById(id: string): Promise<ContentRecord | null>;
   /** The subset of `slugs` already used by stored content, in one read, compared as the store's unique index compares them. */
   takenSlugs(slugs: readonly string[]): Promise<Set<string>>;

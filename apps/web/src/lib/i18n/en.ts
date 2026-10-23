@@ -930,6 +930,7 @@ export const en = {
         column: 'Column',
         'template-part': 'Template part',
         'site-title': 'Site title',
+        'privacy-policy-link': 'Privacy Policy link',
         'site-tagline': 'Site tagline',
         navigation: 'Navigation',
         search: 'Search',
@@ -1199,4 +1200,44 @@ export const en = {
   commentInReplyTo: (name: string) => `In reply to ${name}`,
   commentsForEntry: (title: string) => `Comments on: ${title}`,
   commentsAllEntries: 'All entries',
+
+  // core-privacy
+  privacySettings: 'Privacy',
+  privacyPolicy: 'Privacy Policy',
+  privacyPolicyPage: 'Privacy policy page',
+  privacyCommentCookies:
+    'Offer a checkbox to save commenter details in this browser. Details are saved only with consent.',
+  privacyExport: 'Export Personal Data',
+  privacyErase: 'Erase Personal Data',
+  privacyRequestHelp:
+    'Send a confirmation request to the person’s email address. Export or erase data after they confirm.',
+  privacySendRequest: 'Send request',
+  privacySent: 'Confirmation email sent.',
+  privacyConfirmed:
+    'Request confirmed. The site administrator can now process it.',
+  privacyErased: 'Personal data erased.',
+  privacyDownload: 'Download personal data',
+  privacyRetained:
+    'Published content, uploaded files, and existing URLs remain. Review them separately if they contain personal information.',
+  privacyNoRequests: 'No privacy requests.',
+  privacyEraseConfirm:
+    'Erase this person’s personal data and revoke their sign-in credentials? This cannot be undone.',
+  privacyOpenLink: 'Open the confirmation link from your email.',
+  privacyConfirmTitle: 'Confirm privacy request',
+  privacyConfirmHelp:
+    'Confirm that you requested the personal data export or erasure described in your email.',
+  privacyConfirm: 'Confirm request',
+  privacyRateRule: 'Privacy requests per visitor',
+  privacyCommentFeed: 'Subscribe to comments',
+  privacyMenuOrder: 'Page order',
+  privacyMediaTitle: 'Title',
+  privacyMediaDescription: 'Description',
+  privacyStatus: (status: string) =>
+    (
+      ({
+        pending: 'Awaiting confirmation',
+        confirmed: 'Confirmed',
+        completed: 'Completed',
+      }) as Record<string, string>
+    )[status] ?? status,
 } as const;

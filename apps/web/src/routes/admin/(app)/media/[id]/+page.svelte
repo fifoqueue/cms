@@ -163,6 +163,20 @@
               </p>
             </div>
             <div class="grid gap-2">
+              <Label for="title">{m.privacyMediaTitle}</Label>
+              <Input
+                id="title"
+                name="title"
+                maxlength={255}
+                value={media.title}
+              />
+              <Label for="description">{m.privacyMediaDescription}</Label>
+              <Textarea
+                id="description"
+                name="description"
+                maxlength={10000}
+                value={media.description}
+              />
               <Label for="caption">{m.mediaCaption}</Label>
               <Textarea
                 id="caption"

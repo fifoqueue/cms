@@ -40,7 +40,7 @@ export type SitePage =
     }
   | {
       kind: 'date';
-      date: { year: number; month: number | null };
+      date: { year: number; month: number | null; day?: number };
       posts: PostList;
     }
   | { kind: 'search'; query: string; posts: PostList | null }
@@ -342,9 +342,11 @@ const describe = (
     case 'date': {
       const { date, posts } = page;
       const list = pagination({ kind: 'date', ...date }, posts);
-      const name = date.month
-        ? `${date.year}-${String(date.month).padStart(2, '0')}`
-        : String(date.year);
+      const name = date.day
+        ? `${date.year}-${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}`
+        : date.month
+          ? `${date.year}-${String(date.month).padStart(2, '0')}`
+          : String(date.year);
       const base = paged(name, posts.page);
       // Date archives repeat what other listings show, so they are never indexed.
       return {

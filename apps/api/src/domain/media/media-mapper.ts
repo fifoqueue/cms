@@ -17,6 +17,8 @@ export const toAdminMedia = (media: MediaRecord): AdminMedia => ({
   height: media.height,
   alt: media.alt,
   caption: media.caption,
+  title: media.title ?? '',
+  description: media.description ?? '',
   url: mediaUrl(media.storageKey),
   variants: sizeNames.flatMap((name) => {
     const variant = media.variants[name];

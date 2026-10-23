@@ -37,6 +37,7 @@ export const load: LayoutServerLoad = async ({ fetch, cookies }) => {
   // Without a primary menu, navigation falls back to the published pages.
   const pages = primary ? null : await api.list({ type: 'page', pageSize: 20 });
   return {
+    privacy: layout.privacy,
     archives: layout.archives,
     queries: await loadThemeQueries(api, theme),
     site: siteView(site),

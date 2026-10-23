@@ -46,6 +46,7 @@ const entryFields = (record: ContentSummaryRecord) => ({
   authorName: record.authorName,
   sticky: record.sticky,
   allowComments: record.allowComments,
+  menuOrder: record.menuOrder ?? 0,
   commentCount: record.commentCount,
   protected: record.passwordHash !== null,
   featuredMediaId: record.featuredMediaId,

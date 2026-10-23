@@ -80,6 +80,7 @@ const footer: BlockInput[] = [
     },
     [
       block('widget-area', { area: 'footer', layout: 'columns' }),
+      block('privacy-policy-link'),
       block(
         'group',
         {

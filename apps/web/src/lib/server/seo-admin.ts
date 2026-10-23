@@ -73,12 +73,14 @@ export const loadSeoContext = async (
 ): Promise<SeoPreviewContext> => {
   // Public settings: every writer previews SEO, not only those who may change the settings.
   const api = contentApi(event.fetch);
-  const [settings, permalinks, site] = await Promise.all([
+  const [settings, permalinks, site, reading] = await Promise.all([
     api.seo.settings(),
     api.permalinks.settings(),
     api.site(),
+    api.reading(),
   ]);
   return {
+    timeZone: reading.timeZone,
     siteTitle: site.title,
     siteDescription: site.description,
     siteUrl: settings.siteUrl,

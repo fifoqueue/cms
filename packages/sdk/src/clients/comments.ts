@@ -2,6 +2,7 @@ import { unlockHeaders } from '#sdk/clients/content';
 import { visitorHeaders } from '#sdk/clients/security';
 import type { Visitor } from '#sdk/clients/security';
 import {
+  commentFeedSchema,
   COMMENT_PENDING_HEADER,
   adminCommentSchema,
   commentCountsSchema,
@@ -10,6 +11,7 @@ import {
   publicCommentPageSchema,
 } from '#sdk/comments';
 import type {
+  FeedComment,
   AdminComment,
   CommentBulkInput,
   CommentCounts,
@@ -27,6 +29,11 @@ import type { Query, Request } from '#sdk/transport';
 
 export const publicCommentsClient = (request: Request) => ({
   comments: {
+    feed: (contentId?: string, limit = 20) =>
+      request<FeedComment[]>('GET', '/api/v1/comments/feed', {
+        query: { contentId, limit },
+        response: commentFeedSchema.array(),
+      }),
     list: (
       contentId: string,
       page = 1,

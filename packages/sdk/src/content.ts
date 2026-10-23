@@ -123,6 +123,7 @@ export const contentInputSchema = z.object({
   sticky: z.boolean().default(false),
   /** Visitors may comment, if the type supports comments and discussion is on. */
   allowComments: z.boolean().default(true),
+  menuOrder: z.number().int().min(-100000).max(100000).optional(),
   /** Visitors must enter it to read the body. Omitted keeps the current one; empty removes it. */
   password: z.string().max(200).optional(),
   /** Custom field values by key; validated against the type's fields. Omitted keeps them. */
@@ -149,7 +150,24 @@ const termSlugFilterSchema = z
   .regex(CONTENT_SLUG)
   .optional();
 
+const idList = z
+  .preprocess(
+    (value) =>
+      typeof value === 'string' ? value.split(',').filter(Boolean) : value,
+    z.array(z.string().min(1).max(36)).max(100),
+  )
+  .optional();
+
 const listFilters = {
+  include: idList,
+  exclude: idList,
+  parent: z
+    .string()
+    .max(36)
+    .nullable()
+    .optional()
+    .transform((value) => (value === '0' ? null : value)),
+  day: z.coerce.number().int().min(1).max(31).optional(),
   taxonomy: taxonomyTypeSchema.optional(),
   term: termSlugFilterSchema,
   type: contentTypeKeySchema.optional(),
@@ -157,7 +175,7 @@ const listFilters = {
   author: termSlugFilterSchema,
   /** `only` lists sticky entries, `exclude` everything else. */
   sticky: z.enum(['only', 'exclude']).optional(),
-  /** Entries published in this UTC year (and `month`, 1–12). */
+  /** Entries published in this site-local year (and `month`, 1–12). */
   year: z.coerce.number().int().min(1970).max(9999).optional(),
   month: z.coerce.number().int().min(1).max(12).optional(),
   /** Case-insensitive text in the title, excerpt or body text (not the HTML markup). Blank means no filter. */
@@ -182,7 +200,9 @@ export const contentListQuerySchema = z
     status: z.enum(CONTENT_STATUSES).optional(),
     view: z.enum(['active', 'trash']).default('active'),
     /** Sort field, then id in the same direction. */
-    orderBy: z.enum(['updatedAt', 'publishedAt']).default('updatedAt'),
+    orderBy: z
+      .enum(['updatedAt', 'publishedAt', 'menuOrder', 'title', 'id'])
+      .default('updatedAt'),
     order: z.enum(['asc', 'desc']).default('desc'),
   })
   .refine((value) => Boolean(value.taxonomy) === Boolean(value.term), {
@@ -194,7 +214,36 @@ export type ContentListQuery = z.input<typeof contentListQuerySchema>;
 
 /** Public listing: published content only. Unknown keys (including `status`) are ignored. */
 export const publicContentListQuerySchema = z
-  .object(listFilters)
+  .object({
+    ...listFilters,
+    orderby: z
+      .enum(['date', 'modified', 'title', 'id', 'menu_order'])
+      .optional(),
+    order: z.enum(['asc', 'desc']).optional(),
+  })
+  .transform((value) => ({
+    ...value,
+    orderBy: (
+      {
+        date: 'publishedAt',
+        modified: 'updatedAt',
+        title: 'title',
+        id: 'id',
+        menu_order: 'menuOrder',
+      } as const
+    )[value.orderby ?? (value.type === 'page' ? 'menu_order' : 'date')],
+    order: value.order ?? (value.type === 'page' ? 'asc' : 'desc'),
+  }))
+  .refine(
+    (value) =>
+      !value.day ||
+      (!!value.year &&
+        !!value.month &&
+        new Date(
+          Date.UTC(value.year, value.month - 1, value.day),
+        ).getUTCDate() === value.day),
+    { path: ['day'], message: Errors.InvalidDate },
+  )
   .refine((value) => Boolean(value.taxonomy) === Boolean(value.term), {
     path: ['term'],
     message: Errors.TaxonomyFilterPair,
@@ -225,6 +274,7 @@ export const adminContentSchema = z.object({
   authorName: z.string(),
   sticky: z.boolean(),
   allowComments: z.boolean(),
+  menuOrder: z.number().int().default(0),
   /** Approved comments. */
   commentCount: z.number().int(),
   /** Whether a password protects the body. The password itself is never returned. */
@@ -366,3 +416,14 @@ export const publicAuthorSchema = z.object({
 });
 
 export type PublicAuthor = z.output<typeof publicAuthorSchema>;
+
+export const contentCountsSchema = z.object({
+  all: z.number().int(),
+  trash: z.number().int(),
+  draft: z.number().int(),
+  pending: z.number().int(),
+  scheduled: z.number().int(),
+  published: z.number().int(),
+  private: z.number().int(),
+});
+export type ContentCounts = z.output<typeof contentCountsSchema>;

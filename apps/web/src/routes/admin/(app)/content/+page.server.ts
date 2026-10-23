@@ -13,13 +13,6 @@ const pick = <T extends string>(options: readonly T[], value: string | null) =>
 /** Bulk actions in the order they appear in the menu. */
 const BULK = ['trash', 'restore', 'delete'] as const;
 
-/** Totals only: one-item pages carry the count without the entries. */
-const total = (page: Promise<{ total: number }>) =>
-  page.then(
-    (result) => result.total,
-    () => null,
-  );
-
 export const load: PageServerLoad = async (event) => {
   const params = event.url.searchParams;
   const admin = adminFor(event);
@@ -58,7 +51,7 @@ export const load: PageServerLoad = async (event) => {
     authors?.map(({ slug }) => slug) ?? [],
     params.get('author'),
   );
-  // `YYYY-MM`, as the month input sends it; entries are dated by publication (UTC).
+  // `YYYY-MM`, as the month input sends it; entries are dated by publication in the site time zone.
   // Anything the API's list query would reject means "no filter", like the other filters.
   const [, year, month] = /^(\d{4})-(\d{2})$/.exec(params.get('m') ?? '') ?? [];
   const parsed =
@@ -66,16 +59,11 @@ export const load: PageServerLoad = async (event) => {
   const dated = parsed ? { year: Number(year), month: Number(month) } : null;
   const page = Math.max(1, Math.trunc(Number(params.get('page'))) || 1);
   // Status view totals follow the type only, like wp-admin.
-  const counts = Promise.all([
-    total(admin.content.list({ type, pageSize: 1 })),
-    ...CONTENT_STATUSES.map((option) =>
-      total(admin.content.list({ type, status: option, pageSize: 1 })),
-    ),
-    total(admin.content.list({ type, view: 'trash', pageSize: 1 })),
-  ]);
-  const [content, [all, ...rest]] = await Promise.all([
+  const [content, counts] = await Promise.all([
     admin.content.list({
       type,
+      orderBy: type === 'page' ? 'menuOrder' : 'updatedAt',
+      order: type === 'page' ? 'asc' : 'desc',
       status,
       view,
       category,
@@ -89,7 +77,7 @@ export const load: PageServerLoad = async (event) => {
       page,
       pageSize: 20,
     }),
-    counts,
+    admin.content.counts(type),
   ]);
   return {
     filter: {
@@ -104,13 +92,7 @@ export const load: PageServerLoad = async (event) => {
       m: dated ? `${year}-${month}` : undefined,
       q: search,
     },
-    counts: {
-      all,
-      trash: rest.at(-1) ?? null,
-      ...Object.fromEntries(
-        CONTENT_STATUSES.map((option, index) => [option, rest[index] ?? null]),
-      ),
-    } as Record<ContentStatus | 'all' | 'trash', number | null>,
+    counts,
     types: model.types.map(({ key, name, pluralName, builtin, supports }) => ({
       key,
       name,

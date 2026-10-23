@@ -1,3 +1,4 @@
+import { requirePage } from '#lib/server/public-view.js';
 import { error } from '@sveltejs/kit';
 import { contentApi } from '#lib/server/api.js';
 import { Errors } from '#lib/server/errors.js';
@@ -26,7 +27,7 @@ export const load: PageServerLoad = async ({ fetch, url, params, parent }) => {
       name: type.pluralName,
       description: type.description,
     },
-    posts: listView(posts),
+    posts: (requirePage(posts), listView(posts)),
     slots: await slots,
   };
 };

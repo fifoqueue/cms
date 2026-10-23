@@ -98,20 +98,28 @@ export class PasswordService {
     const user = await this.deps.users.findByEmail(account);
     if (!user) return;
     const link = await this.link(user, 'reset', site.siteUrl);
-    await this.deps.email.queue({
-      to: user.email,
-      ...templates(site.locale).reset(site.title, link),
-    });
+    await this.deps.email.queue(
+      {
+        to: user.email,
+        subjects: [user.id],
+        ...templates(site.locale).reset(site.title, link),
+      },
+      new Date(this.deps.clock.now().getTime() + LIFETIME.reset),
+    );
   }
 
   /** Emails a new user the link to choose their first password. */
   async invite(user: UserRecord) {
     const site = await this.site();
     const link = await this.link(user, 'invite', site.siteUrl);
-    await this.deps.email.queue({
-      to: user.email,
-      ...templates(site.locale).invite(site.title, user.name, link),
-    });
+    await this.deps.email.queue(
+      {
+        to: user.email,
+        subjects: [user.id],
+        ...templates(site.locale).invite(site.title, user.name, link),
+      },
+      new Date(this.deps.clock.now().getTime() + LIFETIME.invite),
+    );
   }
 
   /** Sets the password from a reset or invitation link and signs the user out everywhere. */

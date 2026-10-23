@@ -109,6 +109,8 @@ const loadParentPages = async (event: Omit<AdminEvent, 'request' | 'url'>) => {
   for (let page = 1; ; page++) {
     const result = await admin.content.list({
       type: 'page',
+      orderBy: 'menuOrder',
+      order: 'asc',
       page,
       pageSize: 100,
     });

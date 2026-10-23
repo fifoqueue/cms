@@ -6,6 +6,7 @@ import {
 } from '@cms/sdk';
 import type { AdminEmailSettings } from '@cms/sdk';
 import { z } from 'zod';
+import { sealJob, openJob } from '#api/domain/jobs/payload';
 import type {
   EmailMessage,
   MailTransport,
@@ -83,9 +84,14 @@ export class EmailService {
   }
 
   /** Queues `message`; throws `invalid_input` while email is disabled. */
-  async queue(message: EmailMessage): Promise<void> {
+  async queue(message: EmailMessage, expiresAt?: Date): Promise<void> {
     if (!(await this.enabled())) throw invalidInput(Errors.EmailDisabled);
-    await this.deps.jobs.enqueue(EMAIL_JOB, message);
+    await this.deps.jobs.enqueue(
+      EMAIL_JOB,
+      sealJob(message, this.deps.secrets),
+      undefined,
+      expiresAt,
+    );
   }
 
   /** Sends a test message now, so the administrator sees the server's answer. */
@@ -102,7 +108,9 @@ export class EmailService {
 
   /** The job handler for `EMAIL_JOB`. */
   async deliver(payload: unknown): Promise<void> {
-    const message = messageSchema.safeParse(payload);
+    const message = messageSchema.safeParse(
+      openJob(payload, this.deps.secrets),
+    );
     if (!message.success) throw new PermanentJobError(Errors.EmailInvalidJob);
     const transport = await this.transport();
     // Disabled or misconfigured mail fails for now; enabling it lets queued messages go out.

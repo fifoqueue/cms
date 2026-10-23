@@ -176,6 +176,32 @@ export class MemoryCommentRepository implements CommentRepository {
     );
   }
 
+  async feed(limit: number, contentId?: string) {
+    const rows = [...this.rows.values()]
+      .filter(
+        (row) =>
+          row.status === 'approved' &&
+          (!contentId || row.contentId === contentId),
+      )
+      .sort((a, b) => byDate(b, a));
+    const result = [];
+    for (const row of rows) {
+      const target = await this.target(row.contentId);
+      if (target && !target.protected)
+        result.push({
+          id: row.id,
+          contentId: row.contentId,
+          authorName: row.authorName,
+          body: row.body,
+          createdAt: row.createdAt,
+          title: target.title,
+          path: target.path,
+        });
+      if (result.length >= limit) break;
+    }
+    return result;
+  }
+
   async recent(limit: number) {
     const rows = [...this.rows.values()]
       .filter((row) => row.status === 'approved')

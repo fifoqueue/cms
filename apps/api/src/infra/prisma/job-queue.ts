@@ -1,6 +1,11 @@
+import { Errors } from '#api/shared/errors';
+import { createHash } from 'node:crypto';
+import { sealJob, openJob } from '#api/domain/jobs/payload';
+import type { SecretBox } from '#api/domain/ports';
 import { stringifyJson } from '@cms/sdk';
 import type { JobQueue } from '#api/domain/jobs/ports';
 import type { IdGenerator } from '#api/domain/ports';
+import { lockSetting } from '#api/infra/prisma/client';
 import type { Database } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
 
@@ -8,21 +13,140 @@ export class PrismaJobQueue implements JobQueue {
   constructor(
     private readonly db: Database,
     private readonly ids: IdGenerator,
+    private readonly secrets?: SecretBox,
   ) {}
 
-  async enqueue(kind: string, payload: unknown, runAt = new Date()) {
-    await this.db.job.create({
-      data: {
-        id: this.ids.next(),
-        kind,
-        payload: stringifyJson(payload),
-        runAt,
-        createdAt: new Date(),
-      },
+  async enqueue(
+    kind: string,
+    payload: unknown,
+    runAt = new Date(),
+    expiresAt = new Date(Date.now() + 7 * 86400000),
+  ) {
+    await this.db.$transaction(async (tx) => {
+      await lockSetting(tx, 'privacy.jobs');
+      if (this.secrets) {
+        const opened = openJob(payload, this.secrets) as {
+          subjects?: unknown;
+          data?: { id?: unknown; authorId?: unknown; uploaderId?: unknown };
+        } | null;
+        const refs = [
+          ...(Array.isArray(opened?.subjects) ? opened.subjects : []),
+          opened?.data?.id,
+          opened?.data?.authorId,
+          opened?.data?.uploaderId,
+        ]
+          .filter(
+            (value): value is string =>
+              typeof value === 'string' && value.length <= 36,
+          )
+          .slice(0, 100);
+        if (refs.length) {
+          const erasedComment = await tx.comment.findFirst({
+            where: {
+              id: { in: refs },
+              authorEmail: '',
+              body: '',
+              userId: null,
+            },
+            select: { id: true },
+          });
+          const users = await tx.user.findMany({
+            where: { id: { in: refs } },
+            select: { id: true, email: true },
+          });
+          if (
+            erasedComment ||
+            users.some(
+              (user) => user.email === `erased-${user.id}@invalid.invalid`,
+            )
+          )
+            return;
+        }
+      }
+      await tx.job.create({
+        data: {
+          id: this.ids.next(),
+          kind,
+          payload: stringifyJson(payload),
+          runAt,
+          expiresAt,
+          createdAt: new Date(),
+        },
+      });
     });
   }
 
+  /** Upgrade old plaintext queued/failed snapshots before starting workers. */
+  async sealLegacy() {
+    if (!this.secrets) return;
+    let after = '';
+    for (;;) {
+      const rows = await this.db.job.findMany({
+        where: {
+          id: { gt: after },
+          kind: { in: ['email.send', 'webhook.deliver'] },
+        },
+        orderBy: { id: 'asc' },
+        take: 200,
+      });
+      for (const row of rows) {
+        let payload: unknown;
+        try {
+          payload = JSON.parse(row.payload);
+        } catch {
+          payload = row.payload;
+        }
+        if (payload && typeof payload === 'object' && 'sealed' in payload)
+          continue;
+        let expiresAt =
+          row.expiresAt ?? new Date(row.createdAt.getTime() + 7 * 86400000);
+        const text =
+          payload &&
+          typeof payload === 'object' &&
+          'text' in payload &&
+          typeof payload.text === 'string'
+            ? payload.text
+            : '';
+        const token = /\/admin\/password\?token=([A-Za-z0-9_-]+)/.exec(
+          text,
+        )?.[1];
+        if (token) {
+          const grant = await this.db.passwordToken.findUnique({
+            where: {
+              tokenHash: createHash('sha256').update(token).digest('hex'),
+            },
+            select: { expiresAt: true },
+          });
+          expiresAt = grant?.expiresAt ?? new Date(0);
+        }
+
+        await this.db.job.updateMany({
+          where: { id: row.id, payload: row.payload },
+          data: {
+            payload: stringifyJson(sealJob(payload, this.secrets)),
+            expiresAt,
+            lastError: row.lastError ? Errors.JobFailed : null,
+          },
+        });
+      }
+      if (rows.length < 200) break;
+      after = rows.at(-1)!.id;
+    }
+  }
+
   async claim(limit: number, owner: string, leaseMs: number, now: Date) {
+    await this.db.job.deleteMany({
+      where: {
+        AND: [{ OR: [{ lockedUntil: null }, { lockedUntil: { lte: now } }] }],
+        OR: [
+          { expiresAt: { lte: now } },
+          {
+            expiresAt: null,
+            createdAt: { lt: new Date(now.getTime() - 7 * 86400000) },
+          },
+        ],
+      },
+    });
     return this.db.$transaction(async (tx) => {
       // SKIP LOCKED lets several processes drain the queue without waiting on each other.
       const rows = await tx.$queryRaw<

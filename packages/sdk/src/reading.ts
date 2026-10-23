@@ -27,7 +27,7 @@ export const readingSettingsSchema = z.object({
   postsPerPage: z.number().int().min(1).max(100).default(10),
   feedItems: z.number().int().min(1).max(100).default(20),
   dateFormat: z.enum(DATE_FORMATS).default('long'),
-  /** Dates on the site show in this zone. Permalinks always use UTC. */
+  /** Dates, archives and newly saved permalinks use this zone; stored paths remain until the next save. */
   timeZone: timeZoneSchema.default('UTC'),
   /** Seconds a CDN or proxy may keep public pages for anonymous visitors; 0 turns it off. */
   cacheSeconds: z.number().int().min(0).max(3600).default(0),

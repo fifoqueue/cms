@@ -6,6 +6,8 @@ import type {
   CommentRepository,
   ThreadRecord,
 } from '#api/domain/comments/ports';
+import { lockSetting } from '#api/infra/prisma/client';
+import { unauthorized } from '#api/shared/errors';
 import type { Database } from '#api/infra/prisma/client';
 import { PUBLIC_CONTENT } from '#api/infra/prisma/content-criteria';
 import type { Prisma } from '#api/infra/prisma/generated/client';
@@ -96,6 +98,18 @@ export class PrismaCommentRepository implements CommentRepository {
 
   async insert(record: CommentRecord) {
     await this.db.$transaction(async (tx) => {
+      await lockSetting(tx, 'privacy.jobs');
+      if (record.userId) {
+        const user = await tx.user.findUnique({
+          where: { id: record.userId },
+          select: { email: true },
+        });
+        if (
+          !user ||
+          user.email.toLowerCase() !== record.authorEmail.toLowerCase()
+        )
+          throw unauthorized();
+      }
       await tx.comment.create({ data: record });
       if (record.status === 'approved')
         await adjustCounts(tx, new Map([[record.contentId, 1]]));
@@ -285,6 +299,39 @@ export class PrismaCommentRepository implements CommentRepository {
         where: { authorEmail: email, status: 'approved' },
         take: 1,
       })) > 0
+    );
+  }
+
+  async feed(limit: number, contentId?: string) {
+    const rows = await this.db.comment.findMany({
+      where: {
+        contentId,
+        status: 'approved',
+        content: { ...PUBLIC_CONTENT, passwordHash: null },
+      },
+      select: {
+        id: true,
+        contentId: true,
+        authorName: true,
+        body: true,
+        createdAt: true,
+        content: {
+          select: { title: true, currentPath: { select: { path: true } } },
+        },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+    });
+    return rows.flatMap(({ content, ...row }) =>
+      content.currentPath
+        ? [
+            {
+              ...row,
+              title: content.title,
+              path: decodePath(content.currentPath.path),
+            },
+          ]
+        : [],
     );
   }
 

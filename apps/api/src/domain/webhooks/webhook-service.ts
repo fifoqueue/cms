@@ -2,6 +2,7 @@ import { WEBHOOK_EVENTS, webhookInputSchema } from '@cms/sdk';
 import type { AdminWebhook, WebhookEvent, WebhookWithSecret } from '@cms/sdk';
 import type { HookRegistrar } from '@cms/sdk/plugin';
 import { z } from 'zod';
+import { sealJob, openJob } from '#api/domain/jobs/payload';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
 import type { TokenIssuer } from '#api/domain/auth/ports';
@@ -134,7 +135,9 @@ export class WebhookService {
 
   /** The job handler for `WEBHOOK_JOB`. 4xx answers (other than 408 and 429) are not retried. */
   async deliver(payload: unknown): Promise<void> {
-    const delivery = deliverySchema.safeParse(payload);
+    const delivery = deliverySchema.safeParse(
+      openJob(payload, this.deps.secrets),
+    );
     if (!delivery.success)
       throw new PermanentJobError(Errors.WebhookInvalidJob);
     const { webhookId, deliveryId, event, occurredAt, data } = delivery.data;
@@ -182,13 +185,19 @@ export class WebhookService {
   }
 
   private enqueue(hook: StoredWebhook, event: string, data: unknown) {
-    return this.deps.jobs.enqueue(WEBHOOK_JOB, {
-      webhookId: hook.id,
-      deliveryId: this.deps.ids.next(),
-      event,
-      occurredAt: this.deps.clock.now().toISOString(),
-      data,
-    });
+    return this.deps.jobs.enqueue(
+      WEBHOOK_JOB,
+      sealJob(
+        {
+          webhookId: hook.id,
+          deliveryId: this.deps.ids.next(),
+          event,
+          occurredAt: this.deps.clock.now().toISOString(),
+          data,
+        },
+        this.deps.secrets,
+      ),
+    );
   }
 
   private toAdmin(

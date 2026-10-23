@@ -20,6 +20,8 @@ import { sharpImages } from '#api/infra/sharp-images';
 import { zipThemeArchive } from '#api/infra/zip-theme-archive';
 import { PreviewService } from '#api/domain/content/preview-service';
 import { RevisionService } from '#api/domain/content/revision-service';
+import { PrivacyService } from '#api/domain/privacy/privacy-service';
+import { PrismaPrivacyRepository } from '#api/infra/prisma/privacy-repository';
 import { hmacSigner } from '#api/infra/hmac-signer';
 import { PrismaRevisionRepository } from '#api/infra/prisma/revision-repository';
 import { join } from 'node:path';
@@ -302,7 +304,8 @@ export const createContainer = async (
   });
   const owner = `${hostname()}:${process.pid}:${uuidV7.next().slice(-12)}`;
   const revisions = new PrismaRevisionRepository(db);
-  const jobQueue = new PrismaJobQueue(db, uuidV7);
+  const jobQueue = new PrismaJobQueue(db, uuidV7, secrets);
+  await jobQueue.sealLegacy();
   const taskLeases = new PrismaTaskLeases(db);
   const scheduler = new Scheduler({
     leases: taskLeases,
@@ -589,9 +592,27 @@ export const createContainer = async (
     clock: systemClock,
   });
 
+  const privacy = new PrivacyService({
+    repository: new PrismaPrivacyRepository(db, secrets),
+    settings: settingsRepository,
+    published: publishedRepository,
+    email,
+    site: async () => ({
+      ...(await site.get()),
+      siteUrl: (await seo.getPublic()).siteUrl,
+    }),
+    signer,
+    tokens: randomTokenIssuer,
+    hasher: bunPasswordHasher,
+    ids: uuidV7,
+    clock: systemClock,
+    protection,
+  });
+
   const app = await createApiApp({
     logger,
     services: {
+      privacy,
       auth,
       sso,
       clients,

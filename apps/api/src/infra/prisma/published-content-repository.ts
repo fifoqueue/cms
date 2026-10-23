@@ -1,3 +1,5 @@
+import { calendar } from '@cms/sdk';
+import { siteTimeZone } from '#api/infra/prisma/content-calendar';
 import type {
   PublishedContentRepository,
   PublishedCriteria,
@@ -136,7 +138,13 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
   }
 
   private async page<S extends Prisma.ContentSelect, R, T>(
-    { page, pageSize, ...filters }: PublishedCriteria,
+    {
+      page,
+      pageSize,
+      orderBy = 'publishedAt',
+      order = 'desc',
+      ...filters
+    }: PublishedCriteria,
     select: S,
     map: (row: R) => T,
   ) {
@@ -152,7 +160,7 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
     const rows = await this.db.content.findMany({
       where,
       select,
-      orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+      orderBy: [{ [orderBy]: order }, { id: order }],
       skip,
       take: pageSize,
     });
@@ -169,6 +177,11 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
   }
 
   private async fullTextSummaries({
+    include,
+    exclude,
+    parent,
+    orderBy = 'publishedAt',
+    order: direction = 'desc',
     search,
     type,
     types,
@@ -180,10 +193,11 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
     sticky,
     year,
     month,
+    day,
     page,
     pageSize,
   }: PublishedCriteria) {
-    if (!search || (!type && types?.length === 0))
+    if (!search || (!type && types?.length === 0) || include?.length === 0)
       return { items: [], total: 0 };
     const termIds = category
       ? await termScope(this.db, 'category', category)
@@ -202,12 +216,22 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
         Prisma.sql`EXISTS (SELECT 1 FROM content_terms ct WHERE ct.content_id = c.id AND ct.term_id IN (${Prisma.join(ids)}))`,
       );
     }
+    if (include?.length)
+      filters.push(Prisma.sql`c.id IN (${Prisma.join([...include])})`);
+    if (exclude?.length)
+      filters.push(Prisma.sql`c.id NOT IN (${Prisma.join([...exclude])})`);
+    if (parent !== undefined)
+      filters.push(
+        parent === null
+          ? Prisma.sql`c.parent_id IS NULL`
+          : Prisma.sql`c.parent_id = ${parent}`,
+      );
     if (type) filters.push(Prisma.sql`c.type = ${type}`);
     else if (types)
       filters.push(Prisma.sql`c.type IN (${Prisma.join([...types])})`);
     if (sticky) filters.push(Prisma.sql`c.sticky = ${sticky === 'only'}`);
     if (year) {
-      const range = publishedIn(year, month);
+      const range = publishedIn(year, month, day, await siteTimeZone(this.db));
       filters.push(
         Prisma.sql`c.published_at >= ${range.gte} AND c.published_at < ${range.lt}`,
       );
@@ -235,9 +259,17 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
     const total = Number(counts[0]!.total);
     const skip = (page - 1) * pageSize;
     if (skip >= total) return { items: [], total };
+    const column = {
+      publishedAt: Prisma.sql`c.published_at`,
+      updatedAt: Prisma.sql`c.updated_at`,
+      menuOrder: Prisma.sql`c.menu_order`,
+      title: Prisma.sql`c.title`,
+      id: Prisma.sql`c.id`,
+    }[orderBy];
+    const sort = direction === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`;
     const rows = await this.db.$queryRaw<{ id: string }[]>(Prisma.sql`
       SELECT c.id FROM contents c WHERE ${where}
-      ORDER BY c.published_at DESC, c.id DESC
+      ORDER BY ${column} ${sort}, c.id ${sort}
       LIMIT ${pageSize} OFFSET ${skip}
     `);
     const order = new Map(rows.map((row, index) => [row.id, index]));
@@ -248,22 +280,44 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
 
   async months(types: readonly string[], limit: number) {
     if (!types.length) return [];
-    // DATETIME columns hold UTC, so YEAR()/MONTH() group by UTC months like permalinks.
-    const rows = await this.db.$queryRaw<
-      { year: number; month: number; count: bigint }[]
-    >`
-      SELECT YEAR(published_at) AS year, MONTH(published_at) AS month, COUNT(*) AS count
-      FROM contents
-      WHERE status = 'published' AND trashed_at IS NULL AND published_at IS NOT NULL
-        AND type IN (${Prisma.join([...types])})
-      GROUP BY year, month
-      ORDER BY year DESC, month DESC
-      LIMIT ${limit}`;
-    return rows.map((row) => ({
-      year: Number(row.year),
-      month: Number(row.month),
-      count: Number(row.count),
-    }));
+    const parts = calendar(await siteTimeZone(this.db));
+    const counts = new Map<
+      string,
+      { year: number; month: number; count: number }
+    >();
+    let cursor: { id: string; publishedAt: Date } | null = null;
+    for (;;) {
+      const rows: { id: string; publishedAt: Date | null }[] =
+        await this.db.content.findMany({
+          where: {
+            ...PUBLIC_CONTENT,
+            type: { in: [...types] },
+            publishedAt: { not: null },
+            ...(cursor && {
+              OR: [
+                { publishedAt: { lt: cursor.publishedAt } },
+                { publishedAt: cursor.publishedAt, id: { lt: cursor.id } },
+              ],
+            }),
+          },
+          select: { id: true, publishedAt: true },
+          orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+          take: 1000,
+        });
+      for (const row of rows) {
+        const { year, month } = parts(row.publishedAt!);
+        const key = `${year}-${month}`;
+        const item = counts.get(key) ?? { year, month, count: 0 };
+        item.count += 1;
+        counts.set(key, item);
+      }
+      if (rows.length < 1000 || counts.size > limit) break;
+      const last = rows.at(-1)!;
+      cursor = { id: last.id, publishedAt: last.publishedAt! };
+    }
+    return [...counts.values()]
+      .sort((a, b) => b.year - a.year || b.month - a.month)
+      .slice(0, limit);
   }
 
   async passwordHash(id: string) {

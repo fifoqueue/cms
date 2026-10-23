@@ -45,6 +45,9 @@ const { actions: editorActions } =
 
 const { commentAction } = await import('#lib/server/comments.js');
 
+const { load: loadPrivacy, actions: privacyActions } =
+  await import('#web/routes/privacy/confirm/+page.server.js');
+
 const SECRET = 'SECRET-SENTINEL-7f3a';
 const TOKEN = 'TOKEN-SENTINEL-91c2';
 
@@ -480,6 +483,66 @@ test('failed replies retain their parent and retry redirects to the returned com
   expect(
     await commentAction(event()).catch((error: unknown) => error),
   ).toMatchObject({ status: 303, location: '/hello?cpage=2#comment-reply' });
+});
+
+test('privacy confirmations in different tabs use separate proofs and never serialize them', async () => {
+  const ids = [
+    '11111111-1111-4111-8111-111111111111',
+    '22222222-2222-4222-8222-222222222222',
+  ];
+  const tokens = ids.map((id) => `${id}.2000000000000.nonce.signature`);
+  const jar = new Map<string, string>();
+  const cookies = {
+    get: (name: string) => jar.get(name),
+    set: (name: string, value: string, options: unknown) => {
+      expect(options).toMatchObject({
+        httpOnly: true,
+        secure: true,
+        path: '/',
+        sameSite: 'strict',
+      });
+      jar.set(name, value);
+    },
+    delete: (name: string) => jar.delete(name),
+  };
+  for (const [index, token] of tokens.entries()) {
+    const result = await Promise.resolve(
+      loadPrivacy({
+        fetch: fakeFetch,
+        url: new URL(`https://web.test/privacy/confirm?token=${token}`),
+        cookies,
+        setHeaders: () => undefined,
+      } as never),
+    ).catch((error: unknown) => error);
+    expect(result).toMatchObject({
+      status: 303,
+      location: `/privacy/confirm?request=${ids[index]}`,
+    });
+    expect(JSON.stringify(result)).not.toContain(token);
+  }
+  override = ({ url, body }) => {
+    if (url.pathname !== '/api/v1/privacy/confirm') return undefined;
+    expect(JSON.parse(body).token).toBe(tokens[0]);
+    return new Response(null, { status: 204 });
+  };
+  const body = new FormData();
+  body.set('requestId', ids[0]!);
+  const result = await privacyActions.confirm!({
+    fetch: fakeFetch,
+    url: new URL(`https://web.test/privacy/confirm?/confirm&request=${ids[0]}`),
+    request: new Request('https://web.test/privacy/confirm', {
+      method: 'POST',
+      body,
+    }),
+    cookies,
+    setHeaders: () => undefined,
+    getClientAddress: () => '203.0.113.1',
+  } as never);
+  expect(result).toEqual({ notice: 'privacyConfirmed' });
+  expect(jar.size).toBe(1);
+  expect(JSON.parse(jar.get('__Host-cms_privacy_confirmations')!)).toEqual([
+    { id: ids[1], token: tokens[1] },
+  ]);
 });
 
 describe('admin form failures', () => {

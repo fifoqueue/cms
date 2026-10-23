@@ -14,6 +14,10 @@ import type { ThemePage } from '#lib/theme/template.js';
 
 /** Everything blocks may show: layout data, the page being rendered and its slots. */
 export interface SiteScope {
+  privacy?: {
+    policy: { title: string; path: string } | null;
+    commentCookies: boolean;
+  };
   archives?: ArchivePathsState;
   queries?: Record<string, PostList>;
   theme: ThemeView;

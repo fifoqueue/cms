@@ -1,3 +1,4 @@
+import { requirePage } from '#lib/server/public-view.js';
 import { contentApi } from '#lib/server/api.js';
 import { SESSION_COOKIE } from '#lib/server/session.js';
 import { commentAction } from '#lib/server/comments.js';
@@ -29,7 +30,7 @@ export const load: PageServerLoad = async (event) => {
     return {
       kind: 'search' as const,
       query,
-      posts: posts && listView(posts),
+      posts: posts && (requirePage(posts), listView(posts)),
       slots: loaded,
     };
   }

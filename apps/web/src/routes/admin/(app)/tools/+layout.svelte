@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { can } from '@cms/sdk/capabilities';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import { useI18n } from '#lib/i18n/index.js';
   import type { Messages } from '#lib/i18n/index.js';
   import type { LayoutProps } from './$types';
 
-  let { children }: LayoutProps = $props();
+  let { data, children }: LayoutProps = $props();
 
   const i18n = useI18n();
 
@@ -34,6 +35,19 @@
       >{tab.label(i18n.m)}</a
     >
   {/each}
+  {#if can(data.user, 'users.manage')}
+    <a
+      class="px-3 py-2 text-sm"
+      href={resolve('/admin/(app)/tools/privacy/[action]', {
+        action: 'export',
+      })}>{i18n.m.privacyExport}</a
+    >
+    <a
+      class="px-3 py-2 text-sm"
+      href={resolve('/admin/(app)/tools/privacy/[action]', { action: 'erase' })}
+      >{i18n.m.privacyErase}</a
+    >
+  {/if}
 </nav>
 
 {@render children()}

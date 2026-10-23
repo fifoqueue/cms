@@ -25,7 +25,7 @@ export type ThemePage =
     }
   | {
       kind: 'date';
-      date: { year: number; month: number | null };
+      date: { year: number; month: number | null; day?: number };
       posts: PostList;
     }
   | {

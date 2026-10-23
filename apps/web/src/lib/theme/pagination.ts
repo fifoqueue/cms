@@ -3,7 +3,7 @@ export type ListingTarget =
   /** `path` is the posts page when the front page is static. */
   | { kind: 'taxonomy'; taxonomy: string; slug: string; path?: string }
   | { kind: 'home'; type: HomeListType; path?: string }
-  | { kind: 'date'; year: number; month: number | null }
+  | { kind: 'date'; year: number; month: number | null; day?: number }
   | { kind: 'search'; query: string }
   | {
       kind: 'category' | 'tag' | 'author' | 'archive';

@@ -74,6 +74,7 @@ export class MemoryTaskLeases implements TaskLeases {
 }
 
 interface Row extends QueuedJob {
+  expiresAt: Date;
   runAt: Date;
   lockedUntil: Date | null;
   error: string | null;
@@ -86,7 +87,12 @@ export class MemoryJobQueue implements JobQueue {
   readonly rows = new Map<string, Row>();
   private sequence = 0;
 
-  async enqueue(kind: string, payload: unknown, runAt = new Date(0)) {
+  async enqueue(
+    kind: string,
+    payload: unknown,
+    runAt = new Date(0),
+    expiresAt = new Date(Date.now() + 7 * 86400000),
+  ) {
     const id = `job-${++this.sequence}`;
     this.rows.set(id, {
       id,
@@ -94,6 +100,7 @@ export class MemoryJobQueue implements JobQueue {
       payload: structuredClone(payload),
       attempts: 0,
       runAt,
+      expiresAt,
       lockedUntil: null,
       error: null,
       failedAt: null,
@@ -102,6 +109,8 @@ export class MemoryJobQueue implements JobQueue {
   }
 
   async claim(limit: number, owner: string, leaseMs: number, now: Date) {
+    for (const row of this.rows.values())
+      if (row.expiresAt <= now) this.rows.delete(row.id);
     const due = [...this.rows.values()]
       .filter(
         (row) =>

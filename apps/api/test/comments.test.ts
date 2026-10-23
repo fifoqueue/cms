@@ -177,6 +177,9 @@ describe('CommentService', () => {
     expect(thread).toMatchObject({ count: 1, open: true });
     expect(JSON.stringify(thread)).not.toContain('example.com');
     expect(JSON.stringify(sent)).not.toContain('example.com');
+    expect(
+      JSON.stringify(await comments.feed({ contentId: entry.id })),
+    ).not.toContain('example.com');
     expect(thread.items[0]?.avatarUrl).toBeNull();
     await comments.updateDiscussion(
       { showAvatars: true, avatarDefault: 'identicon' },
@@ -204,6 +207,10 @@ describe('CommentService', () => {
       1,
     );
     expect(await comments.recent(10)).toEqual([]);
+    expect(await comments.feed({})).toEqual([]);
+    expect(await codeOf(comments.feed({ contentId: entry.id }))).toBe(
+      'not_found',
+    );
     await content.update(
       entry.id,
       {

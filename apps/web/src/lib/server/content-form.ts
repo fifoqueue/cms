@@ -62,6 +62,9 @@ export const readContentForm = (
     document: parseJson(text(form, 'document')),
     categoryIds: ids(form, 'categoryIds'),
     parentId: text(form, 'parentId'),
+    ...(form.has('menuOrder') && {
+      menuOrder: Number(text(form, 'menuOrder')),
+    }),
     tagIds: ids(form, 'tagIds'),
     extraTermIds: ids(form, 'extraTermIds'),
     publishedAt: text(form, 'publishedAt'),

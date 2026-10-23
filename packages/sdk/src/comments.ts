@@ -216,3 +216,14 @@ export const commentCountsSchema = z.object({
 });
 
 export type CommentCounts = z.output<typeof commentCountsSchema>;
+
+export const commentFeedSchema = z.strictObject({
+  id: z.string(),
+  contentId: z.string(),
+  title: z.string(),
+  path: z.string(),
+  authorName: z.string(),
+  body: z.string(),
+  createdAt: z.string(),
+});
+export type FeedComment = z.output<typeof commentFeedSchema>;

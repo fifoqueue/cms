@@ -40,6 +40,7 @@
       passwordReset: m.actionPasswordReset,
       comment: m.actionComment,
       contentUnlock: m.actionContentUnlock,
+      privacy: m.privacyConfirmTitle,
     })[action];
   const ruleLabel = (m: Messages, rule: RateRuleName) =>
     ({
@@ -49,6 +50,7 @@
       passwordResetAccount: m.rulePasswordResetAccount,
       commentClient: m.ruleCommentClient,
       contentUnlockClient: m.ruleContentUnlockClient,
+      privacyClient: m.privacyRateRule,
     })[rule];
 </script>
 

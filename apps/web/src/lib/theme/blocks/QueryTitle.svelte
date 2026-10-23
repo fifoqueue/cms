@@ -47,9 +47,15 @@
         };
       case 'date':
         return {
-          title: page.date.month
-            ? formatMonth(page.date.year, page.date.month, scope().site.locale)
-            : String(page.date.year),
+          title: page.date.day
+            ? `${page.date.year}-${String(page.date.month).padStart(2, '0')}-${String(page.date.day).padStart(2, '0')}`
+            : page.date.month
+              ? formatMonth(
+                  page.date.year,
+                  page.date.month,
+                  scope().site.locale,
+                )
+              : String(page.date.year),
           count: m.themePostCount(page.posts.total),
         };
       case 'archive':

@@ -2,7 +2,7 @@ import type { Clock } from '#api/domain/ports';
 import type { JobQueue } from '#api/domain/jobs/ports';
 import type { RecurringTask } from '#api/domain/jobs/scheduler';
 import type { Logger } from '#api/shared/logger';
-import { messageOf, Errors } from '#api/shared/errors';
+import { Errors } from '#api/shared/errors';
 
 /** Handles one job. Throwing schedules a retry; `PermanentJobError` gives up at once. */
 export type JobHandler = (payload: unknown) => Promise<void>;
@@ -63,9 +63,9 @@ export class JobRunner {
               ? new Date(clock.now().getTime() + backoffMs(attempt))
               : null;
           logger.warn(
-            `Job ${job.kind} failed (attempt ${attempt}): ${messageOf(error)}`,
+            `Job ${job.kind} failed (attempt ${attempt}): ${Errors.JobFailed}`,
           );
-          await queue.fail(job.id, owner, messageOf(error), retry);
+          await queue.fail(job.id, owner, Errors.JobFailed, retry);
         }
       }),
     );

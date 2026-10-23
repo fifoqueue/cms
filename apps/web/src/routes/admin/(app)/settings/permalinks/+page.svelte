@@ -141,7 +141,12 @@
           {:else}
             <p class="text-xs text-muted-foreground">
               {m.permalinkExample(SAMPLE.title)}
-              <code>{renderPermalink(pattern, SAMPLE)}</code>
+              <code
+                >{renderPermalink(pattern, {
+                  ...SAMPLE,
+                  timeZone: data.timeZone,
+                })}</code
+              >
             </p>
             {#if dateOnly(pattern)}
               <p class="text-xs text-amber-700 dark:text-amber-400">

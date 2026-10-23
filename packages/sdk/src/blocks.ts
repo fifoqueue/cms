@@ -91,6 +91,7 @@ export const BLOCKS = {
     },
   },
   'site-tagline': { attrs: {} },
+  'privacy-policy-link': { attrs: {} },
   navigation: {
     attrs: {
       location: choice(['primary', 'footer'], 'primary'),

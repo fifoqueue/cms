@@ -4,6 +4,7 @@ type Template = Omit<EmailMessage, 'to'>;
 
 interface Templates {
   test(site: string): Template;
+  privacy(site: string, action: 'export' | 'erase', link: string): Template;
   reset(site: string, link: string): Template;
   invite(site: string, name: string, link: string): Template;
   commentPending(
@@ -29,6 +30,10 @@ interface CommentCopy {
 const linkLine = (link: string) => (link ? `\n\n${link}` : '');
 
 const en: Templates = {
+  privacy: (site, action, link) => ({
+    subject: `[${site}] Confirm personal data ${action === 'erase' ? 'erasure' : 'export'}`,
+    text: `An administrator requested a personal data ${action === 'erase' ? 'erasure' : 'export'} for this email address. Confirm within two days:\n${link}\nIf you did not request this, ignore this email.`,
+  }),
   test: (site) => ({
     subject: `[${site}] Test message`,
     text: `Email delivery from ${site} works.`,
@@ -52,6 +57,10 @@ const en: Templates = {
 };
 
 const ko: Templates = {
+  privacy: (site, action, link) => ({
+    subject: `[${site}] 개인정보 ${action === 'export' ? '내보내기' : '삭제'} 확인`,
+    text: `관리자가 이 이메일 주소의 개인정보 ${action === 'export' ? '내보내기' : '삭제'}를 요청했습니다. 2일 안에 확인해 주세요:\n${link}\n요청하지 않았다면 이 메일을 무시하세요.`,
+  }),
   test: (site) => ({
     subject: `[${site}] 테스트 메일`,
     text: `${site}의 메일 발송이 정상입니다.`,

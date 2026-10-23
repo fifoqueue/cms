@@ -201,6 +201,7 @@
   const path = $derived(
     entry
       ? renderPermalink(pattern, {
+          timeZone: seo.timeZone,
           id: entry.id,
           slug: slug.trim() || entry.slug,
           title: title.trim() || entry.title,
@@ -665,6 +666,15 @@
             >
           {/each}
         </NativeSelect>
+        <Label for="menu-order">{m.privacyMenuOrder}</Label>
+        <Input
+          id="menu-order"
+          name="menuOrder"
+          type="number"
+          min={-100000}
+          max={100000}
+          value={values?.menuOrder ?? entry?.menuOrder ?? 0}
+        />
       </CardContent></Card
     >
   {/if}

@@ -33,7 +33,7 @@ export class MemorySeoDiscoveryRepository implements SeoDiscoveryRepository {
 
   async list({ kind, page, pageSize, siteUrl }: SeoDiscoveryCriteria) {
     const published = [...this.content.rows.values()].filter(
-      (row) => row.status === 'published',
+      (row) => row.status === 'published' && !this.content.trashed.has(row.id),
     );
     let items: SeoDiscoveryRecord[];
     if (kind === 'content') {
@@ -57,29 +57,58 @@ export class MemorySeoDiscoveryRepository implements SeoDiscoveryRepository {
             },
           ];
         });
+    } else if (kind === 'author') {
+      const authors = new Map<string, SeoDiscoveryRecord>();
+      for (const row of published.filter(
+        (item) => !item.seo.noIndex && !item.passwordHash,
+      )) {
+        const path = `/author/${encodeURIComponent(row.authorId)}`;
+        const current = authors.get(path);
+        if (!current || current.updatedAt < row.updatedAt)
+          authors.set(path, {
+            path,
+            title: row.authorId,
+            description: '',
+            updatedAt: row.updatedAt,
+          });
+      }
+      items = [...authors.values()].sort((a, b) =>
+        a.path.localeCompare(b.path),
+      );
     } else {
       const terms = [...this.content.terms.values()];
       const bases = { category: '/category', tag: '/tag' };
+      const pathOf = (taxonomy: string, slug: string) =>
+        taxonomy === 'category' || taxonomy === 'tag'
+          ? archivePath(bases, taxonomy, slug)
+          : `/taxonomy/${encodeURIComponent(taxonomy)}/${encodeURIComponent(slug)}`;
       items = terms
         .filter((term) => {
           if (
-            term.taxonomy !== kind ||
+            (kind === 'taxonomy'
+              ? ['category', 'tag'].includes(term.taxonomy)
+              : term.taxonomy !== kind) ||
             term.seo.noIndex ||
             (term.seo.canonicalUrl &&
               term.seo.canonicalUrl !==
-                `${siteUrl}${archivePath(bases, kind, term.slug)}`)
+                `${siteUrl}${pathOf(term.taxonomy, term.slug)}`)
           )
             return false;
           const ids =
-            kind === 'category' ? withDescendants(terms, term.id) : [term.id];
+            kind === 'category' || kind === 'taxonomy'
+              ? withDescendants(terms, term.id)
+              : [term.id];
           return published.some((row) =>
-            (kind === 'category' ? row.categoryIds : row.tagIds).some((id) =>
-              ids.includes(id),
-            ),
+            (kind === 'category'
+              ? row.categoryIds
+              : kind === 'tag'
+                ? row.tagIds
+                : (row.extraTermIds ?? [])
+            ).some((id) => ids.includes(id)),
           );
         })
         .map((term) => ({
-          path: archivePath(bases, kind, term.slug),
+          path: pathOf(term.taxonomy, term.slug),
           title: term.seo.title || term.name,
           description: term.seo.description || term.description,
           updatedAt: new Date(term.updatedAt),

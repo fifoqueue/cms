@@ -48,6 +48,8 @@ export const actions: Actions = {
     const form = await event.request.formData();
     try {
       await adminFor(event).media.update(event.params.id, {
+        title: text(form, 'title'),
+        description: text(form, 'description'),
         alt: text(form, 'alt'),
         caption: text(form, 'caption'),
       });

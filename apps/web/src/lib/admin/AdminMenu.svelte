@@ -243,6 +243,20 @@
             capability: 'tools.manage',
           },
           {
+            href: resolve('/admin/(app)/tools/privacy/[action]', {
+              action: 'export',
+            }),
+            label: (m) => m.privacyExport,
+            capability: 'users.manage',
+          },
+          {
+            href: resolve('/admin/(app)/tools/privacy/[action]', {
+              action: 'erase',
+            }),
+            label: (m) => m.privacyErase,
+            capability: 'users.manage',
+          },
+          {
             href: resolve('/admin/(app)/tools/transfer'),
             label: (m) => m.toolsTransfer,
             capability: 'tools.manage',
@@ -280,6 +294,11 @@
           {
             href: resolve('/admin/(app)/settings/reading'),
             label: (m) => m.settingsReading,
+            capability: 'settings.manage',
+          },
+          {
+            href: resolve('/admin/(app)/settings/privacy'),
+            label: (m) => m.privacySettings,
             capability: 'settings.manage',
           },
           {

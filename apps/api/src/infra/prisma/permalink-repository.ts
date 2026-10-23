@@ -1,3 +1,4 @@
+import { siteTimeZone } from '#api/infra/prisma/content-calendar';
 import { checkArchivePaths } from '#api/infra/prisma/archive-paths';
 import { createHash } from 'node:crypto';
 import type { PermalinkSettings } from '@cms/sdk';
@@ -232,7 +233,11 @@ export const refreshContentPaths = async (
   const settings = await readSettings(tx);
   await applyChanges(
     tx,
-    pathChanges(settings, await addressEntries(tx, where)),
+    pathChanges(
+      settings,
+      await addressEntries(tx, where),
+      await siteTimeZone(tx),
+    ),
   );
 };
 
@@ -249,7 +254,10 @@ export const assignContentPath = async (
   );
   const own = entries.find((entry) => entry.subject.id === subject.id)!;
   own.retainPrevious = retainPrevious;
-  await applyChanges(tx, pathChanges(settings, entries));
+  await applyChanges(
+    tx,
+    pathChanges(settings, entries, await siteTimeZone(tx)),
+  );
   const current = await tx.contentPath.findUnique({
     where: { currentFor: subject.id },
     select: { path: true },
@@ -281,7 +289,14 @@ export class PrismaPermalinkRepository implements PermalinkRepository {
       async (tx) => {
         await lockPermalinks(tx);
 
-        await applyChanges(tx, pathChanges(settings, await addressEntries(tx)));
+        await applyChanges(
+          tx,
+          pathChanges(
+            settings,
+            await addressEntries(tx),
+            await siteTimeZone(tx),
+          ),
+        );
         await tx.setting.upsert({
           where: { key: SETTINGS_KEY },
           create: { key: SETTINGS_KEY, value: JSON.stringify(settings) },

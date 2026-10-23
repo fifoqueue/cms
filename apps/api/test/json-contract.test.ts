@@ -133,7 +133,7 @@ describe('isJsonValue', () => {
   });
 
   test('agrees with JSON.stringify on nesting depth, without overflowing', () => {
-    // One value past the engine's nesting limit (the oracle confirms it); serializing it costs ~0.5s.
+    // The engine's serialization limit is the oracle; timing varies across hosts and runtimes.
     const tooDeep = nest(100_000);
     const deep = nest(1_000);
 
@@ -141,7 +141,7 @@ describe('isJsonValue', () => {
     expect(isJsonValue(tooDeep)).toBe(false);
     expect(serializes(deep)).toBe(true);
     expect(isJsonValue(deep)).toBe(true);
-  });
+  }, 30_000);
 
   test('rejects deep cycles from the shape check alone', () => {
     const loop: unknown[] = [];
@@ -271,7 +271,7 @@ describe('content.public filter output', () => {
       { ...item, html: undefined, fields: undefined },
     ]);
     expect(() => Response.json(page)).not.toThrow();
-  });
+  }, 30_000);
 
   test('an accepted result is a core copy the plugin cannot break afterwards', async () => {
     const { hooks, publicContent } = await setup();

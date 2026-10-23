@@ -11,6 +11,7 @@ export interface ContentFormValues {
   document: unknown;
   categoryIds: string[];
   parentId?: string;
+  menuOrder?: number;
   tagIds: string[];
   extraTermIds?: string[];
   /** ISO time, or empty to keep the stored date. */

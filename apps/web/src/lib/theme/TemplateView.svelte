@@ -19,6 +19,10 @@
   interface Props {
     /** Layout data plus the page's own data (`page.data`). */
     data: {
+      privacy?: {
+        policy: { title: string; path: string } | null;
+        commentCookies: boolean;
+      };
       archives?: ArchivePathsState;
       queries?: Record<string, PostList>;
       theme: ThemeView;
@@ -39,6 +43,7 @@
   let { data, page, previewBlocks }: Props = $props();
 
   provideScope(() => ({
+    privacy: data.privacy,
     archives: data.archives,
     queries: data.queries,
     theme: data.theme,

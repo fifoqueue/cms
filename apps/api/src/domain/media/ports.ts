@@ -23,6 +23,8 @@ export interface MediaRecord {
   height: number | null;
   alt: string;
   caption: string;
+  title?: string;
+  description?: string;
   storageKey: string;
   variants: Partial<Record<ImageSizeName, StoredVariant>>;
   createdAt: Date;
@@ -49,7 +51,15 @@ export interface MediaRepository {
   list(
     criteria: MediaCriteria,
   ): Promise<{ items: MediaRecord[]; total: number }>;
-  update(id: string, changes: { alt: string; caption: string }): Promise<void>;
+  update(
+    id: string,
+    changes: {
+      alt: string;
+      caption: string;
+      title?: string;
+      description?: string;
+    },
+  ): Promise<void>;
   /** Public projections of the given images that exist. */
   publicImages(ids: readonly string[]): Promise<Map<string, PublicImage>>;
   /** Also removes its usage links and featured-image references. */

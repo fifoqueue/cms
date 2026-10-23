@@ -60,6 +60,8 @@ export const adminMediaSchema = z.object({
   height: z.number().int().nullable(),
   alt: z.string(),
   caption: z.string(),
+  title: z.string().default(''),
+  description: z.string().default(''),
   /** Site-relative address of the original file (`/media/...`). */
   url: z.string(),
   variants: z.array(mediaVariantSchema),
@@ -75,6 +77,8 @@ export type AdminMedia = z.output<typeof adminMediaSchema>;
 export const mediaUpdateSchema = z.object({
   alt: z.string().trim().max(500).default(''),
   caption: z.string().trim().max(2000).default(''),
+  title: z.string().trim().max(255).optional(),
+  description: z.string().trim().max(10000).optional(),
 });
 
 export type MediaUpdateInput = z.input<typeof mediaUpdateSchema>;

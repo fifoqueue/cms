@@ -47,6 +47,9 @@ const errors: unknown[][] = [];
 
 const app = await createApiApp({
   services: {
+    privacy: {
+      publicSettings: async () => ({ policy: null, commentCookies: true }),
+    } as ApiServices['privacy'],
     auth,
     sso: {
       info: () => ({ enabled: false }),

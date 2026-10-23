@@ -61,7 +61,15 @@ export class MemoryMediaRepository implements MediaRepository {
     return images;
   }
 
-  async update(id: string, changes: { alt: string; caption: string }) {
+  async update(
+    id: string,
+    changes: {
+      alt: string;
+      caption: string;
+      title?: string;
+      description?: string;
+    },
+  ) {
     Object.assign(this.rows.get(id)!, changes);
   }
 
