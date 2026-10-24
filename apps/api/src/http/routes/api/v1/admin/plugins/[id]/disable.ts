@@ -1,11 +1,3 @@
-import { idParams } from '#api/http/params';
-import { json } from '#api/http/respond';
-import type { ApiApp } from '#api/http/services';
-import { session } from '#api/http/session';
+import { pluginAction } from '#api/http/plugin-actions';
 
-export const routes = (app: ApiApp) =>
-  session(app, 'plugins.manage').post(
-    '',
-    async ({ plugins, params }) => json(await plugins.disable(params.id)),
-    idParams,
-  );
+export const routes = pluginAction('disable');

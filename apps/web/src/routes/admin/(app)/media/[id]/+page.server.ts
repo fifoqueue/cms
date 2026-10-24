@@ -56,7 +56,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
-    redirect(303, `/admin/media/${copy.id}`);
+    redirect(303, `/admin/media/${copy.id}?notice=mediaEditedCopy`);
   },
   save: async (event) => {
     const form = await event.request.formData();
@@ -82,6 +82,6 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
-    redirect(303, '/admin/media');
+    redirect(303, '/admin/media?notice=deleted');
   },
 };

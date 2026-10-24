@@ -61,6 +61,7 @@ import {
 import { plainSecretBox } from '#test/support/memory-security';
 import { MemoryMediaStorage } from '#test/support/memory-media';
 import { scratchDatabase } from '#test/support/scratch-database';
+import { textDocument } from '#test/support/content';
 
 /**
  * Core Prisma adapters on a real MariaDB (opt in with `CMS_TEST_DATABASE_URL`, see
@@ -70,11 +71,6 @@ import { scratchDatabase } from '#test/support/scratch-database';
 const serverUrl = process.env.CMS_TEST_DATABASE_URL;
 const meiliUrl = process.env.CMS_TEST_MEILISEARCH_URL;
 const SLOW = 60_000;
-
-const paragraph = (text: string) => ({
-  type: 'doc' as const,
-  content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
-});
 
 describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
   let db: Database;
@@ -104,6 +100,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       types,
       fields: new FieldService({ settings, images: async () => new Map() }),
     });
+    const revisions = new PrismaRevisionRepository(db);
     const terms = new PrismaTaxonomyRepository(db);
     const secrets = aesSecretBox('core-privacy-test');
     const jobs = new PrismaJobQueue(db, uuidV7, secrets);
@@ -144,6 +141,14 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       settings,
       repository,
       content,
+      revisions,
+      history: new RevisionService({
+        content,
+        revisions,
+        renderer: tiptapRenderer,
+        ids: uuidV7,
+        clock: systemClock,
+      }),
       terms,
       taxonomy: new TaxonomyService({
         repository: terms,
@@ -155,15 +160,51 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     };
   };
 
+  /** Media on the Prisma repository, with files kept in memory. */
+  const mediaServices = () => {
+    const repository = new PrismaMediaRepository(db);
+    const storage = new MemoryMediaStorage();
+    const media = new MediaService({
+      repository,
+      storage,
+      images: sharpImages,
+      ids: uuidV7,
+      clock: systemClock,
+      hooks: new HookBus({ timeoutMs: 50, logger: recordingLogger().logger }),
+      limiter: new PrismaRateLimitStore(db),
+      limits: async () => ({ uploadsPerHour: 60, freeSpaceMb: 256 }),
+      maxBytes: 1024 * 1024,
+    });
+    return { repository, storage, media };
+  };
+
+  /** The token of the privacy confirmation email queued for `subject`. */
+  const confirmationToken = async (
+    secrets: Parameters<typeof openJob>[1],
+    subject: string,
+  ) => {
+    const rows = await db.job.findMany({ where: { kind: 'email.send' } });
+    const message = rows
+      .map(
+        (row) =>
+          openJob(JSON.parse(row.payload), secrets) as {
+            to: string;
+            text: string;
+          },
+      )
+      .find((item) => item.to === subject)!;
+    return decodeURIComponent(/token=([^\s]+)/.exec(message.text)![1]!);
+  };
+
   test(
     'text-save migration backfills history without hiding valid autosaves, including entries without history',
     async () => {
-      const { content } = services();
+      const { content, revisions } = services();
       const entry = await content.create(
         {
           type: 'post',
           title: 'Migration history',
-          document: paragraph('Saved'),
+          document: textDocument('Saved'),
         },
         ADMIN,
       );
@@ -171,7 +212,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         {
           type: 'post',
           title: 'Migration fallback',
-          document: paragraph('Saved'),
+          document: textDocument('Saved'),
         },
         ADMIN,
       );
@@ -197,7 +238,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           kind: 'autosave',
           title: 'Pending across migration',
           excerpt: '',
-          document: JSON.stringify(paragraph('Unsaved')),
+          document: JSON.stringify(textDocument('Unsaved')),
           createdAt: autosaveAt,
         },
       });
@@ -224,7 +265,6 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         (await db.content.findUniqueOrThrow({ where: { id: noHistory.id } }))
           .textSavedAt,
       ).toEqual(statusAt);
-      const revisions = new PrismaRevisionRepository(db);
       expect(
         (await revisions.pendingAutosave(entry.id, ADMIN.id, savedAt))?.title,
       ).toBe('Pending across migration');
@@ -245,17 +285,9 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
   test(
     'revision mutations share the content lock, reject stale ownership and source rows, and preserve later autosaves',
     async () => {
-      const { content, repository } = services();
-      const revisions = new PrismaRevisionRepository(db);
-      const history = new RevisionService({
-        content,
-        revisions,
-        renderer: tiptapRenderer,
-        ids: uuidV7,
-        clock: systemClock,
-      });
+      const { content, repository, revisions, history } = services();
       const entry = await content.create(
-        { type: 'post', title: 'Original', document: paragraph('Original') },
+        { type: 'post', title: 'Original', document: textDocument('Original') },
         ADMIN,
       );
       const source = (await history.list(entry.id, ADMIN))[0]!;
@@ -328,7 +360,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       expect((await content.get(entry.id, ADMIN)).title).toBe('Current');
       await history.autosave(
         entry.id,
-        { title: 'Newer tab', excerpt: '', document: paragraph('Unsaved') },
+        { title: 'Newer tab', excerpt: '', document: textDocument('Unsaved') },
         ADMIN,
       );
       const clearing = Promise.withResolvers<void>();
@@ -359,7 +391,11 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       const autosaving = history
         .autosave(
           entry.id,
-          { title: 'Newer tab', excerpt: '', document: paragraph('Unsaved') },
+          {
+            title: 'Newer tab',
+            excerpt: '',
+            document: textDocument('Unsaved'),
+          },
           ADMIN,
         )
         .then(() => {
@@ -410,20 +446,12 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
   test(
     'metadata-only saves preserve other writers’ pending text and the current revision on MariaDB',
     async () => {
-      const { content, repository, taxonomy } = services();
-      const revisions = new PrismaRevisionRepository(db);
-      const history = new RevisionService({
-        content,
-        revisions,
-        renderer: tiptapRenderer,
-        ids: uuidV7,
-        clock: systemClock,
-      });
+      const { content, repository, taxonomy, revisions, history } = services();
       const entry = await content.create(
         {
           type: 'post',
           title: 'Metadata base',
-          document: paragraph('Unchanged'),
+          document: textDocument('Unchanged'),
         },
         ADMIN,
       );
@@ -440,7 +468,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         {
           title: 'Other pending text',
           excerpt: '',
-          document: paragraph('Unsaved'),
+          document: textDocument('Unsaved'),
         },
         other,
       );
@@ -469,7 +497,11 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       );
       await history.autosave(
         entry.id,
-        { title: 'Own pending text', excerpt: '', document: paragraph('Own') },
+        {
+          title: 'Own pending text',
+          excerpt: '',
+          document: textDocument('Own'),
+        },
         ADMIN,
       );
       await content.update(entry.id, inputOf(metadata), ADMIN);
@@ -489,29 +521,21 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
   test(
     'revision persistence failures roll back content, history, covered autosaves, paths and outbox together',
     async () => {
-      const { content } = services();
+      const { content, revisions, history } = services();
       const entry = await content.create(
         {
           type: 'post',
           title: 'Atomic original',
-          document: paragraph('Original'),
+          document: textDocument('Original'),
         },
         ADMIN,
       );
-      const revisions = new PrismaRevisionRepository(db);
-      const history = new RevisionService({
-        content,
-        revisions,
-        renderer: tiptapRenderer,
-        ids: uuidV7,
-        clock: systemClock,
-      });
       await history.autosave(
         entry.id,
         {
           title: 'Covered autosave',
           excerpt: '',
-          document: paragraph('Unsaved'),
+          document: textDocument('Unsaved'),
         },
         ADMIN,
       );
@@ -572,7 +596,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
               type: 'post',
               title: 'Failed atomic create',
               slug: 'atomic-failed-create',
-              document: paragraph('New'),
+              document: textDocument('New'),
             },
             ADMIN,
           ),
@@ -626,7 +650,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         title: 'Flood',
         status: 'published',
         categoryIds: [local.id],
-        document: paragraph('River rising'),
+        document: textDocument('River rising'),
       },
       ADMIN,
     );
@@ -709,7 +733,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           type: 'page',
           title: 'Projection parent',
           status: 'private',
-          document: paragraph('PRIVATE_PARENT_BODY'),
+          document: textDocument('PRIVATE_PARENT_BODY'),
         },
         ADMIN,
       );
@@ -721,7 +745,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           status: 'published',
           parentId: parent.id,
           featuredMediaId: mediaId,
-          document: paragraph('Visible child'),
+          document: textDocument('Visible child'),
           seo: { ...DEFAULT_ENTRY_SEO, focusKeyword: 'SECRET_FOCUS' },
         },
         ADMIN,
@@ -739,7 +763,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           title: 'Projection protected',
           status: 'published',
           password: 'test-password',
-          document: paragraph('SECRET_BODY'),
+          document: textDocument('SECRET_BODY'),
         },
         ADMIN,
       );
@@ -748,7 +772,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           type: 'post',
           title: 'Projection draft',
           status: 'draft',
-          document: paragraph('DRAFT_BODY'),
+          document: textDocument('DRAFT_BODY'),
         },
         ADMIN,
       );
@@ -828,7 +852,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         type: 'post',
         title: 'Talk',
         status: 'published',
-        document: paragraph('Hi'),
+        document: textDocument('Hi'),
       },
       ADMIN,
     );
@@ -882,7 +906,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         title: 'Old',
         status: 'published',
         publishedAt: '2020-02-29T23:30:00.000Z',
-        document: paragraph('x'),
+        document: textDocument('x'),
       },
       ADMIN,
     );
@@ -986,7 +1010,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         type: 'post',
         title: 'By writer',
         authorId: 'writer',
-        document: paragraph('w'),
+        document: textDocument('w'),
       },
       ADMIN,
     );
@@ -1011,19 +1035,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
   });
 
   test('image uploads persist writable media fields and load derived uploader data', async () => {
-    const repository = new PrismaMediaRepository(db);
-    const storage = new MemoryMediaStorage();
-    const media = new MediaService({
-      repository,
-      storage,
-      images: sharpImages,
-      ids: uuidV7,
-      clock: systemClock,
-      hooks: new HookBus({ timeoutMs: 50, logger: recordingLogger().logger }),
-      limiter: new PrismaRateLimitStore(db),
-      limits: async () => ({ uploadsPerHour: 60, freeSpaceMb: 256 }),
-      maxBytes: 1024 * 1024,
-    });
+    const { repository, storage, media } = mediaServices();
     const png = await sharp({
       create: { width: 100, height: 80, channels: 3, background: '#abcdef' },
     })
@@ -1072,7 +1084,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           title: 'Tree destination',
           slug: 'tree-destination',
           status: 'published',
-          document: paragraph('Destination'),
+          document: textDocument('Destination'),
         },
         ADMIN,
       );
@@ -1082,7 +1094,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           title: 'Tree parent',
           slug: 'tree-parent',
           status: 'published',
-          document: paragraph('Parent'),
+          document: textDocument('Parent'),
         },
         ADMIN,
       );
@@ -1093,7 +1105,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           slug: 'tree-leaf',
           parentId: parent.id,
           status: 'published',
-          document: paragraph('Leaf'),
+          document: textDocument('Leaf'),
         },
         ADMIN,
       );
@@ -1104,7 +1116,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           title: 'tree-leaf',
           slug: 'tree-blocker',
           status: 'published',
-          document: paragraph('Blocks descendant path'),
+          document: textDocument('Blocks descendant path'),
         },
         ADMIN,
       );
@@ -1180,7 +1192,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         type: 'page',
         title: 'Occupied archive',
         slug: 'occupied-archive',
-        document: paragraph('Parent'),
+        document: textDocument('Parent'),
       },
       ADMIN,
     );
@@ -1190,7 +1202,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         title: 'Occupied child',
         slug: 'occupied-child',
         parentId: occupied.id,
-        document: paragraph('Child'),
+        document: textDocument('Child'),
       },
       ADMIN,
     );
@@ -1223,7 +1235,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           type: 'page',
           title: 'Reserved terms root',
           slug: 'reserved-terms',
-          document: paragraph('Root may coexist'),
+          document: textDocument('Root may coexist'),
         },
         ADMIN,
       );
@@ -1234,7 +1246,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
             title: 'Reserved child',
             slug: 'reserved-child',
             parentId: namespace.id,
-            document: paragraph('Refused'),
+            document: textDocument('Refused'),
           },
           ADMIN,
         ),
@@ -1264,7 +1276,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
             title: 'Login collision',
             slug,
             status: 'published',
-            document: paragraph('Only one route owner may commit'),
+            document: textDocument('Only one route owner may commit'),
           },
           ADMIN,
         ),
@@ -1289,7 +1301,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           title: 'Legacy login collision',
           slug: legacySlug,
           status: 'published',
-          document: paragraph('Existing content stays visible'),
+          document: textDocument('Existing content stays visible'),
         },
         ADMIN,
       );
@@ -1328,7 +1340,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           type: 'post',
           title: 'Aurora tonight',
           status: 'published',
-          document: paragraph('Lights'),
+          document: textDocument('Lights'),
         },
         ADMIN,
       );
@@ -1360,19 +1372,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         ADMIN,
         attempt,
       );
-      const rows = await db.job.findMany({ where: { kind: 'email.send' } });
-      const message = rows
-        .map(
-          (row) =>
-            openJob(JSON.parse(row.payload), secrets) as {
-              to: string;
-              text: string;
-            },
-        )
-        .find((item) => item.to === subject)!;
-      const token = decodeURIComponent(
-        /token=([^\s]+)/.exec(message.text)![1]!,
-      );
+      const token = await confirmationToken(secrets, subject);
       expect(JSON.stringify(request)).not.toContain(token);
       await expect(
         privacy.confirm({ token: `${token}x` }, attempt),
@@ -1413,7 +1413,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       const input = {
         title: 'Reviewed interleaving',
         status: 'draft',
-        document: paragraph('Contributor draft'),
+        document: textDocument('Contributor draft'),
       };
       const pattern = await publisher.create(input, contributor);
       const entered = Promise.withResolvers<void>();
@@ -1454,7 +1454,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           {
             ...input,
             status: 'published',
-            document: paragraph('Approved by administrator'),
+            document: textDocument('Approved by administrator'),
           },
           ADMIN,
         );
@@ -1464,7 +1464,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       expect(await outcome).toMatchObject({ code: 'forbidden' });
       expect(await publisher.get(pattern.id, ADMIN)).toMatchObject({
         status: 'published',
-        document: paragraph('Approved by administrator'),
+        document: textDocument('Approved by administrator'),
       });
       await publisher.remove(pattern.id, ADMIN);
     },
@@ -1493,7 +1493,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       const input = {
         title: 'Last pattern slot',
         status: 'draft',
-        document: paragraph('Quota'),
+        document: textDocument('Quota'),
       };
       const existing = await settings.count('pattern.');
       const rows = Array.from({ length: 499 - existing }, () => {
@@ -1556,7 +1556,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         {
           title: 'Catalog A private',
           status: 'draft',
-          document: paragraph('Administrator secret'),
+          document: textDocument('Administrator secret'),
         },
         ADMIN,
       );
@@ -1564,12 +1564,15 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         {
           title: 'Catalog B own',
           status: 'draft',
-          document: paragraph('My draft'),
+          document: textDocument('My draft'),
         },
         contributor,
       );
       const shared = await patterns.create(
-        { title: 'Catalog C shared', document: paragraph('x'.repeat(300_000)) },
+        {
+          title: 'Catalog C shared',
+          document: textDocument('x'.repeat(300_000)),
+        },
         ADMIN,
       );
       const first = await patterns.list(
@@ -1590,10 +1593,10 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         code: 'not_found',
       });
       expect((await patterns.get(own.id, contributor)).document).toEqual(
-        paragraph('My draft'),
+        textDocument('My draft'),
       );
       expect((await patterns.get(shared.id, contributor)).document).toEqual(
-        paragraph('x'.repeat(300_000)),
+        textDocument('x'.repeat(300_000)),
       );
       expect((await patterns.list({ search: 'Catalog' }, ADMIN)).total).toBe(3);
       for (const pattern of [secret, own, shared])
@@ -1629,7 +1632,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           title: `Export ${id}`,
           status: 'published',
           authorId: id,
-          document: paragraph('Own content'),
+          document: textDocument('Own content'),
         },
         ADMIN,
       );
@@ -1679,18 +1682,8 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       await expect(privacy.export(request.id, ADMIN)).rejects.toMatchObject({
         code: 'invalid_input',
       });
-      const rows = await db.job.findMany({ where: { kind: 'email.send' } });
-      const message = rows
-        .map(
-          (row) =>
-            openJob(JSON.parse(row.payload), secrets) as {
-              to: string;
-              text: string;
-            },
-        )
-        .find((item) => item.to === subject)!;
       await privacy.confirm(
-        { token: decodeURIComponent(/token=([^\s]+)/.exec(message.text)![1]!) },
+        { token: await confirmationToken(secrets, subject) },
         attempt,
       );
       await expect(
@@ -1744,7 +1737,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           title: `Erase ${id}`,
           status: 'published',
           authorId: id,
-          document: paragraph('Preserved publication'),
+          document: textDocument('Preserved publication'),
         },
         ADMIN,
       );
@@ -1958,7 +1951,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           title: `Timezone ${uuidV7.next()}`,
           status: 'published',
           publishedAt: '2026-01-01T00:30:00.000Z',
-          document: paragraph('Date boundary'),
+          document: textDocument('Date boundary'),
         },
         ADMIN,
       );
@@ -2043,19 +2036,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
   test(
     'media used only by a nested pattern is attached and needs forced deletion',
     async () => {
-      const repository = new PrismaMediaRepository(db);
-      const storage = new MemoryMediaStorage();
-      const media = new MediaService({
-        repository,
-        storage,
-        images: sharpImages,
-        ids: uuidV7,
-        clock: systemClock,
-        hooks: new HookBus({ timeoutMs: 50, logger: recordingLogger().logger }),
-        limiter: new PrismaRateLimitStore(db),
-        limits: async () => ({ uploadsPerHour: 60, freeSpaceMb: 256 }),
-        maxBytes: 1024 * 1024,
-      });
+      const { repository, media } = mediaServices();
       const patterns = new PatternService({
         settings: new PrismaSettingsRepository(db),
         transactions: new PrismaSettingsTransactions(db),
@@ -2126,7 +2107,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       });
       await patterns.update(
         inner.id,
-        { ...input, document: paragraph('No image') },
+        { ...input, document: textDocument('No image') },
         ADMIN,
       );
       expect((await media.get(id, ADMIN)).usageCount).toBe(0);

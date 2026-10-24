@@ -14,6 +14,7 @@ import type {
   SsoTransactionRepository,
 } from '#api/domain/auth/sso-ports';
 import { conflict, unauthorized } from '#api/shared/errors';
+import { takenSlugs } from '#test/support/memory-rows';
 
 export class MemoryUsers implements UserRepository {
   readonly rows = new Map<string, UserRecord>();
@@ -44,11 +45,7 @@ export class MemoryUsers implements UserRepository {
   }
 
   async takenSlugs(slugs: readonly string[]) {
-    return new Set(
-      [...this.rows.values()]
-        .map((row) => row.slug)
-        .filter((slug) => slugs.includes(slug)),
-    );
+    return takenSlugs(this.rows.values(), slugs);
   }
 }
 

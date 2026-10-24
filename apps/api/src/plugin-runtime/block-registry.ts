@@ -144,9 +144,12 @@ export class BlockRegistry {
         );
         output = isolate(
           () =>
-            registration.definition.render(values, structuredClone(context)),
+            this.registrations.includes(registration)
+              ? registration.definition.render(values, structuredClone(context))
+              : '',
           this.options.timeoutMs,
         ).then((result) => {
+          if (!this.registrations.includes(registration)) return '';
           if (result.ok && typeof result.value === 'string')
             return result.value;
           this.options.logger.warn(

@@ -26,6 +26,7 @@ import type {
   StoredVariant,
 } from '#api/domain/media/ports';
 import { sniffMediaType } from '#api/domain/media/sniff';
+import { sanitizeSvg } from '#api/domain/media/svg';
 import type { Clock, HookDispatcher, IdGenerator } from '#api/domain/ports';
 import type { RateLimitStore } from '#api/domain/security/ports';
 import {
@@ -151,6 +152,8 @@ export class MediaService {
       throw invalidInput(Errors.MediaTooLarge(this.deps.maxBytes));
     const mime = sniffMediaType(bytes);
     if (!mime) throw invalidInput(Errors.MediaTypeUnsupported);
+    if (mime === 'image/svg+xml' && limits.allowSvg !== true)
+      throw invalidInput(Errors.MediaTypeUnsupported);
 
     const id = this.deps.ids.next();
     const now = this.deps.clock.now();
@@ -159,19 +162,23 @@ export class MediaService {
     const isImage = mime.startsWith('image/');
 
     let original = bytes;
-    let size: { width: number; height: number } | null = null;
+    let size: { width: number | null; height: number | null } | null = null;
     const variants: Partial<Record<ImageSizeName, StoredVariant>> = {};
     const files: { key: string; bytes: Uint8Array }[] = [];
     const written: string[] = [];
     try {
-      if (isImage) {
+      if (mime === 'image/svg+xml') {
+        const sanitized = sanitizeSvg(bytes);
+        original = sanitized.bytes;
+        size = sanitized;
+      } else if (isImage) {
         size = await this.deps.images.dimensions(bytes).catch(() => {
           throw invalidInput(Errors.MediaTypeUnsupported);
         });
         if (CLEANED.includes(mime))
           original = await this.deps.images.clean(bytes, mime);
         for (const name of sizeNames) {
-          if (size.width <= IMAGE_SIZES[name]) continue;
+          if (size.width === null || size.width <= IMAGE_SIZES[name]) continue;
           const resized = await this.deps.images.resize(
             original,
             IMAGE_SIZES[name],

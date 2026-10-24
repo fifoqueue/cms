@@ -1,4 +1,5 @@
 import { pluginUpdateManifestSchema } from '@cms/sdk';
+import { serialQueue } from '#api/shared/serial-queue';
 import type { PluginInfo, PluginStatus, PluginUpdate } from '@cms/sdk';
 import {
   DomainError,
@@ -56,7 +57,7 @@ interface InstalledPlugin {
  */
 export class PluginHost {
   private readonly plugins = new Map<string, InstalledPlugin>();
-  private queue: Promise<unknown> = Promise.resolve();
+  private readonly exclusive = serialQueue();
 
   constructor(private readonly deps: PluginHostDeps) {}
 
@@ -64,21 +65,9 @@ export class PluginHost {
   boot(): Promise<void> {
     return this.exclusive(async () => {
       for (const record of await this.deps.state.list()) {
-        const installed: InstalledPlugin = {
-          ...record,
-          plugin: null,
-          scope: null,
-          status: 'inactive',
-          error: null,
-        };
+        const installed = this.initialize(record);
         this.plugins.set(record.id, installed);
-        try {
-          installed.plugin = await this.load(
-            this.deps.packages.locate(record.id, record.entry),
-          );
-        } catch (error) {
-          this.fail(installed, error);
-        }
+        await this.loadInstalled(installed);
       }
       // Required plugins activate before the plugins that need them.
       const order: InstalledPlugin[] = [];
@@ -149,25 +138,36 @@ export class PluginHost {
           continue;
         }
         // Installed or upgraded elsewhere: load the new bundle, then swap.
-        const installed: InstalledPlugin = {
-          ...record,
-          plugin: null,
-          scope: null,
-          status: 'inactive',
-          error: null,
-        };
-        try {
-          installed.plugin = await this.load(
-            this.deps.packages.locate(record.id, record.entry),
-          );
-        } catch (error) {
-          this.fail(installed, error);
-        }
+        const installed = this.initialize(record);
+        await this.loadInstalled(installed);
         if (current) await this.deactivate(current);
         this.plugins.set(record.id, installed);
         if (record.enabled) await this.activate(installed);
       }
     });
+  }
+
+  private initialize(
+    record: Pick<InstalledPlugin, 'id' | 'entry' | 'enabled'>,
+  ): InstalledPlugin {
+    return {
+      ...record,
+      plugin: null,
+      scope: null,
+      status: 'inactive',
+      error: null,
+    };
+  }
+
+  private async loadInstalled(installed: InstalledPlugin) {
+    try {
+      installed.plugin = await this.load(
+        this.deps.packages.locate(installed.id, installed.entry),
+        installed.id,
+      );
+    } catch (error) {
+      this.fail(installed, error);
+    }
   }
 
   /** Deactivates everything, e.g. on shutdown. State is kept. */
@@ -308,7 +308,7 @@ export class PluginHost {
     }
   }
 
-  private async load(path: string): Promise<ValidPlugin> {
+  private async load(path: string, expectedId?: string): Promise<ValidPlugin> {
     // Importing runs the bundle's top-level code, so it is isolated like any other plugin call.
     const result = await isolate(
       () => this.deps.loader.load(path),
@@ -320,7 +320,20 @@ export class PluginHost {
       );
       throw invalidInput(Errors.PluginBundleImport);
     }
-    return validatePlugin(result.value);
+    const validated = await isolate(() => {
+      const plugin = validatePlugin(result.value);
+      if (expectedId !== undefined && plugin.manifest.id !== expectedId)
+        throw invalidInput(Errors.PluginIdInvalid(plugin.manifest.id));
+      return plugin;
+    }, this.deps.timeoutMs);
+    if (!validated.ok) {
+      if (validated.error instanceof DomainError) throw validated.error;
+      this.deps.logger.error(
+        `Could not validate plugin bundle: ${validated.error.message}`,
+      );
+      throw invalidInput(Errors.PluginBundleImport);
+    }
+    return validated.value;
   }
 
   private async activate(installed: InstalledPlugin): Promise<void> {
@@ -418,12 +431,5 @@ export class PluginHost {
       settings: manifest?.settings ?? [],
       values: manifest ? await this.deps.settings.values(manifest) : {},
     };
-  }
-
-  /** Lifecycle changes run one at a time, so concurrent admin requests cannot interleave. */
-  private exclusive<T>(task: () => Promise<T>): Promise<T> {
-    const run = this.queue.then(task, task);
-    this.queue = run.catch(() => undefined);
-    return run;
   }
 }

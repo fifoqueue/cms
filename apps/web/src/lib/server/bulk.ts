@@ -1,5 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import { CmsApiError } from '@cms/sdk/client';
+import { mapLimit } from '#lib/server/bounded.js';
 import { Errors } from '#lib/server/errors.js';
 
 /** One item a bulk action could not change, with a message safe to show. */
@@ -7,9 +8,6 @@ export interface BulkFailure {
   id: string;
   message: string;
 }
-
-/** Bulk work runs this many API calls at once. */
-const CONCURRENCY = 4;
 
 /**
  * Runs `task` for every id, a few at a time, and collects the failures instead of stopping at the
@@ -26,29 +24,22 @@ export const eachBounded = async (
     id: id.slice(0, 100),
     message: Errors.BulkItemInvalid,
   }));
-  let next = 0;
   let done = 0;
-  const worker = async () => {
-    while (next < ids.length) {
-      const id = ids[next++]!;
-      try {
-        const problem = await task(id);
-        if (problem) failed.push({ id, message: problem });
-        else done++;
-      } catch (caught) {
-        failed.push({
-          id,
-          message:
-            caught instanceof CmsApiError && caught.status < 500
-              ? caught.message
-              : Errors.BulkItemFailed,
-        });
-      }
+  await mapLimit(ids, async (id) => {
+    try {
+      const problem = await task(id);
+      if (problem) failed.push({ id, message: problem });
+      else done++;
+    } catch (caught) {
+      failed.push({
+        id,
+        message:
+          caught instanceof CmsApiError && caught.status < 500
+            ? caught.message
+            : Errors.BulkItemFailed,
+      });
     }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(CONCURRENCY, ids.length) }, worker),
-  );
+  });
   return { done, failed };
 };
 
@@ -85,20 +76,7 @@ export const readSelection = (
 };
 
 /** `Promise.all(items.map(task))` with at most `CONCURRENCY` calls at once, in input order. */
-export const mapBounded = async <T, R>(
+export const mapBounded = <T, R>(
   items: readonly T[],
   task: (item: T) => Promise<R>,
-): Promise<R[]> => {
-  const results: R[] = [];
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await task(items[index]!);
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(CONCURRENCY, items.length) }, worker),
-  );
-  return results;
-};
+): Promise<R[]> => mapLimit(items, task);

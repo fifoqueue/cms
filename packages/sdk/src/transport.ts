@@ -76,7 +76,14 @@ export const createTransport = (
 
     const response = await fetcher(
       `${baseUrl}${path}${toSearch(options.query)}`,
-      { method, headers, body },
+      {
+        method,
+        headers,
+        body,
+        // A streamed body (an upload passed straight through) must declare half-duplex;
+        // Node's fetch rejects it otherwise. Not yet in the DOM `RequestInit` type.
+        ...(body instanceof ReadableStream && { duplex: 'half' }),
+      } as RequestInit,
     );
     if (response.status === 204 && !options.response) return undefined as T;
     if (options.raw && response.ok) return response as T;

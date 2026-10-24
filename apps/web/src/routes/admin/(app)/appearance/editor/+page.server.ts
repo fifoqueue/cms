@@ -16,6 +16,7 @@ import type { ThemeEditor, ThemeStylesInput } from '@cms/sdk';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { adminFor } from '#lib/server/session.js';
 import { readBlocks } from '#lib/server/theme-admin.js';
+import { submitAction } from '#lib/server/form-action.js';
 import type { Actions, PageServerLoad } from './$types';
 
 /** Template kinds an administrator can add (WordPress template hierarchy). */
@@ -121,15 +122,6 @@ export const load: PageServerLoad = async (event) => {
   };
 };
 
-const attempt = async (task: () => Promise<unknown>, notice = 'saved') => {
-  try {
-    await task();
-  } catch (caught) {
-    return failFrom(caught);
-  }
-  return { notice };
-};
-
 export const actions: Actions = {
   preview: async (event) => {
     const form = await event.request.formData();
@@ -195,7 +187,7 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const read = readBlocks(form.get('blocks'));
     if ('failure' in read) return read.failure;
-    return attempt(() =>
+    return submitAction(() =>
       adminFor(event).themes.saveTemplate(
         text(form, 'theme'),
         text(form, 'name'),
@@ -205,7 +197,7 @@ export const actions: Actions = {
   },
   resetTemplate: async (event) => {
     const form = await event.request.formData();
-    return attempt(() =>
+    return submitAction(() =>
       adminFor(event).themes.resetTemplate(
         text(form, 'theme'),
         text(form, 'name'),
@@ -216,7 +208,7 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const read = readBlocks(form.get('blocks'));
     if ('failure' in read) return read.failure;
-    return attempt(() =>
+    return submitAction(() =>
       adminFor(event).themes.savePart(
         text(form, 'theme'),
         text(form, 'slug'),
@@ -226,7 +218,7 @@ export const actions: Actions = {
   },
   resetPart: async (event) => {
     const form = await event.request.formData();
-    return attempt(() =>
+    return submitAction(() =>
       adminFor(event).themes.resetPart(text(form, 'theme'), text(form, 'slug')),
     );
   },
@@ -260,7 +252,7 @@ export const actions: Actions = {
     for (const [key, value] of form)
       if (key.startsWith('color.') && typeof value === 'string')
         colors[key.slice('color.'.length)] = value;
-    return attempt(() =>
+    return submitAction(() =>
       adminFor(event).themes.saveStyles(text(form, 'theme'), {
         colors,
         // The API checks every value against the theme schema.
@@ -276,7 +268,7 @@ export const actions: Actions = {
   },
   resetStyles: async (event) => {
     const form = await event.request.formData();
-    return attempt(() =>
+    return submitAction(() =>
       adminFor(event).themes.resetStyles(text(form, 'theme')),
     );
   },

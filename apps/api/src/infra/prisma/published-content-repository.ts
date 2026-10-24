@@ -14,6 +14,8 @@ import {
   publishedIn,
 } from '#api/infra/prisma/content-criteria';
 import { Prisma } from '#api/infra/prisma/generated/client';
+import { countMonth, newestMonths } from '#api/infra/prisma/month-counts';
+import type { MonthCounts } from '#api/infra/prisma/month-counts';
 import { projectContent } from '#api/infra/prisma/public-content-projection';
 
 /** Published-only reads filtered in the database, with the same criteria as the admin list. */
@@ -198,10 +200,7 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
   async months(types: readonly string[], limit: number) {
     if (!types.length) return [];
     const parts = calendar(await siteTimeZone(this.db));
-    const counts = new Map<
-      string,
-      { year: number; month: number; count: number }
-    >();
+    const counts: MonthCounts = new Map();
     let cursor: { id: string; publishedAt: Date } | null = null;
     for (;;) {
       const rows: { id: string; publishedAt: Date | null }[] =
@@ -223,18 +222,13 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
         });
       for (const row of rows) {
         const { year, month } = parts(row.publishedAt!);
-        const key = `${year}-${month}`;
-        const item = counts.get(key) ?? { year, month, count: 0 };
-        item.count += 1;
-        counts.set(key, item);
+        countMonth(counts, year, month);
       }
       if (rows.length < 1000 || counts.size > limit) break;
       const last = rows.at(-1)!;
       cursor = { id: last.id, publishedAt: last.publishedAt! };
     }
-    return [...counts.values()]
-      .sort((a, b) => b.year - a.year || b.month - a.month)
-      .slice(0, limit);
+    return newestMonths(counts, limit);
   }
 
   async adjacent(id: string) {

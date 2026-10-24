@@ -1,6 +1,8 @@
 import { OIDC_AUTH_METHODS } from '@cms/sdk';
 import type { SsoSettingsInput } from '@cms/sdk';
-import { failFrom, text } from '#lib/server/errors.js';
+import { text } from '#lib/server/errors.js';
+import { submitAction } from '#lib/server/form-action.js';
+import { secretInput } from '#lib/admin/settings/input.server.js';
 import { adminFor } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -36,7 +38,6 @@ export const actions: Actions = {
   save: async (event) => {
     const form = await event.request.formData();
     const method = text(form, 'authMethod');
-    const secret = text(form, 'clientSecret');
     const input: SsoSettingsInput = {
       enabled: form.has('enabled'),
       name: text(form, 'name') || 'SSO',
@@ -47,13 +48,8 @@ export const actions: Actions = {
         : 'client_secret_basic',
       scopes: text(form, 'scopes'),
       allowedSubjects: subjects(text(form, 'allowedSubjects')),
-      clientSecret: form.has('removeSecret') ? '' : secret || undefined,
+      clientSecret: secretInput(form, 'clientSecret', 'removeSecret'),
     };
-    try {
-      await adminFor(event).ssoSettings.update(input);
-    } catch (caught) {
-      return failFrom(caught);
-    }
-    return { notice: 'saved' };
+    return submitAction(() => adminFor(event).ssoSettings.update(input));
   },
 };

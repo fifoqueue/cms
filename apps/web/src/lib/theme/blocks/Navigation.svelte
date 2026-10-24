@@ -41,10 +41,10 @@
 {#if items.length}
   <nav aria-label={label} class="cms-block-navigation">
     {#if a.overlay && a.orientation === 'horizontal'}
-      <div class="hidden md:block">
+      <div class="hidden @min-[48rem]:block">
         <NavigationItems {items} orientation="horizontal" />
       </div>
-      <details bind:this={menu} class="group/menu relative md:hidden">
+      <details bind:this={menu} class="group/menu relative @min-[48rem]:hidden">
         <summary
           class="flex size-9 cursor-pointer list-none items-center justify-center rounded-full hover:bg-muted [&::-webkit-details-marker]:hidden"
           aria-label={m.themeMenu}

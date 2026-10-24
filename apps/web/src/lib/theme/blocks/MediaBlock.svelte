@@ -91,12 +91,12 @@
 {:else}
   {@const a = block.attrs}
   <div
-    class="cms-block-media-text grid items-center gap-6 md:grid-cols-[var(--cms-media-columns)]"
+    class="cms-block-media-text grid items-center gap-6 @min-[48rem]:grid-cols-[var(--cms-media-columns)]"
     style:--cms-media-columns={a.mediaPosition === 'left'
       ? `${a.mediaWidth}% 1fr`
       : `1fr ${a.mediaWidth}%`}
   >
-    <figure class={a.mediaPosition === 'right' ? 'md:order-2' : ''}>
+    <figure class={a.mediaPosition === 'right' ? '@min-[48rem]:order-2' : ''}>
       {#if a.src}
         <img
           src={a.src}

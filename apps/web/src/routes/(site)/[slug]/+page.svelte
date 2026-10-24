@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ComponentProps } from 'svelte';
   import LoginForm from '#lib/security/LoginForm.svelte';
+  import ReadingProgress from '#lib/theme/ReadingProgress.svelte';
   import TemplateView from '#lib/theme/TemplateView.svelte';
   import type { ThemePage } from '#lib/theme/template.js';
   import type { PageProps } from './$types';
@@ -17,22 +18,25 @@
   const layout = $derived(
     data as unknown as {
       privacy: { policy: ComponentProps<typeof LoginForm>['privacyPolicy'] };
+      site: { title: string };
     },
   );
 </script>
 
 {#if login.kind === 'login'}
-  <main id="main" class="mx-auto w-full max-w-md px-4 py-12">
-    <LoginForm
-      sso={login.sso}
-      captcha={login.captcha}
-      membership={login.membership}
-      back={login.back}
-      signedOut={login.signedOut}
-      privacyPolicy={layout.privacy.policy}
-      {form}
-    />
-  </main>
+  <LoginForm
+    sso={login.sso}
+    captcha={login.captcha}
+    membership={login.membership}
+    back={login.back}
+    signedOut={login.signedOut}
+    privacyPolicy={layout.privacy.policy}
+    siteTitle={layout.site.title}
+    {form}
+  />
 {:else}
   <TemplateView data={view} page={view} />
+  {#if view.kind === 'content' && view.theme.settings.scrollToTop}
+    <ReadingProgress />
+  {/if}
 {/if}

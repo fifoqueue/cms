@@ -1,4 +1,6 @@
 // English administration and theme copy. Every other language implements the same `Messages` shape.
+import { templateLabels } from '#lib/i18n/template-label.js';
+
 export const en = {
   // Navigation
   navDashboard: 'Dashboard',
@@ -304,6 +306,7 @@ export const en = {
   // Media
   mediaTitle: 'Media',
   mediaUpload: 'Upload',
+  mediaAllowSvg: 'Allow SVG uploads',
   mediaUploading: 'Uploading…',
   mediaUploaded: (count: number) =>
     `${count} ${count === 1 ? 'file' : 'files'} uploaded`,
@@ -1118,31 +1121,21 @@ export const en = {
         github: 'GitHub',
       }) as Record<string, string>
     )[key] ?? key,
-  templateLabel: (name: string) => {
-    const labels: Record<string, string> = {
-      index: 'Index (fallback for every page)',
-      home: 'Blog home',
-      'front-page': 'Front page',
-      singular: 'Entries and pages',
-      single: 'Single entries',
-      page: 'Pages',
-      archive: 'Archives',
-      category: 'Category archives',
-      tag: 'Tag archives',
-      author: 'Author archives',
-      date: 'Date archives',
-      search: 'Search results',
-      '404': 'Page not found',
-    };
-    const base = Object.keys(labels).find(
-      (key) => name === key || name.startsWith(`${key}-`),
-    );
-    return !base
-      ? name
-      : name === base
-        ? labels[base]!
-        : `${labels[base]}: ${name.slice(base.length + 1)}`;
-  },
+  templateLabel: templateLabels({
+    index: 'Index (fallback for every page)',
+    home: 'Blog home',
+    'front-page': 'Front page',
+    singular: 'Entries and pages',
+    single: 'Single entries',
+    page: 'Pages',
+    archive: 'Archives',
+    category: 'Category archives',
+    tag: 'Tag archives',
+    author: 'Author archives',
+    date: 'Date archives',
+    search: 'Search results',
+    '404': 'Page not found',
+  }),
   editorIntro:
     'Change the theme’s templates, template parts and global styles. Your changes are kept beside the theme, so you can reset any of them to the theme’s own design.',
   editorTheme: 'Theme',
@@ -1321,6 +1314,9 @@ export const en = {
   themeSocialWebsite: 'Website',
   themeSignIn: 'Log in',
   themeSkipToContent: 'Skip to content',
+  themeBackToTop: 'Back to top',
+  themeWrittenBy: 'Written by',
+  themeAuthorPosts: (name: string) => `View all posts by ${name}`,
   themeFeedTitle: (site: string, name: string) => `${site} » ${name} feed`,
   siteIcon: 'Site icon',
   siteIconHelp:
@@ -1409,6 +1405,20 @@ export const en = {
   commentInReplyTo: (name: string) => `In reply to ${name}`,
   commentsForEntry: (title: string) => `Comments on: ${title}`,
   commentsAllEntries: 'All entries',
+  commentStatusPending: 'Awaiting approval',
+  commentBulkManage: 'Bulk manage',
+  commentBulkSelected: (count: number) => `${count} selected`,
+  commentBulkAsk: (count: number) =>
+    `Apply this action to ${count} selected ${count === 1 ? 'comment' : 'comments'}?`,
+  commentBulkDeleteAsk: (count: number) =>
+    `Delete ${count} selected ${count === 1 ? 'comment' : 'comments'} permanently? Their replies move up a level. This cannot be undone.`,
+  commentSelect: (name: string) => `Select the comment by ${name}`,
+  commentModerationFor: (name: string) => `Moderate the comment by ${name}`,
+  commentModerating: 'Working…',
+  moderationRefreshFailed:
+    'The change was saved, but the comments could not be refreshed. Reload the page to see the current list.',
+  commentDeleteAsk:
+    'Delete this comment permanently? Its replies move up a level. This cannot be undone.',
   // editor-media wave 2
   revisionsCompareTitle: (title: string) => `Compare revisions of “${title}”`,
   returnToEditor: 'Return to editor',
@@ -1498,11 +1508,49 @@ export const en = {
   contentDetailsSummary: 'Read more',
   contentDetailsOpen: 'Open by default',
   contentCitation: 'Citation',
+  contentCalloutVariant: 'Style',
+  contentCalloutVariantName: (variant: string) =>
+    (
+      ({
+        primary: 'Primary',
+        secondary: 'Secondary',
+        success: 'Success',
+        danger: 'Danger',
+        warning: 'Warning',
+        info: 'Info',
+        light: 'Light',
+        dark: 'Dark',
+      }) as Record<string, string>
+    )[variant] ?? variant,
+  contentCalloutDismissible: 'Visitors can dismiss',
   contentSpacerHeight: 'Height (px)',
   contentHeaderRow: 'Toggle header row',
   contentFileLabel: 'File link text',
   contentDownload: 'Offer as a download',
+  contentTocDefaultTitle: 'Contents',
+  contentTocTitle: 'Title',
+  contentTocLevels: 'Heading levels',
+  contentTocLevel: (level: number) => `Heading ${level}`,
+  contentTocMinHeadings: 'Minimum number of headings',
+  contentTocExcluded: 'Exclude headings',
+  contentTocPageHelp:
+    'Only headings on this page are listed. Checked headings are excluded. Exclusions for removed or renamed headings are cleared when you change these settings.',
+  contentTocCollapsible: 'Allow collapsing',
+  contentTocOpen: 'Initially expanded',
+  contentTocEmpty: 'No table of contents to display.',
   contentBlockSettings: (name: string) => `${name} settings`,
+  contentCodeLanguage: 'Language (search; clear for plain text)',
+  contentCodeTheme: 'Theme (search; clear for site default)',
+  contentCodeLabel: 'Code label',
+  contentCodeLineNumbers: 'Show line numbers',
+  contentCodeStartLine: 'Starting line number',
+  contentCodeHighlightLines: 'Highlighted rows (for example, 1, 3-5)',
+  contentCodeCopyButton: 'Show copy button',
+  contentCodeAuto: 'Site default (automatic light/dark)',
+  contentCodeInvalid: 'Enter a valid value.',
+  contentCodeCopy: 'Copy code',
+  contentCodeCopied: 'Copied!',
+  contentCodeCopyFailed: 'Could not copy. Select and copy the code manually.',
   contentBlockName: (type: string) =>
     (
       ({
@@ -1521,6 +1569,8 @@ export const en = {
         button: 'Button',
         details: 'Details',
         pullquote: 'Pullquote',
+        callout: 'Callout',
+        tableOfContents: 'Table of contents',
         table: 'Table',
         horizontalRule: 'Separator',
         spacer: 'Spacer',
@@ -1576,6 +1626,7 @@ export const en = {
   themeLivePreview: 'Live Preview',
   // editor-media wave 4
   themePages: 'Pages:',
+  themeCalloutDismiss: 'Dismiss',
   contentMoreBreak: '— More — (the text above is the teaser in lists)',
   contentPageBreak: '— Page break —',
   contentSyncedPattern: (title: string) =>
@@ -1699,4 +1750,26 @@ export const en = {
   siteShowLogin: 'Show login links',
   siteShowLoginHelp:
     'When hidden, signed-out visitors see a not-found page when opening administrator screens.',
+
+  // completion feedback (toasts)
+  notifications: 'Notifications',
+  commentsApproved: (count: number) =>
+    count === 1 ? 'Comment approved.' : `${count} comments approved.`,
+  commentsUnapproved: (count: number) =>
+    count === 1 ? 'Comment unapproved.' : `${count} comments unapproved.`,
+  commentsSpammed: (count: number) =>
+    count === 1
+      ? 'Comment marked as spam.'
+      : `${count} comments marked as spam.`,
+  commentsTrashed: (count: number) =>
+    count === 1
+      ? 'Comment moved to the Trash.'
+      : `${count} comments moved to the Trash.`,
+  commentsDeleted: (count: number) =>
+    count === 1
+      ? 'Comment deleted permanently.'
+      : `${count} comments deleted permanently.`,
+  mediaUploadedFile: (name: string) => `Uploaded ${name}.`,
+  mediaEditedCopy: 'The edited image was saved as a new file.',
+  contentCodeCopiedNotice: 'Code copied to the clipboard.',
 } as const;

@@ -45,7 +45,7 @@ test('filesystem uploads release the space lock after each successful commit', a
   }
 });
 
-const setup = () => {
+const setup = (allowSvg = false) => {
   const repository = new MemoryMediaRepository();
   const storage = new MemoryMediaStorage();
   const media = new MediaService({
@@ -56,7 +56,7 @@ const setup = () => {
     clock: fixedClock(),
     hooks: new HookBus({ timeoutMs: 50, logger: recordingLogger().logger }),
     limiter: new MemoryRateLimitStore(),
-    limits: async () => ({ uploadsPerHour: 60, freeSpaceMb: 256 }),
+    limits: async () => ({ uploadsPerHour: 60, freeSpaceMb: 256, allowSvg }),
     maxBytes: 1024,
   });
   return { media, repository, storage };
@@ -67,6 +67,85 @@ const other = { id: 'b', role: 'author' };
 const editor = { id: 'e', role: 'editor' };
 
 describe('media library', () => {
+  test('UTF BOM uploads cannot bypass SVG policy as MPEG, and valid audio still uploads', async () => {
+    const { media, storage } = setup();
+    for (const bom of [
+      [255, 254],
+      [254, 255],
+      [255, 254, 0, 0],
+      [0, 0, 254, 255],
+    ]) {
+      const xml = '<svg><script>alert(1)</script></svg>';
+      const bytes = new Uint8Array([
+        ...bom,
+        ...[...xml].flatMap((char) => [char.charCodeAt(0), 0]),
+      ]);
+      expect(await codeOf(media.upload(bytes, 'fake.mp3', author))).toBe(
+        'invalid_input',
+      );
+    }
+    for (const header of [
+      [255, 235, 144, 0],
+      [255, 249, 144, 0],
+      [255, 251, 240, 0],
+      [255, 251, 156, 0],
+    ]) {
+      expect(
+        await codeOf(
+          media.upload(
+            new Uint8Array([...header, ...Array(12).fill(0)]),
+            'bad.mp3',
+            author,
+          ),
+        ),
+      ).toBe('invalid_input');
+    }
+    expect(storage.files.size).toBe(0);
+    for (const header of [
+      [255, 251, 144, 0],
+      [73, 68, 51, 4],
+    ]) {
+      expect(
+        (
+          await media.upload(
+            new Uint8Array([...header, ...Array(12).fill(0)]),
+            'audio.mp3',
+            author,
+          )
+        ).mime,
+      ).toBe('audio/mpeg');
+    }
+  });
+  test('SVG policy, content sniffing and sanitized original-only storage', async () => {
+    const bytes = new TextEncoder().encode(
+      '<svg viewBox="0 0 640 480"><path style="fill:url(https://evil.test/x)" d="M0 0"/></svg>',
+    );
+    expect(
+      await codeOf(setup().media.upload(bytes, 'diagram.svg', author)),
+    ).toBe('invalid_input');
+    const { media, storage } = setup(true);
+    const result = await media.upload(bytes, 'spoof.png', author);
+    expect(result).toMatchObject({
+      mime: 'image/svg+xml',
+      kind: 'image',
+      width: 640,
+      height: 480,
+      variants: [],
+    });
+    expect(storage.files.size).toBe(1);
+    expect(
+      new TextDecoder().decode([...storage.files.values()][0]),
+    ).not.toContain('evil.test');
+    expect(
+      await codeOf(
+        media.upload(
+          new TextEncoder().encode('<html>bad</html>'),
+          'spoof.svg',
+          author,
+        ),
+      ),
+    ).toBe('invalid_input');
+  });
   test('image edits require ownership and valid bounds while preserving the original', async () => {
     const { media, repository, storage } = setup();
     const uploaded = await media.upload(PNG, 'cat.png', author);

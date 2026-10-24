@@ -5,6 +5,8 @@ import type {
   PublishedSummaryRecord,
 } from '#api/domain/content/published-content-repository';
 import { toPublicSeo } from '#api/domain/seo/seo-mapper';
+import { countMonth, newestMonths } from '#api/infra/prisma/month-counts';
+import type { MonthCounts } from '#api/infra/prisma/month-counts';
 import type { MemoryContentRepository } from '#test/support/memory';
 
 /** Same contract as `PrismaPublishedContentRepository`: published rows, public fields only. */
@@ -59,22 +61,15 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
 
   async months(types: readonly string[], limit: number) {
     const { items } = await this.summaries({ types, page: 1, pageSize: 1e6 });
-    const counts = new Map<
-      string,
-      { year: number; month: number; count: number }
-    >();
-    for (const { publishedAt } of items) {
-      if (!publishedAt) continue;
-      const [year, month] = [
-        publishedAt.getUTCFullYear(),
-        publishedAt.getUTCMonth() + 1,
-      ];
-      const entry = counts.get(`${year}-${month}`) ?? { year, month, count: 0 };
-      counts.set(`${year}-${month}`, { ...entry, count: entry.count + 1 });
-    }
-    return [...counts.values()]
-      .sort((a, b) => b.year - a.year || b.month - a.month)
-      .slice(0, limit);
+    const counts: MonthCounts = new Map();
+    for (const { publishedAt } of items)
+      if (publishedAt)
+        countMonth(
+          counts,
+          publishedAt.getUTCFullYear(),
+          publishedAt.getUTCMonth() + 1,
+        );
+    return newestMonths(counts, limit);
   }
 
   async adjacent(id: string) {

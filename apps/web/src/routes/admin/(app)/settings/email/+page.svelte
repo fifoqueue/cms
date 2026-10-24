@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
+  import SettingsForm from '#lib/admin/settings/SettingsForm.svelte';
   import { SMTP_SECURITY } from '@cms/sdk';
   import FormMessage from '#lib/admin/FormMessage.svelte';
-  import { Badge } from '#lib/components/ui/badge/index.js';
+  import SecretField from '#lib/admin/settings/SecretField.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
     Card,
@@ -38,14 +38,7 @@
 <Card>
   <CardHeader><CardTitle>{m.emailTitle}</CardTitle></CardHeader>
   <CardContent>
-    <form
-      method="POST"
-      action="?/save"
-      use:enhance={() =>
-        ({ update }) =>
-          update({ reset: false })}
-      class="grid gap-4 sm:grid-cols-2"
-    >
+    <SettingsForm action="?/save" class="grid gap-4 sm:grid-cols-2">
       <label class="flex items-center gap-2 text-sm sm:col-span-2">
         <input type="checkbox" name="enabled" checked={email.enabled} />
         {m.emailEnabled}
@@ -96,31 +89,13 @@
           value={email.username}
         />
       </div>
-      <div class="grid gap-2">
-        <Label for="password" class="flex items-center gap-2">
-          {m.emailPassword}
-          {#if email.passwordConfigured}
-            <Badge variant="secondary">{m.secretSaved}</Badge>
-          {/if}
-        </Label>
-        <Input
-          id="password"
-          name="password"
-          type="password"
-          autocomplete="off"
-          maxlength={500}
-          aria-describedby="password-help"
-        />
-        <p id="password-help" class="text-xs text-muted-foreground">
-          {m.secretKeep}
-        </p>
-        {#if email.passwordConfigured}
-          <label class="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="removePassword" />
-            {m.secretRemove}
-          </label>
-        {/if}
-      </div>
+      <SecretField
+        name="password"
+        label={m.emailPassword}
+        configured={email.passwordConfigured}
+        removeName="removePassword"
+        helpId="password-help"
+      />
       <div class="grid gap-2">
         <Label for="fromName">{m.emailFromName}</Label>
         <Input
@@ -143,19 +118,14 @@
       <div class="sm:col-span-2">
         <Button type="submit">{m.save}</Button>
       </div>
-    </form>
+    </SettingsForm>
   </CardContent>
 </Card>
 
 <Card>
   <CardHeader><CardTitle>{m.emailTest}</CardTitle></CardHeader>
   <CardContent>
-    <form
-      method="POST"
-      action="?/test"
-      use:enhance
-      class="flex flex-wrap items-end gap-4"
-    >
+    <SettingsForm action="?/test" reset class="flex flex-wrap items-end gap-4">
       <div class="grid gap-2">
         <Label for="to">{m.emailTestTo}</Label>
         <Input
@@ -167,6 +137,6 @@
         />
       </div>
       <Button type="submit" variant="outline">{m.emailTest}</Button>
-    </form>
+    </SettingsForm>
   </CardContent>
 </Card>

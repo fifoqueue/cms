@@ -1,20 +1,9 @@
 import { expect, test } from 'bun:test';
 import type { ContentDocument } from '@cms/sdk';
 import { definePlugin } from '@cms/sdk/plugin';
-import { ContentService } from '#api/domain/content/content-service';
 import { tiptapRenderer } from '#api/infra/system';
-import { HookBus } from '#api/plugin-runtime/hook-bus';
-import {
-  ADMIN,
-  MemoryContentRepository,
-  fixedClock,
-  noUsers,
-  plainHasher,
-  recordingLogger,
-  sequentialIds,
-  testFields,
-  testTypes,
-} from '#test/support/memory';
+import { ADMIN } from '#test/support/memory';
+import { testContentService } from '#test/support/content';
 import { createRuntime } from '#test/support/runtime';
 
 const blocksPlugin = definePlugin({
@@ -60,19 +49,7 @@ test('plugin blocks render through isolation, are checked on save and survive th
   const runtime = createRuntime();
   await runtime.host.install(runtime.bundles.register('g', blocksPlugin));
   await runtime.host.enable('greeter');
-  const repository = new MemoryContentRepository();
-  const service = new ContentService({
-    repository,
-    renderer: tiptapRenderer,
-    hooks: new HookBus({ timeoutMs: 50, logger: recordingLogger().logger }),
-    ids: sequentialIds(),
-    clock: fixedClock(),
-    users: noUsers,
-    hasher: plainHasher,
-    types: testTypes(),
-    fields: testFields(),
-    blocks: runtime.blocks,
-  });
+  const service = testContentService({ blocks: runtime.blocks });
 
   expect(runtime.blocks.list().map((block) => block.block)).toEqual([
     'plugin:greeter:hello',

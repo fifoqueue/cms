@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { zipSync, strToU8 } from 'fflate';
-import { cssProblem, publicThemeSchema } from '@cms/sdk';
-import type { SettingsRepository } from '#api/domain/site/site-service';
+import {
+  cssProblem,
+  publicThemeSchema,
+  themeEditorSchema,
+  themeManifestSchema,
+} from '@cms/sdk';
 import {
   BUILTIN_THEMES,
   DEFAULT_THEME_ID,
@@ -10,30 +14,7 @@ import { ThemeService } from '#api/domain/theme/theme-service';
 import { zipThemeArchive } from '#api/infra/zip-theme-archive';
 import { sharpImages } from '#api/infra/sharp-images';
 import { DomainError } from '#api/shared/errors';
-
-/** Same contract as `PrismaSettingsRepository`: JSON values by key, a JSON round trip on write. */
-class MemorySettings implements SettingsRepository {
-  readonly values = new Map<string, string>();
-  writes = 0;
-
-  async list(prefix: string): Promise<Record<string, unknown>> {
-    return Object.fromEntries(
-      [...this.values]
-        .filter(([key]) => key.startsWith(prefix))
-        .map(([key, value]) => [key, JSON.parse(value) as unknown]),
-    );
-  }
-
-  async get(key: string) {
-    const value = this.values.get(key);
-    return value === undefined ? undefined : (JSON.parse(value) as unknown);
-  }
-
-  async set(key: string, value: unknown) {
-    this.writes += 1;
-    this.values.set(key, JSON.stringify(value));
-  }
-}
+import { MemoryJsonSettings } from '#test/support/json-settings';
 
 const manifest = (id: string, overrides: Record<string, unknown> = {}) => ({
   id,
@@ -84,7 +65,7 @@ const archive = (
   );
 
 const setup = () => {
-  const settings = new MemorySettings();
+  const settings = new MemoryJsonSettings();
   return { settings, themes: new ThemeService(settings, zipThemeArchive) };
 };
 
@@ -149,7 +130,7 @@ describe('ThemeService archives', () => {
 
   test('keeps a decodable screenshot with the theme and drops it on upgrade or removal', async () => {
     const themes = new ThemeService(
-      new MemorySettings(),
+      new MemoryJsonSettings(),
       zipThemeArchive,
       sharpImages,
     );
@@ -346,5 +327,42 @@ describe('ThemeService lifecycle rules', () => {
       'author',
     ])
       expect(key in shown).toBe(false);
+  });
+});
+
+describe('ThemeService scroll-to-top option', () => {
+  test('a theme without the option shows the button, like every built-in', async () => {
+    const { themes } = setup();
+    expect(
+      themeManifestSchema.parse(manifest('plain')).settings.scrollToTop,
+    ).toBe(true);
+    await themes.install(archive('plain'));
+    expect((await themes.find('plain'))?.settings.scrollToTop).toBe(true);
+    for (const theme of BUILTIN_THEMES)
+      expect((await themes.find(theme.manifest.id))?.settings.scrollToTop).toBe(
+        true,
+      );
+  });
+
+  test('a theme can turn it off, and the public and editor contracts keep that', async () => {
+    const { themes } = setup();
+    const base = manifest('quiet');
+    await themes.install(
+      archive(
+        'quiet',
+        {},
+        {
+          ...base,
+          settings: { ...base.settings, scrollToTop: false },
+        },
+      ),
+    );
+
+    const shown = await themes.find('quiet');
+    expect(shown?.settings.scrollToTop).toBe(false);
+    expect(publicThemeSchema.parse(shown).settings.scrollToTop).toBe(false);
+    const editor = await themes.editor('quiet');
+    expect(editor.settings.scrollToTop).toBe(false);
+    expect(themeEditorSchema.parse(editor).settings.scrollToTop).toBe(false);
   });
 });

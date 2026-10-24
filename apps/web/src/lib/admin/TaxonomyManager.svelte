@@ -248,7 +248,9 @@
 
   <!-- WordPress edit-tags.php: a short add form beside the list. -->
   <div class="grid items-start gap-6 lg:grid-cols-[20rem_1fr]">
-    <Card>
+    <Card
+      class="lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto"
+    >
       <CardHeader>
         <CardTitle>{m.termAddNew(label)}</CardTitle>
       </CardHeader>

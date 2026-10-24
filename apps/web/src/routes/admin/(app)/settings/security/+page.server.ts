@@ -10,7 +10,9 @@ import type {
   RateRule,
   SecuritySettingsInput,
 } from '@cms/sdk';
-import { failFrom, text } from '#lib/server/errors.js';
+import { text } from '#lib/server/errors.js';
+import { submitAction } from '#lib/server/form-action.js';
+import { secretInput } from '#lib/admin/settings/input.server.js';
 import { adminFor } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -30,7 +32,6 @@ export const load: PageServerLoad = async (event) => ({
 export const actions: Actions = {
   default: async (event) => {
     const form = await event.request.formData();
-    const secret = text(form, 'secretKey');
     const input: SecuritySettingsInput = {
       captcha: {
         provider: pick<CaptchaProvider>(
@@ -40,8 +41,7 @@ export const actions: Actions = {
         ),
         siteKey: text(form, 'siteKey'),
         minimumScore: Number(text(form, 'minimumScore')) || 0,
-        // Empty keeps the stored secret unless removal was asked for.
-        secretKey: form.has('removeSecret') ? '' : secret || undefined,
+        secretKey: secretInput(form, 'secretKey', 'removeSecret'),
         modes: Object.fromEntries(
           PROTECTED_ACTIONS.map((action) => [
             action,
@@ -70,15 +70,11 @@ export const actions: Actions = {
         ]),
       ) as SecuritySettingsInput['rules'],
       media: {
+        allowSvg: form.has('media.allowSvg'),
         uploadsPerHour: Math.max(0, integer(form, 'media.uploadsPerHour')),
         freeSpaceMb: Math.max(0, integer(form, 'media.freeSpaceMb')),
       },
     };
-    try {
-      await adminFor(event).security.update(input);
-    } catch (caught) {
-      return failFrom(caught);
-    }
-    return { notice: 'saved' };
+    return submitAction(() => adminFor(event).security.update(input));
   },
 };

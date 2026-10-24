@@ -29,14 +29,14 @@
 
 <div
   class="cms-block-columns flex {block.attrs.stackOnMobile
-    ? 'flex-col md:flex-row'
+    ? 'flex-col @min-[48rem]:flex-row'
     : 'flex-row'} {GAP[block.attrs.gap]}"
 >
   {#each shown as column, index (index)}
     {#if column.name === 'column'}
       <div
         class="cms-block-column flex min-w-0 flex-col gap-8 {column.attrs.width
-          ? 'md:shrink-0'
+          ? '@min-[48rem]:shrink-0'
           : 'flex-1'}"
         style={column.attrs.width
           ? `flex-basis: ${column.attrs.width}%`

@@ -1,7 +1,9 @@
 <script lang="ts">
   import '#lib/theme/site.css';
   import TemplateView from '#lib/theme/TemplateView.svelte';
+  import ThemeStylesheet from '#lib/theme/ThemeStylesheet.svelte';
   import { themeStyle } from '#lib/theme/style.js';
+  import { provideDateStyle } from '#lib/theme/format.js';
   import { queryKey, selectionOf } from '#lib/theme/queries.js';
   import { untrack } from 'svelte';
   import type { Block } from '@cms/sdk';
@@ -46,6 +48,12 @@
   import type { PageProps } from './$types';
 
   let { data, form }: PageProps = $props();
+  // The canvases show dates the way the public site does (Settings → Reading).
+  provideDateStyle(() => ({
+    locale: data.canvas.site.locale,
+    dateFormat: data.canvas.reading.dateFormat,
+    timeZone: data.canvas.reading.timeZone,
+  }));
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
@@ -321,6 +329,8 @@
     {@html `<style>.cms-editor-canvas [data-block-path="${selectedBlock.replace(/[^\d.]/g, '')}"] > * { outline: 2px solid #3b82f6; outline-offset: 2px; }</style>`}
   {/if}
 </svelte:head>
+<!-- The edited theme's stylesheet, so both canvases match the public site. -->
+<ThemeStylesheet css={data.canvas.theme.css} />
 
 <div class="flex flex-wrap items-center justify-between gap-4">
   <div class="space-y-1">
@@ -357,7 +367,11 @@
 <FormMessage {form} />
 
 <div class="grid gap-6 xl:grid-cols-[15rem_minmax(0,1fr)]">
-  <nav aria-label={m.navEditor} class="space-y-5">
+  <!-- The padding inside the scroller keeps the items' focus outlines visible. -->
+  <nav
+    aria-label={m.navEditor}
+    class="space-y-5 xl:sticky xl:top-4 xl:-m-1 xl:max-h-[calc(100dvh-2rem)] xl:self-start xl:overflow-y-auto xl:p-1"
+  >
     <div class="space-y-1">
       <!-- eslint-disable svelte/no-navigation-without-resolve -- query strings on this page -->
       <a
@@ -671,7 +685,8 @@
               customized: selected.part.customized,
               resetLabel: m.editorReset,
             }}
-      <Card>
+      <!-- `overflow-clip` rounds the corners like the card's `overflow-hidden` without becoming a scroll container, so the editor's side panels can stick while the page scrolls. -->
+      <Card class="overflow-clip">
         <CardHeader>
           <CardTitle class="flex flex-wrap items-center gap-2">
             {item.title}

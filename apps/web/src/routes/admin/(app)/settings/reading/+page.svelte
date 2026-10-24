@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
+  import SettingsForm from '#lib/admin/settings/SettingsForm.svelte';
+  import PageOptions from '#lib/admin/settings/PageOptions.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
@@ -32,14 +33,7 @@
 <Card>
   <CardHeader><CardTitle>{m.settingsReading}</CardTitle></CardHeader>
   <CardContent>
-    <form
-      method="POST"
-      action="?/save"
-      use:enhance={() =>
-        ({ update }) =>
-          update({ reset: false })}
-      class="grid gap-6"
-    >
+    <SettingsForm action="?/save" class="grid gap-6">
       <fieldset class="grid gap-3">
         <legend class="mb-2 text-sm font-medium">{m.readingFrontPage}</legend>
         <label class="flex items-center gap-2 text-sm">
@@ -70,12 +64,7 @@
                 name="frontPageId"
                 value={data.reading.frontPageId ?? ''}
               >
-                <NativeSelectOption value="">{m.noChoice}</NativeSelectOption>
-                {#each data.pages as page (page.id)}
-                  <NativeSelectOption value={page.id}
-                    >{page.title}</NativeSelectOption
-                  >
-                {/each}
+                <PageOptions pages={data.pages} empty={m.noChoice} />
               </NativeSelect>
             </div>
             <div class="grid gap-2">
@@ -86,12 +75,7 @@
                 name="postsPageId"
                 value={data.reading.postsPageId ?? ''}
               >
-                <NativeSelectOption value="">{m.noChoice}</NativeSelectOption>
-                {#each data.pages as page (page.id)}
-                  <NativeSelectOption value={page.id}
-                    >{page.title}</NativeSelectOption
-                  >
-                {/each}
+                <PageOptions pages={data.pages} empty={m.noChoice} />
               </NativeSelect>
             </div>
           </div>
@@ -162,6 +146,6 @@
         </div>
       </div>
       <div><Button type="submit">{m.save}</Button></div>
-    </form>
+    </SettingsForm>
   </CardContent>
 </Card>

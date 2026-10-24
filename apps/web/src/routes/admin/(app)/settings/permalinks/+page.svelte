@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
-  import type { SubmitFunction } from '$app/forms';
+  import SettingsForm from '#lib/admin/settings/SettingsForm.svelte';
   import {
     MAX_PERMALINK_PATTERN_LENGTH,
     PERMALINK_CONTENT_TYPES,
@@ -41,11 +40,6 @@
     })),
   );
 
-  const keep: SubmitFunction =
-    () =>
-    ({ update }) =>
-      update({ reset: false });
-
   /** A fixed sample entry, labelled as such: previews never show real content. */
   const SAMPLE = {
     id: 'a1b2c3d4',
@@ -80,12 +74,7 @@
     </CardDescription>
   </CardHeader>
   <CardContent>
-    <form
-      method="POST"
-      action="?/permalinks"
-      use:enhance={keep}
-      class="space-y-4"
-    >
+    <SettingsForm action="?/permalinks" class="space-y-4">
       <FormMessage form={permalinkForm} />
       <p class="text-sm text-muted-foreground">
         {m.permalinkTokens}
@@ -161,14 +150,14 @@
         </div>
       {/each}
       <Button type="submit">{m.permalinksSave}</Button>
-    </form>
+    </SettingsForm>
   </CardContent>
 </Card>
 
 <Card>
   <CardHeader><CardTitle>{m.archiveBasesTitle}</CardTitle></CardHeader>
   <CardContent>
-    <form method="POST" action="?/archives" use:enhance class="space-y-4">
+    <SettingsForm action="?/archives" reset class="space-y-4">
       <FormMessage form={archivesForm} />
       <p class="text-sm text-muted-foreground">{m.archiveBasesHelp}</p>
       <label class="grid gap-2"
@@ -186,6 +175,6 @@
         /></label
       >
       <Button type="submit">{m.save}</Button>
-    </form>
+    </SettingsForm>
   </CardContent>
 </Card>

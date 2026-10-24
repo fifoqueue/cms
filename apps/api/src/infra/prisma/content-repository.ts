@@ -1,4 +1,5 @@
 import type { ContentDocument, TermSummary, TaxonomyType } from '@cms/sdk';
+import { extraTerms } from '#api/infra/prisma/extra-terms';
 import type {
   ContentCriteria,
   ContentRecord,
@@ -63,16 +64,7 @@ const toRecord = (
     fields: parseFields(row.fields),
     path,
     document: JSON.parse(document) as ContentDocument,
-    extraTerms: terms
-      .filter(
-        ({ term }) => term.taxonomy !== 'category' && term.taxonomy !== 'tag',
-      )
-      .map(({ term }) => ({
-        id: term.id,
-        name: term.name,
-        slug: term.slug,
-        taxonomy: term.taxonomy,
-      })),
+    extraTerms: extraTerms(terms),
     categories: termSummaries(terms, 'category'),
     tags: termSummaries(terms, 'tag'),
     seo: fromSeoColumns(row),
@@ -97,16 +89,7 @@ const toSummary = ({
     featuredImage: featuredImageOf(featuredMedia),
     fields: parseFields(row.fields),
     path: decodePath(currentPath.path),
-    extraTerms: terms
-      .filter(
-        ({ term }) => term.taxonomy !== 'category' && term.taxonomy !== 'tag',
-      )
-      .map(({ term }) => ({
-        id: term.id,
-        name: term.name,
-        slug: term.slug,
-        taxonomy: term.taxonomy,
-      })),
+    extraTerms: extraTerms(terms),
     categories: termSummaries(terms, 'category'),
     tags: termSummaries(terms, 'tag'),
     seo: fromSeoColumns(row),

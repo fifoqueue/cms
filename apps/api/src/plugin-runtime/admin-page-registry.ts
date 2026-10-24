@@ -2,9 +2,10 @@ import {
   adminPageBlocksSchema,
   pluginPageResultSchema,
   settingValuesSchema,
+  pluginCapabilitySchema,
 } from '@cms/sdk';
 import type { PluginPage, PluginPageSummary } from '@cms/sdk';
-import { CAPABILITIES, can } from '@cms/sdk/capabilities';
+import { can } from '@cms/sdk/capabilities';
 import type { Capability } from '@cms/sdk/capabilities';
 import type { AdminPageDefinition, AdminPageRegistrar } from '@cms/sdk/plugin';
 import type { Actor } from '#api/domain/auth/authorization';
@@ -19,6 +20,7 @@ interface Registration {
   key: string;
   page: AdminPageDefinition;
   capability: Capability;
+  actions: Map<string, NonNullable<AdminPageDefinition['actions']>[string]>;
 }
 
 const KEY = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -39,12 +41,9 @@ export class AdminPageRegistry {
       page: (key, page) => {
         if (!KEY.test(key) || key.length > 64)
           throw new Error(Errors.PluginPageKeyInvalid(key));
-        const capability = (CAPABILITIES as readonly string[]).includes(
-          page.capability ?? '',
-        )
-          ? (page.capability as Capability)
-          : 'plugins.manage';
-        const registration = { owner, key, page, capability };
+        const capability = parseInput(pluginCapabilitySchema, page.capability);
+        const actions = new Map(Object.entries(page.actions ?? {}));
+        const registration = { owner, key, page, capability, actions };
         this.registrations = [...this.registrations, registration];
         return () => {
           this.registrations = this.registrations.filter(
@@ -74,6 +73,8 @@ export class AdminPageRegistry {
   ): Promise<PluginPage | null> {
     const entry = this.find(plugin, key, actor);
     const blocks = await this.blocks(entry);
+    if (!this.registrations.includes(entry))
+      throw notFound(Errors.PluginPageNotFound);
     return (
       blocks && {
         plugin,
@@ -96,17 +97,23 @@ export class AdminPageRegistry {
     actor: Actor,
   ): Promise<{ notice: string | null } | null> {
     const entry = this.find(plugin, key, actor);
-    const handler = entry.page.actions?.[action];
+    const handler = entry.actions.get(action);
     const form = (await this.blocks(entry))?.find(
       (block) => block.kind === 'form' && block.action === action,
     );
-    if (!handler || form?.kind !== 'form')
+    if (
+      typeof handler !== 'function' ||
+      form?.kind !== 'form' ||
+      !this.registrations.includes(entry)
+    )
       throw notFound(Errors.PluginPageNotFound);
     const parsed = parseInput(settingValuesSchema(form.fields), values);
-    const result = await isolate(
-      () => handler(structuredClone(parsed) as never),
-      this.options.timeoutMs,
-    );
+    const result = await isolate(() => {
+      if (!this.registrations.includes(entry))
+        throw notFound(Errors.PluginPageNotFound);
+      return handler(structuredClone(parsed) as never);
+    }, this.options.timeoutMs);
+    // A dispatched action may already have committed; disposal must not imply it never ran.
     if (!result.ok) {
       this.options.logger.warn(
         `Plugin "${plugin}" page action "${action}" failed: ${result.error.message}`,
@@ -131,12 +138,13 @@ export class AdminPageRegistry {
 
   private async blocks(entry: Registration) {
     const result = await isolate(
-      () => entry.page.render(),
+      async () =>
+        this.registrations.includes(entry)
+          ? adminPageBlocksSchema.safeParse(await entry.page.render())
+          : null,
       this.options.timeoutMs,
     );
-    const blocks = result.ok
-      ? adminPageBlocksSchema.safeParse(result.value)
-      : null;
+    const blocks = result.ok ? result.value : null;
     if (blocks?.success) return blocks.data;
     this.options.logger.warn(
       `Plugin "${entry.owner}" page "${entry.key}" failed: ${

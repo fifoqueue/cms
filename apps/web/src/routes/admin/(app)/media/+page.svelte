@@ -3,7 +3,6 @@
   import type { SubmitFunction } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { resolve } from '$app/paths';
-  import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { MEDIA_KINDS } from '@cms/sdk';
   import type { MediaKind } from '@cms/sdk';
   import {
@@ -15,21 +14,22 @@
     Search,
     Upload,
   } from '@lucide/svelte';
+  import ListPager from '#lib/admin/ListPager.svelte';
   import ScreenOptions from '#lib/admin/ScreenOptions.svelte';
+  import { listQuery } from '#lib/admin/list-query.js';
+  import { thumbnailUrl } from '#lib/admin/media-thumbnail.js';
   import { uploadFile } from '#lib/admin/upload.js';
-  import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import { Input } from '#lib/components/ui/input/index.js';
+  import { notifyFailure, notifySuccess } from '#lib/feedback.js';
   import { useI18n } from '#lib/i18n/index.js';
   import type { Messages } from '#lib/i18n/index.js';
   import type { PageProps } from './$types';
 
-  let { data, form }: PageProps = $props();
+  let { data }: PageProps = $props();
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
-  let notice = $state('');
-  let errors = $state<string[]>([]);
   let uploads = $state<{ name: string; progress: number }[]>([]);
   let dragging = $state(false);
 
@@ -40,19 +40,8 @@
       video: m.mediaVideos,
       audio: m.mediaAudio,
     })[kind];
-  const lastPage = $derived(
-    Math.max(1, Math.ceil(data.media.total / data.media.pageSize)),
-  );
-  const query = (changes: Record<string, string | number | undefined>) => {
-    const params = new SvelteURLSearchParams();
-    for (const [key, value] of Object.entries({
-      ...data.filter,
-      page: data.media.page,
-      ...changes,
-    }))
-      if (value !== undefined) params.set(key, String(value));
-    return `?${params}` as const;
-  };
+  const query = (changes: Record<string, string | number | undefined>) =>
+    listQuery({ ...data.filter, page: data.media.page }, changes);
 
   let selected = $state<string[]>([]);
   const confirmDelete: SubmitFunction = ({ cancel }) => {
@@ -60,9 +49,20 @@
       cancel();
       return;
     }
-    return async ({ update }) => {
+    return async ({ result, update }) => {
       selected = [];
       await update();
+      if (result.type !== 'success' || !result.data) return;
+      const { deleted, kept } = result.data as {
+        deleted: number;
+        kept: number;
+      };
+      // Files that entries still show, or other people's, are kept and said so.
+      if (deleted)
+        notifySuccess(m.mediaDeleted(deleted), {
+          description: kept ? m.mediaKept(kept) : undefined,
+        });
+      else if (kept) notifyFailure(m.mediaKept(kept));
     };
   };
   const date = (value: string) =>
@@ -70,20 +70,17 @@
 
   const upload = async (files: FileList | null | undefined) => {
     if (!files?.length || uploads.length) return;
-    errors = [];
-    notice = '';
     uploads = [...files].map((file) => ({ name: file.name, progress: 0 }));
-    let done = 0;
+    // Each file reports as it finishes.
     for (const [index, file] of [...files].entries()) {
       const result = await uploadFile(file, (fraction) => {
         uploads[index]!.progress = fraction;
       });
-      if ('media' in result) done++;
-      else errors = [...errors, m.mediaUploadFailed(file.name, result.error)];
+      if ('media' in result) notifySuccess(m.mediaUploadedFile(file.name));
+      else notifyFailure(m.mediaUploadFailed(file.name, result.error));
       uploads[index]!.progress = 1;
     }
     uploads = [];
-    notice = done ? m.mediaUploaded(done) : '';
     await invalidateAll();
   };
 </script>
@@ -149,17 +146,6 @@
     </ul>
   {/if}
 </div>
-
-{#if notice}<Alert><AlertTitle>{notice}</AlertTitle></Alert>{/if}
-{#if errors.length}
-  <Alert variant="destructive">
-    <AlertTitle>
-      <ul>
-        {#each errors as error (error)}<li>{error}</li>{/each}
-      </ul>
-    </AlertTitle>
-  </Alert>
-{/if}
 
 <div class="flex flex-wrap items-center gap-2 text-sm">
   <a
@@ -233,16 +219,6 @@
   </form>
 </div>
 
-{#if form && 'deleted' in form}
-  <Alert role="status">
-    <AlertTitle
-      >{m.mediaDeleted(form.deleted)}{form.kept
-        ? ` ${m.mediaKept(form.kept)}`
-        : ''}</AlertTitle
-    >
-  </Alert>
-{/if}
-
 {#if data.media.items.length}
   <form
     method="POST"
@@ -289,9 +265,7 @@
         </thead>
         <tbody>
           {#each data.media.items as media (media.id)}
-            {@const thumb =
-              media.variants.find((variant) => variant.name === 'thumbnail')
-                ?.url ?? media.url}
+            {@const thumb = thumbnailUrl(media)}
             <tr class="border-b last:border-0">
               <td class="p-2"
                 ><input
@@ -332,9 +306,7 @@
   {:else}
     <ul class="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
       {#each data.media.items as media (media.id)}
-        {@const thumb =
-          media.variants.find((variant) => variant.name === 'thumbnail')?.url ??
-          media.url}
+        {@const thumb = thumbnailUrl(media)}
         <li class="relative">
           <input
             type="checkbox"
@@ -376,23 +348,7 @@
   <p class="text-sm text-muted-foreground">{m.mediaEmpty}</p>
 {/if}
 
-{#if lastPage > 1}
-  <div class="flex justify-between text-sm">
-    {#if data.media.page > 1}<a
-        href={resolve(
-          `/admin/(app)/media${query({ page: data.media.page - 1 })}`,
-        )}>{m.previous}</a
-      >{:else}<span></span>{/if}
-    <span class="text-muted-foreground"
-      >{m.pageOf(data.media.page, lastPage)}</span
-    >
-    {#if data.media.page < lastPage}<a
-        href={resolve(
-          `/admin/(app)/media${query({ page: data.media.page + 1 })}`,
-        )}>{m.next}</a
-      >{:else}<span></span>{/if}
-  </div>
-{/if}
+<ListPager route="/admin/(app)/media" list={data.media} {query} />
 
 <style>
   .filter {

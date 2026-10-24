@@ -12,13 +12,14 @@ export const actions: Actions = {
   default: async (event) => {
     const form = await event.request.formData();
     const email = text(form, 'email');
+    const name = text(form, 'name');
     try {
       await authApi(event.fetch).register(
-        { email, name: text(form, 'name') },
+        { email, name },
         visitorOf(event, form),
       );
     } catch (caught) {
-      return failFrom(caught, { email });
+      return failFrom(caught, { email, name });
     }
     return { sent: true };
   },

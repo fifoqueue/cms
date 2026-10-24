@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
+  import SettingsForm from '#lib/admin/settings/SettingsForm.svelte';
+  import MaskedSecretField from '#lib/admin/settings/MaskedSecretField.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
@@ -42,14 +43,7 @@
         {m.ssoManagedByEnvironment}
       </p>
     {/if}
-    <form
-      method="POST"
-      action="?/save"
-      use:enhance={() =>
-        ({ update }) =>
-          update({ reset: false })}
-      class="grid gap-4 sm:grid-cols-2"
-    >
+    <SettingsForm action="?/save" class="grid gap-4 sm:grid-cols-2">
       <label class="flex items-center gap-2 text-sm sm:col-span-2">
         <input type="checkbox" name="enabled" checked={sso.enabled} />
         {m.ssoEnabled}
@@ -91,22 +85,13 @@
           value={sso.clientId}
         />
       </div>
-      <div class="grid gap-2">
-        <Label for="clientSecret">{m.ssoClientSecret}</Label>
-        <Input
-          id="clientSecret"
-          name="clientSecret"
-          type="password"
-          autocomplete="off"
-          placeholder={sso.clientSecretConfigured ? '••••••••' : ''}
-        />
-        {#if sso.clientSecretConfigured}
-          <label class="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="removeSecret" />
-            {m.ssoRemoveSecret}
-          </label>
-        {/if}
-      </div>
+      <MaskedSecretField
+        name="clientSecret"
+        label={m.ssoClientSecret}
+        configured={sso.clientSecretConfigured}
+        removeName="removeSecret"
+        removeLabel={m.ssoRemoveSecret}
+      />
       <div class="grid gap-2">
         <Label for="authMethod">{m.ssoAuthMethod}</Label>
         <NativeSelect
@@ -138,6 +123,6 @@
         />
       </div>
       <div><Button type="submit">{m.save}</Button></div>
-    </form>
+    </SettingsForm>
   </CardContent>
 </Card>

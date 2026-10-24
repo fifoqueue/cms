@@ -1,7 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
   import ContentForm from '#lib/admin/ContentForm.svelte';
-  import FormMessage from '#lib/admin/FormMessage.svelte';
   import { useI18n } from '#lib/i18n/index.js';
   import type { PageProps } from './$types';
 
@@ -19,7 +18,7 @@
 <svelte:head><title>{m.contentNewTitle}</title></svelte:head>
 
 <h1 class="text-2xl font-semibold">{m.contentNewTitle}</h1>
-<FormMessage {form} />
+<!-- A refused save shows in the editor, by its save button. -->
 <!-- A different account gets a fresh form (its backups belong to that account). -->
 {#key data.authorId}
   <ContentForm

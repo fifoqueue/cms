@@ -47,6 +47,39 @@ export interface SiteScope {
   signedIn: boolean;
 }
 
+/** The layout and page data a scope is built from; block data a page did not load is absent. */
+export type ScopeData = Pick<
+  SiteScope,
+  | 'privacy'
+  | 'archives'
+  | 'queries'
+  | 'theme'
+  | 'site'
+  | 'reading'
+  | 'menus'
+  | 'widgets'
+  | 'pages'
+> &
+  Partial<
+    Pick<
+      SiteScope,
+      | 'linkRoutes'
+      | 'terms'
+      | 'months'
+      | 'adjacent'
+      | 'pageTree'
+      | 'recentComments'
+      | 'authors'
+      | 'calendar'
+      | 'fieldLabels'
+      | 'comments'
+      | 'moderation'
+    >
+  > & {
+    slots?: SlotMap;
+    toolbar?: unknown;
+  };
+
 const SCOPE = Symbol('site-scope');
 const POST = Symbol('post');
 const PARTS = Symbol('template-parts');

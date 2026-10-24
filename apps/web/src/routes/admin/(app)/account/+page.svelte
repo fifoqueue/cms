@@ -18,7 +18,7 @@
     NativeSelect,
     NativeSelectOption,
   } from '#lib/components/ui/native-select/index.js';
-  import { Textarea } from '#lib/components/ui/textarea/index.js';
+  import ProfileFields from '#lib/admin/ProfileFields.svelte';
   import { useI18n } from '#lib/i18n/index.js';
   import type { PageProps } from './$types';
 
@@ -56,63 +56,24 @@
           update({ reset: false })}
       class="grid gap-4 sm:grid-cols-2"
     >
-      <div class="grid gap-2">
-        <Label for="name">{m.name}</Label>
-        <Input
-          id="name"
-          name="name"
-          required
-          maxlength={191}
-          autocomplete="name"
-          value={data.user.name}
-        />
-      </div>
-      <div class="grid gap-2">
-        <Label for="email">{m.email}</Label>
-        <Input
-          id="email"
-          name="email"
-          type="email"
-          required
-          maxlength={191}
-          autocomplete="email"
-          value={data.user.email}
-        />
-      </div>
-      <div class="grid gap-2">
-        <Label for="slug">{m.slug}</Label>
-        <Input
-          id="slug"
-          name="slug"
-          required
-          maxlength={191}
-          value={data.user.slug}
-          aria-describedby="slug-help"
-        />
-        <p id="slug-help" class="text-xs text-muted-foreground">
-          {m.profileSlugHelp}
-        </p>
-      </div>
-      <div class="grid gap-2">
-        <Label for="locale">{m.language}</Label>
-        <NativeSelect
-          class="w-full"
-          id="locale"
-          name="locale"
-          value={data.user.locale}
-        >
-          <NativeSelectOption value="">{m.siteDefault}</NativeSelectOption>
-          {#each ADMIN_LOCALES as language (language)}
-            <NativeSelectOption value={language}
-              >{languageNames[language]}</NativeSelectOption
-            >
-          {/each}
-        </NativeSelect>
-      </div>
-      <div class="grid gap-2 sm:col-span-2">
-        <Label for="bio">{m.bio}</Label>
-        <Textarea id="bio" name="bio" maxlength={2000} value={data.user.bio} />
-      </div>
+      <ProfileFields profile={data.user} autocomplete>
+        <div class="grid gap-2">
+          <Label for="locale">{m.language}</Label>
+          <NativeSelect
+            class="w-full"
+            id="locale"
+            name="locale"
+            value={data.user.locale}
+          >
+            <NativeSelectOption value="">{m.siteDefault}</NativeSelectOption>
+            {#each ADMIN_LOCALES as language (language)}
+              <NativeSelectOption value={language}
+                >{languageNames[language]}</NativeSelectOption
+              >
+            {/each}
+          </NativeSelect>
+        </div>
+      </ProfileFields>
       <div class="sm:col-span-2">
         <Button type="submit">{m.save}</Button>
       </div>

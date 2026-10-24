@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { contentApi } from '#lib/server/api.js';
+import { listPosts } from '#lib/server/archive.js';
 import { Errors } from '#lib/server/errors.js';
-import { listView, pageParam, requirePage } from '#lib/server/public-view.js';
 import { loadSlots } from '#lib/server/slots.js';
 import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ fetch, params, url, parent }) => {
@@ -17,19 +17,16 @@ export const load: PageServerLoad = async ({ fetch, params, url, parent }) => {
   )
     error(404, Errors.NotFound);
   const api = contentApi(fetch);
-  const posts = await api.list({
-    type: 'post',
-    year,
-    month,
-    day,
-    page: pageParam(url),
-    pageSize: (await parent()).reading.postsPerPage,
-  });
-  requirePage(posts);
+  const posts = await listPosts(
+    api,
+    url,
+    { type: 'post', year, month, day },
+    (await parent()).reading.postsPerPage,
+  );
   return {
     kind: 'date' as const,
     date: { year, month, day },
-    posts: listView(posts),
+    posts,
     slots: await loadSlots(api, { path: url.pathname }),
   };
 };

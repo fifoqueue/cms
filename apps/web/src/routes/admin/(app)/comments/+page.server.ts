@@ -57,12 +57,13 @@ export const load: PageServerLoad = async (event) => {
   };
 };
 
+/** Counted catalog notices (`(count) => text`), sent with `count`. */
 const NOTICES = {
-  approve: 'commentNoticeApproved',
-  unapprove: 'commentNoticeUnapproved',
-  spam: 'commentNoticeSpam',
-  trash: 'commentNoticeTrash',
-  delete: 'commentNoticeDeleted',
+  approve: 'commentsApproved',
+  unapprove: 'commentsUnapproved',
+  spam: 'commentsSpammed',
+  trash: 'commentsTrashed',
+  delete: 'commentsDeleted',
 } as const satisfies Record<(typeof COMMENT_BULK_ACTIONS)[number], string>;
 
 /** The action that returns a comment to a status. */
@@ -93,6 +94,7 @@ export const actions: Actions = {
     );
     return {
       notice: NOTICES[action],
+      count: ids.length,
       undo:
         previous && action !== 'delete'
           ? { ids, action: UNDO[previous] }

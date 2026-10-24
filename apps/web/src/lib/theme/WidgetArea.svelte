@@ -7,6 +7,7 @@
   import { useI18n } from '#lib/i18n/index.js';
   import { formatMonth, useDateFormat } from '#lib/theme/format.js';
   import MenuList from '#lib/theme/MenuList.svelte';
+  import { hrefOptions } from '#lib/route-link.js';
 
   interface Props {
     widgets: WidgetView[];
@@ -28,7 +29,7 @@
 
 <div
   class={layout === 'columns'
-    ? 'grid gap-8 sm:grid-cols-2 lg:grid-cols-4'
+    ? 'grid gap-8 @min-[40rem]:grid-cols-2 @min-[64rem]:grid-cols-4'
     : 'space-y-8'}
 >
   {#each widgets as widget (widget.id)}
@@ -86,6 +87,7 @@
           <p class="whitespace-pre-line text-muted-foreground">
             {#each runs as run, at (at)}{#if run.href}<a
                   href={run.href}
+                  {...hrefOptions(run.href)}
                   class="text-foreground underline"
                   class:font-semibold={run.strong}
                   class:italic={run.em}>{run.text}</a
@@ -107,7 +109,9 @@
         {/snippet}
         {#if widget.link}
           <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- a link the API checked -->
-          <a href={widget.link}>{@render picture()}</a>
+          <a href={widget.link} {...hrefOptions(widget.link)}
+            >{@render picture()}</a
+          >
         {:else}
           {@render picture()}
         {/if}

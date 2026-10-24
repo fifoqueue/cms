@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
+  import { thumbnailUrl } from '#lib/admin/media-thumbnail.js';
+  import SettingsForm from '#lib/admin/settings/SettingsForm.svelte';
   import { DATE_FORMATS } from '@cms/sdk';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
@@ -72,14 +73,7 @@
 <Card>
   <CardHeader><CardTitle>{m.settingsSite}</CardTitle></CardHeader>
   <CardContent>
-    <form
-      method="POST"
-      action="?/site"
-      use:enhance={() =>
-        ({ update }) =>
-          update({ reset: false })}
-      class="space-y-4"
-    >
+    <SettingsForm action="?/site" class="space-y-4">
       <div class="grid gap-2">
         <Label for="title">{m.siteTitle}</Label>
         <Input
@@ -176,30 +170,21 @@
         onpick={(media) => {
           const chosen = {
             id: media.id,
-            url:
-              media.variants.find((variant) => variant.name === 'thumbnail')
-                ?.url ?? media.url,
+            url: thumbnailUrl(media),
           };
           if (picking === 'icon') icon = chosen;
           else logo = chosen;
         }}
       />
       <Button type="submit">{m.save}</Button>
-    </form>
+    </SettingsForm>
   </CardContent>
 </Card>
 
 <Card>
   <CardHeader><CardTitle>{m.settingsDates}</CardTitle></CardHeader>
   <CardContent>
-    <form
-      method="POST"
-      action="?/dates"
-      use:enhance={() =>
-        ({ update }) =>
-          update({ reset: false })}
-      class="space-y-4"
-    >
+    <SettingsForm action="?/dates" class="space-y-4">
       <div class="grid gap-2">
         <Label for="timeZone">{m.readingTimeZone}</Label>
         <Input
@@ -242,6 +227,6 @@
         </NativeSelect>
       </div>
       <Button type="submit">{m.save}</Button>
-    </form>
+    </SettingsForm>
   </CardContent>
 </Card>

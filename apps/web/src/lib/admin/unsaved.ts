@@ -6,6 +6,7 @@ import { beforeNavigate } from '$app/navigation';
  */
 export const confirmLeave = (isDirty: () => boolean, message: () => string) =>
   beforeNavigate((navigation) => {
-    if (!isDirty()) return;
+    // A shallow navigation only rewrites the address (`forgetParams`); nothing is left.
+    if (navigation.shallow || !isDirty()) return;
     if (navigation.type === 'leave' || !confirm(message())) navigation.cancel();
   });

@@ -37,6 +37,7 @@ import { conflict, invalidInput, notFound, Errors } from '#api/shared/errors';
 import type { Logger } from '#api/shared/logger';
 import { MemoryPermalinkRepository } from '#test/support/memory-permalinks';
 import { MemoryRevisionRepository } from '#test/support/memory-revisions';
+import { takenSlugs, writeQueue } from '#test/support/memory-rows';
 import type { RevisionSave } from '#api/domain/content/revisions';
 
 /**
@@ -63,11 +64,7 @@ export class MemoryContentRepository implements ContentRepository {
   }
 
   async takenSlugs(slugs: readonly string[]) {
-    return new Set(
-      [...this.rows.values()]
-        .map((row) => row.slug)
-        .filter((slug) => slugs.includes(slug)),
-    );
+    return takenSlugs(this.rows.values(), slugs);
   }
 
   async setTrashed(id: string, at: Date | null) {
@@ -231,15 +228,7 @@ export class MemoryContentRepository implements ContentRepository {
   }
 
   private async add(record: ContentWrite, revision: RevisionSave) {
-    await checkContentParent(
-      { id: record.id, type: record.type, parentId: record.parentId ?? null },
-      async (id) => {
-        const row = this.rows.get(id);
-        return row
-          ? { id: row.id, type: row.type, parentId: row.parentId ?? null }
-          : null;
-      },
-    );
+    await this.checkParent(record);
     this.checkTerms(record);
     if (await this.findBySlug(record.slug))
       throw conflict('Slug is already in use');
@@ -258,12 +247,7 @@ export class MemoryContentRepository implements ContentRepository {
   });
 
   /** Content writes and autosaves run one at a time, like the Prisma adapter's write lock. */
-  private writing: Promise<unknown> = Promise.resolve();
-  exclusive<T>(task: () => Promise<T>): Promise<T> {
-    const run = this.writing.then(task, task);
-    this.writing = run.catch(() => undefined);
-    return run;
-  }
+  readonly exclusive = writeQueue();
 
   update(
     record: ContentWrite,
@@ -320,15 +304,7 @@ export class MemoryContentRepository implements ContentRepository {
       [...this.rows.values()].some((row) => row.parentId === record.id)
     )
       throw invalidInput(Errors.ContentParentInvalid);
-    await checkContentParent(
-      { id: record.id, type: record.type, parentId: record.parentId ?? null },
-      async (id) => {
-        const row = this.rows.get(id);
-        return row
-          ? { id: row.id, type: row.type, parentId: row.parentId ?? null }
-          : null;
-      },
-    );
+    await this.checkParent(record);
     this.checkTerms(record);
     const other = await this.findBySlug(record.slug);
     if (other && other.id !== record.id)
@@ -400,6 +376,18 @@ export class MemoryContentRepository implements ContentRepository {
       for (const [key, path] of paths) this.permalinks.paths.set(key, path);
       throw caught;
     }
+  }
+
+  private checkParent(record: ContentWrite) {
+    return checkContentParent(
+      { id: record.id, type: record.type, parentId: record.parentId ?? null },
+      async (id) => {
+        const row = this.rows.get(id);
+        return row
+          ? { id: row.id, type: row.type, parentId: row.parentId ?? null }
+          : null;
+      },
+    );
   }
 
   private checkTerms(record: ContentWrite) {

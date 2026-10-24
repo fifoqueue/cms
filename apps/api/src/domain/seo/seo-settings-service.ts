@@ -1,5 +1,6 @@
 import {
   SEO_SETTINGS_DEFAULTS,
+  publicSeoSettingsFields,
   publicSeoSettingsSchema,
   seoSettingsSchema,
 } from '@cms/sdk';
@@ -11,31 +12,7 @@ const SEO_KEY = 'seo';
 
 /** Only display/crawler policy belongs here; never credentials or account data. */
 const toPublicSettings = (settings: AdminSeoSettings): PublicSeoSettings =>
-  publicSeoSettingsSchema.parse({
-    siteUrl: settings.siteUrl,
-    titleTemplate: settings.titleTemplate,
-    homeTitle: settings.homeTitle,
-    homeDescription: settings.homeDescription,
-    defaultImageUrl: settings.defaultImageUrl,
-    defaultImageAlt: settings.defaultImageAlt,
-    entityType: settings.entityType,
-    entityName: settings.entityName,
-    logoUrl: settings.logoUrl,
-    sameAs: settings.sameAs,
-    twitterHandle: settings.twitterHandle,
-    indexingEnabled: settings.indexingEnabled,
-    indexCategories: settings.indexCategories,
-    indexTags: settings.indexTags,
-    allowAiSearch: settings.allowAiSearch,
-    allowAiTraining: settings.allowAiTraining,
-    llmsTxtEnabled: settings.llmsTxtEnabled,
-    llmsIntro: settings.llmsIntro,
-    googleVerification: settings.googleVerification,
-    bingVerification: settings.bingVerification,
-    maxSnippet: settings.maxSnippet,
-    maxImagePreview: settings.maxImagePreview,
-    maxVideoPreview: settings.maxVideoPreview,
-  });
+  publicSeoSettingsSchema.parse(publicSeoSettingsFields(settings));
 
 export class SeoSettingsService {
   constructor(private readonly settings: SettingsRepository) {}

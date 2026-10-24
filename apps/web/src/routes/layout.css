@@ -2,11 +2,15 @@
 @import 'tw-animate-css';
 @import 'shadcn-svelte/tailwind.css';
 @import '@fontsource-variable/inter';
+@import '../lib/theme/content/toc.css';
 
-@custom-variant dark (&:is(.dark *));
+/* A sign-in shell in light mode stays light under a dark admin page; adds no specificity. */
+@custom-variant dark (&:is(.dark *):not(:where(.cms-auth:not(.dark) *)));
 @plugin '@tailwindcss/typography';
 
-:root {
+/* `.cms-auth` (sign-in screens) restores these tokens inside a themed or dark page. */
+:root,
+.cms-auth {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -39,6 +43,11 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+}
+
+/* The shell sets its own mode (`AuthShell`): light here, or `.dark` on the shell itself below. */
+.cms-auth {
+  color-scheme: light;
 }
 
 .dark {

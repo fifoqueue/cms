@@ -1,9 +1,6 @@
 <script lang="ts">
-  import {
-    Alert,
-    AlertDescription,
-    AlertTitle,
-  } from '#lib/components/ui/alert/index.js';
+  import { Alert, AlertDescription } from '#lib/components/ui/alert/index.js';
+  import { announceBulk } from '#lib/feedback.js';
   import { useI18n } from '#lib/i18n/index.js';
 
   let {
@@ -18,22 +15,21 @@
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
+
+  // The counts are a toast; the items that failed stay listed here, with their reasons.
+  $effect(() => {
+    if (result) announceBulk(m, result);
+  });
 </script>
 
-{#if result}
-  <Alert variant={result.failed.length ? 'destructive' : 'default'}>
-    <AlertTitle>
-      {m.bulkDone(result.done)}
-      {#if result.failed.length}· {m.bulkFailed(result.failed.length)}{/if}
-    </AlertTitle>
-    {#if result.failed.length}
-      <AlertDescription>
-        <ul class="list-disc pl-4">
-          {#each result.failed as failure (failure.id)}
-            <li>{names.get(failure.id) ?? failure.id}: {failure.message}</li>
-          {/each}
-        </ul>
-      </AlertDescription>
-    {/if}
+{#if result?.failed.length}
+  <Alert variant="destructive">
+    <AlertDescription>
+      <ul class="list-disc pl-4">
+        {#each result.failed as failure (failure.id)}
+          <li>{names.get(failure.id) ?? failure.id}: {failure.message}</li>
+        {/each}
+      </ul>
+    </AlertDescription>
   </Alert>
 {/if}

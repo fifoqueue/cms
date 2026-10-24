@@ -1,7 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { MenusSettings } from '@cms/sdk';
 import { CONTENT_DOCUMENT_LIMITS } from '@cms/sdk';
-import { ContentService } from '#api/domain/content/content-service';
 import { PatternService } from '#api/domain/content/pattern-service';
 import { TaxonomyService } from '#api/domain/taxonomy/taxonomy-service';
 import { ExportService } from '#api/domain/tools/export-service';
@@ -10,20 +9,16 @@ import { classicHtml } from '#api/domain/tools/classic-content';
 import type { UserService } from '#api/domain/users/user-service';
 import { tiptapHtmlParser, tiptapRenderer } from '#api/infra/system';
 import { fastXmlWxrParser } from '#api/infra/wxr-parser';
-import { HookBus } from '#api/plugin-runtime/hook-bus';
 import {
   ADMIN,
   MemoryContentRepository,
   MemorySettings,
   fixedClock,
-  noUsers,
-  plainHasher,
-  recordingLogger,
   sequentialIds,
-  testFields,
   testTypes,
   userRecord,
 } from '#test/support/memory';
+import { testContentService } from '#test/support/content';
 import { MemoryCommentRepository } from '#test/support/memory-comments';
 import { MemoryTaxonomyRepository } from '#test/support/memory-taxonomy';
 import { MemoryUserDirectory } from '#test/support/memory-users';
@@ -36,17 +31,7 @@ const site = async (accounts?: Pick<UserService, 'create'>) => {
   const clock = fixedClock('2026-06-01T00:00:00.000Z');
   const terms = new MemoryTaxonomyRepository(content);
   const taxonomy = new TaxonomyService({ repository: terms, ids, clock });
-  const service = new ContentService({
-    repository: content,
-    renderer: tiptapRenderer,
-    hooks: new HookBus({ timeoutMs: 50, logger: recordingLogger().logger }),
-    ids,
-    clock,
-    users: noUsers,
-    hasher: plainHasher,
-    types: testTypes(),
-    fields: testFields(),
-  });
+  const service = testContentService({ repository: content, ids, clock });
   const comments = new MemoryCommentRepository(content);
   const settings = new MemorySettings();
   const patterns = new PatternService({

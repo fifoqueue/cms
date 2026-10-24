@@ -1,24 +1,14 @@
 import { idParams } from '#api/http/params';
-import { noContent } from '#api/http/respond';
-import { readJson } from '#api/http/request';
+import { themeEditorHandlers } from '#api/http/theme-editor-routes';
 import type { ApiApp } from '#api/http/services';
 import { session } from '#api/http/session';
 
+const handlers = themeEditorHandlers<{ id: string }>(
+  ({ themes, params }, input) => themes.saveStyles(params.id, input),
+  ({ themes, params }) => themes.resetStyles(params.id),
+);
+
 export const routes = (app: ApiApp) =>
   session(app, 'appearance.manage')
-    .put(
-      '',
-      async ({ themes, params, request }) => {
-        await themes.saveStyles(params.id, await readJson(request));
-        return noContent();
-      },
-      idParams,
-    )
-    .delete(
-      '',
-      async ({ themes, params }) => {
-        await themes.resetStyles(params.id);
-        return noContent();
-      },
-      idParams,
-    );
+    .put('', handlers.save, idParams)
+    .delete('', handlers.reset, idParams);

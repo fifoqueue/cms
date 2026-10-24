@@ -94,7 +94,7 @@ export const Errors = {
   MediaUploadRate: (max: number) =>
     `You can upload ${max} files per hour. Please wait and try again.`,
   MediaTypeUnsupported:
-    'This file type is not supported. Upload JPEG, PNG, GIF, WebP, AVIF, PDF, MP4 or WebM.',
+    'This file type is not supported. Upload JPEG, PNG, GIF, WebP, AVIF, PDF, MP3, WAV, Ogg, MP4 or WebM. Safe SVG files are accepted when SVG uploads are enabled.',
   MediaInUse: (count: number) =>
     `The file is used by ${count} ${count === 1 ? 'entry' : 'entries'}; delete it anyway to remove it from them`,
   ContentTypeUnknown: 'Choose an existing content type',

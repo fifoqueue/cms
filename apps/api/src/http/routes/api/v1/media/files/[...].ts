@@ -34,8 +34,12 @@ export const routes = (app: ApiApp) =>
         'x-content-type-options': 'nosniff',
         // Files are shown, never run: no scripts even if a viewer were tricked into it.
         'content-security-policy':
-          "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox",
+          extension === 'svg'
+            ? "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox"
+            : "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox",
       });
+      if (extension === 'svg')
+        headers.set('content-disposition', 'attachment; filename="image.svg"');
       if (!range) return new Response(file.body, { headers });
       headers.set(
         'content-range',

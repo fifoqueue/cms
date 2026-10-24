@@ -1,4 +1,5 @@
 import type { Messages } from '#lib/i18n/messages.js';
+import { templateLabels } from '#lib/i18n/template-label.js';
 
 export const ko: Messages = {
   navDashboard: '대시보드',
@@ -290,6 +291,7 @@ export const ko: Messages = {
 
   mediaTitle: '미디어',
   mediaUpload: '업로드',
+  mediaAllowSvg: 'SVG 파일 업로드 허용',
   mediaUploading: '업로드 중…',
   mediaUploaded: (count) => `파일 ${count}개를 올렸습니다`,
   mediaUploadFailed: (name, reason) => `${name}: ${reason}`,
@@ -1093,31 +1095,21 @@ export const ko: Messages = {
         github: 'GitHub',
       }) as Record<string, string>
     )[key] ?? key,
-  templateLabel: (name: string) => {
-    const labels: Record<string, string> = {
-      index: '기본(모든 페이지의 대체)',
-      home: '블로그 홈',
-      'front-page': '첫 페이지',
-      singular: '글과 페이지',
-      single: '단일 글',
-      page: '페이지',
-      archive: '보관함',
-      category: '카테고리 보관함',
-      tag: '태그 보관함',
-      author: '작성자 보관함',
-      date: '날짜 보관함',
-      search: '검색 결과',
-      '404': '페이지를 찾을 수 없음',
-    };
-    const base = Object.keys(labels).find(
-      (key) => name === key || name.startsWith(`${key}-`),
-    );
-    return !base
-      ? name
-      : name === base
-        ? labels[base]!
-        : `${labels[base]}: ${name.slice(base.length + 1)}`;
-  },
+  templateLabel: templateLabels({
+    index: '기본(모든 페이지의 대체)',
+    home: '블로그 홈',
+    'front-page': '첫 페이지',
+    singular: '글과 페이지',
+    single: '단일 글',
+    page: '페이지',
+    archive: '보관함',
+    category: '카테고리 보관함',
+    tag: '태그 보관함',
+    author: '작성자 보관함',
+    date: '날짜 보관함',
+    search: '검색 결과',
+    '404': '페이지를 찾을 수 없음',
+  }),
   editorIntro:
     '테마의 템플릿, 템플릿 파트, 전역 스타일을 바꿉니다. 변경 내용은 테마와 따로 저장되므로 언제든 테마 원래 디자인으로 되돌릴 수 있습니다.',
   editorTheme: '테마',
@@ -1289,6 +1281,9 @@ export const ko: Messages = {
   themeSocialWebsite: '웹사이트',
   themeSignIn: '로그인',
   themeSkipToContent: '본문으로 건너뛰기',
+  themeBackToTop: '맨 위로',
+  themeWrittenBy: '글쓴이',
+  themeAuthorPosts: (name: string) => `${name}님의 글 모두 보기`,
   themeFeedTitle: (site: string, name: string) => `${site} » ${name} 피드`,
   siteIcon: '사이트 아이콘',
   siteIconHelp:
@@ -1375,6 +1370,20 @@ export const ko: Messages = {
   commentInReplyTo: (name: string) => `${name}님의 댓글에 대한 답글`,
   commentsForEntry: (title: string) => `댓글 목록: ${title}`,
   commentsAllEntries: '모든 글',
+  commentStatusPending: '승인 대기',
+  commentBulkManage: '일괄 관리',
+  commentBulkSelected: (count: number) => `${count}개 선택됨`,
+  commentBulkAsk: (count: number) =>
+    `선택한 댓글 ${count}개에 이 작업을 적용할까요?`,
+  commentBulkDeleteAsk: (count: number) =>
+    `선택한 댓글 ${count}개를 영구 삭제할까요? 답글은 한 단계 위로 이동하며 되돌릴 수 없습니다.`,
+  commentSelect: (name: string) => `${name}님의 댓글 선택`,
+  commentModerationFor: (name: string) => `${name}님의 댓글 관리`,
+  commentModerating: '처리 중…',
+  moderationRefreshFailed:
+    '변경 사항은 저장했지만 댓글 목록을 새로 불러오지 못했습니다. 페이지를 새로 고쳐 현재 목록을 확인하세요.',
+  commentDeleteAsk:
+    '이 댓글을 영구 삭제할까요? 답글은 한 단계 위로 이동하며 되돌릴 수 없습니다.',
   // editor-media wave 2
   revisionsCompareTitle: (title: string) => `‘${title}’ 리비전 비교`,
   returnToEditor: '편집기로 돌아가기',
@@ -1456,11 +1465,49 @@ export const ko: Messages = {
   contentDetailsSummary: '자세히 보기',
   contentDetailsOpen: '기본으로 펼치기',
   contentCitation: '출처',
+  contentCalloutVariant: '스타일',
+  contentCalloutVariantName: (variant: string) =>
+    (
+      ({
+        primary: '기본',
+        secondary: '보조',
+        success: '성공',
+        danger: '위험',
+        warning: '경고',
+        info: '정보',
+        light: '밝게',
+        dark: '어둡게',
+      }) as Record<string, string>
+    )[variant] ?? variant,
+  contentCalloutDismissible: '방문자가 닫을 수 있음',
   contentSpacerHeight: '높이(px)',
   contentHeaderRow: '머리글 행 전환',
   contentFileLabel: '파일 링크 문구',
   contentDownload: '다운로드 링크로 표시',
+  contentTocDefaultTitle: '목차',
+  contentTocTitle: '목차 제목',
+  contentTocLevels: '포함할 제목 단계',
+  contentTocLevel: (level: number) => `제목 ${level}`,
+  contentTocMinHeadings: '목차를 표시할 최소 제목 수',
+  contentTocExcluded: '제외할 제목',
+  contentTocPageHelp:
+    '이 페이지의 제목만 표시됩니다. 체크한 제목은 목차에서 제외됩니다. 설정을 바꾸면 삭제되거나 이름이 바뀐 제목의 제외 설정은 해제됩니다.',
+  contentTocCollapsible: '목차 접기 허용',
+  contentTocOpen: '처음에 펼쳐서 표시',
+  contentTocEmpty: '표시할 목차가 없습니다.',
   contentBlockSettings: (name: string) => `${name} 설정`,
+  contentCodeLanguage: '언어 검색 (비우면 일반 텍스트)',
+  contentCodeTheme: '테마 검색 (비우면 사이트 기본값)',
+  contentCodeLabel: '코드 제목',
+  contentCodeLineNumbers: '줄 번호 표시',
+  contentCodeStartLine: '시작 줄 번호',
+  contentCodeHighlightLines: '강조할 줄 (예: 1, 3-5)',
+  contentCodeCopyButton: '복사 버튼 표시',
+  contentCodeAuto: '사이트 기본값 (라이트·다크 자동 전환)',
+  contentCodeInvalid: '올바른 값을 입력하세요.',
+  contentCodeCopy: '코드 복사',
+  contentCodeCopied: '복사했습니다.',
+  contentCodeCopyFailed: '복사하지 못했습니다. 코드를 직접 선택해 복사하세요.',
   contentBlockName: (type: string) =>
     (
       ({
@@ -1479,6 +1526,8 @@ export const ko: Messages = {
         button: '버튼',
         details: '접기/펼치기',
         pullquote: '강조 인용',
+        callout: '알림 상자',
+        tableOfContents: '목차',
         table: '표',
         horizontalRule: '구분선',
         spacer: '여백',
@@ -1531,6 +1580,7 @@ export const ko: Messages = {
   themeLivePreview: '실시간 미리보기',
   // editor-media wave 4
   themePages: '페이지:',
+  themeCalloutDismiss: '닫기',
   contentMoreBreak: '— 더 보기 — (위 내용이 목록의 요약이 됩니다)',
   contentPageBreak: '— 페이지 나누기 —',
   contentSyncedPattern: (title: string) =>
@@ -1652,4 +1702,28 @@ export const ko: Messages = {
   siteShowLogin: '로그인 버튼 표시',
   siteShowLoginHelp:
     '끄면 로그인하지 않은 사용자에게 관리자 화면 대신 ‘페이지를 찾을 수 없음’을 표시합니다.',
+
+  // completion feedback (toasts)
+  notifications: '알림',
+  commentsApproved: (count) =>
+    count === 1 ? '댓글을 승인했습니다.' : `댓글 ${count}개를 승인했습니다.`,
+  commentsUnapproved: (count) =>
+    count === 1
+      ? '댓글 승인을 취소했습니다.'
+      : `댓글 ${count}개의 승인을 취소했습니다.`,
+  commentsSpammed: (count) =>
+    count === 1
+      ? '댓글을 스팸으로 표시했습니다.'
+      : `댓글 ${count}개를 스팸으로 표시했습니다.`,
+  commentsTrashed: (count) =>
+    count === 1
+      ? '댓글을 휴지통으로 옮겼습니다.'
+      : `댓글 ${count}개를 휴지통으로 옮겼습니다.`,
+  commentsDeleted: (count) =>
+    count === 1
+      ? '댓글을 영구 삭제했습니다.'
+      : `댓글 ${count}개를 영구 삭제했습니다.`,
+  mediaUploadedFile: (name) => `${name} 파일을 올렸습니다.`,
+  mediaEditedCopy: '편집한 이미지를 새 파일로 저장했습니다.',
+  contentCodeCopiedNotice: '코드를 클립보드에 복사했습니다.',
 };

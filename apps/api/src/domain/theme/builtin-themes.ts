@@ -5,17 +5,11 @@ import type {
   ThemePackage,
   ThemePackageInput,
 } from '@cms/sdk';
+import { MAGAZINE_THEME } from '#api/domain/theme/magazine-theme';
+import { block, part, SANS, SERIF } from '#api/domain/theme/theme-blocks';
 
 /** Ships with the core and is active until an administrator chooses another theme. */
 export const DEFAULT_THEME_ID = 'canvas';
-
-const block = (
-  name: string,
-  attrs: Record<string, unknown> = {},
-  children?: BlockInput[],
-): BlockInput => (children ? { name, attrs, children } : { name, attrs });
-
-const part = (slug: string) => block('template-part', { slug });
 
 interface Variant {
   /** Post lists on the home page and in archives. */
@@ -226,11 +220,6 @@ const theme = (
     css,
   } satisfies ThemePackageInput);
 
-const SANS =
-  '"Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", sans-serif';
-const SERIF =
-  '"Iowan Old Style", "Palatino Linotype", Palatino, "Noto Serif KR", Georgia, serif';
-
 /** Themes that always exist. They cannot be replaced or removed. */
 export const BUILTIN_THEMES: readonly ThemePackage[] = [
   theme(
@@ -329,4 +318,5 @@ export const BUILTIN_THEMES: readonly ThemePackage[] = [
     { list: 'grid', entry: 'content', masthead: 'row' },
     '.cms-block-site-title { letter-spacing: -0.02em; }',
   ),
+  MAGAZINE_THEME,
 ];

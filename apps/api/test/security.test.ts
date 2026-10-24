@@ -14,8 +14,12 @@ import { ProtectionService } from '#api/domain/security/protection-service';
 import { SecuritySettingsService } from '#api/domain/security/security-settings';
 import { aesSecretBox } from '#api/infra/secret-box';
 import type { DomainError } from '#api/shared/errors';
-import { fixedClock, sequentialIds, userRecord } from '#test/support/memory';
-import { MemorySeoSettingsRepository } from '#test/support/memory-seo';
+import {
+  MemorySettings,
+  fixedClock,
+  sequentialIds,
+  userRecord,
+} from '#test/support/memory';
 import { MemoryJobQueue } from '#test/support/memory-jobs';
 import {
   MemoryPasswordTokens,
@@ -50,7 +54,7 @@ const setup = async () => {
     }),
   );
   const settings = new SecuritySettingsService(
-    new MemorySeoSettingsRepository(),
+    new MemorySettings(),
     plainSecretBox,
   );
   let solved = true;
@@ -224,7 +228,7 @@ describe('password reset', () => {
       createdAt: new Date('2026-01-01'),
       expiresAt: new Date('2030-01-01'),
     });
-    const settings = new MemorySeoSettingsRepository();
+    const settings = new MemorySettings();
     const queue = new MemoryJobQueue();
     const sealedJobs = new SealedJobs(
       queue,

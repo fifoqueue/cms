@@ -1,14 +1,10 @@
 import { fail } from '@sveltejs/kit';
-import { taxonomyInputSchema } from '@cms/sdk';
+import { adminEntrySeoFields, taxonomyInputSchema } from '@cms/sdk';
 import type { AdminTaxonomyTerm, TaxonomyType } from '@cms/sdk';
 import type { SeoFormValues } from '#lib/admin/seo.js';
 import type { FormFailure } from '#lib/server/errors.js';
-import { Errors, failFrom, text } from '#lib/server/errors.js';
-import {
-  adminSeoView,
-  loadSeoContext,
-  readSeoForm,
-} from '#lib/server/seo-admin.js';
+import { Errors, failFrom, issuesOf, text } from '#lib/server/errors.js';
+import { loadSeoContext, readSeoForm } from '#lib/server/seo-admin.js';
 import { adminFor } from '#lib/server/session.js';
 
 interface AdminEvent {
@@ -36,7 +32,7 @@ export const adminTermView = ({
   description,
   parentId,
   count,
-  seo: adminSeoView(seo),
+  seo: adminEntrySeoFields(seo),
 });
 
 export type AdminTermView = ReturnType<typeof adminTermView>;
@@ -159,10 +155,7 @@ const readTermForm = (
       intent,
       values,
       message: Errors.FormInvalid,
-      issues: result.error.issues.map(({ path, message }) => ({
-        path: path.map(String).join('.'),
-        message,
-      })),
+      issues: issuesOf(result.error.issues),
     } satisfies FormFailure & { intent: TermIntent; values: TermFormValues }),
   };
 };

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { localTime } from '#lib/admin/local-time.js';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
   import { CONTENT_STATUSES, UNPUBLISHED_STATUSES } from '@cms/sdk';
@@ -42,15 +43,6 @@
   const i18n = useI18n();
   const m = $derived(i18n.m);
   const id = $derived(`quick-${entry.id}`);
-
-  /** `datetime-local` value in the browser's zone for an ISO time. */
-  const localTime = (iso: string | null) => {
-    if (!iso) return '';
-    const date = new Date(iso);
-    return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-      .toISOString()
-      .slice(0, 16);
-  };
 
   // svelte-ignore state_referenced_locally
   const initialDate = localTime(entry.publishedAt);

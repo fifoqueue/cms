@@ -9,6 +9,7 @@
 </script>
 
 <script lang="ts">
+  import { thumbnailUrl } from '#lib/admin/media-thumbnail.js';
   import { deserialize } from '$app/forms';
   import { page as current } from '$app/state';
   import type { AdminMedia, MediaKind, Paginated } from '@cms/sdk';
@@ -177,6 +178,21 @@
   bind:this={dialog}
   class="m-auto w-[min(64rem,calc(100vw-2rem))] rounded-lg border bg-background p-0 text-foreground shadow-lg backdrop:bg-black/40"
   aria-label={m.mediaChoose}
+  onclick={(event) => {
+    // A pick is dismissible: a click on the backdrop (the dialog itself, outside its box) closes it, unless an upload is running.
+    if (busy || event.target !== dialog) return;
+    const box = dialog.getBoundingClientRect();
+    if (
+      event.clientX < box.left ||
+      event.clientX > box.right ||
+      event.clientY < box.top ||
+      event.clientY > box.bottom
+    )
+      dialog.close();
+  }}
+  oncancel={(event) => {
+    if (busy) event.preventDefault();
+  }}
   ondragover={(event) => {
     event.preventDefault();
     dragging = true;
@@ -265,9 +281,7 @@
       {#if items.length}
         <ul class="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5">
           {#each items as media (media.id)}
-            {@const thumb =
-              media.variants.find((variant) => variant.name === 'thumbnail')
-                ?.url ?? media.url}
+            {@const thumb = thumbnailUrl(media)}
             <li>
               <button
                 type="button"

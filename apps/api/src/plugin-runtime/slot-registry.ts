@@ -52,16 +52,23 @@ export class SlotRegistry {
   async render(context: Omit<SlotContext, 'slot'>): Promise<SlotMap> {
     const slots = emptySlots();
     const results = await Promise.all(
-      this.contributions.map(async ({ owner, slot, renderer }) => ({
-        owner,
-        slot,
+      this.contributions.map(async (entry) => ({
+        entry,
         result: await isolate(
-          () => renderer({ ...structuredClone(context), slot }),
+          () =>
+            this.contributions.includes(entry)
+              ? entry.renderer({
+                  ...structuredClone(context),
+                  slot: entry.slot,
+                })
+              : '',
           this.options.timeoutMs,
         ),
       })),
     );
-    for (const { owner, slot, result } of results) {
+    for (const { entry, result } of results) {
+      if (!this.contributions.includes(entry)) continue;
+      const { owner, slot } = entry;
       if (result.ok && typeof result.value === 'string') {
         if (result.value) slots[slot].push(result.value);
       } else {

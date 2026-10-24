@@ -25,6 +25,9 @@
     Shapes,
   } from '@lucide/svelte';
   import BlockInserter from '#lib/admin/editor/BlockInserter.svelte';
+  import { blockLabels } from '#lib/admin/editor/block-labels.js';
+  import { codeBlockView } from '#lib/admin/editor/CodeBlockView.js';
+  import { tocView } from '#lib/admin/editor/TocView.js';
   import {
     editorExtensions,
     loadPatterns,
@@ -46,6 +49,7 @@
   import { useI18n } from '#lib/i18n/index.js';
   import type { Component } from 'svelte';
   import { onMount } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
 
   interface Props {
     /** Form field that receives the document as JSON. */
@@ -157,9 +161,20 @@
       // The shared schema with editor placeholders for markers, patterns and plugin blocks.
       extensions: [
         ...editorExtensions(markerLabel).filter(
-          (extension) => extension.name !== 'pluginBlock',
+          (extension) =>
+            extension.name !== 'pluginBlock' &&
+            extension.name !== 'tableOfContents' &&
+            extension.name !== 'codeBlock',
         ),
         pluginBlock.extension,
+        tocView(() => m.contentTocEmpty),
+        codeBlockView(() => ({
+          name: m.contentBlockName('codeBlock'),
+          auto: m.contentCodeAuto,
+        })),
+        blockLabels(['details', 'embed', 'spacer'], (type) =>
+          m.contentBlockName(type),
+        ),
       ],
       content: value,
       editorProps: {
@@ -213,6 +228,36 @@
         );
     });
     return () => instance.destroy();
+  });
+
+  // Keep the caret clear of the sticky bars when the editor scrolls it into view, and of the
+  // content form's fixed save bar on narrow screens (`--cms-save-bar-offset`, 0 when hidden).
+  // Wide screens keep the whole bar group sticky; narrow ones only the format toolbar.
+  let groupHeight = $state(0);
+  let toolbarHeight = $state(0);
+  let saveBarOffset = $state(0);
+  const wide = new MediaQuery('min-width: 1024px');
+  onMount(() => {
+    const root = document.documentElement;
+    const read = () =>
+      (saveBarOffset =
+        parseFloat(
+          getComputedStyle(root).getPropertyValue('--cms-save-bar-offset'),
+        ) || 0);
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(root, { attributes: true, attributeFilter: ['style'] });
+    return () => observer.disconnect();
+  });
+  $effect(() => {
+    if (!editor) return;
+    const margins = {
+      top: (wide.current ? groupHeight : toolbarHeight) + 8,
+      right: 0,
+      bottom: saveBarOffset + 8,
+      left: 0,
+    };
+    editor.view.setProps({ scrollThreshold: margins, scrollMargin: margins });
   });
 
   let patterns = $state<PatternChoice[]>([]);
@@ -502,146 +547,160 @@
 </script>
 
 <div class="rounded-md border bg-background">
-  <BlockInserter {editor} />
+  <!-- The block and format bars (and table/image settings) stay at the top of the screen while
+       a long document scrolls; narrow screens keep only the format bar there, so the pinned
+       area stays short. Popovers are portaled above them (z-50). -->
   <div
-    class="flex flex-wrap gap-1 border-b p-1"
-    role="toolbar"
-    aria-label={m.editorToolbar}
-    tabindex="-1"
-    onkeydown={moveFocus}
+    class="max-lg:contents lg:sticky lg:top-0 lg:z-10 lg:rounded-t-md lg:bg-background"
+    bind:clientHeight={groupHeight}
   >
-    {#each tools as tool, index (index)}
-      {@const Icon = tool.icon}
-      <button
-        type="button"
-        tabindex={index === focused ? 0 : -1}
-        onfocus={() => (focused = index)}
-        title={tool.label}
-        aria-label={tool.label}
-        aria-pressed={tool.active?.()}
-        disabled={!editor}
-        class="rounded p-2 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 aria-pressed:bg-muted aria-pressed:text-foreground"
-        onclick={tool.action}
-      >
-        <Icon class="size-4" />
-      </button>
-    {/each}
-  </div>
-  {#if inTable}
-    <div class="flex flex-wrap gap-1 border-b bg-muted/40 p-1 text-xs">
-      <Button
-        size="sm"
-        variant="ghost"
-        onclick={() => run((c) => c.addRowAfter())}>{m.tableAddRow}</Button
-      >
-      <Button
-        size="sm"
-        variant="ghost"
-        onclick={() => run((c) => c.addColumnAfter())}
-        >{m.tableAddColumn}</Button
-      >
-      <Button
-        size="sm"
-        variant="ghost"
-        onclick={() => run((c) => c.deleteRow())}>{m.tableDeleteRow}</Button
-      >
-      <Button
-        size="sm"
-        variant="ghost"
-        onclick={() => run((c) => c.deleteColumn())}
-        >{m.tableDeleteColumn}</Button
-      >
-      <Button
-        size="sm"
-        variant="ghost"
-        onclick={() => run((c) => c.deleteTable())}>{m.tableDelete}</Button
-      >
-    </div>
-  {/if}
-  {#if image}
+    <BlockInserter {editor} />
     <div
-      class="flex flex-wrap items-end gap-3 border-b bg-muted/40 p-2 text-sm"
-      role="group"
-      aria-label={m.editorImageSettings}
+      class="flex flex-wrap gap-1 border-b bg-background p-1 max-lg:sticky max-lg:top-0 max-lg:z-10"
+      bind:clientHeight={toolbarHeight}
+      role="toolbar"
+      aria-label={m.editorToolbar}
+      tabindex="-1"
+      onkeydown={moveFocus}
     >
-      <label class="grid min-w-48 flex-1 gap-1">
-        {m.mediaAlt}
-        <Input
-          class="h-8"
-          maxlength={500}
-          value={image.alt ?? ''}
-          oninput={(event) => setImage({ alt: event.currentTarget.value })}
-          onkeydown={returnToText}
-        />
-      </label>
-      <label class="grid gap-1">
-        {m.imageSize}
-        <NativeSelect
-          class="h-8"
-          value={imageSize}
-          onchange={(event) => resize(event.currentTarget.value)}
+      {#each tools as tool, index (index)}
+        {@const Icon = tool.icon}
+        <button
+          type="button"
+          tabindex={index === focused ? 0 : -1}
+          onfocus={() => (focused = index)}
+          title={tool.label}
+          aria-label={tool.label}
+          aria-pressed={tool.active?.()}
+          disabled={!editor}
+          class="rounded p-2 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 aria-pressed:bg-muted aria-pressed:text-foreground"
+          onmousedown={(event) => event.preventDefault()}
+          onclick={tool.action}
         >
-          <NativeSelectOption value="thumbnail"
-            >{m.sizeThumbnail}</NativeSelectOption
-          >
-          <NativeSelectOption value="medium">{m.sizeMedium}</NativeSelectOption>
-          <NativeSelectOption value="">{m.sizeFull}</NativeSelectOption>
-        </NativeSelect>
-      </label>
-      <label class="grid gap-1">
-        {m.contentAlignment}
-        <NativeSelect
-          class="h-8"
-          value={image.align ?? 'center'}
-          onchange={(event) => setImage({ align: event.currentTarget.value })}
-        >
-          {#each CONTENT_ALIGNMENTS as align (align)}<NativeSelectOption
-              value={align}>{m.contentAlignmentName(align)}</NativeSelectOption
-            >{/each}
-        </NativeSelect>
-      </label>
-      <label class="grid min-w-48 flex-1 gap-1">
-        {m.contentCaption}
-        <Input
-          class="h-8"
-          maxlength={2000}
-          value={image.caption ?? ''}
-          oninput={(event) => setImage({ caption: event.currentTarget.value })}
-          onkeydown={returnToText}
-        />
-      </label>
-      <label class="grid min-w-48 flex-1 gap-1">
-        {m.contentLink}
-        <Input
-          class="h-8"
-          type="url"
-          maxlength={2048}
-          placeholder="https://"
-          value={image.href ?? ''}
-          oninput={(event) =>
-            setImage({ href: event.currentTarget.value.trim() || null })}
-          onkeydown={returnToText}
-        />
-      </label>
-      <label class="flex h-8 items-center gap-2">
-        <input
-          type="checkbox"
-          checked={image.newTab === true}
-          onchange={(event) =>
-            setImage({ newTab: event.currentTarget.checked })}
-        />{m.contentNewTab}
-      </label>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        onclick={() => {
-          replacing = true;
-          picker.open();
-        }}>{m.mediaChoose}</Button
-      >
+          <Icon class="size-4" />
+        </button>
+      {/each}
     </div>
-  {/if}
+    {#if inTable}
+      <div class="flex flex-wrap gap-1 border-b bg-muted/40 p-1 text-xs">
+        <Button
+          size="sm"
+          variant="ghost"
+          onclick={() => run((c) => c.addRowAfter())}>{m.tableAddRow}</Button
+        >
+        <Button
+          size="sm"
+          variant="ghost"
+          onclick={() => run((c) => c.addColumnAfter())}
+          >{m.tableAddColumn}</Button
+        >
+        <Button
+          size="sm"
+          variant="ghost"
+          onclick={() => run((c) => c.deleteRow())}>{m.tableDeleteRow}</Button
+        >
+        <Button
+          size="sm"
+          variant="ghost"
+          onclick={() => run((c) => c.deleteColumn())}
+          >{m.tableDeleteColumn}</Button
+        >
+        <Button
+          size="sm"
+          variant="ghost"
+          onclick={() => run((c) => c.deleteTable())}>{m.tableDelete}</Button
+        >
+      </div>
+    {/if}
+    {#if image}
+      <div
+        class="flex flex-wrap items-end gap-3 border-b bg-muted/40 p-2 text-sm"
+        role="group"
+        aria-label={m.editorImageSettings}
+      >
+        <label class="grid min-w-48 flex-1 gap-1">
+          {m.mediaAlt}
+          <Input
+            class="h-8"
+            maxlength={500}
+            value={image.alt ?? ''}
+            oninput={(event) => setImage({ alt: event.currentTarget.value })}
+            onkeydown={returnToText}
+          />
+        </label>
+        <label class="grid gap-1">
+          {m.imageSize}
+          <NativeSelect
+            class="h-8"
+            value={imageSize}
+            onchange={(event) => resize(event.currentTarget.value)}
+          >
+            <NativeSelectOption value="thumbnail"
+              >{m.sizeThumbnail}</NativeSelectOption
+            >
+            <NativeSelectOption value="medium"
+              >{m.sizeMedium}</NativeSelectOption
+            >
+            <NativeSelectOption value="">{m.sizeFull}</NativeSelectOption>
+          </NativeSelect>
+        </label>
+        <label class="grid gap-1">
+          {m.contentAlignment}
+          <NativeSelect
+            class="h-8"
+            value={image.align ?? 'center'}
+            onchange={(event) => setImage({ align: event.currentTarget.value })}
+          >
+            {#each CONTENT_ALIGNMENTS as align (align)}<NativeSelectOption
+                value={align}
+                >{m.contentAlignmentName(align)}</NativeSelectOption
+              >{/each}
+          </NativeSelect>
+        </label>
+        <label class="grid min-w-48 flex-1 gap-1">
+          {m.contentCaption}
+          <Input
+            class="h-8"
+            maxlength={2000}
+            value={image.caption ?? ''}
+            oninput={(event) =>
+              setImage({ caption: event.currentTarget.value })}
+            onkeydown={returnToText}
+          />
+        </label>
+        <label class="grid min-w-48 flex-1 gap-1">
+          {m.contentLink}
+          <Input
+            class="h-8"
+            type="url"
+            maxlength={2048}
+            placeholder="https://"
+            value={image.href ?? ''}
+            oninput={(event) =>
+              setImage({ href: event.currentTarget.value.trim() || null })}
+            onkeydown={returnToText}
+          />
+        </label>
+        <label class="flex h-8 items-center gap-2">
+          <input
+            type="checkbox"
+            checked={image.newTab === true}
+            onchange={(event) =>
+              setImage({ newTab: event.currentTarget.checked })}
+          />{m.contentNewTab}
+        </label>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onclick={() => {
+            replacing = true;
+            picker.open();
+          }}>{m.mediaChoose}</Button
+        >
+      </div>
+    {/if}
+  </div>
   <div bind:this={element}></div>
   {#if uploading || uploadErrors.length}
     <div class="border-t p-2 text-xs" aria-live="polite">

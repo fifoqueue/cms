@@ -124,75 +124,83 @@
 
 <input type="hidden" name="blocks" value={json} {form} />
 
-<!-- Canvas beside a sidebar (List View above the settings); List View moves left on wide screens. -->
+<!--
+  Canvas beside a sidebar (List View above the settings) that follows the long canvas while it
+  scrolls; on wide screens List View moves left and each side panel follows on its own. Below
+  `lg` the wrapper dissolves and the order stays List View, canvas, settings.
+-->
 <div
   class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start 2xl:grid-cols-[14rem_minmax(0,1fr)_18rem]"
 >
-  <section
-    aria-label={m.editorListView}
-    class="max-h-[50vh] overflow-y-auto rounded-md border p-2 lg:col-start-2 lg:row-start-1 2xl:col-start-1 2xl:row-span-2 2xl:max-h-[80vh]"
+  <div
+    class="contents lg:sticky lg:top-4 lg:col-start-2 lg:row-start-1 lg:flex lg:max-h-[calc(100dvh-2rem)] lg:flex-col lg:gap-4 lg:overflow-y-auto 2xl:contents"
   >
-    <div class="flex items-center justify-between gap-2 px-2 pb-2">
-      <h3 class="text-sm font-medium">{m.editorListView}</h3>
-      <div class="flex gap-1">
-        <button
-          type="button"
-          class="flex size-7 items-center justify-center rounded hover:bg-muted disabled:opacity-30"
-          aria-label={m.editorUndo}
-          title="{m.editorUndo} (Ctrl+Z)"
-          disabled={!canUndo}
-          onclick={() => step('undo')}><Undo2 class="size-4" /></button
-        >
-        <button
-          type="button"
-          class="flex size-7 items-center justify-center rounded hover:bg-muted disabled:opacity-30"
-          aria-label={m.editorRedo}
-          title="{m.editorRedo} (Ctrl+Shift+Z)"
-          disabled={!canRedo}
-          onclick={() => step('redo')}><Redo2 class="size-4" /></button
-        >
+    <section
+      aria-label={m.editorListView}
+      class="max-h-[50vh] shrink-0 overflow-y-auto rounded-md border p-2 max-lg:order-1 2xl:sticky 2xl:top-4 2xl:col-start-1 2xl:row-start-1 2xl:max-h-[calc(100dvh-2rem)]"
+    >
+      <div class="flex items-center justify-between gap-2 px-2 pb-2">
+        <h3 class="text-sm font-medium">{m.editorListView}</h3>
+        <div class="flex gap-1">
+          <button
+            type="button"
+            class="flex size-7 items-center justify-center rounded hover:bg-muted disabled:opacity-30"
+            aria-label={m.editorUndo}
+            title="{m.editorUndo} (Ctrl+Z)"
+            disabled={!canUndo}
+            onclick={() => step('undo')}><Undo2 class="size-4" /></button
+          >
+          <button
+            type="button"
+            class="flex size-7 items-center justify-center rounded hover:bg-muted disabled:opacity-30"
+            aria-label={m.editorRedo}
+            title="{m.editorRedo} (Ctrl+Shift+Z)"
+            disabled={!canRedo}
+            onclick={() => step('redo')}><Redo2 class="size-4" /></button
+          >
+        </div>
       </div>
-    </div>
-    {#if tree.length}
-      <BlockListView
-        blocks={tree}
-        selected={key}
-        onselect={select}
-        onmove={move}
-        onremove={remove}
-      />
-    {:else}
-      <p class="p-4 text-center text-sm text-muted-foreground">
-        {m.editorNoBlocks}
-      </p>
-    {/if}
-  </section>
+      {#if tree.length}
+        <BlockListView
+          blocks={tree}
+          selected={key}
+          onselect={select}
+          onmove={move}
+          onremove={remove}
+        />
+      {:else}
+        <p class="p-4 text-center text-sm text-muted-foreground">
+          {m.editorNoBlocks}
+        </p>
+      {/if}
+    </section>
+
+    <aside
+      aria-label={m.editorBlockSettings}
+      class="space-y-4 rounded-md border p-3 max-lg:order-3 2xl:sticky 2xl:top-4 2xl:col-start-3 2xl:row-start-1 2xl:max-h-[calc(100dvh-2rem)] 2xl:overflow-y-auto"
+    >
+      <section class="space-y-3">
+        <h3 class="text-sm font-medium">
+          {block ? m.blockName(block.name) : m.editorBlockSettings}
+        </h3>
+        {#if block}
+          {#key key}
+            <BlockSettings {block} {colors} {parts} />
+          {/key}
+        {:else}
+          <p class="text-sm text-muted-foreground">{m.editorSelectBlock}</p>
+        {/if}
+      </section>
+      <section class="space-y-2 border-t pt-3">
+        <h3 class="text-sm font-medium">{m.editorAddBlock}</h3>
+        <BlockInserter allowed={insertable} onpick={insert} />
+      </section>
+    </aside>
+  </div>
 
   <div
-    class="min-w-0 lg:col-start-1 lg:row-span-2 lg:row-start-1 2xl:col-start-2"
+    class="min-w-0 max-lg:order-2 lg:col-start-1 lg:row-start-1 2xl:col-start-2"
   >
     {@render canvas(select, key)}
   </div>
-
-  <aside
-    aria-label={m.editorBlockSettings}
-    class="space-y-4 rounded-md border p-3 lg:col-start-2 lg:row-start-2 2xl:col-start-3 2xl:row-span-2 2xl:row-start-1"
-  >
-    <section class="space-y-3">
-      <h3 class="text-sm font-medium">
-        {block ? m.blockName(block.name) : m.editorBlockSettings}
-      </h3>
-      {#if block}
-        {#key key}
-          <BlockSettings {block} {colors} {parts} />
-        {/key}
-      {:else}
-        <p class="text-sm text-muted-foreground">{m.editorSelectBlock}</p>
-      {/if}
-    </section>
-    <section class="space-y-2 border-t pt-3">
-      <h3 class="text-sm font-medium">{m.editorAddBlock}</h3>
-      <BlockInserter allowed={insertable} onpick={insert} />
-    </section>
-  </aside>
 </div>

@@ -37,7 +37,7 @@
       value={query}
       class="h-full w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground {showLabel
         ? ''
-        : 'sm:w-36'}"
+        : '@min-[40rem]:w-36'}"
     />
     <button
       type="submit"

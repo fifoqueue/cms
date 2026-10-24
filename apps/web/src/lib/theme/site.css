@@ -221,17 +221,35 @@
   outline: 2px solid var(--ring);
   outline-offset: 3px;
 }
-@media (max-width: 640px) {
-  :is(.cms-prose, .tiptap) .cms-columns[data-stack='true'] {
+/* Narrow layouts: published content follows the `.cms-site` container (so the site editor's
+   canvas matches the real site); the admin content editor has no container and follows the viewport. */
+@container (max-width: 640px) {
+  .cms-prose .cms-columns[data-stack='true'] {
     grid-template-columns: minmax(0, 1fr);
   }
-  :is(.cms-prose, .tiptap) .cms-gallery-grid {
+  .cms-prose .cms-gallery-grid {
     grid-template-columns: repeat(
       min(2, var(--cms-gallery-columns, 3)),
       minmax(0, 1fr)
     );
   }
-  :is(.cms-prose, .tiptap) :is(.cms-align-left, .cms-align-right) {
+  .cms-prose :is(.cms-align-left, .cms-align-right) {
+    float: none;
+    max-width: 100%;
+    margin-inline: 0;
+  }
+}
+@media (max-width: 640px) {
+  .tiptap .cms-columns[data-stack='true'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tiptap .cms-gallery-grid {
+    grid-template-columns: repeat(
+      min(2, var(--cms-gallery-columns, 3)),
+      minmax(0, 1fr)
+    );
+  }
+  .tiptap :is(.cms-align-left, .cms-align-right) {
     float: none;
     max-width: 100%;
     margin-inline: 0;

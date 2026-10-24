@@ -1,13 +1,22 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import type { PublicContent, PublicContentType, SlotMap } from '@cms/sdk';
 import type { ContentClient } from '@cms/sdk/client';
-import { loadComments } from '#lib/server/comments.js';
+import { commentAction, loadComments } from '#lib/server/comments.js';
+import { moderateCommentAction } from '#lib/server/comment-moderation.js';
+import { unlockAction } from '#lib/server/unlock.js';
 import { error } from '@sveltejs/kit';
 import { PAGE_BREAK_HTML } from '@cms/content/breaks';
 import { Errors } from '#lib/server/errors.js';
 import { contentView, pageParam } from '#lib/server/public-view.js';
 import type { BlockData } from '#lib/server/theme-queries.js';
 import type { ThemePage } from '#lib/theme/template.js';
+
+/** Form actions of every page that can show an entry: unlocking, commenting, moderating. */
+export const entryActions = {
+  unlock: unlockAction,
+  comment: commentAction,
+  moderateComment: moderateCommentAction,
+};
 
 /**
  * Page data of a single entry with its comments and the data of its template's blocks
@@ -16,7 +25,10 @@ import type { ThemePage } from '#lib/theme/template.js';
  */
 export const entryPage = async (
   api: ContentClient,
-  event: Pick<RequestEvent, 'url' | 'cookies'>,
+  event: Pick<
+    RequestEvent,
+    'url' | 'cookies' | 'fetch' | 'request' | 'setHeaders'
+  >,
   content: PublicContent,
   types: Promise<PublicContentType[]>,
   slots: Promise<SlotMap>,

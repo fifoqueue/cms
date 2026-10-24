@@ -232,6 +232,8 @@ export const COMMENT_BULK_ACTIONS = [
 export const commentBulkSchema = z.object({
   ids: z.array(z.string().min(1).max(36)).min(1).max(100),
   action: z.enum(COMMENT_BULK_ACTIONS),
+  /** When set, nothing changes unless every comment belongs to this entry. */
+  contentId: z.string().min(1).max(36).optional(),
 });
 
 export type CommentBulkInput = z.input<typeof commentBulkSchema>;

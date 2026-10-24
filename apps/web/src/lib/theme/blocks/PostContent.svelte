@@ -5,6 +5,10 @@
   import { page } from '$app/state';
   import { useI18n } from '#lib/i18n/index.js';
   import SlotOutlet from '#lib/theme/SlotOutlet.svelte';
+  import { codeCopy } from '#lib/theme/content/code-copy.js';
+  import { enhanceToc } from '#lib/theme/content/toc.js';
+  import '#lib/theme/content/code-block.css';
+  import CalloutDismissal from '#lib/theme/content/CalloutDismissal.svelte';
   import { useCurrentPost, useScope } from '#lib/theme/scope.js';
 
   const current = useCurrentPost();
@@ -14,13 +18,14 @@
   const entry = $derived(current().entry);
   const post = $derived(current().post);
   const slots = $derived(scope().slots);
+  let prose = $state<HTMLElement>();
   const failure = $derived(
     page.form && 'message' in page.form ? String(page.form.message) : '',
   );
 </script>
 
 {#if entry}
-  <div class="cms-block-post-content">
+  <div class="cms-block-post-content" data-entry-body>
     <SlotOutlet fragments={slots?.['content.before'] ?? []} />
     {#if entry.protected}
       <form
@@ -53,10 +58,21 @@
           </p>{/if}
       </form>
     {:else}
-      <div class="cms-prose prose max-w-none">
+      <div
+        class="cms-prose prose max-w-none"
+        use:codeCopy={{
+          copy: m.contentCodeCopy,
+          copied: m.contentCodeCopied,
+          done: m.contentCodeCopiedNotice,
+          failed: m.contentCodeCopyFailed,
+        }}
+        use:enhanceToc
+        bind:this={prose}
+      >
         <!-- eslint-disable-next-line svelte/no-at-html-tags -- rendered by the API from a schema-validated document -->
         {@html entry.html}
       </div>
+      <CalloutDismissal container={prose} html={entry.html} />
       {#if entry.pages.total > 1}
         <!-- Parts of an entry split by page breaks (WordPress "Pages: 1 2 3"). -->
         <nav

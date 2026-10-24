@@ -430,7 +430,14 @@ export class CommentService {
 
   async bulk(input: unknown, actor: Actor) {
     authorize(actor, 'comments.moderate');
-    const { ids, action } = parseInput(commentBulkSchema, input);
+    const { ids, action, contentId } = parseInput(commentBulkSchema, input);
+    if (contentId) {
+      const found = await Promise.all(
+        ids.map((id) => this.deps.repository.findById(id)),
+      );
+      if (found.some((row) => row?.contentId !== contentId))
+        throw notFound(Errors.CommentNotFound);
+    }
     if (action === 'delete') {
       await this.deps.repository.delete(ids);
       return;
@@ -561,17 +568,12 @@ export class CommentService {
 
   /** A bearer proof whose referenced comment must still be approved for the same email. */
   private async knownCommenter(proof: string, email: string) {
-    if (!email || proof.length > 512) return false;
-    const [id, expires, signature, extra] = proof.split('.');
-    if (
-      !id ||
-      !signature ||
-      extra !== undefined ||
-      !Number.isSafeInteger(Number(expires)) ||
-      Number(expires) <= this.deps.clock.now().getTime() ||
-      !this.deps.signer.verify(`commenter:${id}:${email}:${expires}`, signature)
-    )
-      return false;
+    if (!email) return false;
+    const id = this.proofId(
+      proof,
+      (id, expires) => `commenter:${id}:${email}:${expires}`,
+    );
+    if (!id) return false;
     const comment = await this.deps.repository.findById(id);
     return comment?.status === 'approved' && comment.authorEmail === email;
   }
@@ -583,6 +585,21 @@ export class CommentService {
   }
 
   private async pending(proof: string, contentId: string) {
+    const id = this.proofId(
+      proof,
+      (id, expires) => `comment:${contentId}:${id}:${expires}`,
+    );
+    if (!id) return null;
+    const record = await this.deps.repository.findById(id);
+    return record?.contentId === contentId && record.status === 'pending'
+      ? record
+      : null;
+  }
+
+  private proofId(
+    proof: string,
+    payload: (id: string, expires: string | undefined) => string,
+  ) {
     if (proof.length > 512) return null;
     const [id, expires, signature, extra] = proof.split('.');
     if (
@@ -591,16 +608,10 @@ export class CommentService {
       extra !== undefined ||
       !Number.isSafeInteger(Number(expires)) ||
       Number(expires) <= this.deps.clock.now().getTime() ||
-      !this.deps.signer.verify(
-        `comment:${contentId}:${id}:${expires}`,
-        signature,
-      )
+      !this.deps.signer.verify(payload(id, expires), signature)
     )
       return null;
-    const record = await this.deps.repository.findById(id);
-    return record?.contentId === contentId && record.status === 'pending'
-      ? record
-      : null;
+    return id;
   }
 
   /** Mail about a new comment: moderators when it waits, the entry's author when it is shown. */

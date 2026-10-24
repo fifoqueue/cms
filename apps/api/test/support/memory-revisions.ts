@@ -6,7 +6,8 @@ import type {
   RevisionSave,
 } from '#api/domain/content/revisions';
 import type { ContentRecord } from '#api/domain/content/content-repository';
-import { conflict, invalidInput, notFound, Errors } from '#api/shared/errors';
+import { checkDeleteGuard } from '#api/infra/prisma/revision-delete-guard';
+import { invalidInput, notFound, Errors } from '#api/shared/errors';
 
 /** The content store whose write queue autosaves share (the Prisma adapter's content lock). */
 export interface MemoryContentWrites {
@@ -66,13 +67,7 @@ export class MemoryRevisionRepository implements RevisionRepository {
   delete(contentId: string, id: string, guard: RevisionDeleteGuard) {
     return this.content.exclusive(async () => {
       const current = this.content.snapshot(contentId);
-      if (!current) throw notFound(Errors.ContentNotFound);
-      if (
-        current.updatedAt.getTime() !== guard.updatedAt.getTime() ||
-        current.authorId !== guard.authorId ||
-        current.status !== guard.status
-      )
-        throw conflict(Errors.ContentChanged);
+      checkDeleteGuard(current, guard);
       const revision = this.rows.find(
         (row) => row.id === id && row.contentId === contentId,
       );

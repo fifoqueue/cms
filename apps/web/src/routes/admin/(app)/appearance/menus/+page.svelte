@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { saveSnapshot } from '#lib/admin/save-snapshot.js';
   import { deserialize, enhance } from '$app/forms';
   import { MENU_LOCATIONS } from '@cms/sdk';
   import type { MenuItem } from '@cms/sdk';
@@ -217,13 +218,10 @@
 <form
   method="POST"
   action="?/save"
-  use:enhance={() => {
-    const sent = payload;
-    return async ({ result, update }) => {
-      if (result.type === 'success') saved = sent;
-      await update({ reset: false });
-    };
-  }}
+  use:enhance={saveSnapshot(
+    () => payload,
+    (sent) => (saved = sent),
+  )}
   class="grid gap-6"
 >
   <input type="hidden" name="menus" value={payload} />

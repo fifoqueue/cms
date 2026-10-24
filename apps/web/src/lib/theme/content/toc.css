@@ -1,0 +1,45 @@
+.cms-toc {
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin-block: 1.5rem;
+}
+:root {
+  --cms-sticky-header: 0px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.cms-site .cms-toc):not(:has(.tiptap)) {
+    scroll-behavior: smooth;
+  }
+}
+.cms-toc summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.cms-toc ol {
+  padding-inline-start: 1.5rem;
+}
+.cms-toc a[aria-current='location'] {
+  font-weight: 700;
+  text-decoration: underline;
+}
+.cms-toc a:focus-visible,
+.cms-toc summary:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+.cms-prose:has(.cms-toc) {
+  scroll-margin-top: calc(
+    10px + var(--cms-admin-bar, 0px) + var(--cms-sticky-header, 0px)
+  );
+}
+.cms-prose :is(h2, h3, h4)[id] {
+  scroll-margin-top: var(
+    --cms-toc-offset,
+    calc(10px + var(--cms-admin-bar, 0px) + var(--cms-sticky-header, 0px))
+  );
+}
+.cms-toc-preview.ProseMirror-selectednode {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}

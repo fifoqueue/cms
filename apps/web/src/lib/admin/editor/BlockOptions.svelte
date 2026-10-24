@@ -5,6 +5,9 @@
   import { Popover } from 'bits-ui';
   import { onMount, tick } from 'svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
+  import CodeBlockOptions from '#lib/admin/editor/CodeBlockOptions.svelte';
+  import CalloutOptions from '#lib/admin/editor/CalloutOptions.svelte';
+  import TocOptions from '#lib/admin/editor/TocOptions.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import { Input } from '#lib/components/ui/input/index.js';
   import {
@@ -96,7 +99,26 @@
         <p class="font-medium">
           {m.contentBlockSettings(m.contentBlockName(type))}
         </p>
-        {#if type === 'pluginBlock'}
+        {#if type === 'codeBlock'}
+          <CodeBlockOptions
+            {editor}
+            {target}
+            labels={{
+              language: m.contentCodeLanguage,
+              theme: m.contentCodeTheme,
+              label: m.contentCodeLabel,
+              lineNumbers: m.contentCodeLineNumbers,
+              startLine: m.contentCodeStartLine,
+              highlightLines: m.contentCodeHighlightLines,
+              copyButton: m.contentCodeCopyButton,
+              auto: m.contentCodeAuto,
+              invalid: m.contentCodeInvalid,
+            }}
+          />
+        {/if}
+        {#if type === 'tableOfContents'}
+          <TocOptions {editor} pos={target.pos} {revision} />
+        {:else if type === 'pluginBlock'}
           {@const info = pluginBlocks.find(
             (entry) => entry.block === target.node.attrs.block,
           )}
@@ -349,6 +371,10 @@
                 update(target, { cite: event.currentTarget.value })}
             /></label
           >{/if}
+        {#if type === 'callout'}<CalloutOptions
+            attrs={target.node.attrs}
+            onchange={(attrs) => update(target, attrs)}
+          />{/if}
         {#if type === 'spacer'}<label class="grid gap-1"
             >{m.contentSpacerHeight}<Input
               type="number"

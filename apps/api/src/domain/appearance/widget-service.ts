@@ -6,6 +6,7 @@ import {
   widgetsSettingsSchema,
 } from '@cms/sdk';
 import { richText } from '#api/domain/appearance/rich-text';
+import { readCache } from '#api/domain/appearance/read-cache';
 import type {
   PublicWidget,
   PublicWidgets,
@@ -117,14 +118,7 @@ export class WidgetService {
   /** Both areas ready to display. A widget whose data cannot be read is left out. */
   async getPublic(): Promise<PublicWidgets> {
     const settings = await this.stored();
-    const cached = new Map<string, Promise<unknown>>();
-    const once = <T>(key: string, read: () => Promise<T>): Promise<T> => {
-      const existing = cached.get(key);
-      if (existing) return existing as Promise<T>;
-      const value = read();
-      cached.set(key, value);
-      return value;
-    };
+    const once = readCache();
     const [sidebar, footer] = await Promise.all(
       WIDGET_AREAS.map(async (area) =>
         (

@@ -12,7 +12,8 @@ import type {
   Content,
   ContentRevision,
 } from '#api/infra/prisma/generated/client';
-import { conflict, invalidInput, notFound, Errors } from '#api/shared/errors';
+import { checkDeleteGuard } from '#api/infra/prisma/revision-delete-guard';
+import { invalidInput, notFound, Errors } from '#api/shared/errors';
 
 type Row = ContentRevision & { author: { name: string } | null };
 
@@ -127,13 +128,7 @@ export class PrismaRevisionRepository implements RevisionRepository {
         where: { id: contentId },
         select: { updatedAt: true, authorId: true, status: true },
       });
-      if (!current) throw notFound(Errors.ContentNotFound);
-      if (
-        current.updatedAt.getTime() !== guard.updatedAt.getTime() ||
-        current.authorId !== guard.authorId ||
-        current.status !== guard.status
-      )
-        throw conflict(Errors.ContentChanged);
+      checkDeleteGuard(current, guard);
       const revision = await tx.contentRevision.findFirst({
         where: { id, contentId },
         select: { kind: true },

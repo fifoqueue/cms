@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Path } from '$app/types';
   import { resolve } from '$app/paths';
-  import { lastPageOf, pageQuery } from '#lib/theme/pagination.js';
+  import { lastPageOf, pageQuery, pageWindow } from '#lib/theme/pagination.js';
   import type { ListingTarget } from '#lib/theme/pagination.js';
   import { useI18n } from '#lib/i18n/index.js';
 
@@ -15,11 +15,7 @@
   let { target, page, total, pageSize }: Props = $props();
 
   const lastPage = $derived(lastPageOf({ total, pageSize }));
-  const numbers = $derived(
-    [...new Set([1, page - 2, page - 1, page, page + 1, page + 2, lastPage])]
-      .filter((number) => number > 0 && number <= lastPage)
-      .sort((a, b) => a - b),
-  );
+  const numbers = $derived(pageWindow(page, lastPage));
   const i18n = useI18n();
   const m = $derived(i18n.m);
 </script>

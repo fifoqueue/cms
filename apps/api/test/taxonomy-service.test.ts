@@ -8,7 +8,6 @@ import {
   publicTaxonomyTermSchema,
   toPublicEntrySeo,
 } from '@cms/sdk';
-import { ContentService } from '#api/domain/content/content-service';
 import { PublishedContentReader } from '#api/domain/content/public-content';
 import { SeoDiscoveryService } from '#api/domain/seo/seo-discovery-service';
 import { SeoSettingsService } from '#api/domain/seo/seo-settings-service';
@@ -17,26 +16,18 @@ import {
   TaxonomyService,
 } from '#api/domain/taxonomy/taxonomy-service';
 import { TaxonomyTypeService } from '#api/domain/taxonomy/taxonomy-types';
-import { tiptapRenderer } from '#api/infra/system';
-import { HookBus } from '#api/plugin-runtime/hook-bus';
 import type { DomainError } from '#api/shared/errors';
 import {
   ADMIN,
-  testFields,
-  testTypes,
-  plainHasher,
   MemoryContentRepository,
+  MemorySettings,
   fixedClock,
-  recordingLogger,
   sequentialIds,
-  noUsers,
 } from '#test/support/memory';
+import { testContentService, textDocument } from '#test/support/content';
 import { MemoryPublishedContentRepository } from '#test/support/memory-published';
 import { MemoryTaxonomyRepository } from '#test/support/memory-taxonomy';
-import {
-  MemorySeoDiscoveryRepository,
-  MemorySeoSettingsRepository,
-} from '#test/support/memory-seo';
+import { MemorySeoDiscoveryRepository } from '#test/support/memory-seo';
 
 const publicSeoDefaults = toPublicEntrySeo(DEFAULT_ENTRY_SEO);
 
@@ -45,10 +36,7 @@ const setup = (customTaxonomies = false) => {
   const repository = new MemoryTaxonomyRepository(content);
   const ids = sequentialIds();
   const clock = fixedClock();
-  const types = new TaxonomyTypeService(
-    new MemorySeoSettingsRepository(),
-    repository,
-  );
+  const types = new TaxonomyTypeService(new MemorySettings(), repository);
   const admin = new TaxonomyService({
     repository,
     ids,
@@ -59,16 +47,10 @@ const setup = (customTaxonomies = false) => {
     repository,
     customTaxonomies ? types : undefined,
   );
-  const contentService = new ContentService({
+  const contentService = testContentService({
     repository: content,
-    renderer: tiptapRenderer,
-    hooks: new HookBus({ timeoutMs: 50, logger: recordingLogger().logger }),
     ids,
     clock,
-    users: noUsers,
-    hasher: plainHasher,
-    types: testTypes(),
-    fields: testFields(),
   });
   return { admin, publicTaxonomy, contentService, clock, content, types };
 };
@@ -79,10 +61,7 @@ const codeOf = async (promise: Promise<unknown>) =>
 const post = (title: string, extra: Record<string, unknown> = {}) => ({
   type: 'post',
   title,
-  document: {
-    type: 'doc',
-    content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Body' }] }],
-  },
+  document: textDocument('Body'),
   ...extra,
 });
 
@@ -319,7 +298,7 @@ describe('PublicTaxonomyService', () => {
 describe('SEO discovery', () => {
   test('filters publication and indexability before stable paging, including category ancestors', async () => {
     const { admin, contentService, content } = setup();
-    const settingsStore = new MemorySeoSettingsRepository();
+    const settingsStore = new MemorySettings();
     const settings = new SeoSettingsService(settingsStore);
     const discovery = new SeoDiscoveryService(
       new MemorySeoDiscoveryRepository(content),

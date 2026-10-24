@@ -136,16 +136,7 @@ export class PasswordService {
     const { email } = this.deps.sealedJobs.open(payload, resetRequestSchema);
     const user = await this.deps.users.findByEmail(email);
     if (!user) return;
-    const site = await this.site();
-    const link = await this.link(user, 'reset', site.siteUrl);
-    await this.deps.email.queue(
-      {
-        to: user.email,
-        subjects: [user.id, user.email],
-        ...templates(site.locale).reset(site.title, link),
-      },
-      new Date(this.deps.clock.now().getTime() + LIFETIME.reset),
-    );
+    await this.queueReset(user, [user.id, user.email]);
   }
 
   /**
@@ -166,12 +157,16 @@ export class PasswordService {
       )
     )
       throw rateLimited(Errors.PasswordResetLimit);
+    await this.queueReset(user, [user.id]);
+  }
+
+  private async queueReset(user: UserRecord, subjects: string[]) {
     const site = await this.site();
     const link = await this.link(user, 'reset', site.siteUrl);
     await this.deps.email.queue(
       {
         to: user.email,
-        subjects: [user.id],
+        subjects,
         ...templates(site.locale).reset(site.title, link),
       },
       new Date(this.deps.clock.now().getTime() + LIFETIME.reset),

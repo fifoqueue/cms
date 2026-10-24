@@ -18,7 +18,11 @@ import type {
   PublicWidgets,
   TermSummary,
 } from '@cms/sdk';
-import { PAGINATION_MAX_PAGE } from '@cms/sdk';
+import {
+  PAGINATION_MAX_PAGE,
+  publicEntrySeoFields,
+  publicSeoSettingsFields,
+} from '@cms/sdk';
 import type { HomeListType } from '#lib/theme/pagination.js';
 
 /** A public image with its responsive sizes. */
@@ -49,44 +53,14 @@ export const siteView = ({
 });
 
 /** Site-wide settings the public `<head>` uses; AI/llms.txt prose stays with the discovery routes. */
-export const seoSettingsView = (settings: PublicSeoSettings) => ({
-  siteUrl: settings.siteUrl,
-  titleTemplate: settings.titleTemplate,
-  homeTitle: settings.homeTitle,
-  homeDescription: settings.homeDescription,
-  defaultImageUrl: settings.defaultImageUrl,
-  defaultImageAlt: settings.defaultImageAlt,
-  entityType: settings.entityType,
-  entityName: settings.entityName,
-  logoUrl: settings.logoUrl,
-  sameAs: [...settings.sameAs],
-  twitterHandle: settings.twitterHandle,
-  indexingEnabled: settings.indexingEnabled,
-  indexCategories: settings.indexCategories,
-  indexTags: settings.indexTags,
-  llmsTxtEnabled: settings.llmsTxtEnabled,
-  googleVerification: settings.googleVerification,
-  bingVerification: settings.bingVerification,
-  maxSnippet: settings.maxSnippet,
-  maxImagePreview: settings.maxImagePreview,
-  maxVideoPreview: settings.maxVideoPreview,
-});
+export const seoSettingsView = (settings: PublicSeoSettings) => {
+  const { allowAiSearch, allowAiTraining, llmsIntro, ...view } =
+    publicSeoSettingsFields(settings);
+  return { ...view, sameAs: [...settings.sameAs] };
+};
 
 /** Published per-entry metadata of content and terms. */
-export const entrySeoView = (seo: PublicEntrySeo) => ({
-  title: seo.title,
-  description: seo.description,
-  canonicalUrl: seo.canonicalUrl,
-  noIndex: seo.noIndex,
-  noFollow: seo.noFollow,
-  imageUrl: seo.imageUrl,
-  imageAlt: seo.imageAlt,
-  socialTitle: seo.socialTitle,
-  socialDescription: seo.socialDescription,
-  schemaType: seo.schemaType,
-  authorName: seo.authorName,
-  authorUrl: seo.authorUrl,
-});
+export const entrySeoView = (seo: PublicEntrySeo) => publicEntrySeoFields(seo);
 
 /** The theme as the site renders it: the validated public DTO, field by field. */
 export const themeView = ({
@@ -208,9 +182,9 @@ export type ContentView = ReturnType<typeof contentView>;
 export type PostSummary = ReturnType<typeof summaryView>;
 export type PostList = ReturnType<typeof listView>;
 
-/** `?page=` as a positive integer (1 when missing or invalid). */
-export const pageParam = (url: URL) => {
-  const page = Math.trunc(Number(url.searchParams.get('page')));
+/** `?page=` (or another page parameter) as a positive integer (1 when missing or invalid). */
+export const pageParam = (url: URL, key = 'page') => {
+  const page = Math.trunc(Number(url.searchParams.get(key)));
   return Number.isSafeInteger(page) && page > 0
     ? Math.min(page, PAGINATION_MAX_PAGE)
     : 1;

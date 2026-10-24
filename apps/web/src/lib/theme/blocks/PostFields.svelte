@@ -15,7 +15,7 @@
 
 {#if entry && fields.length}
   <dl
-    class="cms-block-post-fields grid gap-x-6 gap-y-2 rounded-[var(--radius)] border bg-card p-4 text-sm sm:grid-cols-[auto_1fr]"
+    class="cms-block-post-fields grid gap-x-6 gap-y-2 rounded-[var(--radius)] border bg-card p-4 text-sm @min-[40rem]:grid-cols-[auto_1fr]"
   >
     {#each fields as field (field.key)}
       {@const value = entry.fields[field.key]}

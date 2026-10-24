@@ -127,6 +127,8 @@ export const themeManifestSchema = z
           wideSize: length.default('72rem'),
         })
         .default({ contentSize: '42rem', wideSize: '72rem' }),
+      /** Entry pages show a back-to-top button with reading progress (Swyft's `misc_scroll_to_top`). */
+      scrollToTop: z.boolean().default(true),
     }),
     styles: themeStylesSchema,
     templateParts: z.array(templatePartSchema).max(32).default([]),
@@ -274,6 +276,7 @@ const settingsShape = z.strictObject({
     z.strictObject({ slug, name: z.string(), fontFamily: fontStack }),
   ),
   layout: z.strictObject({ contentSize: length, wideSize: length }),
+  scrollToTop: z.boolean().default(true),
 });
 
 const publicPartSchema = z.strictObject({

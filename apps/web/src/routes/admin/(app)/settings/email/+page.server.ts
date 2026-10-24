@@ -1,6 +1,8 @@
 import { SMTP_SECURITY } from '@cms/sdk';
 import type { EmailSettingsInput } from '@cms/sdk';
-import { failFrom, text } from '#lib/server/errors.js';
+import { text } from '#lib/server/errors.js';
+import { submitAction } from '#lib/server/form-action.js';
+import { secretInput } from '#lib/admin/settings/input.server.js';
 import { adminFor } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -12,7 +14,6 @@ export const actions: Actions = {
   save: async (event) => {
     const form = await event.request.formData();
     const security = text(form, 'security');
-    const password = text(form, 'password');
     const input: EmailSettingsInput = {
       enabled: form.has('enabled'),
       host: text(form, 'host'),
@@ -21,24 +22,17 @@ export const actions: Actions = {
         ? (security as EmailSettingsInput['security'])
         : 'starttls',
       username: text(form, 'username'),
-      password: form.has('removePassword') ? '' : password || undefined,
+      password: secretInput(form, 'password', 'removePassword'),
       fromName: text(form, 'fromName'),
       fromEmail: text(form, 'fromEmail'),
     };
-    try {
-      await adminFor(event).email.update(input);
-    } catch (caught) {
-      return failFrom(caught);
-    }
-    return { notice: 'saved' };
+    return submitAction(() => adminFor(event).email.update(input));
   },
   test: async (event) => {
     const form = await event.request.formData();
-    try {
-      await adminFor(event).email.test(text(form, 'to'));
-    } catch (caught) {
-      return failFrom(caught);
-    }
-    return { notice: 'emailTestSent' };
+    return submitAction(
+      () => adminFor(event).email.test(text(form, 'to')),
+      'emailTestSent',
+    );
   },
 };

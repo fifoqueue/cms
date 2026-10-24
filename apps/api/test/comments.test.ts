@@ -5,10 +5,8 @@ import { CommentService } from '#api/domain/comments/comment-service';
 import { ContentLocks } from '#api/domain/content/content-locks';
 import { MemoryPublishedContentRepository } from '#test/support/memory-published';
 import { hmacSigner } from '#api/infra/hmac-signer';
-import { ContentService } from '#api/domain/content/content-service';
 import { ProtectionService } from '#api/domain/security/protection-service';
 import { SecuritySettingsService } from '#api/domain/security/security-settings';
-import { tiptapRenderer } from '#api/infra/system';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
 import type { DomainError } from '#api/shared/errors';
 import {
@@ -16,14 +14,13 @@ import {
   MemoryContentRepository,
   MemorySettings,
   fixedClock,
-  noUsers,
   plainHasher,
   recordingLogger,
   sequentialIds,
-  testFields,
   testTypes,
   userRecord,
 } from '#test/support/memory';
+import { testContentService, textDocument } from '#test/support/content';
 import { MemoryCommentRepository } from '#test/support/memory-comments';
 import {
   MemoryRateLimitStore,
@@ -46,17 +43,7 @@ const setup = () => {
   });
   const settings = new MemorySettings();
   const types = testTypes(settings);
-  const content = new ContentService({
-    repository,
-    renderer: tiptapRenderer,
-    hooks,
-    ids,
-    clock,
-    users: noUsers,
-    hasher: plainHasher,
-    types,
-    fields: testFields(),
-  });
+  const content = testContentService({ repository, hooks, ids, clock, types });
   const store = new MemoryCommentRepository(repository);
   const security = new SecuritySettingsService(settings, plainSecretBox);
   const signer = hmacSigner('comment-test-key');
@@ -110,12 +97,7 @@ const setup = () => {
         type: 'post',
         title: 'Hello',
         status: 'published',
-        document: {
-          type: 'doc',
-          content: [
-            { type: 'paragraph', content: [{ type: 'text', text: 'Body' }] },
-          ],
-        },
+        document: textDocument('Body'),
         ...overrides,
       },
       ADMIN,
@@ -496,6 +478,58 @@ describe('CommentService', () => {
       (await comments.publicPage(entry.id, 1, [], null, second.pendingProof!))
         .ownPending,
     ).toBeNull();
+  });
+
+  test('entry-scoped moderation changes nothing when a comment belongs elsewhere', async () => {
+    const { comments, publish, store } = setup();
+    const entry = await publish();
+    const other = await publish({ title: 'Other' });
+    await comments.submit(comment(entry.id), visitor);
+    await comments.submit(comment(other.id), visitor);
+    const [own] = (await comments.list({ contentId: entry.id }, ADMIN)).items;
+    const [foreign] = (await comments.list({ contentId: other.id }, ADMIN))
+      .items;
+
+    for (const action of ['approve', 'trash', 'delete'] as const)
+      expect(
+        await codeOf(
+          comments.bulk(
+            { ids: [own!.id, foreign!.id], action, contentId: entry.id },
+            ADMIN,
+          ),
+        ),
+      ).toBe('not_found');
+    expect(
+      await codeOf(
+        comments.bulk(
+          { ids: ['missing'], action: 'approve', contentId: entry.id },
+          ADMIN,
+        ),
+      ),
+    ).toBe('not_found');
+    expect([...store.rows.values()].map(({ status }) => status).sort()).toEqual(
+      ['pending', 'pending'],
+    );
+    expect(
+      await codeOf(
+        comments.bulk(
+          { ids: [own!.id], action: 'approve', contentId: entry.id },
+          { id: 'reader', role: 'subscriber' },
+        ),
+      ),
+    ).toBe('forbidden');
+
+    await comments.bulk(
+      { ids: [own!.id], action: 'approve', contentId: entry.id },
+      ADMIN,
+    );
+    expect(store.rows.get(own!.id)?.status).toBe('approved');
+    await comments.bulk(
+      { ids: [own!.id], action: 'delete', contentId: entry.id },
+      ADMIN,
+    );
+    expect(store.rows.has(own!.id)).toBe(false);
+    expect(store.rows.get(foreign!.id)?.status).toBe('pending');
   });
 
   test('moderation holds first comments, filters spam, and keeps the approved count', async () => {

@@ -30,6 +30,7 @@
   const blocks = [
     'paragraph',
     'heading',
+    'tableOfContents',
     'bulletList',
     'orderedList',
     'blockquote',
@@ -42,6 +43,7 @@
     'buttons',
     'details',
     'pullquote',
+    'callout',
     'table',
     'horizontalRule',
     'spacer',
@@ -203,6 +205,10 @@
       return;
     }
     const nodes: Record<string, JSONContent> = {
+      tableOfContents: {
+        type,
+        attrs: { title: m.contentTocDefaultTitle },
+      },
       heading: { type, attrs: { level: 2 } },
       bulletList: {
         type,
@@ -214,6 +220,7 @@
       },
       blockquote: { type, content: [paragraph] },
       pullquote: { type, content: [paragraph] },
+      callout: { type, content: [paragraph] },
       columns: {
         type,
         content: [0, 1].map(() => ({ type: 'column', content: [paragraph] })),

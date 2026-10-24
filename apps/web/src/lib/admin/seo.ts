@@ -4,6 +4,10 @@ import type {
   AdminSeoSettings,
   PermalinkSettings,
 } from '@cms/sdk';
+import {
+  adminEntrySeoFields,
+  publicSeoSettingsFields,
+} from '@cms/sdk/seo-fields';
 
 /** Name of the hidden marker the SEO fieldset submits. Without it, saves leave SEO untouched. */
 export const SEO_FIELDSET = 'seo';
@@ -23,21 +27,8 @@ export type SeoFormValues = Omit<AdminEntrySeo, 'schemaType'> & {
   schemaType: string;
 };
 
-export const seoFormValues = (seo: AdminEntrySeo): SeoFormValues => ({
-  title: seo.title,
-  description: seo.description,
-  canonicalUrl: seo.canonicalUrl,
-  noIndex: seo.noIndex,
-  noFollow: seo.noFollow,
-  imageUrl: seo.imageUrl,
-  imageAlt: seo.imageAlt,
-  socialTitle: seo.socialTitle,
-  socialDescription: seo.socialDescription,
-  schemaType: seo.schemaType,
-  authorName: seo.authorName,
-  authorUrl: seo.authorUrl,
-  focusKeyword: seo.focusKeyword,
-});
+export const seoFormValues = (seo: AdminEntrySeo): SeoFormValues =>
+  adminEntrySeoFields(seo);
 
 /** Saved settings an editor preview needs to match what the public site renders. */
 export interface SeoPreviewContext {
@@ -69,28 +60,9 @@ export type SeoSettingsFormValues = Omit<
 export const seoSettingsFormValues = (
   settings: AdminSeoSettings,
 ): SeoSettingsFormValues => ({
-  siteUrl: settings.siteUrl,
-  titleTemplate: settings.titleTemplate,
-  homeTitle: settings.homeTitle,
-  homeDescription: settings.homeDescription,
-  defaultImageUrl: settings.defaultImageUrl,
-  defaultImageAlt: settings.defaultImageAlt,
-  entityType: settings.entityType,
-  entityName: settings.entityName,
-  logoUrl: settings.logoUrl,
+  ...publicSeoSettingsFields(settings),
   sameAs: settings.sameAs.join('\n'),
-  twitterHandle: settings.twitterHandle,
-  indexingEnabled: settings.indexingEnabled,
-  indexCategories: settings.indexCategories,
-  indexTags: settings.indexTags,
-  allowAiSearch: settings.allowAiSearch,
-  allowAiTraining: settings.allowAiTraining,
-  llmsTxtEnabled: settings.llmsTxtEnabled,
-  llmsIntro: settings.llmsIntro,
-  googleVerification: settings.googleVerification,
-  bingVerification: settings.bingVerification,
   maxSnippet: String(settings.maxSnippet),
-  maxImagePreview: settings.maxImagePreview,
   maxVideoPreview: String(settings.maxVideoPreview),
 });
 

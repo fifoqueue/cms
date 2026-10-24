@@ -51,12 +51,7 @@ export class TaxonomyService {
   async create(taxonomy: string, input: unknown): Promise<AdminTaxonomyTerm> {
     const kind = await this.kind(taxonomy);
     const data = parseInput(taxonomyInputSchema, input);
-    if (
-      data.parentId &&
-      this.deps.types &&
-      !(await this.deps.types.require(kind)).hierarchical
-    )
-      throw invalidInput(Errors.TermParentNotCategory);
+    await this.assertParent(kind, data.parentId);
     const id = this.deps.ids.next();
     const now = this.deps.clock.now();
     if (data.slug) await this.assertSlugFree(kind, data.slug);
@@ -89,12 +84,7 @@ export class TaxonomyService {
     const kind = await this.kind(taxonomy);
     const current = await this.require(kind, id);
     const data = parseInput(taxonomyInputSchema, input);
-    if (
-      data.parentId &&
-      this.deps.types &&
-      !(await this.deps.types.require(kind)).hierarchical
-    )
-      throw invalidInput(Errors.TermParentNotCategory);
+    await this.assertParent(kind, data.parentId);
     const slug = data.slug ?? current.slug;
     if (slug !== current.slug) await this.assertSlugFree(kind, slug);
     await this.deps.repository.update({
@@ -132,6 +122,15 @@ export class TaxonomyService {
     const record = await this.deps.repository.findById(id, 'all');
     if (record?.taxonomy !== taxonomy) throw notFound(Errors.TermNotFound);
     return record;
+  }
+
+  private async assertParent(kind: string, parentId: string | null) {
+    if (
+      parentId &&
+      this.deps.types &&
+      !(await this.deps.types.require(kind)).hierarchical
+    )
+      throw invalidInput(Errors.TermParentNotCategory);
   }
 
   private async assertSlugFree(

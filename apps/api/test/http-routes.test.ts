@@ -1,27 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import type { AuthService } from '#api/domain/auth/auth-service';
-import type { SsoService } from '#api/domain/auth/sso-service';
-import type { ContentService } from '#api/domain/content/content-service';
 import { DashboardPreferencesService } from '#api/domain/dashboard/dashboard-preferences';
-import type { PublicContentService } from '#api/domain/content/public-content';
-import type { SiteService } from '#api/domain/site/site-service';
-import type { SeoSettingsService } from '#api/domain/seo/seo-settings-service';
-import type { SeoDiscoveryService } from '#api/domain/seo/seo-discovery-service';
-import type { PermalinkService } from '#api/domain/permalinks/permalink-service';
-import type { PermalinkResolver } from '#api/domain/permalinks/permalink-resolver';
-import type {
-  PublicTaxonomyService,
-  TaxonomyService,
-} from '#api/domain/taxonomy/taxonomy-service';
-import type { ThemeService } from '#api/domain/theme/theme-service';
 import { createApiApp } from '#api/http/app';
 import type { ApiServices } from '#api/http/services';
-import type { PluginGateway } from '#api/http/plugin-gateway';
 import { ClientResolver } from '#api/http/client-identity';
-import type { PluginHost } from '#api/plugin-runtime/plugin-host';
-import type { SlotService } from '#api/plugin-runtime/slot-service';
 import { conflict } from '#api/shared/errors';
-import type { UserService } from '#api/domain/users/user-service';
 import { MemorySettings, profile } from '#test/support/memory';
 
 const TOKEN = 'admin-token';
@@ -45,7 +27,7 @@ const auth = {
   status: async () => ({ setupRequired: false }),
   login: async (input: unknown) => ({ token: TOKEN, input }),
   logout: async () => {},
-} as unknown as AuthService;
+} as unknown as ApiServices['auth'];
 
 const calls: unknown[][] = [];
 
@@ -68,34 +50,34 @@ const app = await createApiApp({
     sso: {
       info: () => ({ enabled: false }),
       unlink: record('sso.unlink'),
-    } as unknown as SsoService,
+    } as unknown as ApiServices['sso'],
     clients: new ClientResolver(undefined),
-    site: { get: record('site.get') } as unknown as SiteService,
+    site: { get: record('site.get') } as unknown as ApiServices['site'],
     seo: {
       getPublic: record('seo.public'),
       getAdmin: record('seo.admin'),
       update: record('seo.update'),
-    } as unknown as SeoSettingsService,
+    } as unknown as ApiServices['seo'],
     seoDiscovery: {
       list: record('seo.discovery'),
-    } as unknown as SeoDiscoveryService,
+    } as unknown as ApiServices['seoDiscovery'],
     permalinks: {
       get: record('permalinks.get'),
       update: record('permalinks.update'),
-    } as unknown as PermalinkService,
+    } as unknown as ApiServices['permalinks'],
     permalinkResolver: {
       resolve: record('permalinks.resolve'),
-    } as unknown as PermalinkResolver,
+    } as unknown as ApiServices['permalinkResolver'],
     publicTaxonomy: {
       list: record('taxonomy.public.list', []),
       getBySlug: record('taxonomy.public.get'),
-    } as unknown as PublicTaxonomyService,
+    } as unknown as ApiServices['publicTaxonomy'],
     adminTaxonomy: {
       list: record('taxonomy.admin.list', []),
       create: record('taxonomy.admin.create'),
       update: record('taxonomy.admin.update'),
       remove: record('taxonomy.admin.remove'),
-    } as unknown as TaxonomyService,
+    } as unknown as ApiServices['adminTaxonomy'],
     themes: {
       getPublic: record('themes.public'),
       list: record('themes.list', []),
@@ -109,7 +91,7 @@ const app = await createApiApp({
       resetPart: record('themes.resetPart'),
       saveStyles: record('themes.saveStyles'),
       resetStyles: record('themes.resetStyles'),
-    } as unknown as ThemeService,
+    } as unknown as ApiServices['themes'],
     publicContent: {
       list: record('public.list'),
       getBySlug: async (slug: string) => {
@@ -119,18 +101,18 @@ const app = await createApiApp({
 
         return { slug };
       },
-    } as unknown as PublicContentService,
-    slots: { render: record('slots') } as unknown as SlotService,
+    } as unknown as ApiServices['publicContent'],
+    slots: { render: record('slots') } as unknown as ApiServices['slots'],
     adminContent: {
       list: record('admin.list'),
       create: record('admin.create'),
       get: record('admin.get'),
       update: record('admin.update'),
       remove: record('admin.remove'),
-    } as unknown as ContentService,
+    } as unknown as ApiServices['adminContent'],
     users: {
       list: record('users.list', []),
-    } as unknown as UserService,
+    } as unknown as ApiServices['users'],
     roles: {} as ApiServices['roles'],
     archivePaths: {} as ApiServices['archivePaths'],
     taxonomyTypes: {} as ApiServices['taxonomyTypes'],
@@ -144,7 +126,9 @@ const app = await createApiApp({
       update: record('writing.update'),
     } as unknown as ApiServices['writing'],
     dashboardPreferences: new DashboardPreferencesService(new MemorySettings()),
-    patterns: {} as ApiServices['patterns'],
+    patterns: {
+      update: record('patterns.update'),
+    } as unknown as ApiServices['patterns'],
     menus: {} as ApiServices['menus'],
     widgets: {} as ApiServices['widgets'],
     comments: {} as ApiServices['comments'],
@@ -160,8 +144,12 @@ const app = await createApiApp({
     themePreviews: {} as ApiServices['themePreviews'],
     importer: {} as ApiServices['importer'],
     exporter: {} as ApiServices['exporter'],
-    contentTypes: {} as ApiServices['contentTypes'],
-    fields: {} as ApiServices['fields'],
+    contentTypes: {
+      update: record('contentTypes.update'),
+    } as unknown as ApiServices['contentTypes'],
+    fields: {
+      update: record('fields.update'),
+    } as unknown as ApiServices['fields'],
     apiTokens: {} as ApiServices['apiTokens'],
     security: {} as ApiServices['security'],
     egress: {} as ApiServices['egress'],
@@ -170,10 +158,10 @@ const app = await createApiApp({
       list: record('plugins.list', []),
       install: record('plugins.install'),
       enable: record('plugins.enable'),
-    } as unknown as PluginHost,
+    } as unknown as ApiServices['plugins'],
     pluginGateway: {
       handle: async (id: string) => Response.json({ gateway: id }),
-    } as unknown as PluginGateway,
+    } as unknown as ApiServices['pluginGateway'],
   },
   logger: {
     info: () => {},
@@ -198,6 +186,117 @@ const call = (
   );
 
 describe('API route compatibility', () => {
+  const bodyRoutes = [
+    ['/api/v1/admin/seo', 'seo.update', [], 200, 512 * 1024, false],
+    [
+      '/api/v1/admin/themes/t/styles',
+      'themes.saveStyles',
+      ['t'],
+      204,
+      512 * 1024,
+      false,
+    ],
+    [
+      '/api/v1/admin/themes/t/parts/header',
+      'themes.savePart',
+      ['t', 'header'],
+      204,
+      512 * 1024,
+      false,
+    ],
+    [
+      '/api/v1/admin/themes/t/templates/index',
+      'themes.saveTemplate',
+      ['t', 'index'],
+      204,
+      512 * 1024,
+      false,
+    ],
+    ['/api/v1/admin/content/1', 'admin.update', ['1'], 200, 1024 * 1024, true],
+    [
+      '/api/v1/admin/patterns/1',
+      'patterns.update',
+      ['1'],
+      200,
+      1024 * 1024,
+      true,
+    ],
+    [
+      '/api/v1/admin/content-types/post',
+      'contentTypes.update',
+      ['post'],
+      200,
+      512 * 1024,
+      true,
+    ],
+    [
+      '/api/v1/admin/fields/custom',
+      'fields.update',
+      ['custom'],
+      200,
+      512 * 1024,
+      true,
+    ],
+  ] as const;
+
+  for (const [path, method, args, status, limit, actor] of bodyRoutes) {
+    test(`manual JSON parsing and byte limits: ${path}`, async () => {
+      calls.length = 0;
+      const input = { value: 'valid' };
+      const send = (body: string) =>
+        call('PUT', path, {
+          token: TOKEN,
+          type: 'application/json',
+          body,
+        });
+      expect((await send(JSON.stringify(input))).status).toBe(status);
+      expect(calls).toEqual([
+        [method, ...args, input, ...(actor ? [user] : [])],
+      ]);
+      calls.length = 0;
+      const malformed = await send('{');
+      expect(malformed.status).toBe(400);
+      expect(await malformed.json()).toMatchObject({
+        error: { code: 'invalid_input', message: 'Request body must be JSON' },
+      });
+      expect(calls).toEqual([]);
+      // ASCII JSON quotes add two bytes, so these straddle the exact boundary.
+      expect((await send(JSON.stringify('x'.repeat(limit - 2)))).status).toBe(
+        status,
+      );
+      calls.length = 0;
+      expect((await send(JSON.stringify('x'.repeat(limit - 1)))).status).toBe(
+        413,
+      );
+      expect(calls).toEqual([]);
+    });
+  }
+
+  test('theme reset ignores junk JSON bodies', async () => {
+    for (const [path, method, args] of [
+      ['/api/v1/admin/themes/t/styles', 'themes.resetStyles', ['t']],
+      [
+        '/api/v1/admin/themes/t/parts/header',
+        'themes.resetPart',
+        ['t', 'header'],
+      ],
+      [
+        '/api/v1/admin/themes/t/templates/index',
+        'themes.resetTemplate',
+        ['t', 'index'],
+      ],
+    ] as const) {
+      calls.length = 0;
+      const response = await call('DELETE', path, {
+        token: TOKEN,
+        type: 'application/json',
+        body: '{',
+      });
+      expect(response.status).toBe(204);
+      expect(calls).toEqual([[method, ...args]]);
+    }
+  });
+
   test('static, dynamic and query routes keep their paths and inputs', async () => {
     expect(await (await call('GET', '/api/health')).json()).toEqual({
       status: 'ok',

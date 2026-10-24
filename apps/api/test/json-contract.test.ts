@@ -2,29 +2,24 @@ import { describe, expect, test } from 'bun:test';
 import { isJsonValue, stringifyJson } from '@cms/sdk';
 import type { PublicContent } from '@cms/sdk';
 import { definePlugin } from '@cms/sdk/plugin';
-import { ContentService } from '#api/domain/content/content-service';
 import {
   PublicContentService,
   PublishedContentReader,
 } from '#api/domain/content/public-content';
 import type { Database } from '#api/infra/prisma/client';
 import { PrismaPluginDataRepository } from '#api/infra/prisma/plugin-repositories';
-import { tiptapRenderer } from '#api/infra/system';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
 import type { PluginDataRepository } from '#api/plugin-runtime/ports';
 import {
   ADMIN,
   testFields,
   testTypes,
-  plainHasher,
   testLocks,
   MemoryContentRepository,
   MemoryPluginData,
-  fixedClock,
-  noUsers,
   recordingLogger,
-  sequentialIds,
 } from '#test/support/memory';
+import { testContentService, textDocument } from '#test/support/content';
 import { Embeds, vimeo, youtube } from '#api/domain/content/embeds';
 import { MemoryPublishedContentRepository } from '#test/support/memory-published';
 import { createRuntime } from '#test/support/runtime';
@@ -167,28 +162,13 @@ describe('content.public filter output', () => {
     const { logger, lines } = recordingLogger();
     const hooks = new HookBus({ timeoutMs: 50, logger });
 
-    const service = new ContentService({
-      repository,
-      renderer: tiptapRenderer,
-      hooks,
-      ids: sequentialIds(),
-      clock: fixedClock(),
-      users: noUsers,
-      hasher: plainHasher,
-      types: testTypes(),
-      fields: testFields(),
-    });
+    const service = testContentService({ repository, hooks });
     await service.create(
       {
         type: 'post',
         title: 'Hello',
         status: 'published',
-        document: {
-          type: 'doc',
-          content: [
-            { type: 'paragraph', content: [{ type: 'text', text: 'Body' }] },
-          ],
-        },
+        document: textDocument('Body'),
       },
       ADMIN,
     );

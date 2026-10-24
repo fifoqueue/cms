@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { PublicContent } from '@cms/sdk';
-import { DEFAULT_SITE_SETTINGS, toPublicEntrySeo } from '@cms/sdk';
+import { DEFAULT_SITE_SETTINGS } from '@cms/sdk';
 import { definePlugin } from '@cms/sdk/plugin';
 import type { PluginDefinition } from '@cms/sdk/plugin';
 import { PublishedContentReader } from '#api/domain/content/public-content';
@@ -14,34 +13,25 @@ import {
   MemorySettings,
 } from '#test/support/memory';
 import { MemoryPublishedContentRepository } from '#test/support/memory-published';
-import { MemorySeoSettingsRepository } from '#test/support/memory-seo';
+import { publicEntry } from '#test/support/content';
 import { createRuntime } from '#test/support/runtime';
 
-const content: PublicContent = {
-  id: '1',
-  type: 'post',
-  slug: 'hello',
-  path: '/hello',
-  seo: toPublicEntrySeo({}),
-  title: 'Hello',
-  excerpt: '',
-  html: '<p>Hi</p>',
-  publishedAt: '2026-01-01T00:00:00.000Z',
-  updatedAt: '2026-01-01T00:00:00.000Z',
-  categories: [],
-  tags: [],
-  extraTerms: [],
-  author: null,
-  sticky: false,
-  commentCount: 0,
-  protected: false,
-  featuredImage: null,
-  fields: {},
-  meta: {},
-};
+const content = publicEntry();
 const accept = () => true;
 const publicView = (runtime: ReturnType<typeof createRuntime>) =>
   runtime.hooks.applyFilter('content.public', content, accept);
+
+/** A runtime on the same storage, booted like a restarted server. */
+const restart = async (runtime: ReturnType<typeof createRuntime>) => {
+  const restarted = createRuntime({ storage: runtime.storage });
+  await restarted.host.boot();
+  return restarted;
+};
+
+const statuses = async (runtime: ReturnType<typeof createRuntime>) =>
+  Object.fromEntries(
+    (await runtime.host.list()).map((plugin) => [plugin.id, plugin.status]),
+  );
 
 const titlePlugin = (id = 'title-suffix', suffix = '!'): PluginDefinition =>
   definePlugin({
@@ -153,6 +143,12 @@ describe('PluginHost lifecycle', () => {
 
   test('rejects bundles that do not follow the plugin contract', async () => {
     const runtime = createRuntime();
+    await expect(
+      runtime.host.install(runtime.bundles.register('missing', undefined)),
+    ).rejects.toMatchObject({
+      code: 'invalid_input',
+      message: 'Bundle has no `plugin` export',
+    });
     const cases = [
       runtime.bundles.register('none', undefined),
       runtime.bundles.register('no-activate', {
@@ -290,13 +286,12 @@ describe('PluginHost lifecycle', () => {
     await runtime.host.stop();
     runtime.bundles.modules.delete('gone');
 
-    const restarted = createRuntime({ storage: runtime.storage });
-    await restarted.host.boot();
+    const restarted = await restart(runtime);
 
-    const statuses = Object.fromEntries(
-      (await restarted.host.list()).map((plugin) => [plugin.id, plugin.status]),
-    );
-    expect(statuses).toEqual({ good: 'active', gone: 'failed' });
+    expect(await statuses(restarted)).toEqual({
+      good: 'active',
+      gone: 'failed',
+    });
     expect((await publicView(restarted)).title).toBe('Hello!');
   });
 
@@ -336,12 +331,8 @@ describe('PluginHost lifecycle', () => {
     await runtime.host.enable('base');
     await runtime.host.stop();
 
-    const restarted = createRuntime({ storage: runtime.storage });
-    await restarted.host.boot();
-    const statuses = Object.fromEntries(
-      (await restarted.host.list()).map((plugin) => [plugin.id, plugin.status]),
-    );
-    expect(statuses).toEqual({
+    const restarted = await restart(runtime);
+    expect(await statuses(restarted)).toEqual({
       addon: 'active',
       base: 'active',
       future: 'failed',
@@ -386,7 +377,7 @@ describe('PluginHost lifecycle', () => {
 
   test('slots always cover every name, and read site and content only while a renderer is registered', async () => {
     const runtime = createRuntime();
-    const settings = new MemorySeoSettingsRepository();
+    const settings = new MemorySettings();
     const repository = new MemoryContentRepository();
     const reads: string[] = [];
     let onRead = async () => {};
@@ -731,8 +722,7 @@ describe('PluginHost install atomicity', () => {
     restoreState();
 
     await runtime.host.stop();
-    const restarted = createRuntime({ storage: runtime.storage });
-    await restarted.host.boot();
+    const restarted = await restart(runtime);
     expect(await restarted.host.list()).toMatchObject([
       { id: 'upgrade', enabled: true, status: 'active' },
     ]);
@@ -765,8 +755,7 @@ describe('PluginHost install atomicity', () => {
     restoreState();
 
     await runtime.host.stop();
-    const restarted = createRuntime({ storage: runtime.storage });
-    await restarted.host.boot();
+    const restarted = await restart(runtime);
     expect(await restarted.host.list()).toMatchObject([
       { id: 'upgrade', enabled: true, status: 'active' },
     ]);
@@ -785,8 +774,7 @@ describe('PluginHost install atomicity', () => {
     expect((await publicView(runtime)).title).toBe('Hello');
     restoreState();
 
-    const restarted = createRuntime({ storage: runtime.storage });
-    await restarted.host.boot();
+    const restarted = await restart(runtime);
     expect(await restarted.host.list()).toMatchObject([
       { id: 'title-suffix', enabled: false, status: 'inactive' },
     ]);
@@ -818,8 +806,145 @@ describe('PluginHost install atomicity', () => {
     );
 
     await runtime.host.stop();
-    const restarted = createRuntime({ storage: runtime.storage });
-    await restarted.host.boot();
+    const restarted = await restart(runtime);
     expect((await publicView(restarted)).title).toBe('Hello?');
+  });
+});
+
+describe('PluginHost bundle checks', () => {
+  /** A `plugin` export whose `activate` getter throws a plain error while it is checked. */
+  const throwingExport = (id: string) => ({
+    manifest: { id, name: id, version: '1.0.0' },
+    get activate(): never {
+      throw new Error('private-getter-sentinel');
+    },
+  });
+
+  test('boot fails a stored bundle that declares another id and still boots the rest', async () => {
+    const runtime = createRuntime();
+    await runtime.host.install(
+      runtime.bundles.register('good', titlePlugin('good')),
+    );
+    await runtime.host.install(
+      runtime.bundles.register('swapped', titlePlugin('swapped', '?')),
+    );
+    await runtime.host.enable('good');
+    await runtime.host.enable('swapped');
+    await runtime.host.stop();
+    // The stored bundle of "swapped" now declares a different plugin.
+    runtime.bundles.register('swapped', titlePlugin('impostor', '?'));
+
+    const restarted = await restart(runtime);
+
+    expect(await restarted.host.list()).toMatchObject([
+      { id: 'good', enabled: true, status: 'active' },
+      {
+        id: 'swapped',
+        enabled: true,
+        status: 'failed',
+        version: 'unknown',
+        error: 'Plugin failed. Check server logs for details.',
+      },
+    ]);
+    expect(restarted.lines).toContain(
+      'error Plugin "swapped" failed: Invalid plugin id "impostor"',
+    );
+    expect((await publicView(restarted)).title).toBe('Hello!');
+  });
+
+  test('reconcile fails an upgrade whose bundle declares another id, retiring the running version', async () => {
+    const first = createRuntime();
+    const second = createRuntime({ storage: first.storage });
+    await second.host.boot();
+    await first.host.install(
+      first.bundles.register('v1', titlePlugin('shared', '!')),
+    );
+    await first.host.enable('shared');
+    await second.host.reconcile();
+    expect((await publicView(second)).title).toBe('Hello!');
+
+    await first.host.install(
+      first.bundles.register('v2', titlePlugin('shared', '?')),
+    );
+    // What the second instance reads for the new entry declares a different plugin.
+    first.bundles.register('v2', titlePlugin('impostor', '?'));
+    await second.host.reconcile();
+
+    // The new entry replaces the running version even though it failed to load.
+    expect(await second.host.list()).toMatchObject([
+      {
+        id: 'shared',
+        enabled: true,
+        status: 'failed',
+        version: 'unknown',
+        error: 'Plugin failed. Check server logs for details.',
+      },
+    ]);
+    expect(second.lines).toContain(
+      'error Plugin "shared" failed: Invalid plugin id "impostor"',
+    );
+    expect((await publicView(second)).title).toBe('Hello');
+
+    // An unchanged entry stays failed without loading again.
+    const logged = second.lines.length;
+    await second.host.reconcile();
+    expect(await statuses(second)).toEqual({ shared: 'failed' });
+    expect(second.lines).toHaveLength(logged);
+
+    // A later upgrade with the right id recovers.
+    await first.host.install(
+      first.bundles.register('v3', titlePlugin('shared', '#')),
+    );
+    await second.host.reconcile();
+    expect(await statuses(second)).toEqual({ shared: 'active' });
+    expect((await publicView(second)).title).toBe('Hello#');
+  });
+
+  test('a plugin export that throws while checked is an import failure, logged on the server', async () => {
+    const runtime = createRuntime();
+    const error = await runtime.host
+      .install(runtime.bundles.register('getter', throwingExport('getter')))
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(DomainError);
+    expect(error).toMatchObject({
+      code: 'invalid_input',
+      message: 'Could not import plugin bundle',
+    });
+    expect(runtime.lines).toContain(
+      'error Could not validate plugin bundle: private-getter-sentinel',
+    );
+    expect(await runtime.host.list()).toEqual([]);
+    expect([...runtime.bundles.files.values()]).toEqual([]);
+  });
+
+  test('boot fails a stored bundle whose plugin export throws while checked', async () => {
+    const runtime = createRuntime();
+    await runtime.host.install(
+      runtime.bundles.register('good', titlePlugin('good')),
+    );
+    await runtime.host.install(
+      runtime.bundles.register('getter', titlePlugin('getter', '?')),
+    );
+    await runtime.host.enable('good');
+    await runtime.host.enable('getter');
+    await runtime.host.stop();
+    runtime.bundles.register('getter', throwingExport('getter'));
+
+    const restarted = await restart(runtime);
+
+    expect(await statuses(restarted)).toEqual({
+      getter: 'failed',
+      good: 'active',
+    });
+    expect(restarted.lines).toEqual(
+      expect.arrayContaining([
+        'error Could not validate plugin bundle: private-getter-sentinel',
+        'error Plugin "getter" failed: Could not import plugin bundle',
+      ]),
+    );
+    expect(JSON.stringify(await restarted.host.list())).not.toContain(
+      'private-getter-sentinel',
+    );
+    expect((await publicView(restarted)).title).toBe('Hello!');
   });
 });

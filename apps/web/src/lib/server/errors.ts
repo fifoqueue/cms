@@ -29,6 +29,7 @@ export const Errors = {
   ReassignToDeleted:
     'Choose someone who is not being deleted to receive the content.',
   PasswordOrInvite: 'Enter a password or send an invitation.',
+  ModerationInvalid: 'This comment action is not valid.',
 } as const;
 
 export interface FormIssue {
@@ -55,6 +56,15 @@ export const safeIssues = (issues: unknown): FormIssue[] | undefined => {
     ? parsed.data.map(({ path, message }) => ({ path, message }))
     : undefined;
 };
+
+/** Schema validation issues as form issues, with dotted field paths. */
+export const issuesOf = (
+  issues: readonly { path: readonly PropertyKey[]; message: string }[],
+): FormIssue[] =>
+  issues.map(({ path, message }) => ({
+    path: path.map(String).join('.'),
+    message,
+  }));
 
 /**
  * Turns API client errors (4xx) into a form failure. Anything else is rethrown. `extra` is

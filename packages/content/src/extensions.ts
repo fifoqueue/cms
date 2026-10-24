@@ -26,6 +26,9 @@ export { PluginBlock };
 import type { ContentDocument } from '@cms/sdk';
 import { Errors } from '#content/errors';
 import { DocumentNode, More, PageBreak, PatternRef } from '#content/breaks';
+import { EnhancedCodeBlock } from '#content/code';
+import { Callout } from '#content/callout';
+import { HeadingAnchor, TableOfContents, validTocCount } from '#content/toc';
 
 /**
  * An embedded page (video, post) by URL. Stored and rendered as a plain link inside a marked
@@ -60,8 +63,11 @@ export const Embed = Node.create({
 
 export const contentExtensions = [
   DocumentNode,
+  HeadingAnchor,
+  TableOfContents,
   StarterKit.configure({
     document: false,
+    codeBlock: false,
     heading: { levels: [2, 3, 4] },
     link: {
       openOnClick: false,
@@ -70,6 +76,7 @@ export const contentExtensions = [
     },
     horizontalRule: { HTMLAttributes: { class: 'cms-separator' } },
   }),
+  EnhancedCodeBlock,
   ContentImage,
   Audio,
   Video,
@@ -84,6 +91,7 @@ export const contentExtensions = [
   DetailsSummary,
   DetailsContent,
   Pullquote,
+  Callout,
   Spacer,
   TableKit.configure({ table: false }),
   ContentTable,
@@ -105,6 +113,7 @@ export const parseDocument = (document: ContentDocument) => {
   try {
     if (!contentDocumentSchema.safeParse(document).success)
       throw new Error(Errors.InvalidDocument);
+    if (!validTocCount(document)) throw new Error(Errors.InvalidDocument);
     const stack: Record<string, unknown>[] = [document];
     while (stack.length) {
       const raw = stack.pop()!;

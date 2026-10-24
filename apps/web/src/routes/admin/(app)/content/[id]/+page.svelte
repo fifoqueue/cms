@@ -6,7 +6,9 @@
   import type { SubmitFunction } from '$app/forms';
   import { ExternalLink, RotateCcw, Trash2 } from '@lucide/svelte';
   import ContentForm from '#lib/admin/ContentForm.svelte';
+  import { onMount } from 'svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import { forgetParams, notifySuccess } from '#lib/feedback.js';
   import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -39,6 +41,13 @@
     };
   };
   const date = (value: string) => new Date(value).toLocaleString(i18n.language);
+
+  // The revisions screen restores a version and comes back with `?restored`.
+  onMount(() => {
+    if (!page.url.searchParams.has('restored')) return;
+    notifySuccess(m.revisionRestored);
+    forgetParams('restored');
+  });
 </script>
 
 <svelte:head><title>{data.entry.title}</title></svelte:head>
@@ -76,10 +85,8 @@
   </div>
 </div>
 
-<FormMessage {form} />
-{#if page.url.searchParams.has('restored')}
-  <Alert><AlertTitle>{m.revisionRestored}</AlertTitle></Alert>
-{/if}
+<!-- A refused save (it echoes the `values`) shows in the editor, by its save button. -->
+<FormMessage form={form && 'values' in form ? null : form} />
 
 {#if data.autosave && !data.useAutosave}
   <Alert>
@@ -106,7 +113,7 @@
     ).length}
     fieldImages={data.fieldImages}
     canManageTerms={data.canManageTerms}
-    created={page.url.searchParams.get('saved')}
+    created={(page.shallow?.url ?? page.url).searchParams.get('saved')}
     values={form && 'values' in form ? form.values : undefined}
     draft={data.useAutosave && data.autosave ? data.autosave : undefined}
     parentPages={data.parentPages}

@@ -2,8 +2,7 @@ import { resolveArchivePath } from '@cms/sdk';
 import { error, redirect } from '@sveltejs/kit';
 import { contentApi } from '#lib/server/api.js';
 import { sessionToken } from '#lib/server/session-cookie.js';
-import { commentAction } from '#lib/server/comments.js';
-import { entryPage } from '#lib/server/content-page.js';
+import { entryActions, entryPage } from '#lib/server/content-page.js';
 import { Errors, notFoundFrom } from '#lib/server/errors.js';
 import { latestPosts, loadTermArchive } from '#lib/server/archive.js';
 import { pageParam } from '#lib/server/public-view.js';
@@ -14,7 +13,7 @@ import {
   loadTemplateData,
   withTemplateData,
 } from '#lib/server/theme-queries.js';
-import { unlockAction, unlockProofs } from '#lib/server/unlock.js';
+import { unlockProofs } from '#lib/server/unlock.js';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -78,8 +77,7 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
-  unlock: unlockAction,
-  comment: commentAction,
+  ...entryActions,
   login: loginAction,
   sso: loginSsoAction,
 };

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
+  import SettingsForm from '#lib/admin/settings/SettingsForm.svelte';
+  import MaskedSecretField from '#lib/admin/settings/MaskedSecretField.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -60,15 +61,15 @@
       <p class="text-destructive" role="alert">{status.lastError}</p>
     {/if}
     <div class="flex flex-wrap gap-2">
-      <form method="POST" action="?/test" use:enhance>
+      <SettingsForm action="?/test" reset>
         <Button type="submit" variant="outline" size="sm">{m.searchTest}</Button
         >
-      </form>
-      <form method="POST" action="?/reindex" use:enhance>
+      </SettingsForm>
+      <SettingsForm action="?/reindex" reset>
         <Button type="submit" variant="outline" size="sm"
           >{m.searchReindex}</Button
         >
-      </form>
+      </SettingsForm>
     </div>
   </CardContent>
 </Card>
@@ -76,14 +77,7 @@
 <Card>
   <CardHeader><CardTitle>{m.settingsSearch}</CardTitle></CardHeader>
   <CardContent>
-    <form
-      method="POST"
-      action="?/save"
-      use:enhance={() =>
-        ({ update }) =>
-          update({ reset: false })}
-      class="grid gap-4 sm:grid-cols-2"
-    >
+    <SettingsForm action="?/save" class="grid gap-4 sm:grid-cols-2">
       <label class="flex items-center gap-2 text-sm sm:col-span-2">
         <input type="checkbox" name="enabled" checked={settings.enabled} />
         {m.searchEnabled}
@@ -108,26 +102,18 @@
           value={settings.indexPrefix}
         />
       </div>
-      <div class="grid gap-2 sm:col-span-2">
-        <Label for="apiKey">{m.searchApiKey}</Label>
-        <Input
-          id="apiKey"
-          name="apiKey"
-          type="password"
-          autocomplete="off"
-          placeholder={settings.apiKeyConfigured ? '••••••••' : ''}
-        />
-        {#if settings.apiKeyConfigured}
-          <label class="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="removeApiKey" />
-            {m.searchRemoveApiKey}
-          </label>
-        {/if}
-      </div>
+      <MaskedSecretField
+        class="grid gap-2 sm:col-span-2"
+        name="apiKey"
+        label={m.searchApiKey}
+        configured={settings.apiKeyConfigured}
+        removeName="removeApiKey"
+        removeLabel={m.searchRemoveApiKey}
+      />
       <p class="text-sm text-muted-foreground sm:col-span-2">
         {m.searchFallbackHelp}
       </p>
       <div><Button type="submit">{m.save}</Button></div>
-    </form>
+    </SettingsForm>
   </CardContent>
 </Card>

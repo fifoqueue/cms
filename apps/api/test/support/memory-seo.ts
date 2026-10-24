@@ -4,29 +4,8 @@ import type {
   SeoDiscoveryRecord,
   SeoDiscoveryRepository,
 } from '#api/domain/seo/seo-discovery-repository';
-import type { SettingsRepository } from '#api/domain/site/site-service';
 import { withDescendants } from '#api/domain/taxonomy/hierarchy';
 import type { MemoryContentRepository } from '#test/support/memory';
-
-export class MemorySeoSettingsRepository implements SettingsRepository {
-  readonly values = new Map<string, unknown>();
-
-  async list(prefix: string): Promise<Record<string, unknown>> {
-    return Object.fromEntries(
-      [...this.values]
-        .filter(([key]) => key.startsWith(prefix))
-        .map(([key, value]) => [key, structuredClone(value)]),
-    );
-  }
-
-  async get(key: string) {
-    return structuredClone(this.values.get(key));
-  }
-
-  async set(key: string, value: unknown) {
-    this.values.set(key, structuredClone(value));
-  }
-}
 
 export class MemorySeoDiscoveryRepository implements SeoDiscoveryRepository {
   constructor(private readonly content: MemoryContentRepository) {}

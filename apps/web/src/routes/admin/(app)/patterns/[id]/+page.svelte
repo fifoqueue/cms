@@ -79,7 +79,10 @@
       <Editor name="document" label={m.fieldBody} bind:value={body} />
     </div>
   </div>
-  <aside class="space-y-4">
+  <!-- The padding inside the scroller keeps the fields' focus rings visible. -->
+  <aside
+    class="space-y-4 lg:sticky lg:top-4 lg:-m-1 lg:max-h-[calc(100dvh-2rem)] lg:self-start lg:overflow-y-auto lg:p-1"
+  >
     <label class="flex items-start gap-2 text-sm">
       <input
         type="checkbox"

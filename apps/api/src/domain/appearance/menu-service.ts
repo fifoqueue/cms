@@ -1,4 +1,5 @@
 import { archivePath } from '@cms/sdk';
+import { readCache } from '#api/domain/appearance/read-cache';
 import type { ArchivePathsService } from '#api/domain/permalinks/archive-paths';
 import { MENU_LOCATIONS, menusSettingsSchema } from '@cms/sdk';
 import type {
@@ -94,14 +95,7 @@ export class MenuService {
   /** Both theme locations from one settings read. */
   async publicLocations() {
     const settings = await this.stored();
-    const cached = new Map<string, Promise<unknown>>();
-    const once = <T>(key: string, read: () => Promise<T>): Promise<T> => {
-      const existing = cached.get(key);
-      if (existing) return existing as Promise<T>;
-      const value = read();
-      cached.set(key, value);
-      return value;
-    };
+    const once = readCache();
     const [primary, footer] = await Promise.all(
       MENU_LOCATIONS.map((location) => {
         const id = settings.locations[location];

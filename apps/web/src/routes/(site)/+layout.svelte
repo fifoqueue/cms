@@ -5,9 +5,11 @@
   import type { SlotMap } from '@cms/sdk';
   import { buildHead, sitePage } from '#lib/seo/head.js';
   import SeoHead from '#lib/seo/SeoHead.svelte';
+  import Toasts from '#lib/components/Toasts.svelte';
   import AdminBar from '#lib/theme/AdminBar.svelte';
   import SlotOutlet from '#lib/theme/SlotOutlet.svelte';
-  import { scopedCss, themeStyle } from '#lib/theme/style.js';
+  import ThemeStylesheet from '#lib/theme/ThemeStylesheet.svelte';
+  import { siteScheme, themeStyle } from '#lib/theme/style.js';
   import { provideI18n } from '#lib/i18n/index.js';
   import { provideDateStyle } from '#lib/theme/format.js';
   import type { LayoutProps } from './$types';
@@ -31,9 +33,12 @@
     }),
   );
 
+  /** Over the back-to-top button: its own bottom (`ReadingProgress`), height and a gap. */
+  const TOAST_LIFT =
+    'max(1rem, env(safe-area-inset-bottom), var(--cms-bulk-bar-offset, 0px) + 0.75rem) + 2.5rem';
+
   // Every page loads its own slots; error pages have none.
   const slots = $derived(page.data.slots as SlotMap | undefined);
-  const css = $derived(scopedCss(data.theme.css));
 </script>
 
 <SeoHead {head} />
@@ -47,11 +52,8 @@
     <link rel="apple-touch-icon" href={data.site.icon.url} />
   {/if}
   <SlotOutlet fragments={slots?.head ?? []} />
-  {#if css}
-    <!-- eslint-disable-next-line svelte/no-at-html-tags -- the theme stylesheet, checked by cssProblem (no markup, no resources, balanced braces) -->
-    {@html `<style>${css}</style>`}
-  {/if}
 </svelte:head>
+<ThemeStylesheet css={data.theme.css} />
 
 <a
   href="#main"
@@ -76,17 +78,21 @@
   lang={data.site.locale}
   data-theme={data.theme.id}
 >
-  {#if data.theme.preview && !data.toolbar}
-    <p
-      class="bg-amber-100 px-4 py-2 text-center text-sm text-amber-950"
-      role="status"
-    >
-      {i18n.m.themePreviewing(data.theme.name)}
-      <a
-        {...routeLink('/admin/(app)/appearance/preview/exit')}
-        class="ml-2 underline">{i18n.m.themePreviewExit}</a
+  <!-- Inside the site wrapper for the theme's colors; above the back-to-top button (3rem)
+       and the comment bulk bar (`--cms-bulk-bar-offset`). -->
+  <Toasts theme={siteScheme(data.theme) ?? 'light'} lift={TOAST_LIFT}>
+    {#if data.theme.preview && !data.toolbar}
+      <p
+        class="bg-amber-100 px-4 py-2 text-center text-sm text-amber-950"
+        role="status"
       >
-    </p>
-  {/if}
-  {@render children()}
+        {i18n.m.themePreviewing(data.theme.name)}
+        <a
+          {...routeLink('/admin/(app)/appearance/preview/exit')}
+          class="ml-2 underline">{i18n.m.themePreviewExit}</a
+        >
+      </p>
+    {/if}
+    {@render children()}
+  </Toasts>
 </div>

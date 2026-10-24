@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { DEFAULT_ENTRY_SEO, DEFAULT_PERMALINK_SETTINGS } from '@cms/sdk';
 import type { ContentInput } from '@cms/sdk';
-import { ContentService } from '#api/domain/content/content-service';
 import { checkContentParent } from '#api/domain/content/hierarchy';
 import { mediaIdsOf } from '#api/domain/content/plain-text';
 import { MenuService } from '#api/domain/appearance/menu-service';
@@ -26,21 +25,19 @@ import {
   MemorySettings,
   testFields,
   testTypes,
-  plainHasher,
   plainSigner,
   testLocks,
   MemoryContentRepository,
   fixedClock,
   recordingLogger,
   sequentialIds,
-  noUsers,
   userRecord,
 } from '#test/support/memory';
+import { testContentService, textDocument } from '#test/support/content';
 import { MemoryUserDirectory } from '#test/support/memory-users';
 import { MemoryUsers } from '#test/support/sso-memory';
 import { Embeds, vimeo, youtube } from '#api/domain/content/embeds';
 import { MemoryPublishedContentRepository } from '#test/support/memory-published';
-import { MemorySeoSettingsRepository } from '#test/support/memory-seo';
 import { MemoryTaxonomyRepository } from '#test/support/memory-taxonomy';
 
 test('page parent rejects moving a page beneath its own descendant', async () => {
@@ -83,18 +80,22 @@ const setup = () => {
   const revisions = repository.revisions;
   /** Settings → Writing's default category. */
   const writing = { category: null as string | null };
-  const service = new ContentService({
+  const service = testContentService({
     repository,
-    renderer: tiptapRenderer,
     hooks,
     ids,
     clock,
-    users: noUsers,
-    hasher: plainHasher,
-    types: testTypes(),
-    fields: testFields(),
     defaultCategory: async () => writing.category,
   });
+  /** Revision use cases over `service`, numbering their own ids unless given others. */
+  const revisionService = (revisionIds = sequentialIds()) =>
+    new RevisionService({
+      content: service,
+      revisions,
+      renderer: tiptapRenderer,
+      ids: revisionIds,
+      clock,
+    });
   const published = new MemoryPublishedContentRepository(repository);
   const protectedActions: string[] = [];
   const publicContent = new PublicContentService(
@@ -116,6 +117,7 @@ const setup = () => {
     clock,
     repository,
     revisions,
+    revisionService,
     protectedActions,
     writing,
   };
@@ -124,10 +126,7 @@ const setup = () => {
 const input = (overrides: Partial<ContentInput> = {}): ContentInput => ({
   type: 'post',
   title: 'Hello World',
-  document: {
-    type: 'doc',
-    content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Body' }] }],
-  },
+  document: textDocument('Body'),
   ...overrides,
 });
 
@@ -409,14 +408,8 @@ describe('ContentService', () => {
   });
 
   test('saves keep revisions, restores copy only the text, and previews show the autosave', async () => {
-    const { service, revisions, clock } = setup();
-    const history = new RevisionService({
-      content: service,
-      revisions,
-      renderer: tiptapRenderer,
-      ids: sequentialIds(),
-      clock,
-    });
+    const { service, revisions, clock, revisionService } = setup();
+    const history = revisionService();
     const previews = new PreviewService({
       content: service,
       revisions,
@@ -556,14 +549,8 @@ describe('ContentService', () => {
   });
 
   test('partial edits keep unsaved editor text: refused while an autosave is pending, never discarding one', async () => {
-    const { service, revisions, clock } = setup();
-    const history = new RevisionService({
-      content: service,
-      revisions,
-      renderer: tiptapRenderer,
-      ids: sequentialIds(),
-      clock,
-    });
+    const { service, clock, revisionService } = setup();
+    const history = revisionService();
     const entry = await service.create(input(), ADMIN);
     const unsaved = {
       title: 'Hello World',
@@ -613,14 +600,8 @@ describe('ContentService', () => {
   });
 
   test('scheduled publishing advances the version and keeps unsaved editor text pending', async () => {
-    const { service, repository, clock } = setup();
-    const history = new RevisionService({
-      content: service,
-      revisions: repository.revisions,
-      renderer: tiptapRenderer,
-      ids: sequentialIds(),
-      clock,
-    });
+    const { service, clock, revisionService } = setup();
+    const history = revisionService();
     clock.set('2026-03-01T00:00:00.000Z');
     const entry = await service.create(
       input({ status: 'scheduled', publishedAt: '2026-03-01T00:00:00.500Z' }),
@@ -657,14 +638,8 @@ describe('ContentService', () => {
   });
 
   test('deleting newest and all saved history preserves the text watermark and every autosave', async () => {
-    const { service, repository, revisions, clock } = setup();
-    const history = new RevisionService({
-      content: service,
-      revisions,
-      renderer: tiptapRenderer,
-      ids: { next: () => crypto.randomUUID() },
-      clock,
-    });
+    const { service, repository, revisions, clock, revisionService } = setup();
+    const history = revisionService({ next: () => crypto.randomUUID() });
     const other = { id: 'editor', role: 'editor' };
     const entry = await service.create(input(), ADMIN);
     const unrelated = await service.create(
@@ -752,14 +727,8 @@ describe('ContentService', () => {
   test.each(['publish', 'reassign'] as const)(
     'revision deletion rejects stale ownership after %s',
     async (change) => {
-      const { service, repository, revisions, clock } = setup();
-      const history = new RevisionService({
-        content: service,
-        revisions,
-        renderer: tiptapRenderer,
-        ids: sequentialIds(),
-        clock,
-      });
+      const { service, repository, revisions, revisionService } = setup();
+      const history = revisionService();
       const contributor = { id: 'writer', role: 'contributor' };
       const entry = await service.create(input(), contributor);
       const revision = (await history.list(entry.id, contributor))[0]!;
@@ -817,14 +786,8 @@ describe('ContentService', () => {
   test.each(['delete', 'save'] as const)(
     'restore rejects a source/content changed by %s before its locked write',
     async (change) => {
-      const { service, repository, revisions, clock } = setup();
-      const history = new RevisionService({
-        content: service,
-        revisions,
-        renderer: tiptapRenderer,
-        ids: sequentialIds(),
-        clock,
-      });
+      const { service, repository, revisionService } = setup();
+      const history = revisionService();
       const entry = await service.create(input({ title: 'Original' }), ADMIN);
       const source = (await history.list(entry.id, ADMIN))[0]!;
       await service.update(entry.id, input({ title: 'Current' }), ADMIN);
@@ -856,14 +819,8 @@ describe('ContentService', () => {
   );
 
   test('a full save and an overlapping later autosave share one write queue without losing newer text', async () => {
-    const { service, revisions, clock } = setup();
-    const history = new RevisionService({
-      content: service,
-      revisions,
-      renderer: tiptapRenderer,
-      ids: { next: () => crypto.randomUUID() },
-      clock,
-    });
+    const { service, revisions, revisionService } = setup();
+    const history = revisionService({ next: () => crypto.randomUUID() });
     const entry = await service.create(input(), ADMIN);
     const save = revisions.save.bind(revisions);
     let autosave: Promise<void> | undefined;
@@ -883,14 +840,9 @@ describe('ContentService', () => {
   });
 
   test('metadata-only writes preserve another writer’s autosave and current revision; full saves clear only their own covered autosave', async () => {
-    const { service, repository, revisions, clock, taxonomy } = setup();
-    const history = new RevisionService({
-      content: service,
-      revisions,
-      renderer: tiptapRenderer,
-      ids: { next: () => crypto.randomUUID() },
-      clock,
-    });
+    const { service, repository, revisions, clock, taxonomy, revisionService } =
+      setup();
+    const history = revisionService({ next: () => crypto.randomUUID() });
     const entry = await service.create(input(), ADMIN);
     const other = { id: 'writer', role: 'editor' };
     clock.set('2026-03-01T00:00:00Z');
@@ -939,14 +891,8 @@ describe('ContentService', () => {
   });
 
   test('revision persistence failure rolls back content, paths, watermark and autosaves before hooks run', async () => {
-    const { service, repository, revisions, clock, events } = setup();
-    const history = new RevisionService({
-      content: service,
-      revisions,
-      renderer: tiptapRenderer,
-      ids: { next: () => crypto.randomUUID() },
-      clock,
-    });
+    const { service, repository, revisions, events, revisionService } = setup();
+    const history = revisionService({ next: () => crypto.randomUUID() });
     const entry = await service.create(input(), ADMIN);
     await history.autosave(
       entry.id,
@@ -1094,11 +1040,7 @@ describe('ContentService', () => {
       .provide('content.before', ({ content }) => content?.title ?? '');
     const slots = new SlotService({
       registry,
-      site: new SiteService(
-        new MemorySeoSettingsRepository(),
-        hooks,
-        async () => new Map(),
-      ),
+      site: new SiteService(new MemorySettings(), hooks, async () => new Map()),
       content: new PublishedContentReader(
         new MemoryPublishedContentRepository(repository),
       ),
@@ -1514,17 +1456,7 @@ describe('content types and fields', () => {
       timeoutMs: 50,
       logger: recordingLogger().logger,
     });
-    const service = new ContentService({
-      repository,
-      renderer: tiptapRenderer,
-      hooks,
-      ids: sequentialIds(),
-      clock: fixedClock(),
-      users: noUsers,
-      hasher: plainHasher,
-      types,
-      fields,
-    });
+    const service = testContentService({ repository, hooks, types, fields });
     const published = new MemoryPublishedContentRepository(repository);
     const publicContent = new PublicContentService(
       new PublishedContentReader(published),

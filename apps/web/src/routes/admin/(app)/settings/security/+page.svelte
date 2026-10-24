@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
+  import SettingsForm from '#lib/admin/settings/SettingsForm.svelte';
   import { CAPTCHA_PROVIDERS, PROTECTED_ACTIONS, RATE_RULES } from '@cms/sdk';
   import type { ProtectedAction, RateRuleName } from '@cms/sdk';
   import FormMessage from '#lib/admin/FormMessage.svelte';
-  import { Badge } from '#lib/components/ui/badge/index.js';
+  import SecretField from '#lib/admin/settings/SecretField.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
     Card,
@@ -58,13 +58,7 @@
 
 <FormMessage {form} />
 
-<form
-  method="POST"
-  use:enhance={() =>
-    ({ update }) =>
-      update({ reset: false })}
-  class="space-y-6"
->
+<SettingsForm class="space-y-6">
   <Card>
     <CardHeader><CardTitle>{m.captchaTitle}</CardTitle></CardHeader>
     <CardContent class="grid gap-4 sm:grid-cols-2">
@@ -94,31 +88,13 @@
           value={settings.captcha.siteKey}
         />
       </div>
-      <div class="grid gap-2">
-        <Label for="secretKey" class="flex items-center gap-2">
-          {m.captchaSecretKey}
-          {#if settings.captcha.secretConfigured}
-            <Badge variant="secondary">{m.secretSaved}</Badge>
-          {/if}
-        </Label>
-        <Input
-          id="secretKey"
-          name="secretKey"
-          type="password"
-          autocomplete="off"
-          maxlength={500}
-          aria-describedby="secret-help"
-        />
-        <p id="secret-help" class="text-xs text-muted-foreground">
-          {m.secretKeep}
-        </p>
-        {#if settings.captcha.secretConfigured}
-          <label class="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="removeSecret" />
-            {m.secretRemove}
-          </label>
-        {/if}
-      </div>
+      <SecretField
+        name="secretKey"
+        label={m.captchaSecretKey}
+        configured={settings.captcha.secretConfigured}
+        removeName="removeSecret"
+        helpId="secret-help"
+      />
       <div class="grid gap-2">
         <Label for="minimumScore">{m.captchaMinimumScore}</Label>
         <Input
@@ -239,6 +215,14 @@
       <CardDescription>{m.mediaAdmissionHelp}</CardDescription>
     </CardHeader>
     <CardContent class="grid gap-4 sm:grid-cols-2">
+      <label class="flex items-center gap-2">
+        <input
+          type="checkbox"
+          name="media.allowSvg"
+          checked={settings.media.allowSvg === true}
+        />
+        {m.mediaAllowSvg}
+      </label>
       <div class="grid gap-2">
         <Label for="media-uploads">{m.mediaUploadsPerHour}</Label>
         <Input
@@ -265,4 +249,4 @@
   </Card>
 
   <Button type="submit">{m.save}</Button>
-</form>
+</SettingsForm>

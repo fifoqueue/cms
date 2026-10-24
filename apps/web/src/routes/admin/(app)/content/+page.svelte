@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { Path } from '$app/types';
   import { resolve } from '$app/paths';
-  import { SvelteURLSearchParams } from 'svelte/reactivity';
+  import { listQuery } from '#lib/admin/list-query.js';
+  import ListPager from '#lib/admin/ListPager.svelte';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
   import { CONTENT_STATUSES, UNPUBLISHED_STATUSES } from '@cms/sdk';
@@ -44,24 +45,19 @@
   const m = $derived(i18n.m);
   const trash = $derived(data.filter.view === 'trash');
 
-  const lastPage = $derived(
-    Math.max(1, Math.ceil(data.content.total / data.content.pageSize)),
-  );
-
   const query = (
     changes: Record<string, string | number | undefined>,
-  ): `?${string}` => {
-    const params = new SvelteURLSearchParams();
-    for (const [key, value] of Object.entries({
-      ...data.filter,
-      page: data.content.page,
-      ...changes,
-    })) {
-      if (value !== undefined && value !== 'active')
-        params.set(key, String(value));
-    }
-    return `?${params}`;
-  };
+  ): `?${string}` =>
+    listQuery(
+      Object.fromEntries(
+        Object.entries({
+          ...data.filter,
+          page: data.content.page,
+          ...changes,
+        }).filter(([, value]) => value !== 'active'),
+      ),
+      {},
+    );
 
   let selected = $state<string[]>([]);
   const selectable = $derived(
@@ -631,23 +627,7 @@
   </Table>
 </div>
 
-{#if lastPage > 1}
-  <div class="flex justify-between text-sm">
-    {#if data.content.page > 1}<a
-        href={resolve(
-          `/admin/(app)/content${query({ page: data.content.page - 1 })}`,
-        )}>{m.previous}</a
-      >{:else}<span></span>{/if}
-    <span class="text-muted-foreground"
-      >{m.pageOf(data.content.page, lastPage)}</span
-    >
-    {#if data.content.page < lastPage}<a
-        href={resolve(
-          `/admin/(app)/content${query({ page: data.content.page + 1 })}`,
-        )}>{m.next}</a
-      >{:else}<span></span>{/if}
-  </div>
-{/if}
+<ListPager route="/admin/(app)/content" list={data.content} {query} />
 
 <style>
   .filter {

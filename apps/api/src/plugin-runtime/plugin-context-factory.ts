@@ -89,38 +89,42 @@ export class PluginContextFactory {
       pluginId: id,
       hooks: {
         on: <K extends ActionName>(name: K, handler: ActionHandler<K>) =>
-          scope.track(hookRegistrar.on(name, handler)),
+          scope.track(() => hookRegistrar.on(name, handler)),
         filter: <K extends FilterName>(
           name: K,
           handler: FilterHandler<K>,
           priority?: number,
-        ) => scope.track(hookRegistrar.filter(name, handler, priority)),
+        ) => scope.track(() => hookRegistrar.filter(name, handler, priority)),
       },
       slots: {
         provide: (slot, renderer) =>
-          scope.track(slotRegistrar.provide(slot, renderer)),
+          scope.track(() => slotRegistrar.provide(slot, renderer)),
       },
       widgets: {
         provide: (key, widget) =>
-          scope.track(widgetRegistrar.provide(key, widget)),
+          scope.track(() => widgetRegistrar.provide(key, widget)),
       },
       embeds: {
-        register: (provider) => scope.track(embedRegistrar.register(provider)),
+        register: (provider) =>
+          scope.track(() => embedRegistrar.register(provider)),
       },
       blocks: {
         register: (key, block) =>
-          scope.track(blockRegistrar.register(key, block)),
+          scope.track(() => blockRegistrar.register(key, block)),
       },
       tasks: {
         every: (name, intervalMs, task) => {
           if (!TASK_NAME.test(name) || name.length > 64)
             throw new Error(Errors.PluginTaskNameInvalid(name));
-          return scope.track(
+          return scope.track(() =>
             scheduler.add({
               name: `plugin:${id}:${name}`,
               intervalMs: Math.max(MIN_TASK_INTERVAL_MS, intervalMs),
               run: async () => {
-                const result = await isolate(task, TASK_TIMEOUT_MS);
+                const result = await isolate(
+                  () => scope.run(task),
+                  TASK_TIMEOUT_MS,
+                );
                 if (!result.ok)
                   log.warn(`task "${name}" failed: ${result.error.message}`);
               },
@@ -129,23 +133,30 @@ export class PluginContextFactory {
         },
       },
       admin: {
-        page: (key, page) => scope.track(pageRegistrar.page(key, page)),
+        page: (key, page) => scope.track(() => pageRegistrar.page(key, page)),
         dashboardWidget: (key, widget) =>
-          scope.track(widgetBoxes.dashboardWidget(key, widget)),
+          scope.track(() => widgetBoxes.dashboardWidget(key, widget)),
       },
-      routes: { add: (route) => scope.track(routeRegistrar.add(route)) },
+      routes: { add: (route) => scope.track(() => routeRegistrar.add(route)) },
       settings: {
-        get: (key) => settings.value(manifest, key),
-        all: () => settings.values(manifest),
+        get: (key) => scope.run(() => settings.value(manifest, key)),
+        all: () => scope.run(() => settings.values(manifest)),
       },
       storage: {
         get: async <T>(key: string) =>
-          (await data.get(id, 'kv', checkKey(key))) as T | undefined,
-        set: (key, value) => data.set(id, 'kv', checkKey(key), value),
-        delete: (key) => data.delete(id, 'kv', checkKey(key)),
-        keys: async () => Object.keys(await data.entries(id, 'kv')),
+          (await scope.run(() => data.get(id, 'kv', checkKey(key)))) as
+            T | undefined,
+        set: (key, value) =>
+          scope.run(() => data.set(id, 'kv', checkKey(key), value)),
+        delete: (key) => scope.run(() => data.delete(id, 'kv', checkKey(key))),
+        keys: () =>
+          scope.run(async () => Object.keys(await data.entries(id, 'kv'))),
       },
-      content,
+      // Do not expose the concrete reader: it also implements private reads and unlock callbacks.
+      content: Object.freeze<ContentReader>({
+        list: (query) => scope.run(() => content.list(query)),
+        getBySlug: (slug) => scope.run(() => content.getBySlug(slug)),
+      }),
       logger: log,
     } satisfies PluginContext);
   }

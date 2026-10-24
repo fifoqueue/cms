@@ -1,6 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import { eachBounded, readSelection } from '#lib/server/bulk.js';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
+import { submitAction } from '#lib/server/form-action.js';
 import { adminFor } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -37,38 +38,37 @@ export const load: PageServerLoad = async (event) => {
   };
 };
 
-/** Runs a plugin command and reports the outcome as form data. */
-const attempt = async (task: () => Promise<unknown>, notice: string) => {
-  try {
-    await task();
-  } catch (caught) {
-    return failFrom(caught);
-  }
-  return { notice };
-};
-
 export const actions: Actions = {
   install: async (event) => {
     const bundle = (await event.request.formData()).get('bundle');
     if (!(bundle instanceof File) || bundle.size === 0)
       return fail(400, { message: Errors.PluginBundleRequired });
     const source = await bundle.text();
-    return attempt(
+    return submitAction(
       () => adminFor(event).plugins.install(source),
       'pluginInstalled',
     );
   },
   enable: async (event) => {
     const id = text(await event.request.formData(), 'id');
-    return attempt(() => adminFor(event).plugins.enable(id), 'pluginEnabled');
+    return submitAction(
+      () => adminFor(event).plugins.enable(id),
+      'pluginEnabled',
+    );
   },
   disable: async (event) => {
     const id = text(await event.request.formData(), 'id');
-    return attempt(() => adminFor(event).plugins.disable(id), 'pluginDisabled');
+    return submitAction(
+      () => adminFor(event).plugins.disable(id),
+      'pluginDisabled',
+    );
   },
   remove: async (event) => {
     const id = text(await event.request.formData(), 'id');
-    return attempt(() => adminFor(event).plugins.remove(id), 'pluginRemoved');
+    return submitAction(
+      () => adminFor(event).plugins.remove(id),
+      'pluginRemoved',
+    );
   },
   /** Reports the latest version from the plugin's update address; installs nothing. */
   update: async (event) => {

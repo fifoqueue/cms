@@ -60,7 +60,7 @@
   const TITLE = {
     small: 'text-base',
     medium: 'text-xl',
-    large: 'text-2xl sm:text-3xl',
+    large: 'text-2xl @min-[40rem]:text-3xl',
   } as const;
   const HEADING = [
     '',

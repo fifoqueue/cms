@@ -93,6 +93,7 @@ const captchaModesSchema = z.object(
 );
 
 export const mediaAdmissionSchema = z.object({
+  allowSvg: z.boolean().optional(),
   /** Per-user uploads in a rolling fixed one-hour window; zero disables the limit. */
   uploadsPerHour: z.number().int().min(0).max(100_000),
   /** Free storage retained after every committed upload; zero disables the floor. */
@@ -102,6 +103,7 @@ export const mediaAdmissionSchema = z.object({
 export type MediaAdmission = z.output<typeof mediaAdmissionSchema>;
 
 export const DEFAULT_MEDIA_ADMISSION: MediaAdmission = {
+  allowSvg: false,
   uploadsPerHour: 60,
   freeSpaceMb: 256,
 };

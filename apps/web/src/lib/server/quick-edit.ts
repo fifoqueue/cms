@@ -2,7 +2,7 @@ import { fail } from '@sveltejs/kit';
 import { contentInputSchema } from '@cms/sdk';
 import type { ContentEntry } from '@cms/sdk';
 import type { FormFailure } from '#lib/server/errors.js';
-import { Errors, text } from '#lib/server/errors.js';
+import { Errors, issuesOf, text } from '#lib/server/errors.js';
 
 const ids = (form: FormData, key: string) =>
   form.getAll(key).filter((id) => typeof id === 'string');
@@ -44,10 +44,7 @@ export const readQuickEdit = (entry: ContentEntry, form: FormData) => {
     failure: fail(400, {
       quickEdit: entry.id,
       message: Errors.FormInvalid,
-      issues: result.error.issues.map(({ path, message }) => ({
-        path: path.map(String).join('.'),
-        message,
-      })),
+      issues: issuesOf(result.error.issues),
     } satisfies FormFailure & { quickEdit: string }),
   };
 };

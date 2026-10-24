@@ -30,20 +30,24 @@ export class EmbedRegistry {
   }
 
   providers(): EmbedProvider[] {
-    return this.registrations.map(({ owner, provider }) => ({
-      name: `${owner}:${provider.name}`,
+    return this.registrations.map((entry) => ({
+      name: `${entry.owner}:${entry.provider.name}`,
       render: async (url) => {
         const result = await isolate(
-          () => provider.render(new URL(url.href)),
+          () =>
+            this.registrations.includes(entry)
+              ? entry.provider.render(new URL(url.href))
+              : null,
           this.options.timeoutMs,
         );
+        if (!this.registrations.includes(entry)) return null;
         if (
           result.ok &&
           (typeof result.value === 'string' || result.value === null)
         )
           return result.value;
         this.options.logger.warn(
-          `Plugin "${owner}" failed to render an embed: ${result.ok ? 'not a string' : result.error.message}`,
+          `Plugin "${entry.owner}" failed to render an embed: ${result.ok ? 'not a string' : result.error.message}`,
         );
         return null;
       },

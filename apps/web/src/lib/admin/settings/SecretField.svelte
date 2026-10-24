@@ -1,0 +1,46 @@
+<script lang="ts">
+  import { Badge } from '#lib/components/ui/badge/index.js';
+  import { Input } from '#lib/components/ui/input/index.js';
+  import { Label } from '#lib/components/ui/label/index.js';
+  import { useI18n } from '#lib/i18n/index.js';
+
+  let {
+    name,
+    label,
+    configured,
+    removeName,
+    helpId,
+  }: {
+    name: string;
+    label: string;
+    configured: boolean;
+    removeName: string;
+    helpId: string;
+  } = $props();
+  const i18n = useI18n();
+  const m = $derived(i18n.m);
+</script>
+
+<div class="grid gap-2">
+  <Label for={name} class="flex items-center gap-2">
+    {label}
+    {#if configured}
+      <Badge variant="secondary">{m.secretSaved}</Badge>
+    {/if}
+  </Label>
+  <Input
+    id={name}
+    {name}
+    type="password"
+    autocomplete="off"
+    maxlength={500}
+    aria-describedby={helpId}
+  />
+  <p id={helpId} class="text-xs text-muted-foreground">{m.secretKeep}</p>
+  {#if configured}
+    <label class="flex items-center gap-2 text-sm">
+      <input type="checkbox" name={removeName} />
+      {m.secretRemove}
+    </label>
+  {/if}
+</div>

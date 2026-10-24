@@ -8,12 +8,12 @@ import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
 import type { DomainError } from '#api/shared/errors';
 import {
   MemoryContentRepository,
+  MemorySettings,
   fixedClock,
   sequentialIds,
   userRecord,
 } from '#test/support/memory';
 import { MemoryUserDirectory } from '#test/support/memory-users';
-import { MemorySeoSettingsRepository } from '#test/support/memory-seo';
 import { MemoryJobQueue } from '#test/support/memory-jobs';
 import { aesSecretBox } from '#api/infra/secret-box';
 import {
@@ -32,7 +32,7 @@ const setup = async (overrides: Partial<UserServiceDeps> = {}) => {
   const users = new MemoryUsers();
   const content = new MemoryContentRepository();
   const jobs = new MemoryJobQueue();
-  const settings = overrides.settings ?? new MemorySeoSettingsRepository();
+  const settings = overrides.settings ?? new MemorySettings();
   const directory = new MemoryUserDirectory(users, content, settings);
   const service = new UserService({
     users,
@@ -198,7 +198,7 @@ describe('user administration', () => {
   });
 
   test('public registration requires membership and invites only subscribers', async () => {
-    const settings = new MemorySeoSettingsRepository();
+    const settings = new MemorySettings();
     const invitations: string[] = [];
     let hashes = 0;
     const { jobs, service, users } = await setup({

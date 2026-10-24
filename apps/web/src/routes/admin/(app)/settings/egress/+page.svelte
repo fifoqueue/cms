@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
+  import SettingsForm from '#lib/admin/settings/SettingsForm.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
@@ -24,7 +24,7 @@
 
 <FormMessage {form} />
 
-<form method="POST" use:enhance class="space-y-6">
+<SettingsForm reset class="space-y-6">
   <Card>
     <CardHeader>
       <CardTitle>{m.egressTitle}</CardTitle>
@@ -50,4 +50,4 @@
       </CardContent>
     </Card>
   {/if}
-</form>
+</SettingsForm>

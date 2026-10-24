@@ -2,12 +2,13 @@
   import { resolve } from '$app/paths';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
-  import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { COMMENT_STATUSES } from '@cms/sdk';
   import type { CommentStatus } from '@cms/sdk';
   import { Search } from '@lucide/svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import ListPager from '#lib/admin/ListPager.svelte';
   import ScreenOptions from '#lib/admin/ScreenOptions.svelte';
+  import { listQuery } from '#lib/admin/list-query.js';
   import { COMMENT_COLUMNS } from '#lib/admin/screen-options.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -34,23 +35,11 @@
       trash: messages.trashView,
     })[status];
 
-  const query = (
-    changes: Record<string, string | number | undefined>,
-  ): `?${string}` => {
-    const params = new SvelteURLSearchParams();
-    for (const [key, value] of Object.entries({
-      ...data.filter,
-      page: data.comments.page,
-      ...changes,
-    }))
-      if (value !== undefined) params.set(key, String(value));
-    return `?${params}`;
-  };
+  const query = (changes: Record<string, string | number | undefined>) =>
+    listQuery({ ...data.filter, page: data.comments.page }, changes);
 
-  const lastPage = $derived(
-    Math.max(1, Math.ceil(data.comments.total / data.comments.pageSize)),
-  );
   let selected = $state<string[]>([]);
+  let undoForm = $state<HTMLFormElement>();
   const view = $derived(data.filter.status);
   const removable = $derived(view === 'spam' || view === 'trash');
 
@@ -136,16 +125,27 @@
   </p>
 {/if}
 
-<FormMessage {form} />
+<!-- Undo is the toast's button; it sends this form. -->
+<FormMessage
+  {form}
+  action={form && 'undo' in form && form.undo
+    ? { label: m.undo, onClick: () => undoForm?.requestSubmit() }
+    : undefined}
+/>
 {#if form && 'undo' in form && form.undo}
-  <form method="POST" action="?/bulk" use:enhance={confirmDelete}>
+  <form
+    method="POST"
+    action="?/bulk"
+    use:enhance={confirmDelete}
+    bind:this={undoForm}
+    hidden
+  >
     {#each form.undo.ids as id (id)}<input
         type="hidden"
         name="ids"
         value={id}
       />{/each}
     <input type="hidden" name="action" value={form.undo.action} />
-    <Button type="submit" variant="outline" size="sm">{m.undo}</Button>
   </form>
 {/if}
 
@@ -358,23 +358,7 @@
   {/each}
 </ul>
 
-{#if lastPage > 1}
-  <div class="flex justify-between text-sm">
-    {#if data.comments.page > 1}<a
-        href={resolve(
-          `/admin/(app)/comments${query({ page: data.comments.page - 1 })}`,
-        )}>{m.previous}</a
-      >{:else}<span></span>{/if}
-    <span class="text-muted-foreground"
-      >{m.pageOf(data.comments.page, lastPage)}</span
-    >
-    {#if data.comments.page < lastPage}<a
-        href={resolve(
-          `/admin/(app)/comments${query({ page: data.comments.page + 1 })}`,
-        )}>{m.next}</a
-      >{:else}<span></span>{/if}
-  </div>
-{/if}
+<ListPager route="/admin/(app)/comments" list={data.comments} {query} />
 
 <style>
   .filter {

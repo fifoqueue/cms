@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import type { PublicContent, SiteSettings } from '@cms/sdk';
-import { toPublicEntrySeo } from '@cms/sdk';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
 import { recordingLogger } from '#test/support/memory';
+import { publicEntry } from '#test/support/content';
 
 const site: SiteSettings = {
   title: 'Site',
@@ -13,28 +13,7 @@ const site: SiteSettings = {
   loginPath: '/login',
   showLogin: true,
 };
-const content: PublicContent = {
-  id: '1',
-  type: 'post',
-  slug: 's',
-  path: '/s',
-  seo: toPublicEntrySeo({}),
-  title: 'T',
-  excerpt: '',
-  html: '',
-  publishedAt: '2026-01-01T00:00:00.000Z',
-  updatedAt: '2026-01-01T00:00:00.000Z',
-  categories: [],
-  tags: [],
-  extraTerms: [],
-  author: null,
-  sticky: false,
-  commentCount: 0,
-  protected: false,
-  featuredImage: null,
-  fields: {},
-  meta: {},
-};
+const content = publicEntry({ title: 'T' });
 
 describe('HookBus', () => {
   test('skips filters that throw, time out or return invalid values', async () => {

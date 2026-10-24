@@ -1,7 +1,8 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { autosaveInputSchema, can } from '@cms/sdk';
 import { CmsApiError } from '@cms/sdk/client';
-import { fieldImages, readContentForm } from '#lib/server/content-form.js';
+import { fieldImages } from '#lib/server/content-form.js';
+import { readContentInput } from '#lib/server/content-form.js';
 import {
   Errors,
   failFrom,
@@ -63,11 +64,7 @@ const isStale = async (
 
 export const actions: Actions = {
   save: async (event) => {
-    const [formData, model] = await Promise.all([
-      event.request.formData(),
-      adminFor(event).contentModel.model(),
-    ]);
-    const { input, values, failure } = readContentForm(formData, model.fields);
+    const { input, values, failure } = await readContentInput(event);
     if (failure) return failure;
     let saved;
     try {

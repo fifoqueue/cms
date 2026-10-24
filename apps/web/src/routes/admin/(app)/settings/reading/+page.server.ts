@@ -1,5 +1,6 @@
 import type { ReadingSettingsInput } from '@cms/sdk';
-import { failFrom, text } from '#lib/server/errors.js';
+import { text } from '#lib/server/errors.js';
+import { submitAction } from '#lib/server/form-action.js';
 import { adminFor } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -38,11 +39,6 @@ export const actions: Actions = {
         Math.trunc(Number(text(form, 'cacheSeconds'))) || 0,
       ),
     };
-    try {
-      await adminFor(event).reading.update(input);
-    } catch (caught) {
-      return failFrom(caught);
-    }
-    return { notice: 'saved' };
+    return submitAction(() => adminFor(event).reading.update(input));
   },
 };

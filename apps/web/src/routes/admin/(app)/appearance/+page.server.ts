@@ -1,4 +1,5 @@
 import { redirect } from '@sveltejs/kit';
+import { submitAction } from '#lib/server/form-action.js';
 import { failFrom, text } from '#lib/server/errors.js';
 import { startThemePreview } from '#lib/server/theme-preview.js';
 import { adminFor } from '#lib/server/session.js';
@@ -9,23 +10,13 @@ export const load: PageServerLoad = async (event) => ({
   themes: (await adminFor(event).themes.list()).map(adminThemeView),
 });
 
-/** Runs a theme command and reports the outcome as form data. */
-const attempt = async (task: () => Promise<unknown>, notice: string) => {
-  try {
-    await task();
-  } catch (caught) {
-    return failFrom(caught);
-  }
-  return { notice };
-};
-
 export const actions: Actions = {
   install: async (event) => {
     const upload = await readThemeUpload(
       (await event.request.formData()).get('theme'),
     );
     if ('failure' in upload) return upload.failure;
-    return attempt(
+    return submitAction(
       () => adminFor(event).themes.install(upload.archive),
       'themeInstalled',
     );
@@ -44,10 +35,16 @@ export const actions: Actions = {
   },
   activate: async (event) => {
     const id = text(await event.request.formData(), 'id');
-    return attempt(() => adminFor(event).themes.activate(id), 'themeActivated');
+    return submitAction(
+      () => adminFor(event).themes.activate(id),
+      'themeActivated',
+    );
   },
   remove: async (event) => {
     const id = text(await event.request.formData(), 'id');
-    return attempt(() => adminFor(event).themes.remove(id), 'themeRemoved');
+    return submitAction(
+      () => adminFor(event).themes.remove(id),
+      'themeRemoved',
+    );
   },
 };

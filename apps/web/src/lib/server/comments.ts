@@ -1,10 +1,12 @@
 import { redirect } from '@sveltejs/kit';
 import type { RequestEvent } from '@sveltejs/kit';
-import { commenterSchema, PAGINATION_MAX_PAGE } from '@cms/sdk';
+import { commenterSchema } from '@cms/sdk';
 import type { PublicCaptcha, PublicComment, PublicCommentPage } from '@cms/sdk';
 import type { ContentClient } from '@cms/sdk/client';
 import { contentApi } from '#lib/server/api.js';
+import { loadManagement } from '#lib/server/comment-management.js';
 import { failFrom, text } from '#lib/server/errors.js';
+import { pageParam } from '#lib/server/public-view.js';
 import { unlockProofs } from '#lib/server/unlock.js';
 import { sessionToken } from '#lib/server/session-cookie.js';
 import { visitorOf } from '#lib/server/visitor.js';
@@ -46,41 +48,56 @@ export const commentsView = (page: PublicCommentPage) => ({
 });
 
 export type CommentsView = ReturnType<typeof commentsView>;
+export type { CommentManagement } from '#lib/server/comment-management.js';
 
-/** `?cpage=` as a positive integer (1 when missing or invalid). */
-const commentPage = (url: URL) => {
-  const page = Math.trunc(Number(url.searchParams.get('cpage')));
-  return Number.isSafeInteger(page) && page > 0
-    ? Math.min(page, PAGINATION_MAX_PAGE)
-    : 1;
-};
+/**
+ * The approved thread page at `?cpage=` (with the visitor's pending receipt), or null when it
+ * cannot be read.
+ */
+export const readThread = (
+  api: ContentClient,
+  contentId: string,
+  event: Pick<RequestEvent, 'url' | 'cookies'>,
+) =>
+  api.comments
+    .list(
+      contentId,
+      pageParam(event.url, 'cpage'),
+      unlockProofs(event.cookies),
+      event.cookies.get(`cms_pending_${contentId}`),
+    )
+    .catch(() => null);
 
 /**
  * The entry's comment section and the captcha settings for its form; nothing when the entry
- * neither takes nor has comments. A failure leaves the page without comments.
+ * neither takes nor has comments. A failure leaves the page without comments. Moderators also
+ * get `management`, this entry's pending and spam comments (see `loadManagement`).
  */
 export const loadComments = async (
   api: ContentClient,
   contentId: string,
-  event: Pick<RequestEvent, 'url' | 'cookies'>,
+  event: Pick<
+    RequestEvent,
+    'url' | 'cookies' | 'fetch' | 'request' | 'setHeaders'
+  >,
   captchaRequest: Promise<PublicCaptcha | null> = api
     .captcha()
     .catch(() => null),
 ) => {
-  const [comments, captcha] = await Promise.all([
-    api.comments
-      .list(
-        contentId,
-        commentPage(event.url),
-        unlockProofs(event.cookies),
-        event.cookies.get(`cms_pending_${contentId}`),
-      )
-      .catch(() => null),
+  const [comments, captcha, management] = await Promise.all([
+    readThread(api, contentId, event),
     captchaRequest,
+    loadManagement(event, contentId),
   ]);
+  // Actions set their own caching rule; a page that shows moderation data is never cached.
+  if (management && event.request.method === 'GET')
+    event.setHeaders({ 'cache-control': 'private, no-store' });
   if (
     !comments ||
-    (!comments.open && comments.count === 0 && !comments.ownPending)
+    (!comments.open &&
+      comments.count === 0 &&
+      !comments.ownPending &&
+      !management?.items.length)
   )
     return null;
   const privacy = await api
@@ -105,6 +122,7 @@ export const loadComments = async (
     privacyPolicy: privacy.policy,
     commentCookies: privacy.commentCookies,
     remembered: comments.viewer || !privacy.commentCookies ? null : remembered,
+    management,
     captcha:
       captcha && comments.open
         ? {

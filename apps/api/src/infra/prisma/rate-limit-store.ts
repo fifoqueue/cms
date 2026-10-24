@@ -3,22 +3,14 @@ import type { RateRule } from '@cms/sdk';
 import type { RateLimitStore } from '#api/domain/security/ports';
 import type { Database } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
+import {
+  isExceeded,
+  nextBucket,
+  windowEnd,
+} from '#api/infra/prisma/rate-limit-window';
+import type { Bucket } from '#api/infra/prisma/rate-limit-window';
 
 const hash = (key: string) => createHash('sha256').update(key).digest('hex');
-
-interface Bucket {
-  windowStart: Date;
-  hits: number;
-  blockedUntil: Date | null;
-}
-
-const windowEnd = (bucket: Bucket, rule: RateRule) =>
-  new Date(bucket.windowStart.getTime() + rule.windowSeconds * 1000);
-
-const isExceeded = (bucket: Bucket | null, rule: RateRule, now: Date) =>
-  !!bucket &&
-  ((bucket.blockedUntil !== null && bucket.blockedUntil > now) ||
-    (windowEnd(bucket, rule) > now && bucket.hits >= rule.max));
 
 /** Counters in `rate_limit_buckets`; each hit locks its row, so processes count exactly. */
 export class PrismaRateLimitStore implements RateLimitStore {
@@ -49,20 +41,7 @@ export class PrismaRateLimitStore implements RateLimitStore {
         hits: Number(row!.hits),
         blockedUntil: row!.blockedUntil,
       };
-      const fresh = windowEnd(current, rule) <= now;
-      const next: Bucket = {
-        windowStart: fresh ? now : current.windowStart,
-        hits: (fresh ? 0 : current.hits) + 1,
-        blockedUntil:
-          current.blockedUntil && current.blockedUntil > now
-            ? current.blockedUntil
-            : null,
-      };
-      const over = next.hits > rule.max;
-      if (over && !next.blockedUntil)
-        next.blockedUntil = rule.blockSeconds
-          ? new Date(now.getTime() + rule.blockSeconds * 1000)
-          : windowEnd(next, rule);
+      const { next, exceeded } = nextBucket(current, rule, now);
       const expiresAt = new Date(
         Math.max(
           windowEnd(next, rule).getTime(),
@@ -73,7 +52,7 @@ export class PrismaRateLimitStore implements RateLimitStore {
         where: { keyHash },
         data: { ...next, expiresAt },
       });
-      return over || (!!current.blockedUntil && current.blockedUntil > now);
+      return exceeded;
     });
   }
 

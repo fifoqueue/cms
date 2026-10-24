@@ -16,7 +16,8 @@
     "@cms/sdk": "workspace:*",
     "@tiptap/core": "^3.32.0",
     "@tiptap/pm": "^3.32.0",
-    "parse5": "^8.0.1"
+    "parse5": "^8.0.1",
+    "shiki": "^4.5.0"
   },
   "devDependencies": {
     "@fontsource-variable/inter": "^5.3.0",
@@ -33,6 +34,7 @@
     "shadcn-svelte": "^1.7.0",
     "svelte": "^5.57.2",
     "svelte-check": "^4.7.7",
+    "svelte-sonner": "^1.2.1",
     "tailwind-variants": "^3.3.1",
     "tailwindcss": "^4.3.3",
     "tw-animate-css": "^1.4.0",

@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import { KEBAB_CASE } from '#sdk/common';
+import { CAPABILITIES } from '#sdk/capabilities';
+
+/** Omission uses the management grant; an unknown explicit grant is never accepted. */
+export const pluginCapabilitySchema = z
+  .enum(CAPABILITIES)
+  .default('plugins.manage');
 
 const fieldBase = {
   key: z

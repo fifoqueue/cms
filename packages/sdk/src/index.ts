@@ -11,6 +11,7 @@ export * from '#sdk/taxonomy';
 export * from '#sdk/blocks';
 export * from '#sdk/themes';
 export * from '#sdk/seo';
+export * from '#sdk/seo-fields';
 export * from '#sdk/permalinks';
 export * from '#sdk/capabilities';
 export * from '#sdk/locales';
@@ -37,6 +38,7 @@ export * from '#sdk/roles';
 export * from '#sdk/archive-paths';
 
 export * from '#sdk/content-blocks';
+export * from '#sdk/callout';
 export * from '#sdk/privacy';
 
 export * from '#sdk/calendar';

@@ -1,5 +1,7 @@
 import type { SearchSettingsInput } from '@cms/sdk';
 import { failFrom, text } from '#lib/server/errors.js';
+import { submitAction } from '#lib/server/form-action.js';
+import { secretInput } from '#lib/admin/settings/input.server.js';
 import { adminFor } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -15,19 +17,13 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   save: async (event) => {
     const form = await event.request.formData();
-    const apiKey = text(form, 'apiKey');
     const input: SearchSettingsInput = {
       enabled: form.has('enabled'),
       host: text(form, 'host'),
       indexPrefix: text(form, 'indexPrefix') || 'cms',
-      apiKey: form.has('removeApiKey') ? '' : apiKey || undefined,
+      apiKey: secretInput(form, 'apiKey', 'removeApiKey'),
     };
-    try {
-      await adminFor(event).search.update(input);
-    } catch (caught) {
-      return failFrom(caught);
-    }
-    return { notice: 'saved' };
+    return submitAction(() => adminFor(event).search.update(input));
   },
   test: async (event) => {
     try {
@@ -38,11 +34,9 @@ export const actions: Actions = {
     }
   },
   reindex: async (event) => {
-    try {
-      await adminFor(event).search.reindex();
-    } catch (caught) {
-      return failFrom(caught);
-    }
-    return { notice: 'searchReindexQueued' };
+    return submitAction(
+      () => adminFor(event).search.reindex(),
+      'searchReindexQueued',
+    );
   },
 };

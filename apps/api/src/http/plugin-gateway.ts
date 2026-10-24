@@ -78,6 +78,8 @@ export class PluginGateway {
   ) {
     const { auth, timeoutMs, logger } = this.deps;
     const user = await currentUser(auth, request);
+    if (!this.deps.routes.list(pluginId).includes(route))
+      return errorResponse(404, 'not_found', Errors.RouteNotFound);
 
     if (route.access === 'admin' && !user)
       return errorResponse(401, 'unauthorized', Errors.AuthenticationRequired);
@@ -85,12 +87,26 @@ export class PluginGateway {
     if (route.access === 'admin' && user && !can(user, 'plugins.manage'))
       return errorResponse(403, 'forbidden', Errors.Forbidden);
 
-    const result = await isolate(
-      () => route.handler({ request, url: new URL(request.url), params, user }),
-      timeoutMs,
-    );
+    const result = await isolate(() => {
+      if (!this.deps.routes.list(pluginId).includes(route))
+        throw new Error(Errors.PluginInactive);
+      return route.handler({
+        request,
+        url: new URL(request.url),
+        params,
+        user,
+      });
+    }, timeoutMs);
 
-    if (result.ok && result.value instanceof Response) return result.value;
+    // Preserve dispatched outcomes: a mutation may have committed before disposal.
+    if (result.ok && result.value instanceof Response) {
+      if (route.access === 'admin' || user) {
+        const response = new Response(result.value.body, result.value);
+        response.headers.set('cache-control', 'private, no-store');
+        return response;
+      }
+      return result.value;
+    }
 
     logger.warn(
       `Plugin "${pluginId}" route failed: ${result.ok ? 'handler did not return a Response' : result.error.message}`,

@@ -14,6 +14,7 @@ import type {
 } from '@cms/sdk';
 import { MEDIA_PATH, SEO_SITEMAP_PAGE_SIZE } from '@cms/sdk';
 import type { ContentClient } from '@cms/sdk/client';
+import { mapLimit } from '#lib/server/bounded.js';
 import { Errors } from '#lib/server/errors.js';
 import { contentMarkdown, markdownInline } from '#lib/server/markdown.js';
 import { FEED_PATH, markdownPath } from '#lib/seo/paths.js';
@@ -29,29 +30,6 @@ export type SitemapKind = (typeof SITEMAP_KINDS)[number];
 
 /** sitemaps.org limit on sitemaps per index; each chunk holds one API page (≤ 1,000 URLs). */
 const SITEMAP_INDEX_LIMIT = 50_000;
-
-/** API requests one discovery response keeps in flight at most. */
-export const DISCOVERY_CONCURRENCY = 4;
-
-/** `task` over `items` in order, with at most `limit` running at once. */
-export const mapLimit = async <T, R>(
-  items: readonly T[],
-  task: (item: T) => Promise<R>,
-  limit = DISCOVERY_CONCURRENCY,
-): Promise<R[]> => {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await task(items[index]!);
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, worker),
-  );
-  return results;
-};
 
 /** Entries listed by the feed and llms.txt: a recent selection, not the full corpus. */
 export const RECENT_LIMIT = 20;
@@ -290,6 +268,10 @@ export const loadBodies = async (
 /** Feed readers show bodies elsewhere: site paths become absolute, responsive hints go. */
 const absoluteBody = (origin: string, html: string) =>
   html
+    .replace(
+      /<nav\b[^>]*class="[^"]*\bcms-toc\b[^"]*"[^>]*>[\s\S]*?<\/nav>/g,
+      '',
+    )
     .replace(/\s(?:srcset|sizes)="[^"]*"/g, '')
     .replace(
       /(\s(?:src|href|poster)=")\/(?!\/)/g,

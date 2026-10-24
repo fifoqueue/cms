@@ -90,7 +90,7 @@
     {/if}
     <svelte:element
       this={`h${a.level}`}
-      class="cms-heading text-3xl font-semibold tracking-tight text-balance sm:text-4xl"
+      class="cms-heading text-3xl font-semibold tracking-tight text-balance @min-[40rem]:text-4xl"
       >{view.title}</svelte:element
     >
     {#if a.showDescription && 'description' in view && view.description}

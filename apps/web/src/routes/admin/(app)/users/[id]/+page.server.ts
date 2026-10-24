@@ -66,6 +66,6 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
-    redirect(303, '/admin/users');
+    redirect(303, '/admin/users?notice=deleted');
   },
 };

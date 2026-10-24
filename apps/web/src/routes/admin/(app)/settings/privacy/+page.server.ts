@@ -1,6 +1,7 @@
 import { contentApi } from '#lib/server/api.js';
 import { adminFor } from '#lib/server/session.js';
-import { failFrom, text } from '#lib/server/errors.js';
+import { text } from '#lib/server/errors.js';
+import { submitAction } from '#lib/server/form-action.js';
 import type { Actions, PageServerLoad } from './$types';
 export const load: PageServerLoad = async (event) => {
   const privacy = await adminFor(event).privacy.settings();
@@ -24,14 +25,11 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   save: async (event) => {
     const form = await event.request.formData();
-    try {
-      await adminFor(event).privacy.update({
+    return submitAction(() =>
+      adminFor(event).privacy.update({
         policyPageId: text(form, 'policyPageId') || null,
         commentCookies: form.has('commentCookies'),
-      });
-    } catch (error) {
-      return failFrom(error);
-    }
-    return { notice: 'saved' };
+      }),
+    );
   },
 };

@@ -1,3 +1,4 @@
+import { serialQueue } from '#api/shared/serial-queue';
 import {
   TEMPLATE_NAME,
   SLUG,
@@ -97,6 +98,7 @@ const toPublic = (
         contentSize: manifest.settings.layout.contentSize,
         wideSize: manifest.settings.layout.wideSize,
       },
+      scrollToTop: manifest.settings.scrollToTop,
     },
     styles: stylesOf(theme, custom),
     templates: { ...theme.templates, ...custom.templates },
@@ -144,7 +146,7 @@ const toAdmin = (
 export class ThemeService {
   private readonly state: ThemeStateStore;
   private readonly screenshots: ThemeScreenshots;
-  private queue: Promise<unknown> = Promise.resolve();
+  private readonly exclusive = serialQueue();
 
   constructor(
     settings: SettingsRepository,
@@ -386,12 +388,5 @@ export class ThemeService {
     if (!theme) throw notFound(Errors.ThemeNotFound);
 
     return theme;
-  }
-
-  /** Lifecycle changes run one at a time, so concurrent admin requests cannot interleave. */
-  private exclusive<T>(task: () => Promise<T>): Promise<T> {
-    const run = this.queue.then(task, task);
-    this.queue = run.catch(() => undefined);
-    return run;
   }
 }

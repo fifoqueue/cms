@@ -1,0 +1,112 @@
+/* Admin content editor only: chrome that tells blocks apart while writing. */
+
+/* Code blocks reuse the public `.cms-code` look (code-block.css); the header always shows. */
+.tiptap .cms-editor-code > pre {
+  border-top: 1px solid color-mix(in oklab, currentColor 12%, transparent);
+}
+.tiptap .cms-editor-code-chips {
+  grid-row: 1;
+  grid-column: 2;
+  align-self: center;
+  display: flex;
+  gap: 0.25rem;
+  margin: 0.375rem 0.5rem;
+  user-select: none;
+}
+.tiptap .cms-editor-code-chips > span {
+  padding: 0.125rem 0.5rem;
+  border: 1px solid color-mix(in oklab, currentColor 20%, transparent);
+  border-radius: 999px;
+  font:
+    500 0.6875rem/1.3 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+/* The text is one editable run: rows are plain lines, not the public grid of line spans.
+   Numbers and bands sit in a layer behind it, sized to the widest row. */
+.tiptap .cms-editor-code-body {
+  position: relative;
+  isolation: isolate;
+  width: max-content;
+  min-width: 100%;
+}
+.tiptap .cms-editor-code code {
+  display: block;
+  width: auto;
+  min-width: 0;
+  padding-inline: 1rem;
+  white-space: pre;
+}
+.tiptap .cms-editor-code-numbered code {
+  padding-inline-start: calc(2.25rem + var(--cms-code-gutter));
+}
+.tiptap .cms-editor-code-layer {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  user-select: none;
+}
+/* Like the public `.cms-code-number`: right-aligned, faint, 1.25rem before the text. */
+.tiptap .cms-editor-code-numbers {
+  position: absolute;
+  top: 0;
+  left: 1rem;
+  width: var(--cms-code-gutter);
+  text-align: right;
+  white-space: pre;
+  opacity: 0.45;
+}
+/* The band spans the row behind its text, like the public `.cms-code-line.is-highlighted`. */
+.tiptap .cms-editor-code-mark {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1.7em;
+  background: color-mix(in oklab, currentColor 10%, transparent);
+  box-shadow: inset 3px 0 0 color-mix(in oklab, currentColor 45%, transparent);
+}
+/* The admin color mode picks the automatic theme's colors. */
+.tiptap .cms-code-auto {
+  color-scheme: light;
+}
+.dark .tiptap .cms-code-auto {
+  color-scheme: dark;
+}
+
+/* Blocks named by `block-labels.ts`: a quiet frame with the block's name on its edge. */
+.tiptap [data-editor-label] {
+  position: relative;
+}
+.tiptap [data-editor-label]::after {
+  content: attr(data-editor-label);
+  position: absolute;
+  top: 0;
+  right: 0.75rem;
+  transform: translateY(-50%);
+  padding: 0 0.375rem;
+  border-radius: 0.25rem;
+  background: var(--background);
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.5;
+  pointer-events: none;
+  user-select: none;
+}
+.tiptap .embed {
+  margin-block: 1.5em;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.875rem 1rem;
+  background: color-mix(in oklab, var(--muted) 45%, transparent);
+  overflow-wrap: anywhere;
+}
+.tiptap .cms-spacer {
+  border: 1px dashed var(--border);
+  border-radius: 0.375rem;
+}

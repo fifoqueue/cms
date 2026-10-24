@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
+  import SettingsForm from '#lib/admin/settings/SettingsForm.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { flattenTree } from '#lib/admin/taxonomy-tree.js';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -30,14 +30,7 @@
 <Card>
   <CardHeader><CardTitle>{m.settingsWriting}</CardTitle></CardHeader>
   <CardContent>
-    <form
-      method="POST"
-      action="?/save"
-      use:enhance={() =>
-        ({ update }) =>
-          update({ reset: false })}
-      class="space-y-4"
-    >
+    <SettingsForm action="?/save" class="space-y-4">
       <div class="grid gap-2">
         <Label for="defaultCategoryId">{m.writingDefaultCategory}</Label>
         <NativeSelect
@@ -70,6 +63,6 @@
         </NativeSelect>
       </div>
       <Button type="submit">{m.save}</Button>
-    </form>
+    </SettingsForm>
   </CardContent>
 </Card>

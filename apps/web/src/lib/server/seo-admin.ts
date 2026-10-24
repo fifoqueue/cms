@@ -13,35 +13,12 @@ import type {
 import { SEO_FIELDSET, seoField } from '#lib/admin/seo.js';
 import { contentApi } from '#lib/server/api.js';
 import type { FormFailure } from '#lib/server/errors.js';
-import { Errors, text } from '#lib/server/errors.js';
+import { Errors, issuesOf, text } from '#lib/server/errors.js';
 
 interface AdminEvent {
   fetch: typeof globalThis.fetch;
   locals: App.Locals;
 }
-
-const issuesOf = (issues: { path: PropertyKey[]; message: string }[]) =>
-  issues.map(({ path, message }) => ({
-    path: path.map(String).join('.'),
-    message,
-  }));
-
-/** The SEO fields admin pages show, mapped explicitly from the admin DTO. */
-export const adminSeoView = (seo: AdminEntrySeo): AdminEntrySeo => ({
-  title: seo.title,
-  description: seo.description,
-  canonicalUrl: seo.canonicalUrl,
-  noIndex: seo.noIndex,
-  noFollow: seo.noFollow,
-  imageUrl: seo.imageUrl,
-  imageAlt: seo.imageAlt,
-  socialTitle: seo.socialTitle,
-  socialDescription: seo.socialDescription,
-  schemaType: seo.schemaType,
-  authorName: seo.authorName,
-  authorUrl: seo.authorUrl,
-  focusKeyword: seo.focusKeyword,
-});
 
 /**
  * Reads `SeoEditor.svelte` fields: the full SEO object, or `undefined` when the form had no SEO

@@ -1,17 +1,15 @@
-import { requirePage } from '#lib/server/public-view.js';
 import { contentApi } from '#lib/server/api.js';
 import { sessionToken } from '#lib/server/session-cookie.js';
-import { commentAction } from '#lib/server/comments.js';
-import { entryPage } from '#lib/server/content-page.js';
+import { entryActions, entryPage } from '#lib/server/content-page.js';
 import { notFoundFrom } from '#lib/server/errors.js';
-import { latestPosts } from '#lib/server/archive.js';
-import { homeTypeParam, listView, pageParam } from '#lib/server/public-view.js';
+import { latestPosts, listPosts } from '#lib/server/archive.js';
+import { homeTypeParam, pageParam } from '#lib/server/public-view.js';
 import { loadSlots } from '#lib/server/slots.js';
 import {
   loadTemplateData,
   withTemplateData,
 } from '#lib/server/theme-queries.js';
-import { unlockAction, unlockProofs } from '#lib/server/unlock.js';
+import { unlockProofs } from '#lib/server/unlock.js';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -30,13 +28,13 @@ export const load: PageServerLoad = async (event) => {
   if (url.searchParams.has('q')) {
     const query = (url.searchParams.get('q') ?? '').trim().slice(0, 200);
     const [posts, loaded] = await Promise.all([
-      query ? api.list({ search: query, page, pageSize }) : null,
+      query ? listPosts(api, url, { search: query }, pageSize) : null,
       loadSlots(api, { path: url.pathname }),
     ]);
     return withTemplateData(publicApi, parent, {
       kind: 'search' as const,
       query,
-      posts: posts && (requirePage(posts), listView(posts)),
+      posts,
       slots: loaded,
     });
   }
@@ -68,7 +66,4 @@ export const load: PageServerLoad = async (event) => {
   });
 };
 
-export const actions: Actions = {
-  unlock: unlockAction,
-  comment: commentAction,
-};
+export const actions: Actions = entryActions;

@@ -9,6 +9,23 @@ const RADIUS = {
   large: '0.875rem',
 } as const;
 
+/** `dark` when a `#rgb`/`#rrggbb(aa)` background has a relative luminance below 0.18. */
+const schemeOf = (hex: string) => {
+  const digits = hex.slice(1);
+  const full = digits.length <= 4 ? digits.replace(/./g, '$&$&') : digits;
+  const [r, g, b] = [0, 2, 4].map((at) => {
+    const value = Number.parseInt(full.slice(at, at + 2), 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.18 ? 'dark' : 'light';
+};
+
+/** The site's color scheme, from its palette's base color; `null` without one. */
+export const siteScheme = ({ settings }: Pick<ThemeView, 'settings'>) => {
+  const base = settings.palette.find((entry) => entry.slug === 'base')?.color;
+  return base ? schemeOf(base) : null;
+};
+
 /**
  * Inline custom properties for the site root: the palette as `--cms-color-<slug>`, its roles
  * mapped onto the interface variables, fonts and layout sizes. Every value was validated by
@@ -52,6 +69,8 @@ export const themeStyle = ({ settings, styles }: ThemeView): string => {
     ['--cms-wide-size', settings.layout.wideSize],
     ['--cms-font-size', SIZE[styles.fontSize]],
     ['--cms-line-height', LEADING[styles.lineHeight]],
+    // Native controls, scrollbars and `light-dark()` follow the palette's base color.
+    ['color-scheme', siteScheme({ settings }) ?? ''],
   ];
   return vars
     .filter(([, value]) => value)
@@ -59,6 +78,6 @@ export const themeStyle = ({ settings, styles }: ThemeView): string => {
     .join('; ');
 };
 
-/** The theme stylesheet, confined to the site root (`cssProblem` keeps it from breaking out). */
+/** Theme CSS cannot reach outside the site or into its theme-independent auth screens. */
 export const scopedCss = (css: string) =>
-  css ? `@scope (.cms-site) {\n${css}\n}` : '';
+  css ? `@scope (.cms-site) to (.cms-auth) {\n${css}\n}` : '';

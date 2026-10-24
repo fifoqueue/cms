@@ -1,12 +1,22 @@
+import { passwordResetSchema, passwordSchema } from '@cms/sdk';
 import { authApi } from '#lib/server/api.js';
 import { failFrom, text } from '#lib/server/errors.js';
 import type { Actions, PageServerLoad } from './$types';
 
-/** The token from the emailed link travels in the form, never in page data beyond this page. */
+/**
+ * Reset and invitation links land here. The token from the emailed link travels in the form,
+ * never in page data beyond this page; a malformed one asks for a new link instead of a form.
+ */
 export const load: PageServerLoad = ({ url, setHeaders }) => {
   // The link holds a secret: keep it out of caches and referrers.
   setHeaders({ 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
-  return { token: url.searchParams.get('token') ?? '' };
+  const token = url.searchParams.get('token') ?? '';
+  return {
+    token,
+    linkValid: passwordResetSchema.shape.token.safeParse(token).success,
+    minLength: passwordSchema.minLength ?? 1,
+    maxLength: passwordSchema.maxLength ?? undefined,
+  };
 };
 
 export const actions: Actions = {

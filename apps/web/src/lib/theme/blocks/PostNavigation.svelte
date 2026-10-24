@@ -22,10 +22,14 @@
 {#if adjacent?.previous || adjacent?.next}
   <nav
     aria-label={m.themePostNavigation}
-    class="cms-block-post-navigation grid gap-4 border-t pt-6 text-sm sm:grid-cols-2"
+    class="cms-block-post-navigation grid gap-4 border-t pt-6 text-sm @min-[40rem]:grid-cols-2"
   >
     {#each links as { rel, entry } (rel)}
-      <div class={rel === 'next' ? 'sm:col-start-2 sm:text-right' : ''}>
+      <div
+        class={rel === 'next'
+          ? '@min-[40rem]:col-start-2 @min-[40rem]:text-right'
+          : ''}
+      >
         {#if entry}
           <a
             href={resolve(entry.path as Path)}

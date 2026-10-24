@@ -8,7 +8,9 @@
     "#test/*": "./test/*.ts"
   },
   "scripts": {
-    "dev": "bun --env-file=../../.env --watch src/main.ts",
+    "dev": "prisma generate && bun run --parallel dev:schema dev:server",
+    "dev:schema": "prisma generate --watch",
+    "dev:server": "bun --env-file=../../.env --watch src/main.ts",
     "start": "bun --env-file=../../.env src/main.ts",
     "build": "prisma generate",
     "db:generate": "prisma generate",

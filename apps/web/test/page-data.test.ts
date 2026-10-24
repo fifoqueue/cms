@@ -32,8 +32,9 @@ Bun.plugin({
 const { load: loadSiteLayout } =
   await import('#web/routes/(site)/+layout.server.js');
 const { handle: handleRequest } = await import('#web/hooks.server.js');
-const { load: loadHome } = await import('#web/routes/(site)/+page.server.js');
-const { load: loadEntry } =
+const { load: loadHome, actions: homeActions } =
+  await import('#web/routes/(site)/+page.server.js');
+const { load: loadEntry, actions: entryActions } =
   await import('#web/routes/(site)/[slug]/+page.server.js');
 const { load: loadCategory } =
   await import('#web/routes/(site)/category/[slug]/+page.server.js');
@@ -54,6 +55,11 @@ const { actions: editorActions } =
   await import('#web/routes/admin/(app)/appearance/editor/+page.server.js');
 
 const { commentAction } = await import('#lib/server/comments.js');
+
+const { load: loadAuthLayout } =
+  await import('#web/routes/admin/(auth)/+layout.server.js');
+const { load: loadPasswordPage } =
+  await import('#web/routes/admin/(auth)/password/+page.server.js');
 
 const { load: loadPrivacy, actions: privacyActions } =
   await import('#web/routes/privacy/confirm/+page.server.js');
@@ -505,6 +511,55 @@ describe('public page data', () => {
     });
   });
 
+  test('sign-in screens speak the site language and receive display data only', async () => {
+    override = ({ url }) =>
+      url.pathname === '/api/v1/site'
+        ? json({
+            title: 'Site',
+            description: SECRET,
+            locale: 'ko-KR',
+            loginPath: '/members/sign-in',
+            showLogin: true,
+          })
+        : undefined;
+    const locals: { lang?: string } = {};
+    const data = await loadAuthLayout({
+      fetch: fakeFetch,
+      request: new Request('http://web.test/admin/forgot-password', {
+        headers: { 'accept-language': 'en-US' },
+      }),
+      locals,
+    } as never);
+
+    expect(locals.lang).toBe('ko');
+    expect(data).toEqual({
+      privacyPolicy: null,
+      language: 'ko',
+      loginPath: '/members/sign-in',
+      siteTitle: 'Site',
+    });
+  });
+
+  test('password links stay out of caches and referrers, and malformed ones get no form', async () => {
+    for (const [query, linkValid] of [
+      ['', false],
+      ['?token=short', false],
+      [`?token=${TOKEN}`, true],
+    ] as const) {
+      const headers: Record<string, string> = {};
+      const data = await loadPasswordPage({
+        url: new URL(`http://web.test/admin/password${query}`),
+        setHeaders: (values: Record<string, string>) =>
+          Object.assign(headers, values),
+      } as never);
+      expect(headers).toEqual({
+        'cache-control': 'no-store',
+        'referrer-policy': 'no-referrer',
+      });
+      expect(data).toMatchObject({ linkValid, minLength: 8, maxLength: 200 });
+    }
+  });
+
   test('archive aliases redirect to the stored Unicode slug', async () => {
     override = ({ url }) =>
       url.pathname === '/api/v1/taxonomies/category/cafe'
@@ -953,6 +1008,369 @@ test('enhanced comments refresh only the returned thread and scrub disabled reme
   ]);
 });
 
+describe('public comment moderation', () => {
+  const adminComment = (id: string, status: string) => ({
+    id,
+    contentId: 'id-hello',
+    contentTitle: 'Title hello',
+    parentAuthor: null,
+    parentId: null,
+    userId: `${SECRET}-user`,
+    authorName: 'Reader',
+    authorEmail: `${SECRET}@example.com`,
+    authorUrl: '',
+    body: `Held ${id}`,
+    status,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-02T00:00:00.000Z',
+  });
+  const moderationList = (call: Call) =>
+    call.url.pathname === '/api/v1/admin/comments'
+      ? json({
+          items: [
+            adminComment(
+              call.url.searchParams.get('status') === 'spam' ? 'junk' : 'held',
+              call.url.searchParams.get('status')!,
+            ),
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 100,
+        })
+      : undefined;
+  const sessionCookies = (session: boolean) => ({
+    get: (name: string) =>
+      session && name === 'cms_session' ? TOKEN : undefined,
+    getAll: () => [],
+    set: () => undefined,
+    delete: () => undefined,
+  });
+  /** The event with `setHeaders` recording into the returned `headers`. */
+  const recordHeaders = (event: object) => {
+    const headers = new Headers();
+    return {
+      headers,
+      event: {
+        ...event,
+        setHeaders: (values: Record<string, string>) => {
+          for (const [key, value] of Object.entries(values))
+            headers.set(key, value);
+        },
+      } as never,
+    };
+  };
+  const entryEvent = (path: string, session: boolean) => {
+    const base = publicEvent(path) as { url: URL };
+    return recordHeaders({
+      ...base,
+      request: new Request(base.url),
+      cookies: sessionCookies(session),
+    });
+  };
+  const moderationEvent = (
+    path: string,
+    form: Record<string, string | string[]>,
+    { session = true, enhanced = true } = {},
+  ) => {
+    const base = adminEvent(path, form) as { request: Request };
+    if (enhanced) base.request.headers.set('x-sveltekit-action', 'true');
+    return recordHeaders({ ...base, cookies: sessionCookies(session) });
+  };
+  const bulkCalls = () =>
+    calls.filter(({ url }) => url.pathname === '/api/v1/admin/comments/bulk');
+  const moderate = entryActions.moderateComment!;
+
+  test('moderators get the projected, uncached pending and spam comments of the entry', async () => {
+    override = moderationList;
+    const { event, headers } = entryEvent('/hello', true);
+    const data = (await loadEntry(event)) as {
+      comments: { management: unknown };
+    };
+
+    const lists = calls.filter(
+      ({ url }) => url.pathname === '/api/v1/admin/comments',
+    );
+    expect(lists.map(({ authorization }) => authorization)).toEqual([
+      `Bearer ${TOKEN}`,
+      `Bearer ${TOKEN}`,
+    ]);
+    expect(
+      lists.map(({ url }) => ({
+        contentId: url.searchParams.get('contentId'),
+        status: url.searchParams.get('status'),
+        pageSize: url.searchParams.get('pageSize'),
+      })),
+    ).toEqual(
+      ['pending', 'spam'].map((status) => ({
+        contentId: 'id-hello',
+        status,
+        pageSize: '100',
+      })),
+    );
+    const held = (id: string, status: string) => ({
+      id,
+      parentId: null,
+      parentAuthor: null,
+      authorName: 'Reader',
+      authorUrl: '',
+      body: `Held ${id}`,
+      status,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(data.comments.management).toEqual({
+      items: [held('held', 'pending'), held('junk', 'spam')],
+    });
+    expect(headers.get('cache-control')).toBe('private, no-store');
+    expect(JSON.stringify(data)).not.toContain(SECRET);
+  });
+
+  test('anonymous visitors and non-moderators get no moderation list', async () => {
+    const anonymous = entryEvent('/hello', false);
+    const data = (await loadEntry(anonymous.event)) as {
+      comments: { management: unknown };
+    };
+    expect(data.comments.management).toBeNull();
+    expect(
+      calls.some(({ url }) => url.pathname.startsWith('/api/v1/admin/')),
+    ).toBe(false);
+    expect(anonymous.headers.has('cache-control')).toBe(false);
+
+    override = ({ url }) =>
+      url.pathname === '/api/v1/admin/comments'
+        ? json({ error: { code: 'forbidden', message: 'Forbidden' } }, 403)
+        : undefined;
+    const subscriber = entryEvent('/hello', true);
+    const signedIn = (await loadEntry(subscriber.event)) as {
+      comments: { management: unknown };
+    };
+    expect(signedIn.comments.management).toBeNull();
+    expect(subscriber.headers.has('cache-control')).toBe(false);
+  });
+
+  test('refuses missing sessions, invalid input, unconfirmed deletes and other entries before the API', async () => {
+    const valid = {
+      commentId: 'held',
+      contentId: 'id-hello',
+      operation: 'approve',
+    };
+    const anonymous = moderationEvent('/hello?/moderateComment', valid, {
+      session: false,
+    });
+    expect(failureData(await moderate(anonymous.event))).toMatchObject({
+      code: 'forbidden',
+      moderationFailed: true,
+    });
+    expect(anonymous.headers.get('cache-control')).toBe('private, no-store');
+    for (const form of [
+      { ...valid, operation: 'spam' },
+      { ...valid, commentId: '' },
+      { ...valid, commentId: ['held', 'held'] },
+      {
+        ...valid,
+        commentId: Array.from({ length: 101 }, (_, index) => `c${index}`),
+      },
+      { ...valid, contentId: 'x'.repeat(37) },
+      { ...valid, operation: 'delete' },
+    ])
+      expect(
+        failureData(
+          await moderate(
+            moderationEvent('/hello?/moderateComment', form).event,
+          ),
+        ),
+      ).toMatchObject({ code: 'invalid_input', moderationFailed: true });
+    // A forged entry id, an unknown address and a still-locked entry are not this page's.
+    expect(
+      failureData(
+        await moderate(
+          moderationEvent('/hello?/moderateComment', {
+            ...valid,
+            contentId: 'id-other',
+          }).event,
+        ),
+      ),
+    ).toMatchObject({ code: 'not_found', moderationFailed: true });
+    expect(
+      failureData(
+        await moderate(
+          moderationEvent('/missing?/moderateComment', valid).event,
+        ),
+      ),
+    ).toMatchObject({ code: 'not_found' });
+    override = ({ url }) =>
+      url.pathname === '/api/v1/resolve'
+        ? json({
+            content: { ...content('hello'), protected: true },
+            redirect: false,
+          })
+        : undefined;
+    expect(
+      failureData(
+        await moderate(moderationEvent('/hello?/moderateComment', valid).event),
+      ),
+    ).toMatchObject({ code: 'not_found' });
+    expect(bulkCalls()).toHaveLength(0);
+  });
+
+  test('scopes the change to the entry and reports API refusals as form failures', async () => {
+    override = ({ url }) =>
+      url.pathname === '/api/v1/admin/comments/bulk'
+        ? json(
+            {
+              error: {
+                code: 'not_found',
+                message: 'Comment not found',
+                debug: SECRET,
+              },
+            },
+            404,
+          )
+        : undefined;
+    const data = failureData(
+      await moderate(
+        moderationEvent('/hello?/moderateComment', {
+          commentId: 'elsewhere',
+          contentId: 'id-hello',
+          operation: 'trash',
+        }).event,
+      ),
+    );
+    expect(data).toMatchObject({ code: 'not_found', moderationFailed: true });
+    expect(JSON.stringify(data)).not.toContain(SECRET);
+    expect(JSON.parse(bulkCalls()[0]!.body)).toEqual({
+      ids: ['elsewhere'],
+      action: 'trash',
+      contentId: 'id-hello',
+    });
+  });
+
+  test('every operation saves through the moderation API and returns refreshed, projected lists', async () => {
+    for (const operation of ['approve', 'unapprove', 'trash', 'delete']) {
+      calls = [];
+      override = (call) =>
+        call.url.pathname === '/api/v1/admin/comments/bulk'
+          ? new Response(null, { status: 204 })
+          : moderationList(call);
+      const { event, headers } = moderationEvent(
+        '/hello?/moderateComment&cpage=2',
+        {
+          commentId: ['held', 'junk'],
+          contentId: 'id-hello',
+          operation,
+          ...(operation === 'delete' && { confirm: 'delete' }),
+        },
+      );
+      const result = await moderate(event);
+      expect(headers.get('cache-control')).toBe('private, no-store');
+      expect(bulkCalls()[0]!.authorization).toBe(`Bearer ${TOKEN}`);
+      expect(JSON.parse(bulkCalls()[0]!.body)).toEqual({
+        ids: ['held', 'junk'],
+        action: operation,
+        contentId: 'id-hello',
+      });
+      expect(result).toMatchObject({
+        moderated: true,
+        operation,
+        commentIds: ['held', 'junk'],
+        comments: { page: 2 },
+        management: { items: [{ id: 'held' }, { id: 'junk' }] },
+      });
+      expect(JSON.stringify(result)).not.toContain(SECRET);
+    }
+  });
+
+  test('a saved change stays successful when the refresh fails, and plain forms redirect', async () => {
+    override = ({ url, method }) => {
+      if (url.pathname === '/api/v1/admin/comments/bulk')
+        return new Response(null, { status: 204 });
+      if (
+        url.pathname === '/api/v1/admin/comments' ||
+        (url.pathname === '/api/v1/comments' && method === 'GET')
+      )
+        return json({ error: { code: 'internal', message: 'Down' } }, 500);
+      return undefined;
+    };
+    const form = {
+      commentId: 'held',
+      contentId: 'id-hello',
+      operation: 'approve',
+    };
+    expect(
+      await moderate(moderationEvent('/hello?/moderateComment', form).event),
+    ).toMatchObject({ moderated: true, comments: null, management: null });
+    expect(
+      await moderate(
+        moderationEvent('/hello?/moderateComment&cpage=2', form, {
+          enhanced: false,
+        }).event,
+      ).catch((error: unknown) => error),
+    ).toMatchObject({
+      status: 303,
+      location:
+        '/hello?cpage=2&commentNotice=commentNoticeApproved#comment-moderation',
+    });
+    // Without scripts, a refusal is marked as a moderation failure for the page to show.
+    expect(
+      failureData(
+        await moderate(
+          moderationEvent(
+            '/hello?/moderateComment',
+            { ...form, operation: 'delete' },
+            { enhanced: false },
+          ).event,
+        ),
+      ),
+    ).toMatchObject({ code: 'invalid_input', moderationFailed: true });
+    calls = [];
+    override = ({ url }) =>
+      url.pathname === '/api/v1/admin/comments/bulk'
+        ? new Response(null, { status: 204 })
+        : undefined;
+    expect(
+      await moderate(
+        moderationEvent(
+          '/hello?/moderateComment',
+          { ...form, operation: 'delete', confirm: 'delete' },
+          { enhanced: false },
+        ).event,
+      ).catch((error: unknown) => error),
+    ).toMatchObject({
+      status: 303,
+      location: '/hello?commentNotice=commentNoticeDeleted#comment-moderation',
+    });
+  });
+
+  test('the static front page moderates the entry it shows at /', async () => {
+    override = (call) => {
+      if (call.url.pathname === '/api/v1/reading')
+        return json({ ...reading, frontPage: 'page', frontPagePath: '/hello' });
+      if (call.url.pathname === '/api/v1/admin/comments/bulk')
+        return new Response(null, { status: 204 });
+      return moderationList(call);
+    };
+    const result = await homeActions.moderateComment!(
+      moderationEvent('/?/moderateComment', {
+        commentId: 'held',
+        contentId: 'id-hello',
+        operation: 'trash',
+      }).event,
+    );
+    expect(result).toMatchObject({ moderated: true, operation: 'trash' });
+    // The entry's own address redirects to `/`, so it takes no moderation.
+    expect(
+      failureData(
+        await moderate(
+          moderationEvent('/hello?/moderateComment', {
+            commentId: 'held',
+            contentId: 'id-hello',
+            operation: 'trash',
+          }).event,
+        ),
+      ),
+    ).toMatchObject({ code: 'not_found' });
+  });
+});
+
 describe('admin form failures', () => {
   test('API errors echo only the term fields and path/message issues', async () => {
     override = () =>
@@ -1120,24 +1538,38 @@ describe('admin form failures', () => {
   });
 });
 
+/** Runs the server hook for a signed-out request whose route resolves with `status`. */
+const handleSignedOut = (
+  path: string,
+  {
+    route = '/(site)',
+    method = 'GET',
+    status,
+  }: { route?: string; method?: string; status: number },
+) => {
+  const event = Object.assign(publicEvent(path, {}, route), {
+    request: new Request(`http://web.test${path}`, { method }),
+    locals: { token: null, user: null },
+  });
+  return with_request_store({ event, state: {} as never }, () =>
+    handleRequest({
+      event,
+      resolve: async () => new Response(null, { status }),
+    }),
+  );
+};
+
 test('removed and unknown admin routes stay private 404s instead of login redirects', async () => {
   for (const [path, method] of [
     ['/admin/login', 'POST'],
     ['/admin/login/__data.json', 'GET'],
     ['/admin/missing', 'GET'],
   ]) {
-    const event = Object.assign(publicEvent(path!, {}, '/(site)/[...path]'), {
-      request: new Request(`http://web.test${path}`, { method }),
-      locals: { token: null, user: null },
+    const response = await handleSignedOut(path!, {
+      route: '/(site)/[...path]',
+      method,
+      status: 404,
     });
-    const response = await with_request_store(
-      { event, state: {} as never },
-      () =>
-        handleRequest({
-          event,
-          resolve: async () => new Response(null, { status: 404 }),
-        }),
-    );
     expect(response.status).toBe(404);
     expect(response.headers.get('location')).toBeNull();
     expect(response.headers.get('cache-control')).toBe('private, no-store');
@@ -1159,21 +1591,10 @@ test('hidden login masks protected admin screens while visible login uses the co
         });
       return undefined;
     };
-    const event = Object.assign(
-      publicEvent('/admin/content', {}, '/admin/(app)/content'),
-      {
-        request: new Request('http://web.test/admin/content'),
-        locals: { token: null, user: null },
-      },
-    );
-    const response = await with_request_store(
-      { event, state: {} as never },
-      () =>
-        handleRequest({
-          event,
-          resolve: async () => new Response(null, { status: 200 }),
-        }),
-    );
+    const response = await handleSignedOut('/admin/content', {
+      route: '/admin/(app)/content',
+      status: 200,
+    });
     expect(response.status).toBe(showLogin ? 303 : 404);
     expect(response.headers.get('cache-control')).toBe('private, no-store');
     expect(response.headers.get('location')).toBe(
@@ -1187,16 +1608,7 @@ test('public error responses are not cached when a route may become a login page
     url.pathname === '/api/v1/install/status'
       ? json({ databaseConfigured: true, setupRequired: false })
       : undefined;
-  const event = Object.assign(publicEvent('/not-created'), {
-    request: new Request('http://web.test/not-created'),
-    locals: { token: null, user: null },
-  });
-  const response = await with_request_store({ event, state: {} as never }, () =>
-    handleRequest({
-      event,
-      resolve: async () => new Response(null, { status: 404 }),
-    }),
-  );
+  const response = await handleSignedOut('/not-created', { status: 404 });
   expect(response.status).toBe(404);
   expect(response.headers.get('cache-control')).toBe('private, no-store');
 });

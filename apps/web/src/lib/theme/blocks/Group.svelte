@@ -13,8 +13,8 @@
   const PADDING = {
     none: '',
     small: 'py-3',
-    medium: 'py-4 sm:py-5',
-    large: 'py-10 sm:py-14',
+    medium: 'py-4 @min-[40rem]:py-5',
+    large: 'py-10 @min-[40rem]:py-14',
   } as const;
   const BOX_PADDING = {
     none: '',
@@ -42,11 +42,11 @@
   const GRID = [
     '',
     'grid-cols-1',
-    'sm:grid-cols-2',
-    'sm:grid-cols-2 lg:grid-cols-3',
-    'sm:grid-cols-2 lg:grid-cols-4',
-    'sm:grid-cols-3 lg:grid-cols-5',
-    'sm:grid-cols-3 lg:grid-cols-6',
+    '@min-[40rem]:grid-cols-2',
+    '@min-[40rem]:grid-cols-2 @min-[64rem]:grid-cols-3',
+    '@min-[40rem]:grid-cols-2 @min-[64rem]:grid-cols-4',
+    '@min-[40rem]:grid-cols-3 @min-[64rem]:grid-cols-5',
+    '@min-[40rem]:grid-cols-3 @min-[64rem]:grid-cols-6',
   ];
   const BORDER = {
     none: '',
@@ -91,7 +91,7 @@
 >
   {#if a.layout === 'constrained'}
     <div
-      class="cms-inner mx-auto flex w-full min-w-0 flex-col px-4 sm:px-6 {WIDTH[
+      class="cms-inner mx-auto flex w-full min-w-0 flex-col px-4 @min-[40rem]:px-6 {WIDTH[
         a.width
       ]} {GAP[a.gap]}"
     >

@@ -10,8 +10,8 @@
   const SIZE = {
     small: 'text-lg',
     medium: 'text-xl',
-    large: 'text-2xl sm:text-[1.75rem] leading-tight',
-    xlarge: 'text-3xl sm:text-5xl leading-[1.1]',
+    large: 'text-2xl @min-[40rem]:text-[1.75rem] leading-tight',
+    xlarge: 'text-3xl @min-[40rem]:text-5xl leading-[1.1]',
   } as const;
   const post = $derived(current().post);
 </script>

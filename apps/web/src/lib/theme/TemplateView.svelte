@@ -1,20 +1,10 @@
 <script lang="ts">
-  import type { RouteId } from '$app/types';
   import { walkBlocks } from '@cms/sdk';
-  import type { ArchivePathsState, Block, SlotMap } from '@cms/sdk';
-  import type { CommentSection } from '#lib/server/comments.js';
-  import type { BlockData } from '#lib/server/theme-queries.js';
-  import type {
-    MenuItemView,
-    PostList,
-    ReadingView,
-    SiteView,
-    ThemeView,
-    WidgetView,
-  } from '#lib/server/public-view.js';
+  import type { Block } from '@cms/sdk';
   import Blocks from '#lib/theme/blocks/Blocks.svelte';
   import SlotOutlet from '#lib/theme/SlotOutlet.svelte';
   import { provideBlockPath, provideScope } from '#lib/theme/scope.js';
+  import type { ScopeData } from '#lib/theme/scope.js';
   import {
     isFrontPage,
     pickTemplate,
@@ -24,33 +14,7 @@
 
   interface Props {
     /** Layout data plus the page's own data (`page.data`). */
-    data: {
-      linkRoutes?: Record<string, RouteId>;
-      privacy?: {
-        policy: { title: string; path: string } | null;
-        commentCookies: boolean;
-      };
-      archives?: ArchivePathsState;
-      queries?: Record<string, PostList>;
-      terms?: BlockData['terms'];
-      months?: BlockData['months'];
-      adjacent?: BlockData['adjacent'];
-      pageTree?: BlockData['pageTree'];
-      recentComments?: BlockData['recentComments'];
-      authors?: BlockData['authors'];
-      calendar?: BlockData['calendar'];
-      theme: ThemeView;
-      site: SiteView;
-      reading: ReadingView;
-      menus: { primary: MenuItemView[] | null; footer: MenuItemView[] | null };
-      widgets: { sidebar: WidgetView[]; footer: WidgetView[] };
-      pages: { path: string; title: string }[];
-      slots?: SlotMap;
-      fieldLabels?: { key: string; label: string; type: string }[];
-      comments?: CommentSection | null;
-      moderation?: boolean;
-      toolbar?: unknown;
-    };
+    data: ScopeData;
     page: ThemePage;
     previewBlocks?: Block[];
     /** In the site editor: blocks are marked so the canvas can select them. */

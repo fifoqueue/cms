@@ -32,6 +32,12 @@ export const lastPageOf = ({
   pageSize: number;
 }) => Math.max(1, Math.ceil(total / pageSize));
 
+/** Page links to show: the first, the last and two either side of the current page. */
+export const pageWindow = (page: number, lastPage: number) =>
+  [...new Set([1, page - 2, page - 1, page, page + 1, page + 2, lastPage])]
+    .filter((number) => number > 0 && number <= lastPage)
+    .sort((a, b) => a - b);
+
 export const termTarget = (
   taxonomy: string,
   slug: string,

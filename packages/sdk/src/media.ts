@@ -3,8 +3,9 @@ import { PAGINATION_MAX_PAGE } from '#sdk/common';
 
 export { MEDIA_PATH } from '#sdk/media-paths';
 
-/** Accepted uploads by MIME type. SVG is refused: it can carry scripts. */
+/** Accepted uploads by MIME type; SVG additionally requires the upload policy. */
 export const MEDIA_TYPES = {
+  'image/svg+xml': 'svg',
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/gif': 'gif',

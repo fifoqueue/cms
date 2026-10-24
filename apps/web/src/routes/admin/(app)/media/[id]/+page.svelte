@@ -133,7 +133,10 @@
     {/if}
   </div>
 
-  <div class="space-y-6">
+  <!-- The padding inside the scroller keeps the cards' rings and focus rings visible. -->
+  <div
+    class="space-y-6 lg:sticky lg:top-4 lg:-m-1 lg:max-h-[calc(100dvh-2rem)] lg:self-start lg:overflow-y-auto lg:p-1"
+  >
     <Card>
       <CardContent class="space-y-2 pt-6 text-sm">
         <p>

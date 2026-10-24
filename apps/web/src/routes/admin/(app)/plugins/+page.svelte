@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SvelteURLSearchParams } from 'svelte/reactivity';
+  import { listQuery } from '#lib/admin/list-query.js';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
   import { resolve } from '$app/paths';
@@ -49,12 +49,11 @@
 
   const views = ['active', 'inactive', 'failed'] as const;
   /** A view link keeping the search. */
-  const view = (status?: string): `?${string}` => {
-    const params = new SvelteURLSearchParams();
-    if (status) params.set('status', status);
-    if (data.filter.q) params.set('q', data.filter.q);
-    return `?${params}`;
-  };
+  const view = (status?: string): `?${string}` =>
+    listQuery(
+      { status: status || undefined, q: data.filter.q || undefined },
+      {},
+    );
 
   let selected = $state<string[]>([]);
   const ids = $derived(data.plugins.map((plugin) => plugin.id));

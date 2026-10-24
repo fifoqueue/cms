@@ -1,4 +1,5 @@
 import { avatarFiles } from '#lib/server/api.js';
+import { relayFile } from '#lib/server/relay.js';
 import type { RequestHandler } from './$types';
 
 const PASSED = [
@@ -15,12 +16,5 @@ export const GET: RequestHandler = async ({ fetch, params, url }) => {
     params.id,
     url.searchParams.get('s'),
   );
-  const headers = new Headers();
-  for (const name of PASSED) {
-    const value = response.headers.get(name);
-    if (value) headers.set(name, value);
-  }
-  if (!response.ok)
-    return new Response(null, { status: response.status === 404 ? 404 : 502 });
-  return new Response(response.body, { headers });
+  return relayFile(response, PASSED);
 };

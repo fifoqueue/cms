@@ -1,13 +1,54 @@
 import tailwindcss from '@tailwindcss/vite';
 import adapter from '@sveltejs/adapter-node';
 import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig, loadEnv } from 'vite';
+import { relative, isAbsolute } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { scanDocumentRoutes } from '#lib/server/route-kinds.js';
 import { removeApiSecrets } from '#web-env';
 
 removeApiSecrets();
 
 // One .env at the repository root serves both the API and the web app.
 const envDir = '../..';
+
+/**
+ * `virtual:cms/route-kinds`: route IDs (strings only) of endpoints without a page, read from
+ * `src/routes` because `$app/manifest` is empty in dev whenever `svelte-kit sync` runs.
+ */
+const routeKinds = (): Plugin => {
+  const id = 'virtual:cms/route-kinds';
+  const resolved = `\0${id}`;
+  const routes = fileURLToPath(new URL('src/routes', import.meta.url));
+  const generate = () =>
+    `export const documents = ${JSON.stringify(scanDocumentRoutes(routes))};\n`;
+  let code = '';
+  return {
+    name: 'cms:route-kinds',
+    resolveId: (source) => (source === id ? resolved : undefined),
+    load(source) {
+      if (source === resolved) return (code = generate());
+    },
+    configureServer(server) {
+      const refresh = (file: string) => {
+        const path = relative(routes, file);
+        if (!path || path.startsWith('..') || isAbsolute(path)) return;
+        const next = generate();
+        if (next === code) return;
+        code = next;
+        for (const environment of Object.values(server.environments)) {
+          const node = environment.moduleGraph.getModuleById(resolved);
+          if (node) environment.moduleGraph.invalidateModule(node);
+        }
+        server.ws.send({ type: 'full-reload' });
+      };
+      server.watcher
+        .on('add', refresh)
+        .on('unlink', refresh)
+        .on('unlinkDir', refresh);
+    },
+  };
+};
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, envDir, '');
@@ -22,6 +63,7 @@ export default defineConfig(({ mode }) => {
       client: { build: { minify: 'oxc', cssMinify: 'lightningcss' } },
     },
     plugins: [
+      routeKinds(),
       tailwindcss(),
       sveltekit({
         compilerOptions: {

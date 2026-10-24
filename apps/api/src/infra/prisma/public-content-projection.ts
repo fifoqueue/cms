@@ -1,4 +1,5 @@
 import type { TaxonomyType, TermSummary } from '@cms/sdk';
+import { extraTerms } from '#api/infra/prisma/extra-terms';
 import type {
   PublishedRecord,
   PublishedSummaryRecord,
@@ -82,16 +83,7 @@ const summary = (row: Row, terms: { term: Term }[]): PublishedSummaryRecord => {
     summary: row.summary,
     categories: termSummaries(terms, 'category'),
     tags: termSummaries(terms, 'tag'),
-    extraTerms: terms
-      .filter(
-        ({ term }) => term.taxonomy !== 'category' && term.taxonomy !== 'tag',
-      )
-      .map(({ term }) => ({
-        id: term.id,
-        name: term.name,
-        slug: term.slug,
-        taxonomy: term.taxonomy,
-      })),
+    extraTerms: extraTerms(terms),
     seo: fromPublicSeoColumns({
       seoTitle: row.seoTitle,
       seoDescription: row.seoDescription,

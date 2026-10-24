@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { saveSnapshot } from '#lib/admin/save-snapshot.js';
   import { enhance } from '$app/forms';
   import { WIDGET_AREAS } from '@cms/sdk';
   import type { Widget, WidgetArea } from '@cms/sdk';
@@ -114,13 +115,10 @@
 <form
   method="POST"
   action="?/save"
-  use:enhance={() => {
-    const sent = JSON.stringify(areas);
-    return async ({ result, update }) => {
-      if (result.type === 'success') saved = sent;
-      await update({ reset: false });
-    };
-  }}
+  use:enhance={saveSnapshot(
+    () => JSON.stringify(areas),
+    (sent) => (saved = sent),
+  )}
   class="grid gap-6"
 >
   <input type="hidden" name="widgets" value={JSON.stringify(areas)} />

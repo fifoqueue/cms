@@ -1,5 +1,6 @@
 import { DATE_FORMATS } from '@cms/sdk';
-import { failFrom, text } from '#lib/server/errors.js';
+import { text } from '#lib/server/errors.js';
+import { submitAction } from '#lib/server/form-action.js';
 import { adminFor } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -35,8 +36,8 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   site: async (event) => {
     const form = await event.request.formData();
-    try {
-      await adminFor(event).site.update({
+    return submitAction(() =>
+      adminFor(event).site.update({
         title: text(form, 'title'),
         description: text(form, 'description'),
         locale: text(form, 'locale'),
@@ -44,11 +45,8 @@ export const actions: Actions = {
         logoId: text(form, 'logoId') || null,
         loginPath: text(form, 'loginPath'),
         showLogin: form.has('showLogin'),
-      });
-    } catch (caught) {
-      return failFrom(caught);
-    }
-    return { notice: 'saved' };
+      }),
+    );
   },
   /** Time zone and date presentation, stored with the reading settings as before. */
   dates: async (event) => {
@@ -59,16 +57,13 @@ export const actions: Actions = {
     const dateFormat = DATE_FORMATS.find(
       (format) => format === text(form, 'dateFormat'),
     );
-    try {
-      await adminFor(event).reading.update({
+    return submitAction(() =>
+      adminFor(event).reading.update({
         ...current,
         timeZone: text(form, 'timeZone') || 'UTC',
         dateFormat: dateFormat ?? current.dateFormat,
         weekStartsOn: Math.trunc(Number(text(form, 'weekStartsOn'))) || 0,
-      });
-    } catch (caught) {
-      return failFrom(caught);
-    }
-    return { notice: 'saved' };
+      }),
+    );
   },
 };

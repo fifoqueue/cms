@@ -9,13 +9,15 @@
   "exports": {
     ".": "./src/index.ts",
     "./plugin": "./src/plugin.ts",
+    "./code-block": "./src/code-block.ts",
     "./client": "./src/client.ts",
     "./format": "./src/format.ts",
     "./tree": "./src/tree.ts",
     "./capabilities": "./src/capabilities.ts",
     "./locales": "./src/locales.ts",
     "./media-paths": "./src/media-paths.ts",
-    "./media-headers": "./src/media-headers.ts"
+    "./media-headers": "./src/media-headers.ts",
+    "./seo-fields": "./src/seo-fields.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p ."

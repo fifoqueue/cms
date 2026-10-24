@@ -12,7 +12,7 @@ export const COLOR_MODE_DEPENDENCY = 'admin:color-mode';
 export const colorModeOf = (value: string | undefined): ColorMode =>
   COLOR_MODES.find((mode) => mode === value) ?? 'system';
 
-const DARK_QUERY = '(prefers-color-scheme: dark)';
+export const DARK_QUERY = '(prefers-color-scheme: dark)';
 
 const isDark = (mode: ColorMode) =>
   mode === 'dark' || (mode === 'system' && matchMedia(DARK_QUERY).matches);

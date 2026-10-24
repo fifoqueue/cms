@@ -7,7 +7,7 @@ declare global {
       token: string | null;
       /** Set by `hooks.server.ts` for `/admin` requests with a valid session. */
       user: UserProfile | null;
-      /** The page language for `<html lang>`, set by the public site layout. */
+      /** The page language for `<html lang>`, set by the public site and sign-in layouts. */
       lang?: string;
     }
   }

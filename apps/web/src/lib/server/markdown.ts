@@ -239,6 +239,11 @@ const list = (element: Element, context: Context) => {
 };
 
 const block = (element: Element, context: Context): string => {
+  if (
+    element.tagName === 'nav' &&
+    (attr(element, 'class') ?? '').split(/\s+/).includes('cms-toc')
+  )
+    return '';
   const heading = /^h([1-6])$/.exec(element.tagName);
   if (heading) {
     const text = singleLine(inline(element.childNodes, context));

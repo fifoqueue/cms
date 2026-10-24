@@ -261,7 +261,12 @@ export interface PluginLogger {
   error(message: string, ...details: unknown[]): void;
 }
 
-/** Everything a plugin may touch. Every registration is released when the plugin is deactivated. */
+/**
+ * Supported host APIs, not a JavaScript sandbox. Installing a bundle executes trusted server
+ * code (including module evaluation). Hooks can receive private editorial/comment data.
+ * Registrations and data access through this context are revoked on deactivation; already
+ * started work and arbitrary JavaScript cannot be cancelled.
+ */
 export interface PluginContext {
   readonly pluginId: string;
   readonly hooks: HookRegistrar;
@@ -282,7 +287,10 @@ export interface PluginDefinition {
   manifest: PluginManifest;
   /** Register hooks, slots and routes here. Never perform side effects at module top level. */
   activate(context: PluginContext): Awaitable<void>;
-  /** Release resources the context does not track, such as timers. */
+  /**
+   * Release resources the context does not track, such as timers. The scope is disposed
+   * before this callback: context settings/storage/content calls are no longer permitted.
+   */
   deactivate?(): Awaitable<void>;
 }
 

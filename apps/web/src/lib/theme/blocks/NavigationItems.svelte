@@ -2,6 +2,7 @@
   import { page } from '$app/state';
   import { ChevronDown } from '@lucide/svelte';
   import type { MenuItemView } from '#lib/server/public-view.js';
+  import { hrefOptions } from '#lib/route-link.js';
   import NavigationItems from '#lib/theme/blocks/NavigationItems.svelte';
 
   interface Props {
@@ -32,6 +33,7 @@
       <!-- eslint-disable svelte/no-navigation-without-resolve -- menu links are site paths or external addresses chosen by admins -->
       <a
         href={item.url}
+        {...hrefOptions(item.url)}
         target={item.newTab ? '_blank' : undefined}
         rel={item.newTab ? 'noopener' : undefined}
         aria-current={item.url === page.url.pathname ? 'page' : undefined}

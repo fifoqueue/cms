@@ -48,9 +48,13 @@ export class WidgetRegistry implements PluginWidgets {
     );
     if (!registration) return null;
     const result = await isolate(
-      () => registration.widget.render(structuredClone(settings)),
+      () =>
+        this.registrations.includes(registration)
+          ? registration.widget.render(structuredClone(settings))
+          : null,
       this.options.timeoutMs,
     );
+    if (!this.registrations.includes(registration)) return null;
     if (result.ok && typeof result.value === 'string') return result.value;
     this.options.logger.warn(
       `Plugin "${registration.owner}" failed to render widget "${type}": ${result.ok ? 'returned a non-string value' : result.error.message}`,

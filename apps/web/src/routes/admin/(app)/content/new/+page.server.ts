@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { can } from '@cms/sdk';
-import { readContentForm } from '#lib/server/content-form.js';
+import { readContentInput } from '#lib/server/content-form.js';
 import { failFrom } from '#lib/server/errors.js';
 import { loadSeoContext } from '#lib/server/seo-admin.js';
 import { adminFor } from '#lib/server/session.js';
@@ -33,11 +33,7 @@ export const load: PageServerLoad = async (event) => {
 
 export const actions: Actions = {
   save: async (event) => {
-    const [formData, model] = await Promise.all([
-      event.request.formData(),
-      adminFor(event).contentModel.model(),
-    ]);
-    const { input, values, failure } = readContentForm(formData, model.fields);
+    const { input, values, failure } = await readContentInput(event);
     if (failure) return failure;
     let id: string;
     let status: string;

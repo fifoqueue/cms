@@ -23,6 +23,8 @@ export const mediaNode = (media: AdminMedia): JSONContent => ({
 const configurable = new Set([
   'paragraph',
   'heading',
+  'codeBlock',
+  'tableOfContents',
   // Images have their own settings bar in the editor (alt, size, caption, alignment, link).
   'video',
   'file',
@@ -32,6 +34,7 @@ const configurable = new Set([
   'button',
   'details',
   'pullquote',
+  'callout',
   'spacer',
   'table',
   'embed',

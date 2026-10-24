@@ -10,6 +10,7 @@ import type {
 } from '#api/domain/users/user-directory';
 import { conflict, invalidInput, notFound, Errors } from '#api/shared/errors';
 import type { MemoryContentRepository } from '#test/support/memory';
+import { writeQueue } from '#test/support/memory-rows';
 import type { MemoryUsers } from '#test/support/sso-memory';
 
 /** Same contract as `PrismaUserDirectory`, over the in-memory user and content tables. */
@@ -51,12 +52,7 @@ export class MemoryUserDirectory implements UserDirectory, RoleWriter {
   }
 
   /** User writes run one at a time, like the Prisma adapter's `users.lock`. */
-  private writing: Promise<unknown> = Promise.resolve();
-  private exclusive<T>(task: () => Promise<T>): Promise<T> {
-    const run = this.writing.then(task, task);
-    this.writing = run.catch(() => undefined);
-    return run;
-  }
+  private readonly exclusive = writeQueue();
 
   insert(user: UserRecord) {
     return this.exclusive(async () => {

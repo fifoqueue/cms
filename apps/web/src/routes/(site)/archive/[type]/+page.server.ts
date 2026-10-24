@@ -1,8 +1,7 @@
-import { requirePage } from '#lib/server/public-view.js';
 import { error } from '@sveltejs/kit';
 import { contentApi } from '#lib/server/api.js';
+import { listPosts } from '#lib/server/archive.js';
 import { Errors } from '#lib/server/errors.js';
-import { listView, pageParam } from '#lib/server/public-view.js';
 import { loadSlots } from '#lib/server/slots.js';
 import { withTemplateData } from '#lib/server/theme-queries.js';
 import type { PageServerLoad } from './$types';
@@ -16,11 +15,7 @@ export const load: PageServerLoad = async ({ fetch, url, params, parent }) => {
     (option) => option.key === params.type && option.archive,
   );
   if (!type) error(404, Errors.NotFound);
-  const posts = await api.list({
-    type: type.key,
-    page: pageParam(url),
-    pageSize,
-  });
+  const posts = await listPosts(api, url, { type: type.key }, pageSize);
   return withTemplateData(api, parent, {
     kind: 'archive' as const,
     archive: {
@@ -28,7 +23,7 @@ export const load: PageServerLoad = async ({ fetch, url, params, parent }) => {
       name: type.pluralName,
       description: type.description,
     },
-    posts: (requirePage(posts), listView(posts)),
+    posts,
     slots: await slots,
   });
 };

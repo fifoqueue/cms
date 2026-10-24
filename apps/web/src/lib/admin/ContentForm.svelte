@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { thumbnailUrl } from '#lib/admin/media-thumbnail.js';
+  import { localTime } from '#lib/admin/local-time.js';
   import type { Path } from '$app/types';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
@@ -20,7 +22,7 @@
   } from '@cms/sdk';
   import { permalinkPatternFor } from '@cms/sdk';
   import type { AuthorOption } from '@cms/sdk/client';
-  import { ExternalLink, X } from '@lucide/svelte';
+  import { X } from '@lucide/svelte';
   import { onDestroy, onMount, untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import type { ContentFormValues } from '#lib/admin/content-form-values.js';
@@ -31,8 +33,15 @@
   import { documentText, seoFormValues } from '#lib/admin/seo.js';
   import { flattenTree } from '#lib/admin/taxonomy-tree.js';
   import { editorBackup } from '#lib/admin/editor-backup.js';
-  import { errorMessage } from '#lib/admin/form-errors.js';
+  import FormMessage from '#lib/admin/FormMessage.svelte';
   import { confirmLeave } from '#lib/admin/unsaved.js';
+  import {
+    forgetParams,
+    notifyFailure,
+    notifyQuietly,
+    notifySuccess,
+  } from '#lib/feedback.js';
+  import type { ActionData } from '#lib/feedback.js';
   import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -124,14 +133,6 @@
   const EMPTY: ContentDocument = {
     type: 'doc',
     content: [{ type: 'paragraph' }],
-  };
-  /** `datetime-local` value in the browser's zone for an ISO time. */
-  const localTime = (iso: string | null | undefined) => {
-    if (!iso) return '';
-    const date = new Date(iso);
-    return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-      .toISOString()
-      .slice(0, 16);
   };
   /** Statuses after which the entry is out of the draft workflow. */
   const LIVE: readonly ContentStatus[] = ['published', 'private', 'scheduled'];
@@ -435,7 +436,6 @@
 
   // Autosave: every 30 seconds while the text differs from what was last kept. Autosaves,
   // previews and saves run one after another, so an older write never lands after a newer one.
-  let autosaveState = $state<{ ok: boolean; at: Date } | null>(null);
   let kept = savedText;
   let queue: Promise<unknown> = Promise.resolve();
   /** Stores the current text as the user's autosave; resolves once the server has it. */
@@ -450,8 +450,13 @@
     // An expired session answers with the sign-in page.
     if (response?.redirected) sessionExpired();
     const ok = !!response?.ok && !response.redirected;
-    autosaveState = { ok, at: new Date() };
-    if (ok) kept = current;
+    if (ok) {
+      kept = current;
+      notifyQuietly(
+        m.autosaveSaved(new Date().toLocaleTimeString(i18n.language)),
+        'autosave',
+      );
+    } else notifyFailure(m.autosaveFailed);
     return ok;
   };
   const autosave = () => {
@@ -473,10 +478,9 @@
     if (
       !autosaveInputSchema.safeParse({ title, excerpt, document: body }).success
     ) {
-      saveError = m.previewInvalid;
+      notifyFailure(m.previewInvalid);
       return;
     }
-    saveError = '';
     const target = `cms-preview-${entry.id}`;
     const tab = window.open('about:blank', target);
     const form = previewForm;
@@ -484,40 +488,65 @@
     form.target = target;
     queue = queue.then(async () => {
       if (await keepText(id)) form.submit();
-      else {
-        tab?.close();
-        saveError = m.autosaveFailed;
-      }
+      else tab?.close();
     });
   };
 
-  /** The result of the last save: the saved status and what the entry was before. */
-  let result = $state<{ status: string; previous?: string } | null>(
-    untrack(() => (created ? { status: created } : null)),
-  );
-  let saveError = $state('');
-  const resultText = $derived.by(() => {
-    if (!result) return '';
-    const { status, previous } = result;
+  /** What a save did: the saved status against what the entry was before. */
+  const savedNotice = (status: string, previous?: string) => {
     if (status === 'draft') return m.entryDraftSaved;
     if (status === previous) return m.entryUpdated;
     if (status === 'pending') return m.entrySubmitted;
     if (status === 'published') return m.entryPublished;
     if (status === 'scheduled') return m.entryScheduled;
     return m.entryUpdated;
+  };
+  /** Announces a save; a first publication offers to view the entry. */
+  const announceSave = (status: string, previous?: string) => {
+    const path = entry?.path;
+    notifySuccess(savedNotice(status, previous), {
+      action:
+        status === 'published' &&
+        previous !== 'published' &&
+        entry?.status === 'published' &&
+        path
+          ? {
+              label: m.view,
+              onClick: () => window.open(resolve(path as Path), '_blank'),
+            }
+          : undefined,
+    });
+  };
+  // A new entry arrives here after its first save (`?saved=<status>`, shown once).
+  onMount(() => {
+    if (!created) return;
+    announceSave(created);
+    forgetParams('saved');
   });
-  const justPublished = $derived(
-    result?.status === 'published' &&
-      result.previous !== 'published' &&
-      entry?.status === 'published',
-  );
+  let saveBar = $state<HTMLElement>();
+  // Small screens: toasts rise above the fixed save bar (0 while the bar is hidden).
+  $effect(() => {
+    if (!saveBar) return;
+    const bar = saveBar;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() =>
+      root.style.setProperty('--cms-save-bar-offset', `${bar.offsetHeight}px`),
+    );
+    observer.observe(bar);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--cms-save-bar-offset');
+    };
+  });
+  /** The last refused save; its field issues show by the save button. */
+  let saveFailure = $state.raw<ActionData | null>(null);
 
   let formElement: HTMLFormElement;
   const submit: SubmitFunction = async () => {
     const previous = entry?.status;
     const sent = { text: snapshot(), edits, draftStatus };
     saving = true;
-    saveError = '';
+    saveFailure = null;
     // A queued autosave finishes first, so it cannot land after (and outdate) this save.
     await queue;
     return async ({ result: outcome, update }) => {
@@ -532,13 +561,12 @@
       }
       if (outcome.type === 'error') {
         saving = false;
-        saveError = m.saveFailed;
+        notifyFailure(m.saveFailed);
         return;
       }
       if (outcome.type === 'failure') {
-        saveError = outcome.data?.stale
-          ? m.entryConflict
-          : errorMessage(m, i18n.language, outcome.data ?? {});
+        if (outcome.data?.stale) notifyFailure(m.entryConflict);
+        else saveFailure = (outcome.data ?? {}) as ActionData;
       } else {
         // Before `update`: a new entry's redirect must not ask about the text it just saved.
         savedText = kept = sent.text;
@@ -557,7 +585,7 @@
       const status = saved?.status ?? entry?.status;
       if (!status) return;
       // What the server stored, which can differ from the button (a past date publishes).
-      result = { status, previous };
+      announceSave(status, previous);
       if (
         draftStatus === sent.draftStatus &&
         (status === 'draft' || status === 'pending')
@@ -600,14 +628,6 @@
     class={compact ? '' : 'w-full'}
     disabled={saving}>{primaryLabel}</Button
   >
-{/snippet}
-
-{#snippet saveResult()}
-  {#if saveError}
-    <p class="text-sm text-destructive" role="alert">{saveError}</p>
-  {:else if resultText}
-    <p class="text-sm text-muted-foreground" role="status">{resultText}</p>
-  {/if}
 {/snippet}
 
 {#if backup}
@@ -715,15 +735,6 @@
       {/key}
       <p class="flex flex-wrap gap-x-4 text-xs text-muted-foreground">
         <span>{m.wordCount(words)}</span>
-        {#if autosaveState}
-          <span role="status">
-            {autosaveState.ok
-              ? m.autosaveSaved(
-                  autosaveState.at.toLocaleTimeString(i18n.language),
-                )
-              : m.autosaveFailed}
-          </span>
-        {/if}
       </p>
     </div>
 
@@ -846,9 +857,7 @@
         onpick={(media) => {
           imageFields[pickingField] = {
             id: media.id,
-            url:
-              media.variants.find((variant) => variant.name === 'thumbnail')
-                ?.url ?? media.url,
+            url: thumbnailUrl(media),
           };
           touch();
         }}
@@ -871,7 +880,10 @@
     />
   </div>
 
-  <aside class="space-y-6">
+  <!-- Wide screens: the panel follows the page and scrolls on its own; the padding keeps card rings and focus rings inside the scroll box. -->
+  <aside
+    class="space-y-6 lg:sticky lg:top-4 lg:-m-1 lg:max-h-[calc(100dvh-2rem)] lg:self-start lg:overflow-y-auto lg:p-1"
+  >
     <Card>
       <CardHeader><CardTitle>{m.publishTitle}</CardTitle></CardHeader>
       <CardContent class="space-y-4">
@@ -1059,18 +1071,7 @@
 
         <div class="space-y-2 border-t pt-4">
           {@render saveButtons(false)}
-          {@render saveResult()}
-          {#if justPublished && entry}
-            <p class="text-sm font-medium">
-              {m.entryLive}
-              <a
-                href={resolve(entry.path as Path)}
-                target="_blank"
-                class="inline-flex items-center gap-1 underline"
-                >{m.view}<ExternalLink class="size-3" /></a
-              >
-            </p>
-          {/if}
+          <FormMessage form={saveFailure} />
           <p class="text-xs text-muted-foreground">{m.saveShortcut}</p>
         </div>
       </CardContent>
@@ -1324,9 +1325,9 @@
 
   <!-- Mobile: the save buttons stay reachable while writing. -->
   <div
+    bind:this={saveBar}
     class="fixed inset-x-0 bottom-0 z-20 flex items-center justify-end gap-2 border-t bg-background p-3 lg:hidden"
   >
-    <div class="mr-auto min-w-0 truncate">{@render saveResult()}</div>
     {@render saveButtons(true)}
   </div>
 </form>

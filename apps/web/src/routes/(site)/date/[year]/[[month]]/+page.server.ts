@@ -1,8 +1,7 @@
-import { requirePage } from '#lib/server/public-view.js';
 import { error } from '@sveltejs/kit';
 import { contentApi } from '#lib/server/api.js';
+import { listPosts } from '#lib/server/archive.js';
 import { Errors } from '#lib/server/errors.js';
-import { listView, pageParam } from '#lib/server/public-view.js';
 import { loadSlots } from '#lib/server/slots.js';
 import { withTemplateData } from '#lib/server/theme-queries.js';
 import type { PageServerLoad } from './$types';
@@ -19,17 +18,16 @@ export const load: PageServerLoad = async ({ fetch, url, params, parent }) => {
   if (!(year >= 1970) || Number.isNaN(month)) error(404, Errors.NotFound);
   const api = contentApi(fetch);
   const slots = loadSlots(api, { path: url.pathname });
-  const posts = await api.list({
-    type: 'post',
-    year,
-    month: month ?? undefined,
-    page: pageParam(url),
-    pageSize: (await parent()).reading.postsPerPage,
-  });
+  const posts = await listPosts(
+    api,
+    url,
+    { type: 'post', year, month: month ?? undefined },
+    (await parent()).reading.postsPerPage,
+  );
   return withTemplateData(api, parent, {
     kind: 'date' as const,
     date: { year, month },
-    posts: (requirePage(posts), listView(posts)),
+    posts,
     slots: await slots,
   });
 };

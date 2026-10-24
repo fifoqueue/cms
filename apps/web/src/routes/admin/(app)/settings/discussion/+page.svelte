@@ -4,7 +4,7 @@
     NativeSelect,
     NativeSelectOption,
   } from '#lib/components/ui/native-select/index.js';
-  import { enhance } from '$app/forms';
+  import SettingsForm from '#lib/admin/settings/SettingsForm.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
@@ -40,14 +40,7 @@
 <Card>
   <CardHeader><CardTitle>{m.settingsDiscussion}</CardTitle></CardHeader>
   <CardContent>
-    <form
-      method="POST"
-      action="?/save"
-      use:enhance={() =>
-        ({ update }) =>
-          update({ reset: false })}
-      class="grid gap-6"
-    >
+    <SettingsForm action="?/save" class="grid gap-6">
       <label class="flex items-center gap-2 text-sm">
         <input type="checkbox" name="enabled" checked={settings.enabled} />
         {m.discussionEnabled}
@@ -213,6 +206,6 @@
         {m.discussionNotifyAuthors}
       </label>
       <div><Button type="submit">{m.save}</Button></div>
-    </form>
+    </SettingsForm>
   </CardContent>
 </Card>

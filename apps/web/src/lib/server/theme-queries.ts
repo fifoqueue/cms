@@ -14,7 +14,7 @@ import { childrenOf } from '@cms/sdk/tree';
 import type { contentApi } from '#lib/server/api.js';
 import { Errors } from '#lib/server/errors.js';
 import { listView } from '#lib/server/public-view.js';
-import { mapLimit } from '#lib/server/seo-discovery.js';
+import { mapLimit } from '#lib/server/bounded.js';
 import type { PostList, ThemeView } from '#lib/server/public-view.js';
 import { queryKey, selectionOf } from '#lib/theme/queries.js';
 import type { QuerySelection } from '#lib/theme/queries.js';

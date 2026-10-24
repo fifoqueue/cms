@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SvelteURLSearchParams } from 'svelte/reactivity';
+  import { listQuery } from '#lib/admin/list-query.js';
   import { CAPABILITIES, ROLES } from '@cms/sdk/capabilities';
   let roleKey = $state('');
   import { enhance } from '$app/forms';
@@ -7,6 +7,7 @@
   import { resolve } from '$app/paths';
   import { Search } from '@lucide/svelte';
   import BulkReport from '#lib/admin/BulkReport.svelte';
+  import RoleOptions from '#lib/admin/RoleOptions.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -52,12 +53,8 @@
   };
 
   /** A view link keeping the search. */
-  const view = (role?: string): `?${string}` => {
-    const params = new SvelteURLSearchParams();
-    if (role) params.set('role', role);
-    if (data.filter.q) params.set('q', data.filter.q);
-    return `?${params}`;
-  };
+  const view = (role?: string): `?${string}` =>
+    listQuery({ role: role || undefined, q: data.filter.q || undefined }, {});
 
   let selected = $state<string[]>([]);
   let action = $state('');
@@ -322,13 +319,7 @@
           name="role"
           value={values?.role ?? 'author'}
         >
-          {#each data.roles as role (role.key)}
-            <NativeSelectOption value={role.key}
-              >{roleLabel(m, role.key) === role.key
-                ? role.name
-                : roleLabel(m, role.key)}</NativeSelectOption
-            >
-          {/each}
+          <RoleOptions roles={data.roles} />
         </NativeSelect>
       </div>
       <label class="flex items-center gap-2 text-sm sm:col-span-2">

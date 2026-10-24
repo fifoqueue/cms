@@ -13,7 +13,20 @@ export class PluginScope {
     return !this.disposed;
   }
 
-  track(release: Unsubscribe): Unsubscribe {
+  private assertActive(): void {
+    if (this.disposed) throw new Error(Errors.PluginInactive);
+  }
+
+  async run<T>(operation: () => T | Promise<T>): Promise<T> {
+    this.assertActive();
+    const result = await operation();
+    this.assertActive();
+    return result;
+  }
+
+  track(register: () => Unsubscribe): Unsubscribe {
+    this.assertActive();
+    const release = register();
     if (this.disposed) {
       release();
       throw new Error(Errors.PluginInactive);

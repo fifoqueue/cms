@@ -48,8 +48,12 @@
           aria-current={selected === pathKey(path) ? 'true' : undefined}
           onclick={() => onselect(path)}
         >
-          <span class="shrink-0 font-medium">{m.blockName(block.name)}</span>
-          <span class="truncate text-xs text-muted-foreground"
+          <span
+            class="min-w-0 shrink truncate font-medium"
+            title={m.blockName(block.name)}>{m.blockName(block.name)}</span
+          >
+          <span
+            class="min-w-0 shrink-[4] truncate text-xs text-muted-foreground"
             >{blockSummary(block)}</span
           >
         </button>

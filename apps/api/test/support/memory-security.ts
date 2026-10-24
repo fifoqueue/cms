@@ -6,21 +6,9 @@ import type {
   PasswordTokenRepository,
 } from '#api/domain/auth/ports';
 import type { CredentialRepository } from '#api/domain/auth/password-service';
+import { isExceeded, nextBucket } from '#api/infra/prisma/rate-limit-window';
+import type { Bucket } from '#api/infra/prisma/rate-limit-window';
 import type { MemorySessions, MemoryUsers } from '#test/support/sso-memory';
-
-interface Bucket {
-  windowStart: Date;
-  hits: number;
-  blockedUntil: Date | null;
-}
-
-const windowEnd = (bucket: Bucket, rule: RateRule) =>
-  new Date(bucket.windowStart.getTime() + rule.windowSeconds * 1000);
-
-const isExceeded = (bucket: Bucket | undefined, rule: RateRule, now: Date) =>
-  !!bucket &&
-  ((bucket.blockedUntil !== null && bucket.blockedUntil > now) ||
-    (windowEnd(bucket, rule) > now && bucket.hits >= rule.max));
 
 /** Same contract as `PrismaRateLimitStore`. */
 export class MemoryRateLimitStore implements RateLimitStore {
@@ -31,23 +19,9 @@ export class MemoryRateLimitStore implements RateLimitStore {
   }
 
   async hit(key: string, rule: RateRule, now: Date) {
-    const current = this.buckets.get(key);
-    const fresh = !current || windowEnd(current, rule) <= now;
-    const next: Bucket = {
-      windowStart: fresh ? now : current.windowStart,
-      hits: (fresh ? 0 : current.hits) + 1,
-      blockedUntil:
-        current?.blockedUntil && current.blockedUntil > now
-          ? current.blockedUntil
-          : null,
-    };
-    const over = next.hits > rule.max;
-    if (over && !next.blockedUntil)
-      next.blockedUntil = rule.blockSeconds
-        ? new Date(now.getTime() + rule.blockSeconds * 1000)
-        : windowEnd(next, rule);
+    const { next, exceeded } = nextBucket(this.buckets.get(key), rule, now);
     this.buckets.set(key, next);
-    return over || (!!current?.blockedUntil && current.blockedUntil > now);
+    return exceeded;
   }
 
   async purge() {}

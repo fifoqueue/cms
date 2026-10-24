@@ -3,11 +3,50 @@ import type { MediaType } from '@cms/sdk';
 const ascii = (bytes: Uint8Array, start: number, end: number) =>
   String.fromCharCode(...bytes.subarray(start, end));
 
+/** Each prelude character is visited at most once, within the bounded prefix. */
+const svgPrefix = (text: string) => {
+  let offset = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const whitespace = (char: string | undefined) =>
+    char !== undefined && ' \t\r\n'.includes(char);
+  const skipSpace = () => {
+    while (whitespace(text[offset])) offset++;
+  };
+  skipSpace();
+  if (text.startsWith('<?xml', offset) && whitespace(text[offset + 5])) {
+    const end = text.indexOf('?>', offset + 6);
+    if (end < 0) return false;
+    offset = end + 2;
+    skipSpace();
+  }
+  while (text.startsWith('<!--', offset)) {
+    const end = text.indexOf('-->', offset + 4);
+    if (end < 0) return false;
+    offset = end + 3;
+    skipSpace();
+  }
+  return (
+    text.startsWith('<svg', offset) &&
+    (whitespace(text[offset + 4]) ||
+      text[offset + 4] === '>' ||
+      text.startsWith('/>', offset + 4))
+  );
+};
+
 /**
  * The real type of an upload from its first bytes; null for anything not accepted. The declared
  * type and file name are never trusted.
  */
 export const sniffMediaType = (bytes: Uint8Array): MediaType | null => {
+  // UTF-16/32 BOMs must not be confused with MPEG sync bytes.
+  if (
+    (bytes[0] === 0xff && bytes[1] === 0xfe) ||
+    (bytes[0] === 0xfe && bytes[1] === 0xff) ||
+    (bytes[0] === 0 && bytes[1] === 0 && bytes[2] === 0xfe && bytes[3] === 0xff)
+  )
+    return null;
+  // Identification only: the upload service must sanitize before storage.
+  const prefix = new TextDecoder().decode(bytes.subarray(0, 4096));
+  if (svgPrefix(prefix)) return 'image/svg+xml';
   if (bytes.length < 12) return null;
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
     return 'image/jpeg';
@@ -18,7 +57,12 @@ export const sniffMediaType = (bytes: Uint8Array): MediaType | null => {
     return 'image/webp';
   if (
     ascii(bytes, 0, 3) === 'ID3' ||
-    (bytes[0] === 0xff && (bytes[1]! & 0xe0) === 0xe0 && (bytes[1]! & 6) !== 0)
+    (bytes[0] === 0xff &&
+      (bytes[1]! & 0xe0) === 0xe0 &&
+      (bytes[1]! & 0x18) !== 0x08 &&
+      (bytes[1]! & 6) !== 0 &&
+      (bytes[2]! & 0xf0) !== 0xf0 &&
+      (bytes[2]! & 0x0c) !== 0x0c)
   )
     return 'audio/mpeg';
   if (ascii(bytes, 0, 4) === 'RIFF' && ascii(bytes, 8, 12) === 'WAVE')

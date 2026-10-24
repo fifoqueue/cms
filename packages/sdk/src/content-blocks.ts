@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { calloutAttributesSchema } from '#sdk/callout';
+import { codeBlockAttributesSchema } from '#sdk/code-block';
+import { tocAttrsSchema } from '#sdk/toc';
 
 export const CONTENT_ALIGNMENTS = [
   'left',
@@ -32,6 +35,7 @@ const cell = {
 
 /** Attribute allowlists for the shared editor schema. URL schemes are sanitized by its renderer. */
 export const contentAttributeSchemas = {
+  tableOfContents: tocAttrsSchema,
   image: z
     .strictObject({
       src: legacy,
@@ -81,6 +85,7 @@ export const contentAttributeSchemas = {
     .partial(),
   details: z.strictObject({ open: z.boolean() }).partial(),
   pullquote: z.strictObject({ cite: text }).partial(),
+  callout: calloutAttributesSchema,
   spacer: z
     .strictObject({ height: z.number().int().min(0).max(500) })
     .partial(),
@@ -88,7 +93,17 @@ export const contentAttributeSchemas = {
   tableCell: z.strictObject(cell).partial(),
   tableHeader: z.strictObject(cell).partial(),
   paragraph: z.strictObject({ textAlign }).partial(),
-  heading: z.strictObject({ level: legacy, textAlign }).partial(),
+  heading: z
+    .strictObject({
+      level: legacy,
+      textAlign,
+      /** A fixed fragment id (e.g. an imported Gutenberg "HTML anchor"); generated otherwise. */
+      anchor: z
+        .string()
+        .regex(/^[\p{L}][\p{L}\p{N}\p{M}_:.-]{0,99}$/u)
+        .nullable(),
+    })
+    .partial(),
   embed: z.strictObject({ url: legacy }).partial(),
   /** A plugin's dynamic block (`plugin:<id>:<key>`), rendered by the plugin when served. */
   pluginBlock: z
@@ -111,7 +126,7 @@ export const contentAttributeSchemas = {
         .nullable(),
     })
     .partial(),
-  codeBlock: z.strictObject({ language: legacy }).partial(),
+  codeBlock: codeBlockAttributesSchema,
   orderedList: z.strictObject({ start: legacy, type: legacy }).partial(),
   link: z
     .strictObject({

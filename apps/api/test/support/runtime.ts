@@ -1,4 +1,5 @@
 import { PublishedContentReader } from '#api/domain/content/public-content';
+import type { ContentReader } from '@cms/sdk/plugin';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
 import { PluginContextFactory } from '#api/plugin-runtime/plugin-context-factory';
 import { PluginHost } from '#api/plugin-runtime/plugin-host';
@@ -40,6 +41,13 @@ export const createStorage = (): RuntimeStorage => {
 export const createRuntime = ({
   timeoutMs = 100,
   storage = createStorage(),
+  content = new PublishedContentReader(
+    new MemoryPublishedContentRepository(new MemoryContentRepository()),
+  ),
+}: {
+  timeoutMs?: number;
+  storage?: RuntimeStorage;
+  content?: ContentReader;
 } = {}) => {
   const { logger, lines } = recordingLogger();
   const { data, state, bundles } = storage;
@@ -72,9 +80,7 @@ export const createRuntime = ({
     routes,
     data,
     settings,
-    content: new PublishedContentReader(
-      new MemoryPublishedContentRepository(new MemoryContentRepository()),
-    ),
+    content,
     logger: () => logger,
   });
   /** Answers of plugin update addresses, by URL. */

@@ -72,9 +72,13 @@ export class HookBus implements HookDispatcher {
   ): Promise<void> {
     const registrations = [...(this.actions.get(name) ?? [])];
     await Promise.all(
-      registrations.map(async ({ owner, handler }) => {
+      registrations.map(async (entry) => {
+        const { owner, handler } = entry;
         const result = await isolate(
-          () => handler(structuredClone(payload)),
+          () =>
+            this.actions.get(name)?.includes(entry)
+              ? handler(structuredClone(payload))
+              : undefined,
           this.options.timeoutMs,
         );
         if (!result.ok)
@@ -91,9 +95,14 @@ export class HookBus implements HookDispatcher {
     accept: (value: unknown) => boolean,
   ): Promise<FilterHookMap[K]> {
     let current = value;
-    for (const { owner, handler } of [...(this.filters.get(name) ?? [])]) {
+    for (const entry of [...(this.filters.get(name) ?? [])]) {
+      const { owner, handler } = entry;
+      if (!this.filters.get(name)?.includes(entry)) continue;
       const result = await isolate(
-        () => handler(structuredClone(current)),
+        () =>
+          this.filters.get(name)?.includes(entry)
+            ? handler(structuredClone(current))
+            : current,
         this.options.timeoutMs,
       );
       if (!result.ok) {
@@ -103,6 +112,7 @@ export class HookBus implements HookDispatcher {
         continue;
       }
 
+      if (!this.filters.get(name)?.includes(entry)) continue;
       const accepted = snapshot(result.value, accept);
 
       if (accepted) current = accepted.value as FilterHookMap[K];

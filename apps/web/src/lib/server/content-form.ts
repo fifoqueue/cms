@@ -2,10 +2,12 @@ import { fail } from '@sveltejs/kit';
 import { contentInputSchema } from '@cms/sdk';
 import type { FieldDefinition } from '@cms/sdk';
 import type { ContentFormValues } from '#lib/admin/content-form-values.js';
+import { thumbnailUrl } from '#lib/admin/media-thumbnail.js';
 import type { FormFailure } from '#lib/server/errors.js';
-import { Errors, text } from '#lib/server/errors.js';
+import { Errors, issuesOf, text } from '#lib/server/errors.js';
 import type { adminApi } from '#lib/server/api.js';
 import { readSeoForm } from '#lib/server/seo-admin.js';
+import { adminFor } from '#lib/server/session.js';
 
 const parseJson = (raw: string): unknown => {
   try {
@@ -95,10 +97,7 @@ export const readContentForm = (
     expectedUpdatedAt: text(form, 'updatedAt') || undefined,
   });
   if (result.success) return { input: result.data, values };
-  const issues = result.error.issues.map(({ path, message }) => ({
-    path: path.map(String).join('.'),
-    message,
-  }));
+  const issues = issuesOf(result.error.issues);
   return {
     failure: fail(400, {
       message: Errors.FormInvalid,
@@ -106,6 +105,17 @@ export const readContentForm = (
       values,
     } satisfies FormFailure & { values: ContentFormValues }),
   };
+};
+
+/** Reads a create or update form against the site's current content model. */
+export const readContentInput = async (
+  event: Parameters<typeof adminFor>[0] & { request: Request },
+) => {
+  const [formData, model] = await Promise.all([
+    event.request.formData(),
+    adminFor(event).contentModel.model(),
+  ]);
+  return readContentForm(formData, model.fields);
 };
 
 /** Thumbnail addresses of an entry's image field values, so the editor can show them. */
@@ -122,11 +132,7 @@ export const fieldImages = async (
         return [
           admin.media
             .get(id)
-            .then(
-              (media) =>
-                media.variants.find((variant) => variant.name === 'thumbnail')
-                  ?.url ?? media.url,
-            )
+            .then(thumbnailUrl)
             // A deleted file shows no preview; the field still holds its id.
             .catch(() => '')
             .then((url) => [field.key, url] as const),

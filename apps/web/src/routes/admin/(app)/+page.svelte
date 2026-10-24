@@ -17,6 +17,10 @@
   import { useI18n } from '#lib/i18n/index.js';
   import type { PageProps } from './$types';
 
+  type DashboardComment = NonNullable<
+    PageProps['data']['comments']
+  >['recent'][number];
+
   let { data, form }: PageProps = $props();
 
   const i18n = useI18n();
@@ -96,6 +100,18 @@
       </ul>
     </section>
   {/if}
+{/snippet}
+
+{#snippet commentSummary(comment: DashboardComment)}
+  <span class="font-medium">{comment.authorName}</span>
+  <span class="text-muted-foreground">·</span>
+  <a
+    href={resolve('/admin/(app)/content/[id]', {
+      id: comment.contentId,
+    })}
+    class="text-muted-foreground hover:underline">{comment.contentTitle}</a
+  >
+  <p class="line-clamp-2">{comment.body}</p>
 {/snippet}
 
 <h1 class="text-2xl font-semibold">{m.dashboard}</h1>
@@ -205,18 +221,7 @@
           <h3 class="mb-2 font-medium">{m.dashboardRecentComments}</h3>
           <ul class="space-y-2">
             {#each data.comments.approvedRecent as comment (comment.id)}
-              <li>
-                <span class="font-medium">{comment.authorName}</span>
-                <span class="text-muted-foreground">·</span>
-                <a
-                  href={resolve('/admin/(app)/content/[id]', {
-                    id: comment.contentId,
-                  })}
-                  class="text-muted-foreground hover:underline"
-                  >{comment.contentTitle}</a
-                >
-                <p class="line-clamp-2">{comment.body}</p>
-              </li>
+              <li>{@render commentSummary(comment)}</li>
             {/each}
           </ul>
         </section>
@@ -276,16 +281,7 @@
         <ul class="space-y-3 text-sm">
           {#each data.comments.recent as comment (comment.id)}
             <li>
-              <span class="font-medium">{comment.authorName}</span>
-              <span class="text-muted-foreground">·</span>
-              <a
-                href={resolve('/admin/(app)/content/[id]', {
-                  id: comment.contentId,
-                })}
-                class="text-muted-foreground hover:underline"
-                >{comment.contentTitle}</a
-              >
-              <p class="line-clamp-2">{comment.body}</p>
+              {@render commentSummary(comment)}
               <form
                 method="POST"
                 action="?/moderate"

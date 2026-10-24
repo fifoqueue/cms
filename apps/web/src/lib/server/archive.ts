@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { archivePath } from '@cms/sdk';
-import type { ArchivePathsState } from '@cms/sdk';
+import type { ArchivePathsState, PublicContentListQuery } from '@cms/sdk';
 import type { TaxonomyType } from '@cms/sdk';
 import type { ContentClient } from '@cms/sdk/client';
 import { contentApi } from '#lib/server/api.js';
@@ -69,6 +69,18 @@ export const loadTermArchive = async (
     slots,
   ]);
   return { ...page, slots: loadedSlots, ...blocks };
+};
+
+/** Page `?page=` of the published entries `query` selects; 404 past the last page. */
+export const listPosts = async (
+  api: ContentClient,
+  url: URL,
+  query: Omit<PublicContentListQuery, 'page' | 'pageSize'>,
+  pageSize: number,
+) => {
+  const posts = await api.list({ ...query, page: pageParam(url), pageSize });
+  requirePage(posts);
+  return listView(posts);
 };
 
 /** Latest entries of `type`; sticky ones lead the first page and are left out of the rest (WordPress). */

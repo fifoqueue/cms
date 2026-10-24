@@ -29,7 +29,8 @@ describe('renderDocument', () => {
         },
       ],
     });
-    expect(html).toContain('<h2>Title</h2>');
+    // Accept the pre-wiring renderer too; TOC tests assert the generated id exactly.
+    expect(html).toMatch(/<h2(?: id="title")?>Title<\/h2>/);
     expect(html).toContain('<strong>bold</strong>');
   });
 
@@ -211,7 +212,7 @@ test('WordPress core block HTML keeps its structure and attributes through impor
     <figure class="wp-block-image alignwide"><a href="/about" target="_blank"><img src="https://example.com/a.webp" alt="A"></a><figcaption>Image caption</figcaption></figure>
     <!-- /wp:image -->
     <figure class="wp-block-gallery columns-2 is-cropped"><figure class="wp-block-image"><img src="/media/one.webp"><figcaption>First</figcaption></figure><figure class="wp-block-image"><img src="/media/two.webp"></figure><figcaption>Gallery caption</figcaption></figure>
-    <div class="wp-block-columns"><div class="wp-block-column"><p style="text-align:center">Left</p></div><div class="wp-block-column"><h2 class="has-text-align-right">Right</h2></div></div>
+    <div class="wp-block-columns"><div class="wp-block-column"><p style="text-align:center">Left</p></div><div class="wp-block-column"><h2 id="right" class="has-text-align-right">Right</h2></div></div>
     <div class="wp-block-buttons is-content-justification-center"><div class="wp-block-button is-style-outline"><a class="wp-block-button__link" href="mailto:hello@example.com">Contact</a></div></div>
     <figure class="wp-block-video"><video src="/media/movie.webm" controls></video><figcaption>Video caption</figcaption></figure>
     <div class="wp-block-file"><a href="/media/report.pdf">Report</a><a href="/media/report.pdf" download>Download</a></div>
