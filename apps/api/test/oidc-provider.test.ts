@@ -71,7 +71,7 @@ const createProvider = ({
   const handle = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
 
-    if (url.pathname === '/.well-known/openid-configuration')
+    if (url.pathname.endsWith('/.well-known/openid-configuration'))
       return Response.json({
         issuer: ISSUER,
         authorization_endpoint: `${ISSUER}/authorize`,
@@ -209,6 +209,18 @@ describe('OpenIdClientProvider', () => {
       .map(decodeURIComponent);
     expect(token?.authorization?.startsWith('Basic ')).toBe(true);
     expect([id, secret]).toEqual([CLIENT_ID, CLIENT_SECRET]);
+  });
+
+  test('a discovered issuer other than the configured one is a handled failure', async () => {
+    const { provider, lines } = relyingParty(createProvider(), {
+      issuer: `${ISSUER}/application/o/app/`,
+    });
+    await expect(provider.authorize()).rejects.toMatchObject({
+      code: 'unauthorized',
+    });
+    expect(lines).toEqual([
+      expect.stringContaining('does not match the expected issuer'),
+    ]);
   });
 
   const rejects = (

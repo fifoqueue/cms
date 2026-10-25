@@ -21,7 +21,7 @@ export const routes = (app: ApiApp) =>
   app.get(
     '',
     async ({ media, params, request }) => {
-      const key = params['*'];
+      const key = params['*'] ?? '';
       const range = rangeOf(request.headers.get('range'));
       const file = await media.file(key, range);
       if (!file) return errorResponse(404, 'not_found', Errors.MediaNotFound);

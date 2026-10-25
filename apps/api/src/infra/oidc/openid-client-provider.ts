@@ -108,7 +108,10 @@ export class OpenIdClientProvider implements OidcProvider {
     }
   }
 
-  /** Discovers once; a failed discovery is retried on the next request. */
+  /**
+   * Discovers once; a failed discovery is retried on the next request. The reason (such as an
+   * issuer that differs from the discovered one) stays in the server log.
+   */
   private discover() {
     const fetcher: CustomFetch =
       this.settings.fetch ??
@@ -124,7 +127,10 @@ export class OpenIdClientProvider implements OidcProvider {
       },
     ).catch((error: unknown) => {
       this.configuration = undefined;
-      throw error;
+      this.logger.warn(
+        `Single sign-on discovery failed for ${this.settings.issuer}: ${messageOf(error)}`,
+      );
+      throw unauthorized(Errors.SsoFailed);
     });
 
     return this.configuration;
