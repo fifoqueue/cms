@@ -22,6 +22,7 @@
   } from '@cms/sdk';
   import { permalinkPatternFor } from '@cms/sdk';
   import type { AuthorOption } from '@cms/sdk/client';
+  import { plainText, summarize, teaserOf } from '@cms/content/plain-text';
   import { default as X } from '@lucide/svelte/icons/x';
   import { onDestroy, onMount, untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
@@ -102,6 +103,8 @@
     revisionCount?: number;
     /** Status a new entry was just created with (shown as the save result). */
     created?: string | null;
+    /** Tab a new entry's Preview opened before its first save; the preview loads into it. */
+    previewTab?: string | null;
     /** The site's push key while browser notifications are offered; saving asks to allow them. */
     pushKey?: string | null;
   }
@@ -126,6 +129,7 @@
     revisionCount = 0,
     defaults,
     created = null,
+    previewTab = null,
     pushKey = null,
   }: Props = $props();
 
@@ -173,6 +177,11 @@
     publishedAt: localTime(values?.publishedAt || entry?.publishedAt),
     sticky: values?.sticky ?? entry?.sticky ?? false,
     allowComments: values?.allowComments ?? entry?.allowComments ?? true,
+    tocOverride:
+      [values?.tocOverride, entry?.tocOverride].find(
+        (value) =>
+          value === 'default' || value === 'always' || value === 'never',
+      ) ?? 'default',
     authorId: values?.authorId || entry?.authorId || defaultAuthorId,
     document:
       contentDocumentSchema.safeParse(values?.document).data ??
@@ -274,6 +283,8 @@
   );
 
   const bodyText = $derived(documentText(body).text);
+  /** The automatic excerpt the site uses without a manual one (as the API stores it). */
+  const summary = $derived(teaserOf(body) ?? summarize(plainText(body)));
   const words = $derived(bodyText.split(/\s+/).filter(Boolean).length);
   const pattern = $derived(permalinkPatternFor(seo.permalinks, contentType));
   const typeInfo = $derived(
@@ -491,19 +502,34 @@
   onDestroy(() => clearInterval(timer));
 
   let previewForm = $state<HTMLFormElement>();
+  /** The tab a new entry's Preview opened, until the save that follows is sent. */
+  let pendingPreview: { name: string; tab: Window | null } | null = null;
   /**
    * Opens the preview tab at once (popup rules). The text is stored as an autosave first, and
-   * only then is the preview requested; the preview request itself writes nothing.
+   * only then is the preview requested; the preview request itself writes nothing. A new entry
+   * is saved as a draft instead (WordPress); its editor then loads the preview into the tab.
    */
   const preview = () => {
     // A save in flight would clear the autosave the preview is about to show.
-    if (!entry || !previewForm || saving) return;
+    if (saving) return;
     if (
       !autosaveInputSchema.safeParse({ title, excerpt, document: body }).success
     ) {
       notifyFailure(m.previewInvalid);
       return;
     }
+    if (!entry) {
+      // The draft button's status: a new entry is never live, so the default button saves it.
+      const submitter = formElement.querySelector<HTMLButtonElement>(
+        'button[data-default]',
+      );
+      if (!formElement.reportValidity()) return;
+      const name = `cms-preview-new-${Date.now().toString(36)}`;
+      pendingPreview = { name, tab: window.open('about:blank', name) };
+      formElement.requestSubmit(submitter);
+      return;
+    }
+    if (!previewForm) return;
     const target = `cms-preview-${entry.id}`;
     const tab = window.open('about:blank', target);
     const form = previewForm;
@@ -546,6 +572,18 @@
     announceSave(created);
     forgetParams('saved');
   });
+  // A new entry previewed before its first save arrives with `?preview=<tab>` (once).
+  onMount(() => {
+    if (!previewForm) return;
+    // Only names this form gives its own tabs: `_self`, `_top`… would navigate the editor away.
+    if (!previewTab || !/^cms-preview-new-[a-z0-9]{1,16}$/.test(previewTab)) {
+      if (previewTab) forgetParams('preview');
+      return;
+    }
+    previewForm.target = previewTab;
+    previewForm.submit();
+    forgetParams('preview');
+  });
   let saveBar = $state<HTMLElement>();
   // Small screens: toasts rise above the fixed save bar (0 while the bar is hidden).
   $effect(() => {
@@ -565,10 +603,14 @@
   let saveFailure = $state.raw<ActionData | null>(null);
 
   let formElement: HTMLFormElement;
-  const submit: SubmitFunction = async () => {
+  const submit: SubmitFunction = async ({ formData }) => {
     // Asked within the click, before anything is awaited; the save never waits for it.
     const key = pushKey;
     const permission = key ? askPush() : null;
+    // A new entry's Preview: the save redirects to its editor, which fills this tab.
+    const opened = pendingPreview;
+    pendingPreview = null;
+    if (opened) formData.set('preview', opened.name);
     const previous = entry?.status;
     const sent = { text: snapshot(), edits, draftStatus };
     saving = true;
@@ -576,11 +618,13 @@
     // A queued autosave finishes first, so it cannot land after (and outdate) this save.
     await queue;
     return async ({ result: outcome, update }) => {
-      if (
+      const signedOut =
         outcome.type === 'redirect' &&
         (outcome.location === resolvedLoginPath ||
-          outcome.location.startsWith(`${resolvedLoginPath}?`))
-      ) {
+          outcome.location.startsWith(`${resolvedLoginPath}?`));
+      // Only a created entry's redirect brings the preview; otherwise its blank tab goes.
+      if (outcome.type !== 'redirect' || signedOut) opened?.tab?.close();
+      if (signedOut) {
         saving = false;
         sessionExpired();
         return;
@@ -900,7 +944,7 @@
       context={seo}
       source={{
         title,
-        description: excerpt,
+        description: excerpt.trim() || summary,
         slug: slug.trim() || (entry?.slug ?? ''),
         body: bodyText,
         path,
@@ -931,14 +975,12 @@
                 : m.saveDraft}</Button
             >
           {/if}
-          {#if entry}
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={saving}
-              onclick={preview}>{m.preview}</Button
-            >
-          {/if}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={saving}
+            onclick={preview}>{m.preview}</Button
+          >
         </div>
 
         <div class="grid gap-2">
@@ -1116,6 +1158,30 @@
           />
           {m.fieldAllowComments}
         </label>
+
+        <div class="grid gap-2">
+          <Label for="toc-override">{m.fieldTocOverride}</Label>
+          <NativeSelect
+            class="w-full"
+            id="toc-override"
+            name="tocOverride"
+            value={initial.tocOverride}
+            aria-describedby="toc-override-help"
+          >
+            <NativeSelectOption value="default"
+              >{m.tocOverrideDefault}</NativeSelectOption
+            >
+            <NativeSelectOption value="always"
+              >{m.tocOverrideAlways}</NativeSelectOption
+            >
+            <NativeSelectOption value="never"
+              >{m.tocOverrideNever}</NativeSelectOption
+            >
+          </NativeSelect>
+          <p id="toc-override-help" class="text-xs text-muted-foreground">
+            {m.tocOverrideHelp}
+          </p>
+        </div>
 
         <div class="space-y-2 border-t pt-4">
           {@render saveButtons(false)}

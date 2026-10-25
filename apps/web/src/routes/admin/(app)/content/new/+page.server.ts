@@ -8,6 +8,9 @@ import { adminFor } from '#lib/server/session.js';
 import { loadTermChoices } from '#lib/server/taxonomy-admin.js';
 import type { Actions, PageServerLoad } from './$types';
 
+/** Window names the editor gives a new entry's preview tab (`ContentForm`). */
+const PREVIEW_TAB = /^cms-preview-new-[a-z0-9]{1,16}$/;
+
 export const load: PageServerLoad = async (event) => {
   const user = event.locals.user!;
   const [terms, seo, authors, model, writing, pushKey] = await Promise.all([
@@ -36,8 +39,14 @@ export const load: PageServerLoad = async (event) => {
 
 export const actions: Actions = {
   save: async (event) => {
+    // Read before `readContentInput` consumes the body.
+    const sent = event.request.clone().formData();
     const { input, values, failure } = await readContentInput(event);
     if (failure) return failure;
+    // Preview of an unsaved entry: the tab it opened, which the editor fills after this save.
+    const preview = (await sent).get('preview');
+    const previewTab =
+      typeof preview === 'string' && PREVIEW_TAB.test(preview) ? preview : null;
     let id: string;
     let status: string;
     try {
@@ -45,7 +54,9 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught, { values });
     }
-    // `saved` lets the editor say what the save did.
-    redirect(303, `/admin/content/${id}?saved=${status}`);
+    // `saved` lets the editor say what the save did; `preview` names the tab to preview in.
+    const query = new URLSearchParams({ saved: status });
+    if (previewTab) query.set('preview', previewTab);
+    redirect(303, `/admin/content/${id}?${query}`);
   },
 };

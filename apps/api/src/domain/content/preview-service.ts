@@ -1,9 +1,12 @@
 import { publicContentSchema } from '@cms/sdk';
-import type { PreviewToken, PublicContent } from '@cms/sdk';
+import type { ContentDocument, PreviewToken, PublicContent } from '@cms/sdk';
 import { toPublicEntrySeo } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
 import type { ContentService } from '#api/domain/content/content-service';
-import type { DocumentRenderer } from '#api/domain/content/content-repository';
+import type {
+  ContentRecord,
+  DocumentRenderer,
+} from '#api/domain/content/content-repository';
 import type { RevisionRepository } from '#api/domain/content/revisions';
 import type { HtmlExpander } from '#api/domain/content/embeds';
 import type { FieldService } from '#api/domain/content/fields';
@@ -26,6 +29,10 @@ export class PreviewService {
       clock: Clock;
       embeds: HtmlExpander;
       fields: Pick<FieldService, 'present'>;
+      renderBody?: (
+        document: ContentDocument,
+        record: ContentRecord,
+      ) => Promise<string>;
     },
   ) {}
 
@@ -66,7 +73,9 @@ export class PreviewService {
       title: text.title,
       excerpt: text.excerpt || record.summary,
       html: await this.deps.embeds.expand(
-        this.deps.renderer.render(text.document),
+        this.deps.renderBody
+          ? await this.deps.renderBody(text.document, record)
+          : this.deps.renderer.render(text.document),
       ),
       publishedAt: (record.publishedAt ?? record.updatedAt).toISOString(),
       updatedAt: record.updatedAt.toISOString(),

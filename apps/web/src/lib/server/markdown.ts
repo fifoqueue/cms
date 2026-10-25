@@ -162,7 +162,58 @@ const codeSpan = (raw: string) => {
 interface Context {
   /** Resolves a link or image source; `undefined` when it must not be linked. */
   url: (value: string | undefined) => string | undefined;
+  /** Footnote definitions collected from `cms-footnotes` sections, emitted at the end. */
+  footnotes: string[];
+  /** Labels of converted references and of footnote list items, recorded by the first pass. */
+  refs: Set<string>;
+  items: Set<string>;
+  /** Labels with both a reference and a list item; unset during the first pass. */
+  matched?: Set<string>;
 }
+
+/**
+ * Footnote label for a renderer id `fn-{page}-{n}` / `fn-ref-{page}-{n}`. Numbering is
+ * page-local and the alternate holds every page, so later pages get `p{page}-{n}` labels.
+ */
+const footnoteLabel = (id: string | undefined) => {
+  const match = /^(?:fn|fn-ref)-(\d+)-(\d+)$/.exec(id ?? '');
+  if (!match) return undefined;
+  return match[1] === '1' ? match[2] : `p${match[1]}-${match[2]}`;
+};
+
+const hasClass = (element: Element, name: string) =>
+  (attr(element, 'class') ?? '').split(/\s+/).includes(name);
+
+/**
+ * A footnote section: items matching a converted reference become `[^label]: text`
+ * definitions (back-links dropped); any other item's text stays as plain paragraphs in place.
+ */
+const footnoteSection = (section: Element, context: Context) => {
+  const items = section.childNodes
+    .filter(isElement)
+    .filter((child) => child.tagName === 'ol')
+    .flatMap((ol) => ol.childNodes.filter(isElement))
+    .filter((child) => child.tagName === 'li');
+  const orphans: string[] = [];
+  for (const item of items) {
+    const label = footnoteLabel(attr(item, 'id'));
+    const span = item.childNodes
+      .filter(isElement)
+      .find((child) => child.tagName === 'span');
+    const nodes =
+      span?.childNodes ??
+      item.childNodes.filter(
+        (child) => !isElement(child) || child.tagName !== 'a',
+      );
+    const text = paragraph(singleLine(inline(nodes, context)));
+    if (!context.matched) {
+      if (label && text) context.items.add(label);
+    } else if (label && context.matched.delete(label)) {
+      if (text) context.footnotes.push(`[^${label}]: ${text}`);
+    } else if (text) orphans.push(text);
+  }
+  return orphans.join('\n\n');
+};
 
 const inline = (nodes: Node[], context: Context): string =>
   nodes.map((node) => inlineNode(node, context)).join('');
@@ -194,6 +245,20 @@ const inlineNode = (node: Node, context: Context): string => {
       const text = singleLine(children());
       if (!href) return children();
       return `[${text || markdownInline(href)}](${href})`;
+    }
+    case 'sup': {
+      const ref = node.childNodes
+        .filter(isElement)
+        .find(
+          (child) =>
+            child.tagName === 'a' && attr(child, 'data-footnote-ref') != null,
+        );
+      if (!ref) return children();
+      const label = footnoteLabel(attr(ref, 'href')?.replace(/^#/, ''));
+      if (label && !context.matched) context.refs.add(label);
+      return label && (!context.matched || context.items.has(label))
+        ? `[^${label}]`
+        : markdownInline(textContent(node));
     }
     case 'img': {
       const src = context.url(attr(node, 'src'));
@@ -239,11 +304,9 @@ const list = (element: Element, context: Context) => {
 };
 
 const block = (element: Element, context: Context): string => {
-  if (
-    element.tagName === 'nav' &&
-    (attr(element, 'class') ?? '').split(/\s+/).includes('cms-toc')
-  )
-    return '';
+  if (element.tagName === 'nav' && hasClass(element, 'cms-toc')) return '';
+  if (element.tagName === 'section' && hasClass(element, 'cms-footnotes'))
+    return footnoteSection(element, context);
   const heading = /^h([1-6])$/.exec(element.tagName);
   if (heading) {
     const text = singleLine(inline(element.childNodes, context));
@@ -289,11 +352,27 @@ const blocks = (nodes: Node[], context: Context): string[] => {
   return output;
 };
 
-/** Readable Markdown for an HTML fragment; relative links resolve against `base`. */
-export const htmlToMarkdown = (html: string, base: string) =>
-  blocks(parseFragment(html).childNodes, {
+/**
+ * Readable Markdown for an HTML fragment; relative links resolve against `base`. Footnote
+ * references with a matching list item become `[^label]` and their definitions follow the
+ * body. A first pass records which references and items exist, so only matched pairs are
+ * emitted as footnotes.
+ */
+export const htmlToMarkdown = (html: string, base: string) => {
+  const nodes = parseFragment(html).childNodes;
+  const context: Context = {
     url: (value) => markdownUrl(value, base),
-  }).join('\n\n');
+    footnotes: [],
+    refs: new Set(),
+    items: new Set(),
+  };
+  blocks(nodes, context);
+  context.matched = context.refs.intersection(context.items);
+  context.items = new Set(context.matched);
+  const output = blocks(nodes, context);
+  if (context.footnotes.length) output.push(context.footnotes.join('\n'));
+  return output.join('\n\n');
+};
 
 /**
  * The Markdown alternate of a published entry: title, truthful source facts (canonical HTML

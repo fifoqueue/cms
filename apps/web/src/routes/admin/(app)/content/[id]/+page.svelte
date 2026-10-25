@@ -117,6 +117,7 @@
     fieldImages={data.fieldImages}
     canManageTerms={data.canManageTerms}
     created={(page.shallow?.url ?? page.url).searchParams.get('saved')}
+    previewTab={(page.shallow?.url ?? page.url).searchParams.get('preview')}
     values={form && 'values' in form ? form.values : undefined}
     draft={data.useAutosave && data.autosave ? data.autosave : undefined}
     parentPages={data.parentPages}

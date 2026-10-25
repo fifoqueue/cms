@@ -9,11 +9,17 @@ import type { LayoutServerLoad } from './$types';
  * keep their own font.
  */
 export const load: LayoutServerLoad = async ({ fetch }) => {
-  const theme = await contentApi(fetch)
-    .layout()
-    .then((layout) => themeView(layout.theme))
-    .catch(() => null);
+  const api = contentApi(fetch);
+  const [theme, site] = await Promise.all([
+    api
+      .layout()
+      .then((layout) => themeView(layout.theme))
+      .catch(() => null),
+    api.site().catch(() => null),
+  ]);
   return {
     uiFont: theme ? { family: bodyFont(theme), fonts: theme.fonts } : null,
+    /** The site icon (Settings → General) for screens without site data: admin, sign-in, errors. */
+    icon: site?.icon ? (site.icon.sizes[0]?.url ?? site.icon.url) : null,
   };
 };

@@ -78,11 +78,8 @@
 <SeoHead {head} />
 
 <svelte:head>
+  <!-- The tab icon itself comes from the root layout, for every screen. -->
   {#if data.site.icon}
-    <link
-      rel="icon"
-      href={data.site.icon.sizes[0]?.url ?? data.site.icon.url}
-    />
     <link rel="apple-touch-icon" href={data.site.icon.url} />
   {/if}
   <SlotOutlet fragments={slots?.head ?? []} />

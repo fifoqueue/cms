@@ -26,7 +26,11 @@ import {
   sequentialIds,
 } from '#test/support/memory';
 import { testContentService, textDocument } from '#test/support/content';
-import { Embeds, vimeo, youtube } from '#api/domain/content/embeds';
+import {
+  DEFAULT_EMBED_PRESETS,
+  Embeds,
+  presetProvider,
+} from '#api/domain/content/embeds';
 import { MemoryPublishedContentRepository } from '#test/support/memory-published';
 import { MemoryTaxonomyRepository } from '#test/support/memory-taxonomy';
 
@@ -97,7 +101,7 @@ const setup = () => {
     testLocks(published, {
       check: async (attempt) => void protectedActions.push(attempt.action),
     }),
-    new Embeds(() => [youtube, vimeo]),
+    new Embeds(() => DEFAULT_EMBED_PRESETS.map(presetProvider)),
     testFields(),
     testTypes(),
     undefined,

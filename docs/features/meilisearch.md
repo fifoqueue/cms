@@ -2,17 +2,17 @@
 
 상위 문서: [AGENTS.md](../../AGENTS.md)
 
-Public search engines are registered through `PluginContext.searchEngines`.
-Core database and Meilisearch implementations use that registry; failing plugin
-engines fall back through it. `search.query` and `search.results` apply whether
-the query uses an engine or the direct database fallback. `search.document`
-applies to both full rebuild and incremental indexing without permitting an ID
-change. Search result filters cannot introduce IDs outside the selected page.
+공개 검색 엔진은 `PluginContext.searchEngines`를 통해 등록합니다.
+코어 데이터베이스와 Meilisearch 구현도 이 레지스트리를 사용하며, 실패한
+플러그인 엔진은 이 레지스트리를 통해 대체됩니다. `search.query`와
+`search.results`는 쿼리가 엔진을 쓰든 데이터베이스 직접 폴백을 쓰든 적용됩니다.
+`search.document`는 전체 재빌드와 증분 색인 모두에 적용되며 ID 변경은
+허용하지 않습니다. 검색 결과 필터는 선택된 페이지 밖의 ID를 추가할 수 없습니다.
 
-Successful rebuilds and incremental batches publish `search.indexed` only after
-index writes, outbox acknowledgement and state persistence. Its payload contains
-the operation and affected content IDs (null for a full rebuild), never secrets.
+재빌드와 증분 배치가 성공하면 색인 쓰기, 아웃박스 확인 응답, 상태 저장이 모두
+끝난 뒤에만 `search.indexed`를 발행합니다. 페이로드에는 작업 종류와 영향받은
+콘텐츠 ID(전체 재빌드는 null)가 담기며 비밀 값은 절대 포함하지 않습니다.
 
-- MariaDB is the source of truth and always able to answer (`FULLTEXT` over title, excerpt and body text). Meilisearch is an optional accelerator configured in Settings → Search (host, sealed key, index prefix). Category scopes use a recursive CTE from the requested root instead of loading the whole hierarchy.
-- Every content write that can change public results inserts into `search_outbox` in the same transaction (term changes and bulk deletes queue a full rebuild with a null `content_id`). The `search.sync` task drains the outbox into Meilisearch and rebuilds by building `<prefix>_content_next` and swapping it in.
-- Public search uses the index only while it is enabled, built for the current host and index, not recently failing (30 s pause after an error) and the outbox is empty; otherwise it uses the database. Results are ids only; summaries are always loaded from MariaDB, so nothing unpublished can appear. Author-filtered searches always use the database. Admin search always uses the database.
+- MariaDB가 기준 원본이며 항상 응답할 수 있습니다(제목, 발췌, 본문 텍스트에 대한 `FULLTEXT`). Meilisearch는 설정 → 검색(호스트, 봉인된 키, 색인 접두사)에서 구성하는 선택적 가속기입니다. 카테고리 범위는 전체 계층을 불러오는 대신 요청한 루트에서 시작하는 재귀 CTE를 사용합니다.
+- 공개 결과를 바꿀 수 있는 모든 콘텐츠 쓰기는 같은 트랜잭션에서 `search_outbox`에 삽입합니다(용어 변경과 일괄 삭제는 `content_id`가 null인 전체 재빌드를 대기열에 넣음). `search.sync` 작업은 아웃박스를 Meilisearch로 비우고, `<prefix>_content_next`를 만들어 교체하는 방식으로 재빌드합니다.
+- 공개 검색은 색인이 활성화되어 있고, 현재 호스트와 색인에 대해 빌드되었으며, 최근에 실패하지 않았고(오류 후 30초 일시 중지) 아웃박스가 비어 있을 때만 색인을 사용하며, 그 외에는 데이터베이스를 사용합니다. 결과는 id뿐이고 요약은 항상 MariaDB에서 불러오므로 공개되지 않은 내용이 나타날 수 없습니다. 작성자로 필터링한 검색은 항상 데이터베이스를 사용합니다. 관리자 검색도 항상 데이터베이스를 사용합니다.

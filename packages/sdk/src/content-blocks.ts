@@ -35,6 +35,13 @@ const cell = {
 
 /** Attribute allowlists for the shared editor schema. URL schemes are sanitized by its renderer. */
 export const contentAttributeSchemas = {
+  footnote: z.strictObject({
+    text: z
+      .string()
+      .min(1)
+      .max(2000)
+      .refine((value) => value.trim().length > 0),
+  }),
   tableOfContents: tocAttrsSchema,
   image: z
     .strictObject({

@@ -54,15 +54,31 @@ const isPublicSummary = (value: unknown) =>
 
 /** Published content only, without plugin filters. Plugins receive this as their `ContentReader`. */
 export class PublishedContentReader implements ContentReader {
-  constructor(private readonly repository: PublishedContentRepository) {}
+  constructor(
+    private readonly repository: PublishedContentRepository,
+    private readonly renderBody?: (
+      records: readonly PublishedRecord[],
+      visibility: 'published' | 'private',
+    ) => Promise<Map<string, string>>,
+  ) {}
 
   async list(query: unknown = {}): Promise<Paginated<PublicContent>> {
     // The query schema has no status, and the repository matches published content only.
     const criteria = parseInput(publicContentListQuerySchema, query);
     const { items, total } = await this.repository.list(criteria);
     const { page, pageSize } = criteria;
+    const open = items.filter((item) => !item.protected);
+    const bodies =
+      open.length && this.renderBody
+        ? await this.renderBody(open, 'published')
+        : new Map<string, string>();
     return {
-      items: items.map((item) => toPublic(item)),
+      items: items.map((item) =>
+        toPublic({
+          ...item,
+          html: bodies.get(item.id) ?? item.html,
+        }),
+      ),
       total,
       page,
       pageSize,
@@ -145,6 +161,7 @@ export class PublishedContentReader implements ContentReader {
       await this.repository.privateById(id),
       async () => true,
       fields,
+      'private',
     );
     return content
       ? { ...content, seo: { ...content.seo, noIndex: true } }
@@ -155,9 +172,14 @@ export class PublishedContentReader implements ContentReader {
     record: PublishedRecord | null,
     unlock: Unlock,
     fields: Present,
+    visibility: 'published' | 'private' = 'published',
   ) {
     if (!record) return null;
     const open = !record.protected || (await unlock(record.id));
+    if (open && this.renderBody) {
+      const bodies = await this.renderBody([record], visibility);
+      record = { ...record, html: bodies.get(record.id) ?? record.html };
+    }
     return {
       ...toPublic(record, record.protected && open),
       fields: open ? await fields(record.type, record.fields) : {},

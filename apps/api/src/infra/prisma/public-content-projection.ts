@@ -27,6 +27,7 @@ type Row = Pick<
   | 'updatedAt'
   | 'commentCount'
   | 'summary'
+  | 'tocOverride'
 > &
   Omit<
     Parameters<typeof fromPublicSeoColumns>[0],
@@ -80,6 +81,7 @@ const summary = (row: Row, terms: { term: Term }[]): PublishedSummaryRecord => {
           },
     ),
     sticky: Boolean(row.sticky),
+    tocOverride: row.tocOverride ?? 'default',
     protected: Boolean(row.protected),
     commentCount: row.commentCount,
     summary: row.summary,
@@ -124,6 +126,7 @@ export async function projectContent(
 ): Promise<PublishedSummaryRecord[]> {
   const rows = await db.$queryRaw<Row[]>(Prisma.sql`
     SELECT c.id, c.type, c.slug, c.title, c.excerpt, c.summary, c.sticky,
+      c.toc_override AS tocOverride,
       c.published_at AS publishedAt, c.updated_at AS updatedAt,
       c.comment_count AS commentCount, c.password_hash IS NOT NULL AS protected,
       p.path, u.name AS authorName, u.slug AS authorSlug,

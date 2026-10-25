@@ -208,6 +208,7 @@ model Content {
   trashedAt            DateTime?         @map("trashed_at") @db.DateTime(3)
   sticky               Boolean           @default(false)
   allowComments        Boolean           @default(true) @map("allow_comments")
+  tocOverride          String            @default("default") @map("toc_override") @db.VarChar(7)
   /// Approved comments, kept in step with `comments` by every status change.
   commentCount         Int               @default(0) @map("comment_count")
   comments             Comment[]

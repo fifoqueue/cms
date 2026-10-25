@@ -22,7 +22,14 @@
   import { useI18n } from '#lib/i18n/index.js';
   import '#lib/theme/site.css';
 
-  let { editor }: { editor: Editor | null } = $props();
+  let {
+    editor,
+    disabled = false,
+  }: {
+    editor: Editor | null;
+    /** Blocks can be neither inserted nor changed (the editor shows its HTML). */
+    disabled?: boolean;
+  } = $props();
   const i18n = useI18n();
   const m = $derived(i18n.m);
   let open = $state(false);
@@ -57,6 +64,7 @@
     'spacer',
     'codeBlock',
     'embed',
+    'footnote',
     'more',
     'pageBreak',
   ];
@@ -210,6 +218,11 @@
       insert({ type: 'pluginBlock', attrs: { block: type, attrs: {} } });
       return;
     }
+    if (type === 'footnote') {
+      // Inline, at the caret; its text field opens right away.
+      editor.chain().focus().insertFootnote().run();
+      return;
+    }
     const paragraph = { type: 'paragraph' };
     if (type === 'table') {
       editor
@@ -268,7 +281,7 @@
   <Popover.Root bind:open>
     <Popover.Trigger
       type="button"
-      disabled={!editor}
+      disabled={!editor || disabled}
       aria-label={m.contentInsertBlock}
       title={m.contentInsertBlock}
       class="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
@@ -373,6 +386,6 @@
       </Popover.Content>
     </Popover.Portal>
   </Popover.Root>
-  {#if editor}<BlockOptions {editor} {revision} />{/if}
+  {#if editor && !disabled}<BlockOptions {editor} {revision} />{/if}
 </div>
 <MediaPicker bind:this={picker} kind={mediaKind} onpick={pick} />

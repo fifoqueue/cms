@@ -28,41 +28,135 @@ const unescapeAttribute = (value: string) =>
 const escapeAttribute = (value: string) =>
   value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
-const frame = (src: string, title: string, ratio = '16 / 9') =>
-  `<figure class="embed"><iframe src="${escapeAttribute(src)}" title="${escapeAttribute(title)}" loading="lazy" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="aspect-ratio: ${ratio}; width: 100%; border: 0"></iframe></figure>`;
+/**
+ * A declarative iframe embed. `urlPattern` is matched against the whole `url.href`; its named
+ * captures fill `{name}` (inserted as captured) or `{name|urlencode}` placeholders in `src`.
+ */
+export type EmbedPreset = {
+  id: string;
+  /** Regular expression source with named capture groups. */
+  urlPattern: string;
+  /** Iframe address template; must produce an https URL. */
+  src: string;
+  title: string;
+  /** Iframe `allow` permissions. */
+  allow?: string;
+} & (
+  | { /** CSS aspect ratio, e.g. `16 / 9`. */ ratio: string }
+  | {
+      /** Initial height in px. */
+      height: number;
+      /**
+       * JSON Pointer to the height inside the frame's `postMessage` data; the page script resizes
+       * the iframe from it.
+       */
+      heightMessagePath?: string;
+    }
+);
 
-/** YouTube through its privacy-enhanced domain. */
-export const youtube: EmbedProvider = {
-  name: 'youtube',
-  render(url) {
-    const host = url.hostname.replace(/^(www|m)\./, '');
-    const id =
-      host === 'youtu.be'
-        ? url.pathname.slice(1)
-        : host === 'youtube.com'
-          ? url.pathname === '/watch'
-            ? url.searchParams.get('v')
-            : /^\/(?:shorts|embed|live)\/([^/]+)/.exec(url.pathname)?.[1]
-          : null;
-    return id && /^[\w-]{11}$/.test(id)
-      ? frame(`https://www.youtube-nocookie.com/embed/${id}`, 'YouTube video')
-      : null;
-  },
+const PLACEHOLDER = /\{(\w+)(\|urlencode)?\}/g;
+
+const frame = (src: string, preset: EmbedPreset) => {
+  const allow =
+    preset.allow === undefined
+      ? ''
+      : ` allow="${escapeAttribute(preset.allow)}"`;
+  const heightPath =
+    'heightMessagePath' in preset && preset.heightMessagePath !== undefined
+      ? ` data-embed-height-path="${escapeAttribute(preset.heightMessagePath)}"`
+      : '';
+  const size =
+    'ratio' in preset
+      ? `aspect-ratio: ${preset.ratio}`
+      : `height: ${preset.height}px`;
+  return `<figure class="embed"><iframe src="${escapeAttribute(src)}" title="${escapeAttribute(preset.title)}" loading="lazy"${allow}${heightPath} allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="${escapeAttribute(`${size}; width: 100%; border: 0`)}"></iframe></figure>`;
 };
 
-/** Vimeo without tracking (`dnt`). */
-export const vimeo: EmbedProvider = {
-  name: 'vimeo',
-  render(url) {
-    const id =
-      url.hostname.replace(/^www\./, '') === 'vimeo.com'
-        ? /^\/(\d{1,12})$/.exec(url.pathname)?.[1]
-        : null;
-    return id
-      ? frame(`https://player.vimeo.com/video/${id}?dnt=1`, 'Vimeo video')
-      : null;
-  },
+/** A value inserted as captured stays inside one path segment or query value. */
+const RAW_VALUE = /^[\w.~-]+$/;
+
+/**
+ * An embed provider from a preset; declines URLs that do not match or yield no https address.
+ * Captures cannot move the address: the template's origin is fixed before its first placeholder,
+ * and no capture may be `.`/`..` or, unencoded, carry URL delimiters.
+ */
+export const presetProvider = (preset: EmbedPreset): EmbedProvider => {
+  const pattern = new RegExp(preset.urlPattern);
+  const head = /^https:\/\/[^/?#{]+(?=[/?#])/.exec(preset.src)?.[0];
+  const origin = head && URL.canParse(head) ? new URL(head).origin : null;
+  return {
+    name: preset.id,
+    render(url) {
+      if (!origin) return null;
+      const groups = pattern.exec(url.href)?.groups;
+      if (!groups) return null;
+      let invalid = false;
+      const src = preset.src.replace(
+        PLACEHOLDER,
+        (_, name: string, encode?: string) => {
+          const value = groups[name];
+          if (
+            !value ||
+            value === '.' ||
+            value === '..' ||
+            (!encode && !RAW_VALUE.test(value))
+          ) {
+            invalid = true;
+            return '';
+          }
+          return encode ? encodeURIComponent(value) : value;
+        },
+      );
+      if (invalid || !URL.canParse(src) || new URL(src).origin !== origin)
+        return null;
+      return frame(src, preset);
+    },
+  };
 };
+
+const PLAYER_ALLOW =
+  'accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen';
+
+/** Embeds the core ships, asked before plugin providers. */
+export const DEFAULT_EMBED_PRESETS: readonly EmbedPreset[] = [
+  {
+    // Privacy-enhanced domain.
+    id: 'youtube',
+    urlPattern:
+      '^https?://(?:(?:www|m)\\.)?(?:youtu\\.be/|youtube\\.com/(?:(?:shorts|embed|live)/|watch\\?(?:[^#]*&)?v=))(?<id>[\\w-]{11})(?:[/?&#]|$)',
+    src: 'https://www.youtube-nocookie.com/embed/{id}',
+    title: 'YouTube video',
+    allow: PLAYER_ALLOW,
+    ratio: '16 / 9',
+  },
+  {
+    // Without tracking (`dnt`).
+    id: 'vimeo',
+    urlPattern: '^https?://(?:www\\.)?vimeo\\.com/(?<id>\\d{1,12})(?:[?#]|$)',
+    src: 'https://player.vimeo.com/video/{id}?dnt=1',
+    title: 'Vimeo video',
+    allow: PLAYER_ALLOW,
+    ratio: '16 / 9',
+  },
+  {
+    id: 'x',
+    urlPattern:
+      '^https?://(?:(?:www|mobile)\\.)?(?:x|twitter)\\.com/(?:\\w+/status|i/web/status)/(?<id>\\d+)(?:[/?#]|$)',
+    src: 'https://platform.twitter.com/embed/Tweet.html?id={id}&dnt=true',
+    title: 'X post',
+    height: 600,
+    heightMessagePath: '/twttr.embed/params/0/height',
+  },
+  {
+    id: 'instagram',
+    urlPattern:
+      '^https?://(?:www\\.)?instagram\\.com/(?<kind>p|reel|tv)/(?<shortcode>[\\w-]+)(?:[/?#]|$)',
+    src: 'https://www.instagram.com/{kind}/{shortcode}/embed/',
+    title: 'Instagram post',
+    height: 700,
+    heightMessagePath: '/details/height',
+  },
+];
 
 /**
  * Expands embeds when content is served. Providers are asked in order; the first player wins.

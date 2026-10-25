@@ -11,7 +11,11 @@ import { loadConfig } from '#api/config';
 import type { AppConfig } from '#api/config';
 import { hostname } from 'node:os';
 import { ContentLocks } from '#api/domain/content/content-locks';
-import { Embeds, vimeo, youtube } from '#api/domain/content/embeds';
+import {
+  DEFAULT_EMBED_PRESETS,
+  Embeds,
+  presetProvider,
+} from '#api/domain/content/embeds';
 import type { HtmlExpander } from '#api/domain/content/embeds';
 import { BlockRegistry } from '#api/plugin-runtime/block-registry';
 import { SignInRegistry } from '#api/plugin-runtime/sign-in-registry';
@@ -47,6 +51,7 @@ import { EmbedRegistry } from '#api/plugin-runtime/embed-registry';
 import { MediaService } from '#api/domain/media/media-service';
 import { ReadingService } from '#api/domain/site/reading-service';
 import { WritingService } from '#api/domain/site/writing-service';
+import { TocRenderer } from '#api/domain/content/automatic-toc';
 import { DashboardPreferencesService } from '#api/domain/dashboard/dashboard-preferences';
 import { PrismaPatternCatalog } from '#api/infra/prisma/pattern-catalog';
 import { PatternService } from '#api/domain/content/pattern-service';
@@ -330,10 +335,10 @@ export const createContainer = async (
   });
   const pluginRoutes = new PluginRouteRegistry();
   const embedRegistry = new EmbedRegistry({ timeoutMs, logger });
-  // Core providers first; plugins add more and never replace them.
+  // Core presets first; plugins add more and never replace them.
+  const corePresets = DEFAULT_EMBED_PRESETS.map(presetProvider);
   const embeds = new Embeds(() => [
-    youtube,
-    vimeo,
+    ...corePresets,
     ...embedRegistry.providers(),
   ]);
 
@@ -400,7 +405,20 @@ export const createContainer = async (
     rawPublishedRepository,
     activeContentTypes,
   );
-  const reader = new PublishedContentReader(publishedRepository);
+  const tocRenderer = new TocRenderer({
+    content: contentRepository,
+    settings: async () => {
+      const [settings, display] = await Promise.all([
+        writing.get(),
+        site.get(),
+      ]);
+      return { writing: settings, locale: display.locale };
+    },
+  });
+  const reader = new PublishedContentReader(
+    publishedRepository,
+    (record, visibility) => tocRenderer.published(record, visibility),
+  );
   const responsiveImages = new ResponsiveImages((ids) =>
     mediaRepository.publicImages(ids),
   );
@@ -929,6 +947,7 @@ export const createContainer = async (
     clock: systemClock,
   });
   const previews = new PreviewService({
+    renderBody: (document, record) => tocRenderer.preview(document, record),
     content,
     revisions,
     renderer: tiptapRenderer,

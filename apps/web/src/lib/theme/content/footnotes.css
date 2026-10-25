@@ -1,0 +1,140 @@
+/* Footnotes rendered by `renderWithToc`: superscript refs and a per-page list at the body's end. */
+.cms-prose sup[id^='fn-ref-'] {
+  line-height: 0;
+  font-size: 0.75em;
+  vertical-align: super;
+}
+/* `sup >` outranks themes' `.cms-prose a:not([class])` link underlines. */
+.cms-prose sup > a[data-footnote-ref] {
+  display: inline-block;
+  min-width: 1.25em;
+  padding-inline: 0.15em;
+  border-radius: calc(var(--radius) - 4px);
+  background: none;
+  color: var(--primary);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+}
+.cms-prose sup > a[data-footnote-ref]:hover,
+.cms-prose sup > a[data-footnote-ref][aria-expanded='true'] {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.cms-prose .cms-footnotes {
+  margin-top: 2.5em;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75em;
+  color: var(--muted-foreground);
+  font-size: 0.875em;
+}
+.cms-prose .cms-footnotes-title {
+  margin: 0 0 0.5em;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+.cms-prose .cms-footnotes ol {
+  margin: 0;
+  padding-inline-start: 1.5em;
+  list-style: decimal;
+}
+.cms-prose .cms-footnotes li {
+  margin-block: 0.375em;
+  padding-inline-start: 0.25em;
+  border-radius: calc(var(--radius) - 2px);
+}
+.cms-prose .cms-footnotes li::marker {
+  color: var(--muted-foreground);
+}
+.cms-prose .cms-footnotes li:target {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--foreground);
+}
+.cms-prose .cms-footnotes li > a[href^='#fn-ref-'] {
+  padding-inline: 0.25em;
+  background: none;
+  color: var(--muted-foreground);
+  font-family: system-ui, sans-serif;
+  font-variant-emoji: text;
+  text-decoration: none;
+}
+.cms-prose .cms-footnotes li > a[href^='#fn-ref-']:hover {
+  color: var(--foreground);
+}
+.cms-prose :is(a[data-footnote-ref], .cms-footnotes a):focus-visible,
+.cms-prose :is(sup[id^='fn-ref-'], .cms-footnotes li):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+/* Jumps (either direction) land below sticky headers, like TOC headings (toc.css). */
+.cms-prose :is(sup[id^='fn-ref-'], .cms-footnotes li[id]) {
+  scroll-margin-top: var(
+    --cms-toc-offset,
+    calc(10px + var(--cms-admin-bar, 0px) + var(--cms-sticky-header, 0px))
+  );
+}
+/* The popover (Footnotes.svelte), fixed to the viewport and placed next to its ref. */
+.cms-footnote-popover {
+  position: fixed;
+  z-index: 50;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(22rem, calc(100vw - 1rem));
+  /* `--cms-footnote-room` (Footnotes.svelte): the space on the chosen side of the ref. */
+  max-height: min(18rem, 50dvh, var(--cms-footnote-room, 100dvh));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.625rem 0.875rem;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.1),
+    0 4px 6px -4px rgb(0 0 0 / 0.1);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.cms-footnote-popover p {
+  margin: 0;
+}
+.cms-footnote-popover a {
+  display: inline-block;
+  margin-top: 0.375rem;
+  border-radius: calc(var(--radius) - 4px);
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cms-footnote-popover a:hover {
+  color: var(--foreground);
+}
+.cms-footnote-popover a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cms-footnote-popover {
+    animation: cms-footnote-in 120ms ease-out;
+  }
+}
+@keyframes cms-footnote-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--cms-footnote-shift, 4px));
+  }
+}
+.cms-footnote-popover[data-side='below'] {
+  --cms-footnote-shift: -4px;
+}
+@media print {
+  .cms-footnote-popover {
+    display: none;
+  }
+}

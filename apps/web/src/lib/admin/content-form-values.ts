@@ -18,6 +18,8 @@ export interface ContentFormValues {
   publishedAt: string;
   sticky: boolean;
   allowComments: boolean;
+  /** Automatic table of contents: `default`, `always` or `never`; absent keeps the stored one. */
+  tocOverride?: string;
   authorId: string;
   /** Empty removes the featured image. */
   featuredMediaId: string;

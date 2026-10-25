@@ -13,7 +13,8 @@
     "./code": "./src/code.ts",
     "./urls": "./src/urls.ts",
     "./parse": "./src/parse.ts",
-    "./breaks": "./src/breaks.ts"
+    "./breaks": "./src/breaks.ts",
+    "./plain-text": "./src/plain-text.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p ."

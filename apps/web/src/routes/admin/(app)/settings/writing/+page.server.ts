@@ -14,6 +14,7 @@ export const load: PageServerLoad = async (event) => {
     writing: {
       defaultCategoryId: writing.defaultCategoryId,
       defaultStatus: writing.defaultStatus,
+      autoToc: writing.autoToc,
     },
     categories: categories.map(({ id, name, parentId }) => ({
       id,
@@ -29,6 +30,19 @@ export const actions: Actions = {
     // The API validates both choices.
     return submitAction(() =>
       adminFor(event).writing.update({
+        autoToc: {
+          enabled: form.has('tocEnabled'),
+          types: text(form, 'tocTypes')
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean),
+          position: text(form, 'tocPosition') as 'top' | 'beforeFirstHeading',
+          title: text(form, 'tocTitle'),
+          levels: text(form, 'tocLevels').split(',').map(Number),
+          minHeadings: Number(text(form, 'tocMinimum')),
+          collapsible: form.has('tocCollapsible'),
+          open: form.has('tocOpen'),
+        },
         defaultCategoryId: text(form, 'defaultCategoryId') || null,
         defaultStatus: text(
           form,

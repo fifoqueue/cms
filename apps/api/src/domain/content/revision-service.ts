@@ -65,6 +65,7 @@ export const inputOf = (entry: ContentEntry): ContentInput => ({
   publishedAt: entry.publishedAt ?? undefined,
   sticky: entry.sticky,
   allowComments: entry.allowComments,
+  tocOverride: entry.tocOverride ?? 'default',
   featuredMediaId: entry.featuredMediaId,
 });
 

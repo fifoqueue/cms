@@ -28,6 +28,8 @@ export interface PublishedRecord {
   /** Parent page; null for top-level entries. */
   parentId?: string | null;
   sticky: boolean;
+  /** Rendering policy only; the public DTO mapper does not expose it. */
+  tocOverride?: 'default' | 'always' | 'never';
   /** Approved comments. */
   commentCount: number;
   /** Whether a password protects the body. */

@@ -73,6 +73,9 @@ export const readContentForm = (
     publishedAt: text(form, 'publishedAt'),
     sticky: form.has('sticky'),
     allowComments: form.has('allowComments'),
+    ...(form.has('tocOverride') && {
+      tocOverride: text(form, 'tocOverride'),
+    }),
     authorId: text(form, 'authorId'),
     featuredMediaId: text(form, 'featuredMediaId'),
     fields: readFields(form, text(form, 'type'), definitions),

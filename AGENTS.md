@@ -4,7 +4,7 @@
 
 ## 1. 개요
 
-WordPress·Ghost 같은 **headless CMS** 입니다.
+WordPress·Ghost 같은 **헤드리스 CMS**입니다.
 
 - `apps/api` — 콘텐츠를 저장·처리·발행하는 API 백엔드. 플러그인 런타임을 포함합니다.
 - `apps/web` — API의 콘텐츠를 보여주는 공개 사이트(테마)와 관리자 화면.
@@ -75,12 +75,12 @@ plugins/
 
 ### 4.3 코드 스타일
 
-- **named import/export 사용.** `import * as` 금지, default export 금지, default import는 `.svelte`·에셋(`.svg` 등)·CSS 와 도구 설정 파일(`*.config.*`)에서만 허용(ESLint 강제). 타입은 `import type`.
-- **변수·함수명은 설명문처럼 짓지 않습니다.** `adminRequiredForAuthorizedTasks`처럼 조건·목적·행동을 문장으로 나열하지 말고 `requireAdmin`, `isPublished`, `permalinks`처럼 맥락에 맞는 짧고 정확한 도메인 명사·동사를 사용합니다. 모듈·클래스가 이미 알려주는 맥락을 이름에 반복하지 않으며, 긴 설명은 주석이나 타입으로 옮깁니다. 글자 수만 줄이는 불명확한 약어도 금지합니다. 기존 코드 수정 시에도 이 원칙을 적용하고 모든 참조를 함께 고칩니다. Public/Admin DTO 구분 등 필요한 계약 의미는 유지하며, 외부 라이브러리 옵션·표준 필드명은 임의로 바꾸지 않습니다.
-- **프로젝트 내부 모듈은 반드시 named path alias로 import/re-export 합니다.** `../../../../`를 비롯한 모든 `../`·`./` 상대 모듈 경로를 금지합니다. API는 `#api/<src 기준 경로>`, API 테스트는 `#test/<test 기준 경로>`, SDK는 `#sdk/*`, 콘텐츠 패키지는 `#content/*`, 웹은 `#lib/*` 또는 `#web/*`, 예제 플러그인 내부는 `#plugin/*`를 사용합니다. `package.json`의 `imports`가 런타임과 TypeScript 모두에서 같은 경로를 해석해야 하며, 타입 전용·동적 import에도 적용합니다. 유일한 모듈 예외는 SvelteKit이 생성하는 `./$types`입니다. `tsconfig`의 `extends`, 파일시스템 경로, URL은 모듈 import가 아니므로 대상이 아닙니다. 패키지 간에는 기존 공개 `@cms/*` 계약만 사용하고 alias로 아키텍처 경계를 우회하지 않습니다. ESLint가 상대 import/re-export와 경계 위반을 차단합니다.
+- **이름 있는(named) import/export 사용.** `import * as` 금지, default export 금지, default import는 `.svelte`·에셋(`.svg` 등)·CSS 와 도구 설정 파일(`*.config.*`)에서만 허용(ESLint 강제). 타입은 `import type`.
+- **변수·함수명은 설명문처럼 짓지 않습니다.** `adminRequiredForAuthorizedTasks`처럼 조건·목적·행동을 문장으로 나열하지 말고 `requireAdmin`, `isPublished`, `permalinks`처럼 맥락에 맞는 짧고 정확한 도메인 명사·동사를 사용합니다. 모듈·클래스가 이미 알려주는 맥락을 이름에 반복하지 않으며, 긴 설명은 주석이나 타입으로 옮깁니다. 글자 수만 줄이는 불명확한 약어도 금지합니다. 기존 코드 수정 시에도 이 원칙을 적용하고 모든 참조를 함께 고칩니다. 공개/관리자 DTO 구분 등 필요한 계약 의미는 유지하며, 외부 라이브러리 옵션·표준 필드명은 임의로 바꾸지 않습니다.
+- **프로젝트 내부 모듈은 반드시 이름 있는 경로 alias로 import/re-export 합니다.** `../../../../`를 비롯한 모든 `../`·`./` 상대 모듈 경로를 금지합니다. API는 `#api/<src 기준 경로>`, API 테스트는 `#test/<test 기준 경로>`, SDK는 `#sdk/*`, 콘텐츠 패키지는 `#content/*`, 웹은 `#lib/*` 또는 `#web/*`, 예제 플러그인 내부는 `#plugin/*`를 사용합니다. `package.json`의 `imports`가 런타임과 TypeScript 모두에서 같은 경로를 해석해야 하며, 타입 전용·동적 import에도 적용합니다. 유일한 모듈 예외는 SvelteKit이 생성하는 `./$types`입니다. `tsconfig`의 `extends`, 파일시스템 경로, URL은 모듈 import가 아니므로 대상이 아닙니다. 패키지 간에는 기존 공개 `@cms/*` 계약만 사용하고 alias로 아키텍처 경계를 우회하지 않습니다. ESLint가 상대 import/re-export와 경계 위반을 차단합니다.
 - 웹 테스트와 테스트 픽스처에는 `#web-test/*`를 사용합니다. 테스트 때문에 상대 import 예외를 추가하지 않습니다.
-- **Public DTO/Admin DTO 분리는 필수입니다.** DB 레코드·설정·사용자 객체를 그대로 반환하거나 펼쳐서 SvelteKit load/action 데이터에 넣지 않습니다. 공개/관리자 DTO의 허용 필드를 각각 명시적으로 매핑하고 SDK 런타임 스키마로 검증합니다. 비밀번호·해시·토큰·DB 접속 정보·SSO 비밀 값은 어느 화면의 직렬화 데이터에도 포함하지 않습니다. 공개 DTO에 초안·에디터 문서·관리자 식별 정보가 섞이지 않도록 회귀 테스트를 유지합니다. 오류 상세도 `{ path, message }`만 전달하며 플러그인 예외 원문은 서버 로그에만 남깁니다([DTO 경계](apps/web/AGENTS.md#public-and-admin-dto-boundaries)).
-- Prettier: 2-space, LF, singleQuote, trailingComma `all` (`.prettierrc`, `.editorconfig`, `.gitattributes`).
+- **공개 DTO/관리자 DTO 분리는 필수입니다.** DB 레코드·설정·사용자 객체를 그대로 반환하거나 펼쳐서 SvelteKit load/action 데이터에 넣지 않습니다. 공개/관리자 DTO의 허용 필드를 각각 명시적으로 매핑하고 SDK 런타임 스키마로 검증합니다. 비밀번호·해시·토큰·DB 접속 정보·SSO 비밀 값은 어느 화면의 직렬화 데이터에도 포함하지 않습니다. 공개 DTO에 초안·에디터 문서·관리자 식별 정보가 섞이지 않도록 회귀 테스트를 유지합니다. 오류 상세도 `{ path, message }`만 전달하며 플러그인 예외 원문은 서버 로그에만 남깁니다([DTO 경계](apps/web/AGENTS.md#공개관리자-dto-경계)).
+- Prettier: 들여쓰기 2칸, LF, 작은따옴표, 후행 쉼표 `all` (`.prettierrc`, `.editorconfig`, `.gitattributes`).
 - 신뢰 경계(HTTP 입력, 폼 입력, 플러그인 반환값, 업로드된 번들)에서는 **반드시** zod 등으로 검증합니다. 공유 스키마는 `@cms/sdk`에 둡니다.
 - 예상된 실패는 `DomainError`(`invalid_input`/`unauthorized`/`not_found`/`conflict`/`rate_limited`(429))로 던집니다. HTTP 상태 매핑은 `http/respond.ts` 한 곳에만 있습니다.
 - **오류 메시지는 반드시 패키지의 `Errors` 카탈로그에서 가져옵니다.** `throw new Error(Errors.ContentPathMissing)`, `throw notFound(Errors.ContentNotFound)`, `conflict(Errors.SlugInUse(slug))`처럼 씁니다. 세부 값이 필요한 메시지는 카탈로그에 함수로 둡니다. 카탈로그는 API `#api/shared/errors`, SDK `#sdk/errors`, 콘텐츠 `#content/errors`, 웹 `#lib/server/errors.js`에 있습니다. 소스 코드(`apps/*/src`, `packages/*/src`)에서 `new *Error(...)`, `DomainError` 팩토리, `guardUnique`, `errorResponse`, SvelteKit `error()`에 문자열·템플릿 리터럴 메시지를 넘기거나 리터럴을 `throw`하면 ESLint가 막습니다. 테스트와 픽스처는 예외입니다.
@@ -108,7 +108,7 @@ plugins/
 - [ ] 코어가 특정 플러그인을 알지 못한다. 새 확장 지점은 범용이다.
 - [ ] 플러그인이 꺼지거나 실패해도 코어가 동작함을 테스트했다.
 - [ ] 신뢰 경계 입력을 검증했다.
-- [ ] named import/export, `import type` 을 지켰다.
+- [ ] 이름 있는 import/export와 `import type`을 지켰다.
 - [ ] 새 의존성은 최신 안정 버전이며 `bun add`로 추가했다.
 - [ ] `bun run check` 가 통과한다.
 - [ ] 추가한 테스트가 중요한 회귀 위험을 막는지 판단했고, 일회성·국소·중복 테스트는 남기지 않았다.
@@ -129,7 +129,7 @@ plugins/
 | [docs/auth/sign-in.md](docs/auth/sign-in.md)                                                     | 확장 가능한 로그인 수단·2단계 인증 (작성 예정)                               |
 | [docs/features/taxonomies-search-themes.md](docs/features/taxonomies-search-themes.md)           | 분류, 검색, 블록 테마                                                        |
 | [docs/features/seo-permalinks.md](docs/features/seo-permalinks.md)                               | SEO, 사이트맵, 고유주소                                                      |
-| [docs/features/users-roles-protection.md](docs/features/users-roles-protection.md)               | 사용자, 역할, 속도 제한·캡챠, 비밀 값, egress                                |
+| [docs/features/users-roles-protection.md](docs/features/users-roles-protection.md)               | 사용자, 역할, 속도 제한·캡차, 비밀 값, egress                                |
 | [docs/features/content-media-fields.md](docs/features/content-media-fields.md)                   | 콘텐츠 워크플로, 블록, 미디어, 필드                                          |
 | [docs/features/reading-menus-widgets.md](docs/features/reading-menus-widgets.md)                 | 읽기 설정, 메뉴, 위젯, 사이트 편집기                                         |
 | [docs/features/comments.md](docs/features/comments.md)                                           | 댓글과 토론 정책                                                             |

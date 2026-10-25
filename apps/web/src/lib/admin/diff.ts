@@ -80,11 +80,13 @@ export interface BlockLabels {
 const inline = (node: Node): string =>
   typeof node.text === 'string'
     ? node.text
-    : node.type === 'hardBreak'
-      ? ' '
-      : Array.isArray(node.content)
-        ? (node.content as Node[]).map(inline).join('')
-        : '';
+    : node.type === 'footnote'
+      ? `[* ${String(node.attrs?.text ?? '')}]`
+      : node.type === 'hardBreak'
+        ? ' '
+        : Array.isArray(node.content)
+          ? (node.content as Node[]).map(inline).join('')
+          : '';
 
 /**
  * An editor document as readable lines, one per block: headings, list items, quotes, code

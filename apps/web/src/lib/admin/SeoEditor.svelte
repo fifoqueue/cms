@@ -35,7 +35,7 @@
   interface Source {
     /** The title the site uses without a custom SEO title. */
     title: string;
-    /** Excerpt or term description: the fallback meta description. */
+    /** Excerpt (else the automatic summary) or term description: the fallback meta description. */
     description: string;
     slug: string;
     /** Plain body text the keyword checks and reading facts look at. */

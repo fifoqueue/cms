@@ -6,6 +6,7 @@ import { StarterKit } from '@tiptap/starter-kit';
 import { safeHttpsUrl, safeLinkHref } from '#content/urls';
 import { contentDocumentSchema, contentAttributeSchemas } from '@cms/sdk';
 import { Audio, ContentImage, Video, File, Gallery } from '#content/media';
+import { Footnote } from '#content/footnote';
 import {
   TextAlignment,
   Columns,
@@ -64,6 +65,7 @@ export const Embed = Node.create({
 
 export const contentExtensions = [
   DocumentNode,
+  Footnote,
   HeadingAnchor,
   TableOfContents,
   StarterKit.configure({
@@ -133,6 +135,8 @@ export const parseDocument = (document: ContentDocument) => {
       const validator =
         contentAttributeSchemas[type as keyof typeof contentAttributeSchemas];
       if (validator && !validator.safeParse(known).success)
+        throw new Error(Errors.InvalidDocument);
+      if (type === 'footnote' && !validator?.safeParse(attrs).success)
         throw new Error(Errors.InvalidDocument);
       for (const child of [
         ...(Array.isArray(raw.content) ? raw.content : []),

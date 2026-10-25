@@ -124,6 +124,7 @@ export const contentInputSchema = z.object({
   sticky: z.boolean().default(false),
   /** Visitors may comment, if the type supports comments and discussion is on. */
   allowComments: z.boolean().default(true),
+  tocOverride: z.enum(['default', 'always', 'never']).optional(),
   menuOrder: z.number().int().min(-100000).max(100000).optional(),
   /** Visitors must enter it to read the body. Omitted keeps the current one; empty removes it. */
   password: z.string().max(200).optional(),
@@ -306,6 +307,7 @@ export const adminContentSchema = z.object({
   authorName: z.string(),
   sticky: z.boolean(),
   allowComments: z.boolean(),
+  tocOverride: z.enum(['default', 'always', 'never']).default('default'),
   menuOrder: z.number().int().default(0),
   /** Approved comments. */
   commentCount: z.number().int(),

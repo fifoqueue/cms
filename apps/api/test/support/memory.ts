@@ -14,6 +14,7 @@ import type { PluginDefinition } from '@cms/sdk/plugin';
 import type {
   ContentCriteria,
   ContentRecord,
+  ContentRenderRecord,
   ContentRepository,
   ContentWrite,
   ContentWriteGuard,
@@ -56,6 +57,27 @@ export class MemoryContentRepository implements ContentRepository {
   async findById(id: string) {
     const row = this.rows.get(id);
     return row ? this.toRecord(row) : null;
+  }
+
+  async findByIds(ids: readonly string[]): Promise<ContentRenderRecord[]> {
+    return [...new Set(ids)].flatMap((id) => {
+      const row = this.rows.get(id);
+      return row
+        ? [
+            structuredClone({
+              id: row.id,
+              document: row.document,
+              html: row.html,
+              updatedAt: row.updatedAt,
+              status: row.status,
+              trashedAt: this.trashed.get(id) ?? null,
+              protected: row.passwordHash !== null,
+              type: row.type,
+              tocOverride: row.tocOverride ?? 'default',
+            }),
+          ]
+        : [];
+    });
   }
 
   async findBySlug(slug: string) {
@@ -460,6 +482,7 @@ export class MemoryContentRepository implements ContentRepository {
       authorSlug: row.authorId,
       sticky: row.sticky,
       allowComments: row.allowComments,
+      tocOverride: row.tocOverride ?? 'default',
       commentCount: this.commentCounts.get(row.id) ?? 0,
       passwordHash: row.passwordHash,
       summary: row.summary,

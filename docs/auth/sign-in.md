@@ -1,89 +1,89 @@
-# Sign-in
+# 로그인
 
 상위 문서: [AGENTS.md](../../AGENTS.md)
 
-Extensible sign-in methods, second factors, Settings → Sign-in. Details may still change while the engine is finished.
+확장 가능한 로그인 방식, 2단계 인증 요소, 설정 → 로그인. 엔진을 마무리하는 동안 세부 내용이 바뀔 수 있습니다.
 
-## Model
+## 모델
 
-Sign-in is a registry of methods and second factors shared by core and plugins (`context.auth.signInMethod/secondFactor`, ids `plugin:<id>:<key>`).
+로그인은 코어와 플러그인이 함께 쓰는 방식·2단계 인증 요소의 레지스트리입니다(`context.auth.signInMethod/secondFactor`, id는 `plugin:<id>:<key>`).
 
-- Core methods: `password`, `passkey`, `sso`.
-- Core second factors: `totp`, `passkey`, `recovery-code`. TOTP is never a primary method.
-- A passkey sign-in with user verification satisfies the second-factor requirement. Plugins may still demand more via `user.secondFactorRequired`.
+- 코어 방식: `password`, `passkey`, `sso`.
+- 코어 2단계 인증 요소: `totp`, `passkey`, `recovery-code`. TOTP는 기본 로그인 방식이 될 수 없습니다.
+- 사용자 검증(UV)을 거친 패스키 로그인은 2단계 인증 요건을 충족합니다. 플러그인은 `user.secondFactorRequired`로 더 요구할 수 있습니다.
 
-The composition root registers password, UV-enforcing passkey and SSO methods, plus passkey, TOTP and recovery-code factors through the shared registry. Password setup atomically consumes its token with the credential update and revokes other credentials through the existing reset transaction. SSO setup atomically claims an identity and consumes all of the user's reset/invite tokens; it refuses replacing an existing issuer link. A UV passkey starts `user.secondFactorRequired` with `required: false` and `method: 'passkey'`; a plugin can request another factor. Without that request, `user.signedIn` records `secondFactor: 'passkey'`.
+컴포지션 루트는 공유 레지스트리를 통해 비밀번호, UV를 강제하는 패스키, SSO 방식과 패스키, TOTP, 복구 코드 인증 요소를 등록합니다. 비밀번호 설정은 자격 증명 갱신과 함께 토큰을 원자적으로 소비하고, 기존 재설정 트랜잭션으로 다른 자격 증명을 폐기합니다. SSO 설정은 연결(identity)을 원자적으로 claim하면서 해당 사용자의 모든 재설정·초대 토큰을 소비하며, 발급자(issuer)에 이미 있는 연결의 교체는 거부합니다. UV 패스키는 `user.secondFactorRequired`를 `required: false`, `method: 'passkey'`로 시작하며, 플러그인이 다른 인증 요소를 요청할 수 있습니다. 요청이 없으면 `user.signedIn`이 `secondFactor: 'passkey'`를 기록합니다.
 
-Legacy `/auth/login` delegates to the password engine method. It returns a session only when no further step is needed; otherwise it returns 409 with `Continue signing in using the step-based sign-in flow.` Forgot-password and legacy password-reset requests use the effective sign-in policy. When password is disabled, reset/invite email copy asks users to set up their sign-in (English/Korean), retaining the same invitation page.
+기존 `/auth/login`은 비밀번호 엔진 방식에 위임합니다. 더 필요한 단계가 없을 때만 세션을 반환하고, 그렇지 않으면 409와 `Continue signing in using the step-based sign-in flow.`를 반환합니다. 비밀번호 찾기와 기존 비밀번호 재설정 요청은 유효한 로그인 정책을 따릅니다. 비밀번호가 비활성화되면 재설정·초대 이메일 문구가 사용자에게 로그인 설정을 안내하며(영어/한국어), 같은 초대 페이지를 유지합니다.
 
-Methods may declare separate `setup.fields`; omitted setup fields inherit the primary fields. Password setup declares only a new-password field (`autocomplete: new-password`), since the token identifies the user; the existing core reset schema has no confirmation field. Public `info.setup` carries these fields independently from `info.methods`. WebAuthn options are normalized to JSON before validation, removing undefined generator properties for both get/create ceremonies. Visitor-facing authentication, SSO and protection messages are shared in `@cms/sdk/errors` for localization.
+방식은 별도의 `setup.fields`를 선언할 수 있으며, 선언하지 않은 설정 필드는 기본 필드를 상속합니다. 비밀번호 설정은 토큰이 사용자를 식별하므로 새 비밀번호 필드(`autocomplete: new-password`)만 선언하며, 기존 코어 재설정 스키마에는 확인 필드가 없습니다. 공개 `info.setup`은 이 필드들을 `info.methods`와 별개로 전달합니다. WebAuthn 옵션은 검증 전에 JSON으로 정규화되어, get/create 절차 모두에서 생성기가 남긴 undefined 속성이 제거됩니다. 방문자에게 보이는 인증·SSO·보호 메시지는 현지화를 위해 `@cms/sdk/errors`에서 공유합니다.
 
-## Settings → Sign-in
+## 설정 → 로그인
 
-`GET/PUT /api/v1/admin/sign-in` (`settings.manage`) holds the allowed methods in login order, the allowed second factors, and the roles that require a second factor.
+`GET/PUT /api/v1/admin/sign-in`(`settings.manage`)은 로그인 순서대로 허용된 방식, 허용된 2단계 인증 요소, 2단계 인증이 필요한 역할을 담습니다.
 
-- Unknown ids that are not already stored are refused.
-- The acting admin must keep at least one allowed and ready method they can use.
-- If every allowed method is unavailable at runtime, core falls back to password and logs a warning.
-- `CMS_ALLOW_PASSWORD_LOGIN` always keeps password allowed.
-- A required role must have at least one allowed factor that supports enrollment. Settings saves reject an empty/non-enrollable selection at `requireSecondFactor`, the role requirement control. If an allowed plugin factor disappears at runtime, core adds TOTP enrollment to the effective factors and warns, without rewriting stored policy.
+- 이미 저장되어 있지 않은 알 수 없는 id는 거부합니다.
+- 작업하는 관리자는 자신이 사용할 수 있는, 허용되고 준비된 방식을 하나 이상 유지해야 합니다.
+- 허용된 방식이 모두 런타임에 사용할 수 없으면 코어는 비밀번호로 대체하고 경고를 기록합니다.
+- `CMS_ALLOW_PASSWORD_LOGIN`은 항상 비밀번호를 허용 상태로 유지합니다.
+- 2단계 인증이 필요한 역할에는 등록을 지원하는 허용된 인증 요소가 하나 이상 있어야 합니다. 설정 저장 시 비어 있거나 등록할 수 없는 선택은 역할 요건 컨트롤인 `requireSecondFactor`에서 거부합니다. 허용된 플러그인 인증 요소가 런타임에 사라지면 코어는 저장된 정책을 고치지 않고 유효 인증 요소에 TOTP 등록을 추가하며 경고를 기록합니다.
 
-## Step-based flow
+## 단계별 흐름
 
-- `GET /api/v1/auth/sign-in` lists allowed methods.
-- `POST /api/v1/auth/sign-in/:method` starts a sign-in.
-- `POST /api/v1/auth/sign-in/setup/:method` sets up a method with an invitation/reset token, consumed once.
-- `POST /api/v1/auth/sign-in/continue` and `POST /api/v1/auth/sign-in/factor` continue a step or choose a factor.
+- `GET /api/v1/auth/sign-in`은 허용된 방식을 나열합니다.
+- `POST /api/v1/auth/sign-in/:method`는 로그인을 시작합니다.
+- `POST /api/v1/auth/sign-in/setup/:method`는 한 번만 쓸 수 있는 초대·재설정 토큰으로 방식을 설정합니다.
+- `POST /api/v1/auth/sign-in/continue`와 `POST /api/v1/auth/sign-in/factor`는 단계를 이어 가거나 인증 요소를 선택합니다.
 
-Steps are `session | done | redirect | webauthn | fields | secondFactor | enroll`. Pending handles are single-use and client-bound, and rotate on each step without extending the 10-minute expiry. They reuse `OIDC_MAX_PENDING_REQUESTS` / `OIDC_MAX_PENDING_PER_CLIENT`. Authentication responses are private and non-cacheable.
+단계는 `session | done | redirect | webauthn | fields | secondFactor | enroll`입니다. 대기 핸들은 1회용이고 클라이언트에 묶이며, 단계마다 교체되지만 10분 만료 시간은 연장되지 않습니다. `OIDC_MAX_PENDING_REQUESTS` / `OIDC_MAX_PENDING_PER_CLIENT`를 함께 씁니다. 인증 응답은 private이며 캐시할 수 없습니다.
 
-Redirect DTOs require an HTTP(S) URL and ISO datetime expiry. Flow/stage and account owner are held in the server transaction, not trusted from client cookies or submitted fields; account enrollment cannot be turned into a login or completed by another user.
+리디렉션 DTO에는 HTTP(S) URL과 ISO 날짜시간 만료가 필요합니다. 흐름·단계와 계정 소유자는 서버 트랜잭션에 보관하며 클라이언트 쿠키나 제출한 필드는 신뢰하지 않습니다. 계정 등록을 로그인으로 바꾸거나 다른 사용자가 완료할 수 없습니다.
 
-Passkey invitation/reset setup only verifies and prepares a credential before returning its core-only commit operation. The commit inserts the credential, consumes the user-bound live token and revokes sibling reset/invite tokens in one transaction; concurrent losing attempts and duplicate credentials leave no new credential behind. Usernameless primary assertions require a discoverable credential; account-bound second factors can use non-discoverable keys.
+패스키 초대·재설정 설정은 자격 증명을 검증하고 준비한 뒤 코어 전용 커밋 작업을 반환하기만 합니다. 커밋은 한 트랜잭션에서 자격 증명을 삽입하고, 사용자에 묶인 유효한 토큰을 소비하며, 같은 계열의 재설정·초대 토큰을 폐기합니다. 동시에 경합해 진 시도와 중복 자격 증명은 새 자격 증명을 남기지 않습니다. 사용자 이름 없는 기본 인증 어설션에는 검색 가능한 자격 증명(패스키)이 필요하고, 계정에 묶인 2단계 인증 요소는 검색 불가능한 키를 쓸 수 있습니다.
 
-Credential enrollment, SSO account linking, and recovery-code generation require a live interactive session issued within ten minutes. API tokens (`cms_pat_`) cannot authorize these operations. Enrollment/link continuations remain bound to their starting user. SSO start limits use the server-proved normalized client key, grouping IPv6 addresses by /64; unproved clients share a bucket.
+자격 증명 등록, SSO 계정 연결, 복구 코드 생성에는 10분 안에 발급된 유효한 대화형 세션이 필요합니다. API 토큰(`cms_pat_`)으로는 이 작업을 승인할 수 없습니다. 등록·연결 이어가기는 시작한 사용자에게 계속 묶여 있습니다. SSO 시작 제한은 서버가 증명한 정규화된 클라이언트 키를 쓰며 IPv6 주소는 /64 단위로 묶고, 증명되지 않은 클라이언트는 하나의 버킷을 함께 씁니다.
 
-`user.secondFactorRequired` is monotonic: plugins may change false to true, but a false result after a role or earlier plugin requires another factor is ignored and warned. A UV passkey has already satisfied core policy, so its initial value remains false; a plugin can still demand more, and later plugins cannot withdraw that demand.
+`user.secondFactorRequired`는 단조 증가합니다. 플러그인은 false를 true로 바꿀 수 있지만, 역할이나 앞선 플러그인이 다른 인증 요소를 요구한 뒤에 나온 false 결과는 무시하고 경고를 기록합니다. UV 패스키는 이미 코어 정책을 충족했으므로 초기값이 false로 유지됩니다. 플러그인은 여전히 더 요구할 수 있고, 이후 플러그인은 그 요구를 철회할 수 없습니다.
 
-Privacy erasure removes passkeys, TOTP secrets, recovery codes and user-bound pending sign-ins in the same transaction as anonymization. Export sections `passkeys`, `totp` and `recoveryCodes` contain only credential ids, factor ids, labels and creation dates—never keys, secrets, recovery hashes or pending state.
+개인정보 삭제 처리는 익명화와 같은 트랜잭션에서 패스키, TOTP 비밀, 복구 코드, 사용자에 묶인 대기 로그인을 제거합니다. 내보내기 섹션 `passkeys`, `totp`, `recoveryCodes`에는 자격 증명 id, 인증 요소 id, 레이블, 생성일만 들어가며 키, 비밀, 복구 해시, 대기 상태는 절대 포함하지 않습니다.
 
-An unsuccessful `continue` releases its reservation and leaves the same handle valid until expiry. Each field attempt still runs login protection. Only one attempt can reserve a handle at once; the row continues to occupy its admission slot, and successful rotation atomically replaces it within that slot. A crashed worker's reservation cannot be replayed and expires with the transaction. Apply `20261113000000_sign_in_reservations` (after passkey discoverability) before deploying this engine. It also adds the private identity binding: unlinking an SSO identity cascades pending sign-ins and sessions.
+실패한 `continue`는 예약을 해제하며 같은 핸들은 만료될 때까지 유효합니다. 필드 시도마다 로그인 보호가 계속 실행됩니다. 한 번에 한 시도만 핸들을 예약할 수 있고, 해당 행은 계속 허용 슬롯을 차지하며, 교체에 성공하면 그 슬롯 안에서 원자적으로 대체됩니다. 비정상 종료된 워커의 예약은 재사용할 수 없고 트랜잭션과 함께 만료됩니다. 이 엔진을 배포하기 전에 `20261113000000_sign_in_reservations`(패스키 검색 가능 여부 구분 다음)를 적용하세요. 이 마이그레이션은 비공개 연결 바인딩도 추가합니다. SSO 연결을 해제하면 대기 로그인과 세션이 연쇄 삭제됩니다.
 
-SSO method options are the enabled providers. Its OIDC checks and provider id stay in server-kept state, and its verified identity binding survives second-factor steps until session issuance. Operator-assigned subjects have no identity binding. Managed SSO providers retain `<site>/admin/sso/callback` for login, claim and account linking, matching existing IdP registrations and the admin display; an environment provider keeps `OIDC_REDIRECT_URI`. Plugin redirect methods still receive `<site>/admin/sign-in/callback` as `callbackUrl`. Both web callbacks use the same continuation logic. Old SSO start/callback endpoints now serve authenticated account linking only; login/claim attempts there return 409 and must use the engine.
+SSO 방식 옵션은 활성화된 제공자입니다. OIDC 검사와 제공자 id는 서버가 보관하는 상태에 남고, 검증된 연결 바인딩은 세션이 발급될 때까지 2단계 인증 단계를 거쳐도 유지됩니다. 운영자가 할당한 주체에는 연결 바인딩이 없습니다. 관리형 SSO 제공자는 기존 IdP 등록과 관리자 화면 표시에 맞춰 로그인, claim, 계정 연결 모두에 `<site>/admin/sso/callback`을 유지하고, 환경변수 제공자는 `OIDC_REDIRECT_URI`를 유지합니다. 플러그인 리디렉션 방식은 여전히 `callbackUrl`로 `<site>/admin/sign-in/callback`을 받습니다. 두 웹 콜백은 같은 이어가기 로직을 씁니다. 기존 SSO start/callback 엔드포인트는 이제 인증된 계정 연결만 처리하며, 여기서 시도한 로그인·claim은 409를 반환하므로 엔진을 써야 합니다.
 
-SSO outputs no longer contain `passwordLogin` or `passwordLoginForced`. SSO input accepts optional `passwordLogin` for one release but ignores it. Existing stored `passwordLogin: false` migrates to `signIn.methods: ['sso']` before provider saves remove the obsolete field; password forcing is exposed only by Settings → Sign-in.
+SSO 출력에는 더 이상 `passwordLogin`이나 `passwordLoginForced`가 없습니다. SSO 입력은 한 릴리스 동안 선택적 `passwordLogin`을 받지만 무시합니다. 저장되어 있던 `passwordLogin: false`는 제공자 저장이 이 폐기된 필드를 제거하기 전에 `signIn.methods: ['sso']`로 마이그레이션됩니다. 비밀번호 강제 여부는 설정 → 로그인에서만 노출됩니다.
 
-Core registrations use a composition-root-only registration path, not an owner-name check. Core methods/factors are validated but have no plugin timeout/isolation; their errors propagate. Plugin registrations remain isolated and time-limited. User-directory lookups expose role capabilities only; per-user grants run after verification, when sessions are issued/authenticated. Recovery also defers per-user capability resolution until its code is consumed.
+코어 등록은 소유자 이름 검사가 아니라 컴포지션 루트 전용 등록 경로를 씁니다. 코어 방식·인증 요소는 검증은 하지만 플러그인 타임아웃·격리가 없으며 오류는 그대로 전파됩니다. 플러그인 등록은 계속 격리되고 시간 제한이 있습니다. 사용자 디렉터리 조회는 역할 권한만 노출하고, 사용자별 부여는 세션이 발급·인증되는 검증 이후에 실행됩니다. 복구도 코드를 소비할 때까지 사용자별 권한 해석을 미룹니다.
 
-`continue` and `chooseFactor` return **410** with code `sign_in_expired` and SDK message `This sign-in request is no longer valid. Start again.` for expired, used, unknown, or client-mismatched handles. Discard the pending cookie and restart; a rejected credential remains 401 `unauthorized` instead.
+`continue`와 `chooseFactor`는 만료되었거나 이미 사용했거나 알 수 없거나 클라이언트가 일치하지 않는 핸들에 대해 **410**, 코드 `sign_in_expired`, SDK 메시지 `This sign-in request is no longer valid. Start again.`를 반환합니다. 대기 쿠키를 버리고 다시 시작하세요. 거부된 자격 증명은 그대로 401 `unauthorized`입니다.
 
-## Web
+## 웹
 
-- The login page and the invitation/reset page (`/admin/password?token=…`) render `methods`/`setup` generically, in order: a method with `fields` is a form, one with `options` a button per option, any other one button. Plugin ids are never special-cased. "Forgot password" shows only while `passwordReset`; otherwise the forgot-password page asks for a sign-in link from an administrator. Break-glass recovery-code sign-in stays a secondary entry.
-- Labels of core method, factor and field ids (`CORE_SIGN_IN_METHODS`, `CORE_SECOND_FACTORS`, fields by owner) come from the web catalog (`#lib/sign-in-labels.js`); plugin labels are shown as provided.
-- One httpOnly pending cookie (`#lib/server/sso-cookie.js`) holds the handle, flow (`login`/`setup`/`enroll`/`link`), return path and the step to show; page data gets a projected step view, never the handle. The cookie is AES-256-GCM sealed (key from the frontend secret via HKDF, cookie name bound in; anything that fails to open is no pending step), `enroll`/`link` steps carry the starting user's id and only that user continues them, and sign-out clears it. Declared fields post as `field.<name>`. `redirect` steps leave with a 303; `/admin/sign-in/callback` and `/admin/sso/callback` (registered at providers) continue with the query. Other steps render on `/admin/sign-in` (enrollment inside Account → Two-step verification). QR codes are drawn on the server; WebAuthn uses `@simplewebauthn/browser` and is the only step that needs scripts. Only a 410 (`sign_in_expired`) from `continue`/`chooseFactor` forgets the step so the flow starts over; other refusals stay on the step.
-- Settings → Sign-in (`/admin/settings/sign-in`) orders and toggles methods without scripts (move buttons post back unsaved), keeps stored ids of inactive plugins until removed, and labels plugin entries with their source.
+- 로그인 페이지와 초대·재설정 페이지(`/admin/password?token=…`)는 `methods`/`setup`을 순서대로 범용으로 렌더링합니다. `fields`가 있는 방식은 폼, `options`가 있는 방식은 옵션마다 버튼, 그 밖의 방식은 버튼 하나입니다. 플러그인 id는 특별 취급하지 않습니다. "비밀번호 찾기"는 `passwordReset`일 때만 표시되며, 아니면 비밀번호 찾기 페이지가 관리자에게 로그인 링크를 요청하라고 안내합니다. 비상용 복구 코드 로그인은 보조 진입점으로 남습니다.
+- 코어 방식·인증 요소·필드 id(`CORE_SIGN_IN_METHODS`, `CORE_SECOND_FACTORS`, 소유자별 필드)의 레이블은 웹 카탈로그(`#lib/sign-in-labels.js`)에서 가져오고, 플러그인 레이블은 제공된 그대로 표시합니다.
+- httpOnly 대기 쿠키 하나(`#lib/server/sso-cookie.js`)가 핸들, 흐름(`login`/`setup`/`enroll`/`link`), 돌아갈 경로, 표시할 단계를 담습니다. 페이지 데이터에는 핸들이 아니라 투영된 단계 뷰만 전달합니다. 쿠키는 AES-256-GCM으로 봉인하고(키는 프런트엔드 비밀에서 HKDF로 파생하며 쿠키 이름이 바인딩됩니다. 열지 못하면 대기 단계가 없는 것으로 봅니다), `enroll`/`link` 단계에는 시작한 사용자의 id가 담겨 그 사용자만 이어 갈 수 있고, 로그아웃하면 쿠키를 지웁니다. 선언된 필드는 `field.<name>`으로 전송합니다. `redirect` 단계는 303으로 이동하며, `/admin/sign-in/callback`과 `/admin/sso/callback`(제공자에 등록)은 쿼리로 이어 갑니다. 그 밖의 단계는 `/admin/sign-in`에 렌더링합니다(등록은 관리자 화면의 '내 계정' → '2단계 인증 / 패스키' 안에서). QR 코드는 서버에서 그리며, WebAuthn은 `@simplewebauthn/browser`를 쓰고 스크립트가 필요한 유일한 단계입니다. `continue`/`chooseFactor`의 410(`sign_in_expired`)만 단계를 잊고 흐름을 처음부터 다시 시작하며, 다른 거부는 그 단계에 머뭅니다.
+- 설정 → 로그인(`/admin/settings/sign-in`)은 스크립트 없이 방식의 순서를 바꾸고 켜고 끌 수 있으며(이동 버튼은 저장하지 않은 상태로 다시 전송), 비활성 플러그인의 저장된 id는 제거할 때까지 유지하고, 플러그인 항목에는 출처 레이블을 붙입니다.
 
-## Account factors
+## 계정 인증 요소
 
-- `GET /api/v1/auth/factors` lists the user's factors.
-- `POST /api/v1/auth/factors/:factor/enroll` enrolls one. A continuation requires the initiating user's session and ends with `done`, without issuing a new session.
-- `DELETE /api/v1/auth/factors/:factor/:credential` removes one. Removing the last factor required by the role is refused (serialized).
+- `GET /api/v1/auth/factors`는 사용자의 인증 요소를 나열합니다.
+- `POST /api/v1/auth/factors/:factor/enroll`은 인증 요소 하나를 등록합니다. 이어가기에는 시작한 사용자의 세션이 필요하며 새 세션을 발급하지 않고 `done`으로 끝납니다.
+- `DELETE /api/v1/auth/factors/:factor/:credential`은 하나를 제거합니다. 역할이 요구하는 마지막 인증 요소의 제거는 거부합니다(직렬화됨).
 
-## Passkeys and TOTP
+## 패스키와 TOTP
 
-Only discoverable passkeys count as usable for passwordless sign-in. Passkeys registered before this release are treated as not discoverable; re-register them to rely on them. TOTP secrets are sealed; a successful verification atomically re-seals with the current key while consuming the time step. For key rotation, see [operations](../operations.md).
+검색 가능한 패스키만 비밀번호 없는 로그인에 쓸 수 있는 것으로 간주합니다. 이번 릴리스 이전에 등록한 패스키는 검색 불가능한 것으로 취급하므로, 사용하려면 다시 등록하세요. TOTP 비밀은 봉인되어 저장되며, 검증에 성공하면 시간 단계를 소비하면서 현재 키로 원자적으로 다시 봉인합니다. 키 교체는 [운영](../operations.md)을 참고하세요.
 
-Passkey registration exclusion lists and account-bound assertion allowlists contain at most sixteen credentials, keeping maximum-sized credential ids below the 32 KiB auth-step budget. Discoverable primary sign-in uses an empty allowlist and is not restricted to those sixteen keys.
+패스키 등록 제외 목록과 계정에 묶인 인증 어설션 허용 목록에는 자격 증명이 최대 16개 들어가며, 최대 크기의 자격 증명 id도 32 KiB 인증 단계 예산 안에 들어옵니다. 검색 가능한 자격 증명을 쓰는 기본 로그인은 빈 허용 목록을 쓰며 이 16개 키로 제한되지 않습니다.
 
-## Hooks
+## 훅
 
-Actions `user.signedIn`, `user.signInFailed`, `user.secondFactorChanged`; filters `user.signInAllowed` (deny-only) and `user.secondFactorRequired`. See [extension points](../plugins/extension-points.md#sign-in).
+액션 `user.signedIn`, `user.signInFailed`, `user.secondFactorChanged`; 필터 `user.signInAllowed`(거부 전용)와 `user.secondFactorRequired`. [확장 지점](../plugins/extension-points.md#로그인)을 참고하세요.
 
-## Recovery
+## 복구
 
-Break-glass `POST /api/v1/auth/recovery` (`settings.manage` holders only) and recovery codes (`/api/v1/auth/recovery-codes`). See [SSO](sso.md).
+비상용 `POST /api/v1/auth/recovery`(`settings.manage` 보유자만)와 복구 코드(`/api/v1/auth/recovery-codes`). [SSO](sso.md)를 참고하세요.
 
-Generating codes requires an interactive session created within the last ten minutes; `cms_pat_` API tokens are refused. Failure to send a notification does not withhold generated codes or a successful recovery session. Password reset/change and administrator sign-out-everywhere revoke recovery codes.
+코드 생성에는 최근 10분 안에 만든 대화형 세션이 필요하며 `cms_pat_` API 토큰은 거부합니다. 알림 전송에 실패해도 생성된 코드나 성공한 복구 세션은 그대로 유지됩니다. 비밀번호 재설정·변경과 관리자의 전체 기기 로그아웃은 복구 코드를 폐기합니다.
 
-관련 문서: [SSO](sso.md), [라우트 표](../api/routes.md), [확장 지점](../plugins/extension-points.md#sign-in).
+관련 문서: [SSO](sso.md), [라우트 표](../api/routes.md), [확장 지점](../plugins/extension-points.md#로그인).

@@ -161,6 +161,7 @@ const project = (record: ContentSummaryRecord): PublishedSummaryRecord => ({
   author: { name: record.authorName, slug: record.authorSlug },
   parentId: record.parentId ?? null,
   sticky: record.sticky,
+  tocOverride: record.tocOverride ?? 'default',
   commentCount: record.commentCount,
   protected: record.passwordHash !== null,
   featuredImage: record.featuredImage,

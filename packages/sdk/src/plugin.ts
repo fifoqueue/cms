@@ -325,7 +325,8 @@ export interface WidgetRegistrar {
 
 /**
  * Turns a link pasted into the editor's embed block into a player. Return the player HTML, or
- * `null` when the address is not yours. Core providers (YouTube, Vimeo) are asked first.
+ * `null` when the address is not yours. The core's generic preset list
+ * (YouTube, Vimeo, X, Instagram) is asked first.
  */
 export interface EmbedProvider {
   name: string;

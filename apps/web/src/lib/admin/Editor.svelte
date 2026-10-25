@@ -6,6 +6,7 @@
   import type { AdminMedia, ContentDocument, PluginBlockInfo } from '@cms/sdk';
   import { default as Bold } from '@lucide/svelte/icons/bold';
   import { default as Code } from '@lucide/svelte/icons/code';
+  import { default as FileCode } from '@lucide/svelte/icons/file-code';
   import { default as Heading2 } from '@lucide/svelte/icons/heading-2';
   import { default as Heading3 } from '@lucide/svelte/icons/heading-3';
   import { default as Image } from '@lucide/svelte/icons/image';
@@ -22,10 +23,16 @@
   import { default as Undo } from '@lucide/svelte/icons/undo';
   import { default as SquarePlay } from '@lucide/svelte/icons/square-play';
   import { default as Shapes } from '@lucide/svelte/icons/shapes';
+  import { default as Superscript } from '@lucide/svelte/icons/superscript';
   import { catalogMessage } from '#lib/admin/form-errors.js';
   import BlockInserter from '#lib/admin/editor/BlockInserter.svelte';
   import { blockLabels } from '#lib/admin/editor/block-labels.js';
   import { codeBlockView } from '#lib/admin/editor/CodeBlockView.js';
+  import { embedView } from '#lib/admin/editor/EmbedView.js';
+  import {
+    footnoteView,
+    publishedDocument,
+  } from '#lib/admin/editor/FootnoteView.js';
   import { tocView } from '#lib/admin/editor/TocView.js';
   import {
     editorExtensions,
@@ -65,12 +72,12 @@
   const m = $derived(i18n.m);
   let audioPicker: ReturnType<typeof MediaPicker>;
   let picker: ReturnType<typeof MediaPicker>;
-  let embedDialog: HTMLDialogElement;
-  let embedUrl = $state('');
   let linkDialog: HTMLDialogElement;
   let linkUrl = $state('');
   let uploading = $state(0);
   let uploadErrors = $state<string[]>([]);
+  /** Footnotes whose text (from HTML mode or a paste) was cut to the 2000-character limit. */
+  let footnoteNotices = $state<string[]>([]);
 
   let element: HTMLDivElement;
   let editor = $state.raw<Editor | null>(null);
@@ -164,13 +171,36 @@
       element,
       // The shared schema with editor placeholders for markers, patterns and plugin blocks.
       extensions: [
-        ...editorExtensions(markerLabel).filter(
-          (extension) =>
-            extension.name !== 'pluginBlock' &&
-            extension.name !== 'tableOfContents' &&
-            extension.name !== 'codeBlock',
-        ),
+        ...editorExtensions(markerLabel)
+          .filter(
+            (extension) =>
+              extension.name !== 'pluginBlock' &&
+              extension.name !== 'tableOfContents' &&
+              extension.name !== 'codeBlock' &&
+              extension.name !== 'embed',
+          )
+          // Swapped in place: the footnote keeps its spot in the shared schema's order.
+          .map((extension) =>
+            extension.name === 'footnote'
+              ? footnoteView(
+                  () => ({
+                    number: m.footnoteNumber,
+                    label: m.footnoteLabel,
+                    open: m.footnoteOpenHint,
+                    placeholder: m.footnotePlaceholder,
+                    hint: m.footnoteHint,
+                    remove: m.footnoteDelete,
+                    empty: m.footnoteEmpty,
+                  }),
+                  (numbers) =>
+                    (footnoteNotices = numbers.map((number) =>
+                      m.footnoteShortened(number),
+                    )),
+                )
+              : extension,
+          ),
         pluginBlock.extension,
+        embedView(() => m.embedUrl),
         tocView(() => m.contentTocEmpty),
         codeBlockView(() => ({
           name: m.contentBlockName('codeBlock'),
@@ -216,8 +246,9 @@
           marker.to = transaction.mapping.map(marker.to);
         }
       },
+      // What the form and autosave get: never a blank footnote, even one whose field is open.
       onUpdate: ({ editor: current }) =>
-        (value = current.getJSON() as ContentDocument),
+        (value = publishedDocument(current.getJSON()) as ContentDocument),
     });
     editor = instance;
     // Pattern boxes show their titles once the library is read.
@@ -349,12 +380,38 @@
     replacing = false;
   };
 
-  const insertEmbed = () => {
-    const url = embedUrl.trim();
-    embedDialog.close();
-    embedUrl = '';
-    if (/^https:\/\//.test(url))
-      run((chain) => chain.insertContent({ type: 'embed', attrs: { url } }));
+  // RAW HTML mode: the document's HTML, one top-level block per line. Every edit is applied to
+  // the editor at once, so the form's hidden field always holds what the text area shows.
+  let htmlMode = $state(false);
+  let html = $state('');
+  const blockLines = (source: string) => {
+    const template = document.createElement('template');
+    template.innerHTML = source;
+    return [...template.content.childNodes]
+      .map((node) =>
+        node instanceof Element ? node.outerHTML : (node.textContent ?? ''),
+      )
+      .join('\n');
+  };
+  const applyHtml = (source: string) => {
+    html = source;
+    // Spaces inside text are kept (a reparse must not collapse them), while whitespace-only
+    // text between blocks, like the line breaks above, is still skipped; code blocks keep
+    // theirs by their own parse rule.
+    editor?.commands.setContent(source, {
+      emitUpdate: true,
+      parseOptions: { preserveWhitespace: true },
+    });
+  };
+  const toggleHtml = () => {
+    if (!editor) return;
+    if (htmlMode) {
+      htmlMode = false;
+      editor.commands.focus();
+      return;
+    }
+    html = blockLines(editor.getHTML());
+    htmlMode = true;
   };
 
   const inTable = $derived(
@@ -476,6 +533,8 @@
     icon: Component;
     active?: () => boolean;
     action: () => void;
+    /** Stays usable in HTML mode. */
+    always?: boolean;
   }
 
   const tools: Tool[] = $derived([
@@ -564,7 +623,14 @@
     {
       label: m.insertEmbed,
       icon: SquarePlay,
-      action: () => embedDialog.showModal(),
+      // An empty embed opens with its address field focused.
+      action: () => run((c) => c.insertContent({ type: 'embed' })),
+    },
+    {
+      label: m.editorFootnote,
+      icon: Superscript,
+      // A new footnote opens with its text field focused.
+      action: () => run((c) => c.insertFootnote()),
     },
     {
       label: m.patternCreate,
@@ -576,6 +642,13 @@
     },
     { label: m.editorUndo, icon: Undo, action: () => run((c) => c.undo()) },
     { label: m.editorRedo, icon: Redo, action: () => run((c) => c.redo()) },
+    {
+      label: m.editorHtml,
+      icon: FileCode,
+      active: () => htmlMode,
+      action: toggleHtml,
+      always: true,
+    },
   ]);
 </script>
 
@@ -587,7 +660,7 @@
     class="max-lg:contents lg:sticky lg:top-0 lg:z-10 lg:rounded-t-md lg:bg-background"
     bind:clientHeight={groupHeight}
   >
-    <BlockInserter {editor} />
+    <BlockInserter {editor} disabled={htmlMode} />
     <div
       class="flex flex-wrap gap-1 border-b bg-background p-1 max-lg:sticky max-lg:top-0 max-lg:z-10"
       bind:clientHeight={toolbarHeight}
@@ -600,12 +673,12 @@
         {@const Icon = tool.icon}
         <button
           type="button"
-          tabindex={index === focused ? 0 : -1}
+          tabindex={(htmlMode ? tool.always : index === focused) ? 0 : -1}
           onfocus={() => (focused = index)}
           title={tool.label}
           aria-label={tool.label}
           aria-pressed={tool.active?.()}
-          disabled={!editor}
+          disabled={!editor || (htmlMode && !tool.always)}
           class="rounded p-2 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 aria-pressed:bg-muted aria-pressed:text-foreground"
           onmousedown={(event) => event.preventDefault()}
           onclick={tool.action}
@@ -614,7 +687,7 @@
         </button>
       {/each}
     </div>
-    {#if inTable}
+    {#if inTable && !htmlMode}
       <div class="flex flex-wrap gap-1 border-b bg-muted/40 p-1 text-xs">
         <Button
           size="sm"
@@ -645,7 +718,7 @@
         >
       </div>
     {/if}
-    {#if image}
+    {#if image && !htmlMode}
       <div
         class="flex flex-wrap items-end gap-3 border-b bg-muted/40 p-2 text-sm"
         role="group"
@@ -742,14 +815,29 @@
       </div>
     {/if}
   </div>
-  <div bind:this={element}></div>
-  {#if uploading || uploadErrors.length}
+  <div bind:this={element} hidden={htmlMode}></div>
+  {#if htmlMode}
+    <div class="grid gap-1 p-2">
+      <p class="text-xs text-muted-foreground">{m.editorHtmlNote}</p>
+      <textarea
+        value={html}
+        oninput={(event) => applyHtml(event.currentTarget.value)}
+        aria-label={`${label} (HTML)`}
+        spellcheck="false"
+        class="min-h-80 w-full resize-y rounded-md border bg-transparent p-3 font-mono text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+      ></textarea>
+    </div>
+  {/if}
+  {#if uploading || uploadErrors.length || footnoteNotices.length}
     <div class="border-t p-2 text-xs" aria-live="polite">
       {#if uploading}<p class="text-muted-foreground">
           {m.editorUploading(uploading)}
         </p>{/if}
       {#each uploadErrors as error (error)}<p class="text-destructive">
           {error}
+        </p>{/each}
+      {#each footnoteNotices as notice (notice)}<p class="text-destructive">
+          {notice}
         </p>{/each}
     </div>
   {/if}
@@ -846,35 +934,6 @@
         disabled={!patternTitle.trim()}
         onclick={createPattern}>{m.create}</Button
       >
-    </div>
-  </div>
-</dialog>
-
-<dialog
-  bind:this={embedDialog}
-  class="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-lg border bg-background p-4 text-foreground shadow-lg backdrop:bg-black/40"
-  aria-label={m.insertEmbed}
->
-  <!-- Not a <form>: the editor sits inside the content form, and forms cannot nest. -->
-  <div class="space-y-3">
-    <label class="grid gap-2 text-sm">
-      {m.embedUrl}
-      <Input
-        type="url"
-        pattern="https://.*"
-        bind:value={embedUrl}
-        onkeydown={(event) => {
-          if (event.key !== 'Enter') return;
-          event.preventDefault();
-          insertEmbed();
-        }}
-      />
-    </label>
-    <div class="flex justify-end gap-2">
-      <Button type="button" variant="ghost" onclick={() => embedDialog.close()}
-        >{m.cancel}</Button
-      >
-      <Button type="button" onclick={insertEmbed}>{m.insert}</Button>
     </div>
   </div>
 </dialog>

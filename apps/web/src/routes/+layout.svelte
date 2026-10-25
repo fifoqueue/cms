@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { page } from '$app/state';
   import '#web/routes/layout.css';
   import favicon from '#lib/assets/favicon.svg';
   import SiteFonts from '#lib/theme/SiteFonts.svelte';
@@ -13,11 +12,9 @@
   <SiteFonts fonts={data.uiFont.fonts} />
 {/if}
 
-<!-- The public site links its own icon once one is set (Settings → General). -->
+<!-- Every screen shows the site icon (Settings → General), or the default one while none is set. -->
 <svelte:head>
-  {#if !(page.data.site as { icon?: unknown } | undefined)?.icon}
-    <link rel="icon" href={favicon} />
-  {/if}
+  <link rel="icon" href={data.icon ?? favicon} />
   {#if data.uiFont}
     <!-- eslint-disable-next-line svelte/no-at-html-tags -- a font stack the theme schema checked -->
     {@html `<style>:root { --cms-ui-font: ${data.uiFont.family}; }</style>`}

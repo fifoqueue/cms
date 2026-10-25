@@ -63,6 +63,71 @@
         </NativeSelect>
       </div>
       <Button type="submit">{m.save}</Button>
+      <fieldset class="grid gap-3">
+        <label
+          ><input
+            type="checkbox"
+            name="tocEnabled"
+            checked={data.writing.autoToc.enabled}
+          />
+          {m.writingToc}</label
+        >
+        <label
+          >{m.writingTocTypes}<input
+            class="block border p-2"
+            name="tocTypes"
+            value={data.writing.autoToc.types.join(',')}
+          /></label
+        >
+        <label
+          >{m.writingTocPosition}
+          <select name="tocPosition" value={data.writing.autoToc.position}>
+            <option value="beforeFirstHeading">{m.writingTocBefore}</option>
+            <option value="top">{m.writingTocTop}</option>
+          </select>
+        </label>
+        <label
+          >{m.writingTocTitle}<input
+            class="block border p-2"
+            name="tocTitle"
+            maxlength="200"
+            value={data.writing.autoToc.title}
+          /></label
+        >
+        <label
+          >{m.writingTocLevels}<input
+            class="block border p-2"
+            name="tocLevels"
+            value={data.writing.autoToc.levels.join(',')}
+          /></label
+        >
+        <label
+          >{m.writingTocMinimum}<input
+            class="block border p-2"
+            type="number"
+            min="0"
+            max="100"
+            name="tocMinimum"
+            value={data.writing.autoToc.minHeadings}
+          /></label
+        >
+        <label
+          ><input
+            type="checkbox"
+            name="tocCollapsible"
+            checked={data.writing.autoToc.collapsible}
+          />
+          {m.writingTocCollapsible}</label
+        >
+        <label
+          ><input
+            type="checkbox"
+            name="tocOpen"
+            checked={data.writing.autoToc.open}
+          />
+          {m.writingTocOpen}</label
+        >
+      </fieldset>
     </SettingsForm>
   </CardContent>
 </Card>

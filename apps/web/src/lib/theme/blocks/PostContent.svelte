@@ -10,6 +10,9 @@
   import { enhanceToc } from '#lib/theme/content/toc.js';
   import '#lib/theme/content/code-block.css';
   import CalloutDismissal from '#lib/theme/content/CalloutDismissal.svelte';
+  import EmbedResize from '#lib/theme/content/EmbedResize.svelte';
+  import FloatingToc from '#lib/theme/content/FloatingToc.svelte';
+  import Footnotes from '#lib/theme/content/Footnotes.svelte';
   import { useCurrentPost, useScope } from '#lib/theme/scope.js';
 
   const current = useCurrentPost();
@@ -76,6 +79,9 @@
         {@html entry.html}
       </div>
       <CalloutDismissal container={prose} html={entry.html} />
+      <EmbedResize container={prose} html={entry.html} />
+      <FloatingToc container={prose} html={entry.html} />
+      <Footnotes container={prose} html={entry.html} />
       {#if entry.pages.total > 1}
         <!-- Parts of an entry split by page breaks (WordPress "Pages: 1 2 3"). -->
         <nav

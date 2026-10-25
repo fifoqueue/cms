@@ -1,76 +1,91 @@
 # 콘텐츠 워크플로·미디어·필드
 
-## Entry origin
+## 자동 목차
 
-Admin writes for every content type record the browser's proven IP and user agent.
-The existing frontend-secret proof is required; forged or absent proof stores null.
-IP text uses the comment canonicalizer; user agents use the comment sanitizer.
-Creation origin is immutable. Explicit saves (including publish/status changes and
-revision restore) replace modification origin; trash/restore also records its actor.
-Saved revisions and separate autosaves carry the origin of their own save, not the
-restored snapshot. Imports and plugin/system writes supply no browser origin.
+설정 → 쓰기에서 자동 목차를 설정합니다. 기본값은 글(`post`)에 사용,
+첫 제목 앞, 제목 단계 2·3·4, 페이지별 최소 제목 3개, 접기 허용·처음에
+펼치기입니다. 빈 제목은 사이트 언어의 “목차”/“Contents”를 사용합니다.
+글별 `tocOverride`는 사이트 기본값·항상·안 함을 선택합니다. 수동 목차
+블록이 하나라도 있으면 자동 삽입하지 않으며, 항상도 최소 제목 수를 지킵니다.
+페이지 나누기가 있으면 조건을 만족하는 각 페이지에 삽입합니다.
 
-Admin `ContentEntry` / `AdminContent` exposes `origin.created` and `origin.modified`
-(`ip`, `userAgent`), only with `content.editOthers`; otherwise `origin` is null,
-including for the entry's own author. Revision DTOs similarly return null `ip` and
-`userAgent` without that capability. Public projections and content hook payloads
-never contain origin values. Creation/modification actor IDs remain storage-only.
+저장 HTML은 바꾸지 않고 공개 단건 조회와 미리보기에서 현재 쓰기 설정으로
+렌더링합니다. 따라서 기존 글을 다시 저장할 필요가 없습니다. 공개 목록은
+본문을 읽지 않으며, 잠긴 글의 본문은 렌더링하지 않습니다.
+설정 변경은 다음 원본 서버 조회부터 반영됩니다. 읽기 설정의 공개 캐시를
+사용하는 CDN/리버스 프록시는 기존 `s-maxage`와 `stale-while-revalidate`
+기간 동안 이전 페이지를 제공할 수 있습니다. 쓰기 설정 변경은
+`settings.updated`를 발행하지만 외부 캐시를 직접 삭제하지 않습니다.
 
-Origin is retained with its entry/revision until deletion or personal-data erasure.
-Personal export includes only the subject's own creation/modification provenance
-and saved revisions, never another actor's origin on a matching entry. Erasure and
-user deletion clear the subject's origins and actor references while preserving
-other actors' provenance on kept entries. Creator/modifier references use nullable
-foreign keys with `ON DELETE SET NULL`.
+## 글 작성 출처
 
-## Configurable storage
+모든 콘텐츠 유형의 관리자 쓰기는 브라우저의 증명된 IP와 사용자 에이전트를 기록합니다.
+기존 프런트엔드 비밀 증명이 필요하며, 위조되었거나 없는 증명은 null로 저장합니다.
+IP 텍스트는 댓글 정규화기를, 사용자 에이전트는 댓글 정리기를 사용합니다.
+생성 출처는 변경할 수 없습니다. 명시적 저장(게시/상태 변경과 리비전 복원 포함)은
+수정 출처를 교체하며, 휴지통 이동/복원은 수행한 주체도 기록합니다.
+저장된 리비전과 별도의 자동 저장은 복원된 스냅숏이 아니라 자신을 저장한
+시점의 출처를 가집니다. 가져오기와 플러그인/시스템 쓰기는 브라우저 출처를
+제공하지 않습니다.
 
-Deletion persists a `media.cleanup.delete.<id>` settings tombstone before queueing `media.cleanup` work. Each original/variant is removed through its recorded driver, and the database row is finalized only after every removal succeeds. Tombstones survive terminal job failure, payload scrubbing and job expiry; driver registration/reactivation and the resync action regenerate cleanup jobs. Upload rollback records retain the driver and exact keys independently of media rows. Unknown completion of a timed-out writer retains its tombstone even after deletion, until settlement is observed; after a process restart such uncertain records remain available for repeated recovery rather than risking lost ownership.
+관리자 `ContentEntry` / `AdminContent`는 `content.editOthers` 권한이 있을 때만
+`origin.created`와 `origin.modified`(`ip`, `userAgent`)를 노출하며, 그렇지 않으면
+글 작성자 본인에게도 `origin`이 null입니다. 리비전 DTO도 이 권한이 없으면
+`ip`와 `userAgent`를 null로 반환합니다. 공개 프로젝션과 콘텐츠 훅 페이로드에는
+출처 값이 절대 포함되지 않습니다. 생성/수정 주체 ID는 저장소 내부 용도로만 남습니다.
 
-Cleanup recovery scans at most 50 tombstones per invocation, using a persisted cursor. A per-tombstone transaction checks for outstanding queued/leased work before enqueueing. Each dispatch records `attempts` and `nextAttemptAt`, with exponential backoff starting at one minute; after five dispatches automatic regeneration stops (the normal queue retry budget still applies within a dispatch). The tombstone remains, and resync's `cleanupNeedsAttention` reports exhausted records. Repeated recovery does not multiply outstanding jobs.
+출처는 삭제 또는 개인 데이터 삭제 처리 전까지 해당 글/리비전과 함께 보존됩니다.
+개인 데이터 내보내기에는 대상자 본인의 생성/수정 출처와 저장된 리비전만 포함되며,
+일치하는 글에 있는 다른 주체의 출처는 포함하지 않습니다. 개인정보 삭제 처리와 사용자 삭제는
+대상자의 출처와 주체 참조를 지우고, 유지되는 글에 있는 다른 주체의 출처는
+보존합니다. 생성자/수정자 참조는 `ON DELETE SET NULL`인 null 허용 외래 키를 사용합니다.
 
-Plugin connect, commit, read (including stream pulls/cancellation) and remove calls use the configured plugin timeout. Errors are logged server-side and exposed only as catalogued errors. Disposal forbids new operations; an admitted write retains an exact-key rollback capability for at most twice the plugin timeout from admission, with each rollback bounded by the remaining interval. Expired/failed rollback goes through durable cleanup, never a different driver. As with other in-process plugin isolation, synchronous infinite loops cannot be preempted.
+## 구성 가능한 스토리지
 
-Resync uses conditional storage-field writes so a stale inventory cannot replace concurrently changed variants. Its lease renews during processing; cancellation reaches S3 listing and bounds database transactions, with an abort check before commit.
+삭제하면 `media.cleanup` 작업을 대기열에 넣기 전에 `media.cleanup.delete.<id>` 설정 툼스톤을 저장합니다. 각 원본/변형은 기록된 드라이버를 통해 제거되며, 모든 제거가 성공한 뒤에만 데이터베이스 행을 확정합니다. 툼스톤은 작업의 최종 실패, 페이로드 정리, 작업 만료 후에도 유지되며, 드라이버 등록/재활성화와 재동기화 액션이 정리 작업을 다시 만듭니다. 업로드 롤백 기록은 미디어 행과 별개로 드라이버와 정확한 키를 보존합니다. 시간 초과된 작성기의 완료 여부를 알 수 없는 경우에는 삭제 후에도 쓰기 작업의 완료 상태가 확인될 때까지 툼스톤을 유지하며, 프로세스를 재시작한 뒤에도 이런 불확실한 기록은 소유권을 잃을 위험 없이 반복 복구할 수 있도록 남아 있습니다.
 
-Uploads select local (default) or S3 at upload time; originals and variants retain driver, key, public URL and byte metadata in MariaDB. Lists and public image projections read only DB rows, never HEAD/list the bucket. The immutable original and generated variants share the upload's driver. Switching local/S3 does not copy assets. Stored S3 configuration is retained when switching to local.
+정리 복구는 호출마다 지속되는 커서를 사용해 툼스톤을 최대 50개까지 스캔합니다. 툼스톤별 트랜잭션이 대기열에 넣기 전에 대기 중이거나 임대된 작업이 있는지 확인합니다. 각 디스패치는 `attempts`와 `nextAttemptAt`을 기록하며, 1분에서 시작하는 지수 백오프를 사용합니다. 5번 디스패치한 뒤에는 자동 재생성이 멈춥니다(디스패치 안에서는 일반 대기열 재시도 한도가 계속 적용됨). 툼스톤은 남아 있고 재동기화의 `cleanupNeedsAttention`이 소진된 기록을 보고합니다. 복구를 반복해도 대기 중인 작업이 늘어나지 않습니다.
 
-S3 public base URLs point to the bucket root (the configured prefix is appended). Without a public base URL, stored `/media/...` URLs use the existing API streaming proxy, which performs storage reads only on delivery. Public buckets/CDNs must be configured by the operator; the CMS does not change bucket policies.
+플러그인의 연결, 커밋, 읽기(스트림 데이터 읽기 요청/취소 포함), 제거 호출은 구성된 플러그인 시간 제한을 사용합니다. 오류는 서버에 기록되며 목록에 등록된 오류로만 노출됩니다. 해제하면 새 작업을 금지하며, 허용된 쓰기는 허용 시점부터 플러그인 시간 제한의 최대 두 배 동안 정확한 키 롤백 기능을 유지하고 각 롤백은 남은 시간으로 제한됩니다. 만료되었거나 실패한 롤백은 다른 드라이버가 아니라 내구성 있는 정리를 거칩니다. 다른 프로세스 내 플러그인 격리와 마찬가지로 동기 무한 루프는 선점할 수 없습니다.
 
-Pull/resync inventories the currently selected driver and refreshes tracked originals/variants, clears or marks missing files, and counts untracked objects without importing or deleting them. It runs through the durable queue with a cross-process lease and one-minute launch cooldown. Status advances queued → running → completed/failed; final counts are object counts. Inventory is bounded to 5,000 objects/50 S3 pages, 5,000 media rows and a 60-second processing budget. Incomplete inventory never marks missing objects. Larger libraries need a future checkpointed reconciliation job.
+재동기화는 조건부 스토리지 필드 쓰기를 사용하므로 오래된 인벤토리가 동시에 변경된 변형을 대체할 수 없습니다. 임대는 처리 중에 갱신되며, 취소는 S3 목록 조회에 전달되고 데이터베이스 트랜잭션을 제한하며 커밋 전에 중단 검사를 수행합니다.
 
-Importer uploads use `upload(bytes, filename, actor, { rateLimit: false })`; bypass requires `tools.manage` as well as `media.upload`, and all non-hourly admission checks remain active.
+업로드는 업로드 시점에 로컬(기본값) 또는 S3를 선택하며, 원본과 변형은 드라이버, 키, 공개 URL, 바이트 메타데이터를 MariaDB에 보존합니다. 목록과 공개 이미지 프로젝션은 DB 행만 읽고 버킷에 HEAD/목록 조회를 하지 않습니다. 변경할 수 없는 원본과 생성된 변형은 업로드의 드라이버를 공유합니다. 로컬/S3를 전환해도 자산을 복사하지 않습니다. 로컬로 전환해도 저장된 S3 구성은 유지됩니다.
+
+S3 공개 기본 URL은 버킷 루트를 가리킵니다(구성된 접두사가 뒤에 붙음). 공개 기본 URL이 없으면 저장된 `/media/...` URL은 기존 API 스트리밍 프록시를 사용하며, 이 프록시는 전달 시점에만 스토리지를 읽습니다. 공개 버킷/CDN은 운영자가 구성해야 하며, CMS는 버킷 정책을 변경하지 않습니다.
+
+가져오기/재동기화는 현재 선택된 드라이버의 인벤토리를 조사해 추적 중인 원본/변형을 갱신하고, 없는 파일을 지우거나 표시하며, 추적되지 않는 객체는 가져오거나 삭제하지 않고 개수만 셉니다. 프로세스 간 임대와 1분 시작 쿨다운이 있는 내구성 대기열을 통해 실행됩니다. 상태는 queued → running → completed/failed로 진행되며 최종 개수는 객체 수입니다. 인벤토리는 객체 5,000개/S3 페이지 50개, 미디어 행 5,000개, 처리 시간 60초로 제한됩니다. 불완전한 인벤토리는 없는 객체를 표시하지 않습니다. 더 큰 라이브러리에는 향후 체크포인트를 가진 정합 작업이 필요합니다.
+
+가져오기 도구의 업로드는 `upload(bytes, filename, actor, { rateLimit: false })`를 사용합니다. 우회에는 `media.upload`뿐 아니라 `tools.manage`도 필요하며, 시간당 제한이 아닌 모든 허용 검사는 계속 활성 상태입니다.
 
 상위 문서: [AGENTS.md](../../AGENTS.md)
 
-## Plugin field definitions
+## 플러그인 필드 정의
 
-Inactive content types retain their stored entries and paths, but the published
-reader excludes them before list pagination and refuses detail/path reads.
-Discovery and search sources also restrict queries to active types. Re-enabling
-the type restores direct visibility without rewriting entries. Admin lists retain
-the entries and expose `inactiveType: true`; frontends should label these rows.
+비활성 콘텐츠 유형은 저장된 글과 경로를 유지하지만, 게시된 글 리더는 목록 페이지 나누기 전에 이를 제외하고 상세/경로 조회를 거부합니다.
+탐색과 검색 소스도 쿼리를 활성 유형으로 제한합니다. 유형을 다시 활성화하면 글을 다시 쓰지 않고도 직접 노출이 복구됩니다.
+관리자 목록은 글을 유지하고 `inactiveType: true`를 노출하므로, 프런트엔드는 이런 행에 표시를 해야 합니다.
 
-Plugin field definitions are live declarations, not administrator settings.
-Disabling a plugin hides its fields from definition lists and public output,
-while namespaced stored values remain intact during later content saves.
-Re-enabling the declaration validates those values against its current schema.
+플러그인 필드 정의는 관리자 설정이 아니라 실시간 선언입니다.
+플러그인을 비활성화하면 정의 목록과 공개 출력에서 필드가 숨겨지지만, 네임스페이스가 붙은 저장 값은 이후 콘텐츠 저장 중에도 그대로 유지됩니다.
+다시 활성화하면 해당 선언의 현재 스키마로 그 값을 검증합니다.
 
-## On-demand image derivatives
+## 온디맨드 이미지 파생본
 
-Authenticated derivative generation uses an active registered size rather than caller-supplied dimensions. The caller needs `media.upload` and must own the file or have `media.manage`. Unknown sizes return 404; unsupported media returns 400. JPEG, PNG, WebP and AVIF originals are supported. The WebP response is `private, no-store` and is not persisted. Each media service instance permits two concurrent on-demand transforms; excess requests return 429 without queuing work, and capacity is released on success or failure. Public file reads never trigger generation.
+인증된 파생본 생성은 호출자가 제공한 크기가 아니라 등록된 활성 크기를 사용합니다. 호출자에게는 `media.upload`가 필요하며 파일을 소유하거나 `media.manage`가 있어야 합니다. 알 수 없는 크기는 404, 지원되지 않는 미디어는 400을 반환합니다. JPEG, PNG, WebP, AVIF 원본을 지원합니다. WebP 응답은 `private, no-store`이며 저장하지 않습니다. 미디어 서비스 인스턴스마다 동시에 두 개의 온디맨드 변환을 허용하며, 초과 요청은 작업을 대기열에 넣지 않고 429를 반환하고 성공하든 실패하든 용량은 반환됩니다. 공개 파일 읽기는 생성을 일으키지 않습니다.
 
-- Shared document blocks (`@cms/content`) include images with plain-text captions, alignment and links; uploaded audio/video/downloads; galleries; 2–4 columns; link buttons; details/summary; pullquotes/citations; separators/spacers; paragraph/heading text alignment; and tables with header rows and plain-text captions. All attribute allowlists live in SDK `content-blocks.ts`; `parseDocument` validates them and the existing depth/node budgets before rendering. Attributes that predate the block library (link target/rel/class/title, code language, list start/type, image src/alt/title/size, audio, table cells, heading level, embed URL) accept any bounded scalar, because stored documents keep what Tiptap parsed (`c#`, `target="report"`, `alt="2024"` as a number); unknown attributes are dropped as before, never rendered. Media IDs on images, audio, video and files, and a video's library poster (`posterId`), participate in usage tracking, including nested galleries/columns. Captions, citations and file link text are part of search text and automatic excerpts.
-- Media sources keep the existing `/media/…` or credential-free HTTPS policy. Navigation links allow HTTP(S), mailto and relative references, excluding protocol-relative URLs, backslashes and controls. The renderer escapes text/attributes; no stored HTML is accepted. WordPress core block classes are mapped during HTML/WXR import; out-of-range imported settings fall back to defaults, imported documents pass the same validation as editor JSON, and an entry whose body still fails is skipped and reported without stopping the import.
-- Document renderer classes (`cms-image`, `cms-video`, `cms-file`, `cms-gallery`, `cms-columns`, `cms-buttons`, `cms-details`, `cms-pullquote`, `cms-spacer`, `cms-table`, `cms-text-*`, `cms-align-*`) are shared by all built-in themes through `lib/theme/site.css`. Wide/full blocks use the site's container and wide-size tokens when post content is centered, and stay within their column when a template places post content in a theme column; columns stack on mobile by default. Editor controls live in `lib/admin/editor/` (inserter, `/` menu, block settings), with only the `BlockInserter` hook in `Editor.svelte`; image settings (alt, size, alignment, caption, link, replace) are the editor's image bar.
+- 공유 문서 블록(`@cms/content`)에는 일반 텍스트 캡션, 정렬, 링크가 있는 이미지, 업로드된 오디오/비디오/다운로드, 갤러리, 2~4단, 링크 버튼, details/summary, 인용문/출처, 구분선/여백, 문단/제목 텍스트 정렬, 헤더 행과 일반 텍스트 캡션이 있는 표가 포함됩니다. 모든 속성 허용 목록은 SDK `content-blocks.ts`에 있으며, `parseDocument`는 렌더링 전에 이를 기존 깊이/노드 예산과 함께 검증합니다. 블록 라이브러리 이전부터 있던 속성(링크 target/rel/class/title, 코드 언어, 목록 start/type, 이미지 src/alt/title/size, 오디오, 표 셀, 제목 수준, 임베드 URL)은 저장된 문서가 Tiptap이 파싱한 값을 그대로 보관하므로(`c#`, `target="report"`, 숫자로 된 `alt="2024"`) 범위가 제한된 모든 스칼라를 허용하며, 알 수 없는 속성은 이전과 같이 버려지고 렌더링되지 않습니다. 이미지, 오디오, 비디오, 파일의 미디어 ID와 비디오의 라이브러리 포스터(`posterId`)는 중첩된 갤러리/단을 포함해 사용 추적에 반영됩니다. 캡션, 출처, 파일 링크 텍스트는 검색 텍스트와 자동 발췌에 포함됩니다.
+- 미디어 소스는 기존 `/media/…` 또는 자격 증명 없는 HTTPS 정책을 유지합니다. 탐색 링크는 HTTP(S), mailto, 상대 참조를 허용하며 프로토콜 상대 URL, 백슬래시, 제어 문자는 제외합니다. 렌더러는 텍스트/속성을 이스케이프하며 저장된 HTML은 받지 않습니다. WordPress 코어 블록 클래스는 HTML/WXR 가져오기 중에 매핑되고, 범위를 벗어난 가져온 설정은 기본값으로 대체되며, 가져온 문서는 편집기 JSON과 같은 검증을 거치고, 본문이 여전히 실패하는 글은 건너뛰고 보고하되 가져오기를 중단하지 않습니다.
+- 문서 렌더러 클래스(`cms-image`, `cms-video`, `cms-file`, `cms-gallery`, `cms-columns`, `cms-buttons`, `cms-details`, `cms-pullquote`, `cms-spacer`, `cms-table`, `cms-text-*`, `cms-align-*`)는 `lib/theme/site.css`를 통해 모든 내장 테마가 공유합니다. 넓은/전체 폭 블록은 글 콘텐츠가 가운데 정렬일 때 사이트의 컨테이너와 넓은 크기 토큰을 사용하고, 템플릿이 글 콘텐츠를 테마 열에 배치하면 그 열 안에 머무르며, 단은 모바일에서 기본적으로 쌓입니다. 편집기 컨트롤은 `lib/admin/editor/`(삽입기, `/` 메뉴, 블록 설정)에 있고 `Editor.svelte`에는 `BlockInserter` 훅만 있으며, 이미지 설정(대체 텍스트, 크기, 정렬, 캡션, 링크, 교체)은 편집기의 이미지 바입니다.
+- 각주: `footnote`는 유일한 속성이 `text`인 인라인 아톰 노드이며, `text`는 1~2000자의 일반 텍스트입니다(`content-blocks.ts`의 엄격한 스키마, 추가 속성이나 다른 값은 `parseDocument`에서 실패). 번호는 저장하지 않으며, 렌더러가 페이지별로 계산해 모든 `pageBreak` 뒤에서 다시 시작하고, 위 첨자 참조(`fn-ref-{page}-{n}` → `#fn-{page}-{n}`)와 각 페이지 끝의 `cms-footnotes` 목록(모든 참조로 돌아가는 링크 포함)을 출력합니다. 각주 텍스트는 이스케이프되며 일반 텍스트, 검색 텍스트, 자동 요약에서 제외되고 리비전 비교에는 표시됩니다. `/<slug>.md` 대체 형식은 참조를 `[^n]`으로, 정의를 본문 뒤에 `[^n]: text`로 쓰고 돌아가는 링크는 없으며, 모든 페이지를 포함하므로 첫 페이지 이후의 각주는 `[^p{page}-{n}]`으로 표시합니다. 서로를 가리키는 참조와 목록 항목만 각주 쌍이 되며, 항목이 없는 참조는 눈에 보이는 번호를 텍스트로 유지하고, 참조가 없는 항목은 일반 문단으로 남습니다. 각주 텍스트에는 본문 문단과 같은 인라인 및 줄 시작 Markdown 이스케이프를 적용합니다. 편집기에서는 도구 모음 버튼이 캐럿 위치에 각주를 삽입하고, 기존 각주를 클릭하면 텍스트를 그 자리에서 편집합니다. 공개 테마는 참조를 위 첨자 번호로 표시하며, 이를 누르면 주석이 담긴 접근 가능한 팝오버가 열리고 각주 목록은 각 참조로 돌아가는 링크를 제공합니다.
 
-- Statuses: `draft`, `pending`, `scheduled`, `published`, `private`; trash is separate (`trashedAt`, emptied after 30 days). Scheduled entries publish through the `content.publishScheduled` task. Revisions and autosaves are kept per entry; preview links are signed and expire. Saved revisions (including newest/all history) can be individually deleted by users who may edit the entry; autosaves cannot be deleted through this endpoint. Deletion preserves the entry, version and all autosaves. Restore checks the entry version, ownership/status and source row under the content write lock; autosave recovery remains supported.
-- Content updates accept `expectedUpdatedAt` (the `updatedAt` the client read): a stale value is refused with `conflict` under the write lock, so partial editors such as Quick Edit never overwrite a newer body. Omitting `extraTermIds` keeps custom terms; an explicit `publishedAt` replaces the stored date. Admin lists accept `orderBy` (`updatedAt` default, `publishedAt`) and `order` (`desc` default, `asc`).
-- Partial editors (Quick Edit, Bulk Edit) also send `preserveAutosave: true`: the API refuses with `conflict` while the user has a pending autosave and never discards one. The check runs under the content write lock, which autosaves and scheduled publishing take too; an autosave is dated after the entry's last save and stays pending until a newer text save (`contents.text_saved_at`), so status-only changes and history deletion never hide or resurrect it. The Current revision badge matches this private watermark; deleting that snapshot leaves no Current badge. Full-save cleanup removes only the actor’s autosave through the completed save timestamp, preserving later autosaves. Every content write, scheduled publishing included, strictly advances `updatedAt`. Bulk form actions dedupe ids and refuse more than 100 before changing anything, report ids invalid for the action (plugin ids follow the 64-character manifest rule) as failed, run at most 4 API calls at once (`#lib/server/bulk.js`) and report per-item failures instead of stopping at the first.
-- Screen Options (columns, items per page) for the content, comments and media lists live in per-browser `cms_screen_<list>` cookies written by `ScreenOptions.svelte`; the server reads them as untrusted input (`readScreenOptions`).
-- Password-protected entries serve an empty body and excerpt until the visitor sends a signed unlock proof (httpOnly cookie on the web). Unlock attempts use the same visitor proof, atomic rate limit and captcha path as other public security actions. Search text is not stored for locked bodies.
-- Breaks and patterns: the document node accepts `break` nodes (`more`, `pageBreak`) only at the top level. Text before `more` is the entry's summary (teaser, max 1000 characters). `pageBreak` splits a single entry into parts at `?page=N`; each part is canonical to itself, and a part past the end is 404. A `patternRef` (synced pattern) renders as an empty marker that the served-HTML pipeline replaces with the pattern's current **published** body: at most 50 reference occurrences (cached repetitions count), nesting depth 4, cycles dropped. Pattern-bearing responses have a 1 MiB aggregate UTF-8 output budget checked before concatenation; overflow returns an empty body rather than truncated markup. Patterns are stored as `pattern.<id>` settings (`null` marks a deleted one). Writers list and insert published patterns and their own drafts (`content.create`); only `content.editOthers` can read another user's drafts. Lists return paged metadata (30 by default, at most 100, optional title search), projected in SQL without reading full documents/HTML into the API. The editor fetches a single authorized document only for editing or copying an unsynced selection. Publishing one, or changing/removing one's already-published pattern, needs `content.publish`; changing another user's needs `content.editOthers` in addition to `content.create`. Every pattern create/update/delete uses `SettingsTransactions.run('patterns.lock', …)`: current owner/status checks, the 500-record quota and the write use the transaction-scoped settings store on one connection. No pattern write may use the unscoped settings setter. The lock is shared across API instances; failed authorization/validation rolls back. JSON-object counts remain metadata-only and exclude null tombstones. WXR writes them as `wp_block` items before entries (unsynced ones carry `wp_pattern_sync_status`), along with `<!--more-->`, `<!--nextpage-->` and `<!-- wp:block {"ref"} /-->`; import stages all pattern IDs as drafts before parsing/saving bodies so forward references survive. A failed body removes its staged pattern and is reported as skipped. Media referenced directly by any stored pattern (including drafts and nested targets) contributes to media usage counts and is excluded from Unattached; edits/deletions are reflected through live SQL checks, with no stale index or backfill. Deleting that media requires the same explicit force option as entry-used media; force retains the embedded reference, just as for entries.
-- Settings → Writing's default category is applied by the API when a `post` is saved without categories (only if the category still exists).
-- Editor documents are limited to depth 100 and 10,000 JSON nodes; category/tag assignments are limited to 100 each. Media uploads stream through the web process, stop at `MEDIA_MAX_MB`, and run image transforms one at a time with a 40-megapixel decode limit. 설정 → 보안에서 사용자별 시간당 업로드 수(기본 60)와 여유 저장 공간(기본 256 MB)을 바꿀 수 있습니다. 원본 정리본과 모든 변형의 실제 바이트를 계산한 뒤 공유 `MEDIA_DIR` 잠금 아래 한 번에 검사·기록하므로 API 프로세스끼리 같은 바닥을 지킵니다.
-- Media: `PUT /api/v1/admin/media/:id` changes only the sent `alt`/`caption` (omitted fields keep their text). Uploads are sniffed by content, images get metadata stripped and WebP sizes; files live under `MEDIA_DIR` and are served through the web `/media/…` proxy. Content keeps media links for usage and the featured image.
-- Content types and custom fields are core settings. Field values are validated against definitions; only public fields reach public DTOs (single reads only).
+- 상태: `draft`, `pending`, `scheduled`, `published`, `private`이며, 휴지통은 별개입니다(`trashedAt`, 30일 후 비워짐). 예약된 글은 `content.publishScheduled` 작업으로 게시됩니다. 리비전과 자동 저장은 글별로 유지되며, 미리보기 링크는 서명되고 만료됩니다. 저장된 리비전(최신/전체 기록 포함)은 해당 글을 편집할 수 있는 사용자가 개별적으로 삭제할 수 있지만, 자동 저장은 이 엔드포인트로 삭제할 수 없습니다. 삭제해도 글, 버전, 모든 자동 저장은 보존됩니다. 복원은 콘텐츠 쓰기 잠금 아래에서 글 버전, 소유권/상태, 원본 행을 확인하며, 자동 저장 복구는 계속 지원됩니다.
+- 콘텐츠 업데이트는 `expectedUpdatedAt`(클라이언트가 읽은 `updatedAt`)을 받습니다. 오래된 값은 쓰기 잠금 아래에서 `conflict`로 거부되므로, 빠른 편집 같은 부분 편집기가 더 새로운 본문을 덮어쓰지 않습니다. `extraTermIds`를 생략하면 사용자 정의 용어가 유지되고, 명시적 `publishedAt`은 저장된 날짜를 교체합니다. 관리자 목록은 `orderBy`(`updatedAt` 기본, `publishedAt`)와 `order`(`desc` 기본, `asc`)를 받습니다.
+- 부분 편집기(빠른 편집, 일괄 편집)는 `preserveAutosave: true`도 보냅니다. 사용자의 자동 저장이 대기 중이면 API가 `conflict`로 거부하며 자동 저장을 버리지 않습니다. 검사는 자동 저장과 예약 게시도 사용하는 콘텐츠 쓰기 잠금 아래에서 실행됩니다. 자동 저장은 글의 마지막 저장 이후로 날짜가 매겨지고 더 새로운 텍스트 저장(`contents.text_saved_at`)이 있을 때까지 대기 상태로 남으므로, 상태만 바꾸거나 기록을 삭제해도 자동 저장이 숨겨지거나 되살아나지 않습니다. 현재 리비전 배지는 이 비공개 워터마크와 일치하며, 해당 스냅숏을 삭제하면 현재 배지가 남지 않습니다. 전체 저장 정리는 완료된 저장 타임스탬프까지의 해당 주체의 자동 저장만 제거하고 이후의 자동 저장은 보존합니다. 예약 게시를 포함한 모든 콘텐츠 쓰기는 `updatedAt`을 엄격하게 증가시킵니다. 일괄 폼 액션은 id를 중복 제거하고 100개를 넘으면 아무것도 변경하기 전에 거부하며, 액션에 유효하지 않은 id(플러그인 id는 64자 매니페스트 규칙을 따름)는 실패로 보고하고, 동시에 최대 4개의 API 호출을 실행하며(`#lib/server/bulk.js`), 첫 실패에서 멈추지 않고 항목별 실패를 보고합니다.
+- 콘텐츠, 댓글, 미디어 목록의 화면 옵션(열, 페이지당 항목 수)은 `ScreenOptions.svelte`가 쓰는 브라우저별 `cms_screen_<list>` 쿠키에 저장되며, 서버는 이를 신뢰할 수 없는 입력으로 읽습니다(`readScreenOptions`).
+- 비밀번호로 보호된 글은 방문자가 서명된 잠금 해제 증명을 보낼 때까지(웹에서는 httpOnly 쿠키) 빈 본문과 발췌를 제공합니다. 잠금 해제 시도는 다른 공개 보안 액션과 같은 방문자 증명, 원자적 속도 제한, 캡차 경로를 사용합니다. 잠긴 본문의 검색 텍스트는 저장하지 않습니다.
+- 나누기와 패턴: 문서 노드는 `break` 노드(`more`, `pageBreak`)를 최상위에서만 받습니다. `more` 앞의 텍스트는 글의 요약(티저, 최대 1000자)입니다. `pageBreak`는 한 글을 `?page=N`의 여러 부분으로 나누며, 각 부분은 자기 자신이 정식이고 마지막을 넘은 부분은 404입니다. `patternRef`(동기화된 패턴)는 빈 마커로 렌더링되고 제공 HTML 파이프라인이 이를 패턴의 현재 **게시된** 본문으로 바꿉니다. 참조는 최대 50회(캐시된 반복도 포함), 중첩 깊이는 4이고 순환은 버립니다. 패턴이 포함된 응답은 연결 전에 검사하는 총 1 MiB UTF-8 출력 예산을 가지며, 초과하면 잘린 마크업이 아니라 빈 본문을 반환합니다. 패턴은 `pattern.<id>` 설정으로 저장됩니다(`null`은 삭제된 패턴 표시). 작성자는 게시된 패턴과 자신의 초안을 나열하고 삽입할 수 있으며(`content.create`), 다른 사용자의 초안은 `content.editOthers`만 읽을 수 있습니다. 목록은 페이지 단위 메타데이터(기본 30개, 최대 100개, 선택적 제목 검색)를 반환하며, 전체 문서/HTML을 API로 읽지 않고 SQL에서 투영합니다. 편집기는 편집하거나 동기화되지 않은 선택 영역을 복사할 때만 권한이 있는 단일 문서를 가져옵니다. 패턴을 게시하거나 이미 게시된 자신의 패턴을 변경/제거하려면 `content.publish`가 필요하고, 다른 사용자의 패턴을 변경하려면 `content.create`에 더해 `content.editOthers`가 필요합니다. 모든 패턴 생성/수정/삭제는 `SettingsTransactions.run('patterns.lock', …)`을 사용합니다. 현재 소유자/상태 검사, 500개 레코드 할당량, 쓰기는 한 연결에서 트랜잭션 범위의 설정 저장소를 사용합니다. 어떤 패턴 쓰기도 범위 없는 설정 setter를 사용해서는 안 됩니다. 이 잠금은 API 인스턴스 간에 공유되며, 권한/검증 실패는 롤백됩니다. JSON 객체 개수는 계속 메타데이터 전용이며 null 툼스톤은 제외합니다. WXR은 이를 글보다 먼저 `wp_block` 항목으로 기록하고(동기화되지 않은 것은 `wp_pattern_sync_status`를 가짐), `<!--more-->`, `<!--nextpage-->`, `<!-- wp:block {"ref"} /-->`도 함께 기록합니다. 가져오기는 본문을 파싱/저장하기 전에 모든 패턴 ID를 초안으로 준비하여 앞쪽 참조가 유지되게 합니다. 본문이 실패하면 준비된 패턴을 제거하고 건너뛴 것으로 보고합니다. 저장된 패턴(초안과 중첩 대상 포함)이 직접 참조하는 미디어는 미디어 사용 개수에 반영되고 연결 안 됨에서 제외되며, 수정/삭제는 실시간 SQL 검사로 반영되므로 오래된 색인이나 백필이 없습니다. 해당 미디어를 삭제하려면 글에서 사용 중인 미디어와 같은 명시적 강제 옵션이 필요하며, 글과 마찬가지로 강제해도 포함된 참조는 유지됩니다.
+- 설정 → 쓰기의 기본 카테고리는 `post`가 카테고리 없이 저장될 때 API가 적용합니다(카테고리가 여전히 존재하는 경우에만).
+- 편집기 문서는 깊이 100, JSON 노드 10,000개로 제한되며, 카테고리/태그 지정은 각각 100개로 제한됩니다. 미디어 업로드는 웹 프로세스를 통해 스트리밍되고 `MEDIA_MAX_MB`에서 멈추며, 이미지 변환은 40메가픽셀 디코딩 제한 아래에서 한 번에 하나씩 실행합니다. 설정 → 보안에서 사용자별 시간당 업로드 수(기본 60)와 여유 저장 공간(기본 256 MB)을 바꿀 수 있습니다. 원본 정리본과 모든 변형의 실제 바이트를 계산한 뒤 공유 `MEDIA_DIR` 잠금 아래 한 번에 검사·기록하므로 API 프로세스끼리 같은 바닥을 지킵니다.
+- 미디어: `PUT /api/v1/admin/media/:id`는 보낸 `alt`/`caption`만 바꿉니다(생략한 필드는 텍스트 유지). 업로드는 내용으로 판별하고, 이미지는 메타데이터를 제거하고 WebP 크기를 만들며, 파일은 `MEDIA_DIR` 아래에 있고 웹 `/media/…` 프록시를 통해 제공됩니다. 콘텐츠는 사용 추적과 대표 이미지를 위해 미디어 링크를 유지합니다.
+- 콘텐츠 유형과 사용자 정의 필드는 코어 설정입니다. 필드 값은 정의에 대해 검증되며, 공개 필드만 공개 DTO에 들어갑니다(단건 조회만).

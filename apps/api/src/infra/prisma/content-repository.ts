@@ -1,8 +1,10 @@
+import { adminContentSchema } from '@cms/sdk';
 import type { ContentDocument, TermSummary, TaxonomyType } from '@cms/sdk';
 import { extraTerms } from '#api/infra/prisma/extra-terms';
 import type {
   ContentCriteria,
   ContentRecord,
+  ContentRenderRecord,
   ContentRepository,
   ContentSummaryRecord,
   ContentWrite,
@@ -59,6 +61,7 @@ const toRecord = (
   if (path === null) throw new Error(Errors.ContentPathMissing);
   return {
     ...row,
+    tocOverride: adminContentSchema.shape.tocOverride.parse(row.tocOverride),
     authorName: author.name,
     authorSlug: author.slug,
     featuredImage: featuredImageOf(featuredMedia),
@@ -85,6 +88,7 @@ const toSummary = ({
   if (!currentPath) throw new Error(Errors.ContentPathMissing);
   return {
     ...row,
+    tocOverride: adminContentSchema.shape.tocOverride.parse(row.tocOverride),
     authorName: author.name,
     authorSlug: author.slug,
     featuredImage: featuredImageOf(featuredMedia),
@@ -119,6 +123,7 @@ const toRow = ({
   | 'modifiedById'
 > => ({
   ...record,
+  tocOverride: record.tocOverride ?? 'default',
   parentId: record.parentId ?? null,
   menuOrder: record.menuOrder ?? 0,
   ...toSeoColumns(seo),
@@ -152,6 +157,32 @@ export class PrismaContentRepository implements ContentRepository {
 
   async takenSlugs(slugs: readonly string[]) {
     return takenSlugs(this.db, 'contents', slugs);
+  }
+
+  async findByIds(ids: readonly string[]): Promise<ContentRenderRecord[]> {
+    if (!ids.length) return [];
+    const rows = await this.db.$queryRaw<
+      (Omit<ContentRenderRecord, 'document' | 'protected' | 'tocOverride'> & {
+        document: string;
+        protected: number;
+        tocOverride: string;
+      })[]
+    >(Prisma.sql`
+      SELECT id, document, html, updated_at AS updatedAt, status,
+        trashed_at AS trashedAt, password_hash IS NOT NULL AS protected,
+        type, toc_override AS tocOverride
+      FROM contents WHERE id IN (${Prisma.join([...ids])})`);
+    return rows.map((row) => ({
+      id: row.id,
+      document: JSON.parse(row.document) as ContentDocument,
+      html: row.html,
+      updatedAt: row.updatedAt,
+      status: row.status,
+      trashedAt: row.trashedAt,
+      protected: Boolean(row.protected),
+      type: row.type,
+      tocOverride: adminContentSchema.shape.tocOverride.parse(row.tocOverride),
+    }));
   }
 
   async counts(type?: string) {

@@ -45,6 +45,7 @@ export interface ContentRecord {
   authorSlug: string;
   sticky: boolean;
   allowComments: boolean;
+  tocOverride?: 'default' | 'always' | 'never';
   /** Approved comments; maintained by the comment store. */
   commentCount: number;
   /** Hash of the visitors' password; null when the body is not protected. */
@@ -64,6 +65,21 @@ export interface ContentRecord {
 
 /** A list item: the stored record without the editor document and rendered body. */
 export type ContentSummaryRecord = Omit<ContentRecord, 'document' | 'html'>;
+
+/** Body and snapshot guards only; no authoring metadata, relations or password hash. */
+export interface ContentRenderRecord extends Pick<
+  ContentRecord,
+  | 'id'
+  | 'document'
+  | 'html'
+  | 'updatedAt'
+  | 'status'
+  | 'trashedAt'
+  | 'type'
+  | 'tocOverride'
+> {
+  protected: boolean;
+}
 
 /** What is written: the record's own fields, its search text and the assigned term ids. */
 export interface ContentWrite extends Omit<
@@ -138,6 +154,8 @@ export interface ContentCriteria {
 export interface ContentRepository {
   counts(type?: string): Promise<ContentCounts>;
   findById(id: string): Promise<ContentRecord | null>;
+  /** One narrow rendering batch; missing IDs are omitted, order is unspecified. */
+  findByIds(ids: readonly string[]): Promise<ContentRenderRecord[]>;
   /** The subset of `slugs` already used by stored content, in one read, compared as the store's unique index compares them. */
   takenSlugs(slugs: readonly string[]): Promise<Set<string>>;
   /** `total` counts every item matching the criteria. */

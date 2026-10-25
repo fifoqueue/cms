@@ -135,7 +135,7 @@ export function collectHeadings(
           /^(?:comments|main|comment-moderation|content-password)$/.test(base)
         )
           base += '-heading';
-        if (/^(?:comment-|moderate-)/.test(base)) base = `heading-${base}`;
+        if (/^(?:comment-|moderate-|fn-)/.test(base)) base = `heading-${base}`;
         let id = base;
         for (let suffix = 2; used.has(id); suffix++) id = `${base}-${suffix}`;
         used.add(id);
@@ -273,6 +273,13 @@ export type TocRenderOptions = NonNullable<
   Parameters<typeof renderToHTMLString>[0]['options']
 >;
 
+export interface AutoTocOptions {
+  enabled: boolean;
+  override?: 'default' | 'always' | 'never';
+  position?: 'before-heading' | 'top';
+  attrs?: Partial<TocAttrs>;
+}
+
 /**
  * Render before pagination. Additional mappings (e.g. syntax-highlighted code blocks)
  * and marks are preserved; TOC, heading and page-break mappings belong to this module.
@@ -281,44 +288,85 @@ export function renderWithToc(
   document: ProseNode,
   extensions: Extensions,
   options: TocRenderOptions = {},
+  autoToc?: AutoTocOptions,
 ): string {
   const headings = collectHeadings(document);
   const byPosition = new Map(
     headings.map((heading) => [heading.position, heading]),
   );
   const positions: number[] = [];
+  let manualToc = false;
   document.descendants((node, position) => {
     if (node.type.name === 'heading') positions.push(position);
+    if (node.type.name === 'tableOfContents') manualToc = true;
   });
+  const automatic =
+    !manualToc &&
+    autoToc?.override !== 'never' &&
+    (autoToc?.override === 'always' || autoToc?.enabled);
+  const attrs = { ...tocDefaults, minHeadings: 3, ...autoToc?.attrs };
+  const inserted = new Set<number>();
+  const insert = (page: number) => {
+    if (!automatic || inserted.has(page)) return '';
+    inserted.add(page);
+    return tocHTML(headings, attrs, page);
+  };
   let index = 0;
   let page = 1;
-  return renderToHTMLString({
-    extensions,
-    content: document,
-    options: {
-      ...options,
-      nodeMapping: {
-        ...options.nodeMapping,
-        heading: ({ node, children }) => {
-          const heading = byPosition.get(positions[index++]);
-          const level = headingLevel(node.attrs.level);
-          const align = ['left', 'center', 'right', 'justify'].includes(
-            node.attrs.textAlign,
-          )
-            ? ` class="cms-text-${node.attrs.textAlign}"`
-            : '';
-          const content = Array.isArray(children)
-            ? children.join('')
-            : (children ?? '');
-          return `<h${level}${heading ? ` id="${escape(heading.id)}"` : ''}${align}>${content}</h${level}>`;
-        },
-        tableOfContents: ({ node }) =>
-          tocHTML(headings, { ...tocDefaults, ...node.attrs }, page),
-        pageBreak: () => {
-          page++;
-          return PAGE_BREAK_HTML;
+  let notes: string[] = [];
+  const footnotes = () => {
+    if (!notes.length) return '';
+    const html = `<section class="cms-footnotes"><ol>${notes
+      .map(
+        (text, number) =>
+          `<li id="fn-${page}-${number + 1}"><span>${escape(text)}</span> <a href="#fn-ref-${page}-${number + 1}" aria-label="Back to reference ${number + 1}">↩</a></li>`,
+      )
+      .join('')}</ol></section>`;
+    notes = [];
+    return html;
+  };
+  const prefix = autoToc?.position === 'top' ? insert(1) : '';
+  return (
+    prefix +
+    renderToHTMLString({
+      extensions,
+      content: document,
+      options: {
+        ...options,
+        nodeMapping: {
+          ...options.nodeMapping,
+          footnote: ({ node }) => {
+            notes.push(String(node.attrs.text));
+            const number = notes.length;
+            return `<sup id="fn-ref-${page}-${number}"><a data-footnote-ref href="#fn-${page}-${number}" aria-label="Footnote ${number}">${number}</a></sup>`;
+          },
+          heading: ({ node, children }) => {
+            const heading = byPosition.get(positions[index++]);
+            const level = headingLevel(node.attrs.level);
+            const align = ['left', 'center', 'right', 'justify'].includes(
+              node.attrs.textAlign,
+            )
+              ? ` class="cms-text-${node.attrs.textAlign}"`
+              : '';
+            const content = Array.isArray(children)
+              ? children.join('')
+              : (children ?? '');
+            return `${insert(page)}<h${level}${heading ? ` id="${escape(heading.id)}"` : ''}${align}>${content}</h${level}>`;
+          },
+          tableOfContents: ({ node }) =>
+            tocHTML(headings, { ...tocDefaults, ...node.attrs }, page),
+          pageBreak: () => {
+            const list = footnotes();
+            page++;
+            return (
+              list +
+              PAGE_BREAK_HTML +
+              (autoToc?.position === 'top' ? insert(page) : '')
+            );
+          },
         },
       },
-    },
-  });
+    }) +
+    footnotes()
+  );
 }

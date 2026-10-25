@@ -26,16 +26,12 @@ import type {
   ContentWriteGuard,
   DocumentRenderer,
 } from '#api/domain/content/content-repository';
-import {
-  mediaIdsOf,
-  plainText,
-  summarize,
-} from '#api/domain/content/plain-text';
+import { plainText, summarize, teaserOf } from '@cms/content/plain-text';
+import { mediaIdsOf } from '#api/domain/content/plain-text';
 import type { RevisionSave } from '#api/domain/content/revisions';
 import type { ContentTypeService } from '#api/domain/content/content-types';
 import { fieldMediaIds } from '#api/domain/content/fields';
 import type { FieldService } from '#api/domain/content/fields';
-import { teaserOf } from '#api/domain/content/plain-text';
 import { slugify, uniqueSlug } from '#api/domain/content/slug';
 import type { Clock, HookDispatcher, IdGenerator } from '#api/domain/ports';
 import {
@@ -351,6 +347,7 @@ export class ContentService {
       status: data.status,
       sticky: data.sticky,
       allowComments: data.allowComments,
+      tocOverride: data.tocOverride ?? current?.tocOverride ?? 'default',
       menuOrder:
         data.type === 'page' ? (data.menuOrder ?? current?.menuOrder ?? 0) : 0,
       // Types that do not use terms drop them.
