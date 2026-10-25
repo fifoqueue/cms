@@ -19,15 +19,6 @@ import { Errors } from '#lib/server/errors.js';
 import { contentMarkdown, markdownInline } from '#lib/server/markdown.js';
 import { FEED_PATH, markdownPath } from '#lib/seo/paths.js';
 
-export const SITEMAP_KINDS = [
-  'content',
-  'category',
-  'tag',
-  'author',
-  'taxonomy',
-] as const;
-export type SitemapKind = (typeof SITEMAP_KINDS)[number];
-
 /** sitemaps.org limit on sitemaps per index; each chunk holds one API page (≤ 1,000 URLs). */
 const SITEMAP_INDEX_LIMIT = 50_000;
 
@@ -51,8 +42,9 @@ const PRIVATE_RULES = [
   'Disallow: /api/',
 ];
 
-export const isSitemapKind = (value: string): value is SitemapKind =>
-  (SITEMAP_KINDS as readonly string[]).includes(value);
+/** A sitemap provider key as the API registers them (core or plugin). */
+export const isSitemapKind = (value: string) =>
+  /^[a-z][a-z0-9-]{0,63}$/.test(value);
 
 /** `path` is the API's already encoded canonical route; it is appended unchanged. */
 export const absoluteUrl = (origin: string, path: string) => `${origin}${path}`;
@@ -137,7 +129,13 @@ const xmlResponse = (body: string, type = 'application/xml') =>
  * (GPTBot) follow their own settings. robots.txt is a request to compliant crawlers, not
  * access control.
  */
-export const robotsTxt = (settings: PublicSeoSettings) => {
+export const robotsTxt = (
+  settings: PublicSeoSettings,
+  /** The `robots.txt` filter's result; defaults to the generated text. */
+  text = robotsText(settings),
+) => textResponse(text, 'text/plain');
+
+export const robotsText = (settings: PublicSeoSettings) => {
   const group = (agent: string, allowed: boolean) =>
     [
       `User-agent: ${agent}`,
@@ -151,28 +149,30 @@ export const robotsTxt = (settings: PublicSeoSettings) => {
   ];
   if (settings.indexingEnabled && settings.siteUrl)
     sections.push(`Sitemap: ${absoluteUrl(settings.siteUrl, '/sitemap.xml')}`);
-  return textResponse(`${sections.join('\n\n')}\n`, 'text/plain');
+  return `${sections.join('\n\n')}\n`;
 };
 
 /** Chunks of `kind`; the content sitemap always exists, since it also lists the home page. */
-export const sitemapChunkCount = (kind: SitemapKind, total: number) =>
+export const sitemapChunkCount = (kind: string, total: number) =>
   Math.max(
     kind === 'content' ? 1 : 0,
     Math.ceil(total / SEO_SITEMAP_PAGE_SIZE),
   );
 
-/** Sitemap index over every chunk of every kind; fails rather than truncating. */
+/**
+ * Sitemap index over every chunk of every provider kind (`GET /api/v1/seo/providers`, core
+ * and plugin), in the given order; fails rather than truncating.
+ */
 export const sitemapIndex = (
   origin: string,
-  totals: Partial<Record<SitemapKind, number>>,
+  totals: Readonly<Record<string, number>>,
 ) => {
-  const counts = SITEMAP_KINDS.map((kind) =>
-    sitemapChunkCount(kind, totals[kind] ?? 0),
-  );
+  const kinds = Object.keys(totals);
+  const counts = kinds.map((kind) => sitemapChunkCount(kind, totals[kind]!));
   // Checked before any list is allocated; a non-numeric count fails the same way.
   if (!(counts.reduce((sum, count) => sum + count, 0) <= SITEMAP_INDEX_LIMIT))
     throw new Error(Errors.SitemapIndexTooLarge(SITEMAP_INDEX_LIMIT));
-  const chunks = SITEMAP_KINDS.flatMap((kind, index) =>
+  const chunks = kinds.flatMap((kind, index) =>
     Array.from(
       { length: counts[index] ?? 0 },
       (_, page) => `/sitemaps/${kind}/${page + 1}.xml`,
@@ -278,6 +278,24 @@ const absoluteBody = (origin: string, html: string) =>
       (_, attribute: string) => `${attribute}${origin}/`,
     );
 
+/** A feed item as the `feed.items` filter sees it: presentation data, escaped afterwards. */
+export interface FeedItem {
+  id: string;
+  title: string;
+  link: string;
+  description: string;
+  publishedAt: string;
+  author?: string;
+}
+
+/** A feed channel as the `feed.channel` filter sees it. */
+export interface FeedChannel {
+  title: string;
+  link: string;
+  description: string;
+  language?: string;
+}
+
 /** What a feed shows besides its entries. */
 export interface FeedOptions {
   /** The category, tag or author a narrowed feed follows. */
@@ -286,35 +304,71 @@ export interface FeedOptions {
   self?: string;
   /** Rendered bodies by entry id; omitted when feeds carry excerpts only. */
   bodies?: ReadonlyMap<string, FeedBody>;
+  /** `feed.channel`/`feed.items` filter results; default to `feedValues`. */
+  filtered?: { channel: FeedChannel; items: FeedItem[] };
 }
+
+/** The channel and items of the entry feed, before filters. */
+export const feedValues = (
+  site: Pick<PublicSiteDto, 'title' | 'description' | 'locale'>,
+  settings: PublicSeoSettings,
+  items: readonly PublicContentSummary[],
+  title?: string,
+) => ({
+  channel: {
+    title: title ? `${site.title} » ${title}` : site.title,
+    link: absoluteUrl(settings.siteUrl, '/'),
+    description: settings.homeDescription || site.description,
+    language: site.locale,
+  } satisfies FeedChannel,
+  items: items.map((content): FeedItem => ({
+    id: content.id,
+    title: content.title,
+    link: absoluteUrl(settings.siteUrl, content.path),
+    description: content.seo.description || content.excerpt,
+    publishedAt: content.publishedAt,
+    ...(content.author && { author: content.author.name }),
+  })),
+});
+
+const element = (name: string, value: string) =>
+  `<${name}>${xmlText(value)}</${name}>`;
+
+/** RFC 822 date of an item; left out when the (filtered) date does not parse. */
+const pubDate = (value: string) => {
+  const time = Date.parse(value);
+  return Number.isNaN(time)
+    ? []
+    : [element('pubDate', new Date(time).toUTCString())];
+};
 
 /** RSS 2.0 of recent discoverable entries, linked to their canonical URLs. */
 export const rssFeed = (
   site: PublicSiteDto,
   settings: PublicSeoSettings,
   items: readonly PublicContentSummary[],
-  { title, self = FEED_PATH, bodies }: FeedOptions = {},
+  { title, self = FEED_PATH, bodies, filtered }: FeedOptions = {},
 ) => {
   const origin = settings.siteUrl;
-  const element = (name: string, value: string) =>
-    `<${name}>${xmlText(value)}</${name}>`;
-  const entries = items.map((content) => {
-    const link = absoluteUrl(origin, content.path);
-    const body = bodies?.get(content.id);
+  const { channel, items: values } =
+    filtered ?? feedValues(site, settings, items, title);
+  // Items keep their entry's terms and body by id; filters may reorder, drop or add items.
+  const entriesById = new Map(items.map((content) => [content.id, content]));
+  const entries = values.map((item) => {
+    const content = entriesById.get(item.id);
+    const body = bodies?.get(item.id);
     const audio = body?.audio;
     return [
       '    <item>',
-      `      ${element('title', content.title)}`,
-      `      ${element('link', link)}`,
-      `      <guid isPermaLink="true">${xmlText(link)}</guid>`,
-      `      ${element('pubDate', new Date(content.publishedAt).toUTCString())}`,
-      ...(content.author
-        ? [`      ${element('dc:creator', content.author.name)}`]
-        : []),
-      ...[...content.categories, ...content.tags].map(
+      `      ${element('title', item.title)}`,
+      `      ${element('link', item.link)}`,
+      `      <guid isPermaLink="true">${xmlText(item.link)}</guid>`,
+      ...pubDate(item.publishedAt).map((line) => `      ${line}`),
+      ...(item.author ? [`      ${element('dc:creator', item.author)}`] : []),
+      ...[...(content?.categories ?? []), ...(content?.tags ?? [])].map(
         (term) => `      ${element('category', term.name)}`,
       ),
-      `      ${element('description', content.seo.description || content.excerpt)}`,
+      `      ${element('description', item.description)}`,
       ...(body?.html
         ? [
             `      ${element('content:encoded', absoluteBody(origin, body.html))}`,
@@ -332,10 +386,12 @@ export const rssFeed = (
     [
       '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">',
       '  <channel>',
-      `    ${element('title', title ? `${site.title} » ${title}` : site.title)}`,
-      `    ${element('link', absoluteUrl(origin, '/'))}`,
-      `    ${element('description', settings.homeDescription || site.description)}`,
-      `    ${element('language', site.locale)}`,
+      `    ${element('title', channel.title)}`,
+      `    ${element('link', channel.link)}`,
+      `    ${element('description', channel.description)}`,
+      ...(channel.language
+        ? [`    ${element('language', channel.language)}`]
+        : []),
       `    <atom:link href="${xmlText(absoluteUrl(origin, self))}" rel="self" type="application/rss+xml"/>`,
       ...entries,
       '  </channel>',
@@ -344,6 +400,24 @@ export const rssFeed = (
     'application/rss+xml',
   );
 };
+
+/** RSS 2.0 of approved comments; values are the (filtered) `feed.channel`/`feed.items`. */
+export const commentFeed = (channel: FeedChannel, items: readonly FeedItem[]) =>
+  new Response(
+    `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel>${element('title', channel.title)}${element('link', channel.link)}${element('description', channel.description)}${channel.language ? element('language', channel.language) : ''}${items
+      .map(
+        (item) =>
+          `<item>${element('title', item.title)}${element('link', item.link)}<guid isPermaLink="true">${xmlText(item.link)}</guid>${item.author ? element('dc:creator', item.author) : ''}${element('description', item.description)}${pubDate(item.publishedAt).join('')}</item>`,
+      )
+      .join('')}</channel></rss>`,
+    {
+      headers: {
+        'content-type': 'application/rss+xml; charset=utf-8',
+        'cache-control': 'no-store',
+        'x-content-type-options': 'nosniff',
+      },
+    },
+  );
 
 /** Whether llms.txt (and its describedby link) is published at all. */
 export const llmsEnabled = (settings: PublicSeoSettings) =>
@@ -354,6 +428,14 @@ export const llmsEnabled = (settings: PublicSeoSettings) =>
  * the sitemap for complete discovery. A reading aid for agents, not a ranking signal.
  */
 export const llmsTxt = (
+  site: PublicSiteDto,
+  settings: PublicSeoSettings,
+  items: readonly PublicContentSummary[],
+  /** The `llms.txt` filter's result; defaults to the generated text. */
+  text = llmsText(site, settings, items),
+) => textResponse(text, 'text/plain');
+
+export const llmsText = (
   site: PublicSiteDto,
   settings: PublicSeoSettings,
   items: readonly PublicContentSummary[],
@@ -371,18 +453,15 @@ export const llmsTxt = (
     return `- [${markdownInline(content.title).trim()}](${url})${summary ? `: ${summary}` : ''}`;
   });
   const sitemap = absoluteUrl(origin, '/sitemap.xml');
-  return textResponse(
-    `${[
-      `# ${markdownInline(site.title).trim()}`,
-      intro && `> ${intro}`,
-      `## Recent\n\nThe ${RECENT_LIMIT} most recent entries at most, newest first, as Markdown.`,
-      links.join('\n'),
-      `## Complete index\n\n- [Sitemap](${sitemap}): every indexable page`,
-    ]
-      .filter(Boolean)
-      .join('\n\n')}\n`,
-    'text/plain',
-  );
+  return `${[
+    `# ${markdownInline(site.title).trim()}`,
+    intro && `> ${intro}`,
+    `## Recent\n\nThe ${RECENT_LIMIT} most recent entries at most, newest first, as Markdown.`,
+    links.join('\n'),
+    `## Complete index\n\n- [Sitemap](${sitemap}): every indexable page`,
+  ]
+    .filter(Boolean)
+    .join('\n\n')}\n`;
 };
 
 /**
@@ -392,6 +471,8 @@ export const llmsTxt = (
 export const markdownResponse = (
   content: PublicContent,
   settings: PublicSeoSettings,
+  /** The `seo.markdown` filter's result; defaults to the rendered Markdown. */
+  markdown = contentMarkdown(content, settings.siteUrl),
 ) => {
   const origin = settings.siteUrl;
   // Relative when no origin is configured: clients resolve it against the URL they requested.
@@ -400,7 +481,7 @@ export const markdownResponse = (
     links.push(
       `<${absoluteUrl(origin, '/llms.txt')}>; rel="describedby"; type="text/plain"`,
     );
-  return new Response(contentMarkdown(content, origin), {
+  return new Response(markdown, {
     headers: {
       'content-type': 'text/markdown; charset=utf-8',
       'x-robots-tag': content.seo.noFollow ? 'noindex, nofollow' : 'noindex',

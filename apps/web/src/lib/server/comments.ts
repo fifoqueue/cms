@@ -129,6 +129,7 @@ export const loadComments = async (
             provider: captcha.provider,
             siteKey: captcha.siteKey,
             always: captcha.always,
+            widget: captcha.widget,
           }
         : null,
   };

@@ -1,11 +1,12 @@
 import { authApi, contentApi } from '#lib/server/api.js';
+import { allowCaptcha } from '#lib/server/captcha.js';
 import { failFrom, text } from '#lib/server/errors.js';
 import { visitorOf } from '#lib/server/visitor.js';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ fetch }) => ({
-  captcha: await contentApi(fetch).captcha(),
-  membership: await authApi(fetch).membership(),
+export const load: PageServerLoad = async (event) => ({
+  captcha: allowCaptcha(event, await contentApi(event.fetch).captcha()),
+  membership: await authApi(event.fetch).membership(),
 });
 
 export const actions: Actions = {

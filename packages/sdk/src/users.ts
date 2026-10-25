@@ -57,6 +57,37 @@ export const profileUpdateSchema = z.object({
 
 export type ProfileUpdateInput = z.input<typeof profileUpdateSchema>;
 
+/** Credential-free inputs; operation and target identity are immutable to filters. */
+export const userSaveSchema = z.discriminatedUnion('operation', [
+  z.strictObject({
+    operation: z.literal('create'),
+    id: z.null(),
+    data: userCreateSchema.omit({ password: true }).strict(),
+  }),
+  z.strictObject({
+    operation: z.literal('update'),
+    id: z.string(),
+    data: userUpdateSchema.strict(),
+  }),
+  z.strictObject({
+    operation: z.literal('profile'),
+    id: z.string(),
+    data: profileUpdateSchema.strict(),
+  }),
+  z.strictObject({
+    operation: z.literal('role'),
+    id: z.string(),
+    data: userRoleSchema.strict(),
+  }),
+]);
+export type UserSave = z.output<typeof userSaveSchema>;
+
+export const userQuerySchema = z.strictObject({
+  role: roleSchema.optional(),
+  search: z.string().trim().max(191).optional(),
+});
+export type UserQuery = z.output<typeof userQuerySchema>;
+
 /** Content of a removed user goes to `reassignTo`, or is deleted with them when omitted. */
 export const userDeleteSchema = z.object({
   reassignTo: z.string().min(1).max(36).optional(),

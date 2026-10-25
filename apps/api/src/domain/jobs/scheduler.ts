@@ -30,6 +30,7 @@ export class Scheduler {
   private readonly tasks = new Map<string, RecurringTask>();
   private timer: ReturnType<typeof setInterval> | undefined;
   private running = false;
+  private readonly active = new Map<string, { rerun: boolean }>();
 
   constructor(private readonly deps: SchedulerDeps) {}
 
@@ -46,7 +47,7 @@ export class Scheduler {
     this.running = true;
     try {
       await Promise.all(
-        [...this.tasks.values()].map((task) => this.runIfDue(task)),
+        [...this.tasks.values()].map((task) => this.run(task, false)),
       );
     } finally {
       this.running = false;
@@ -62,11 +63,41 @@ export class Scheduler {
     this.timer = undefined;
   }
 
-  private async runIfDue(task: RecurringTask) {
+  async runNow(name: string): Promise<void> {
+    const task = this.tasks.get(name);
+    if (task) await this.run(task, true);
+  }
+
+  private async run(task: RecurringTask, immediate: boolean) {
+    const active = this.active.get(task.name);
+    if (active) {
+      if (immediate) active.rerun = true;
+      return;
+    }
+    const state = { rerun: false };
+    this.active.set(task.name, state);
+    try {
+      do {
+        state.rerun = false;
+        await this.runLeased(task, immediate);
+        immediate = true;
+      } while (state.rerun && this.tasks.get(task.name) === task);
+    } catch (error) {
+      this.deps.logger.warn(`Task "${task.name}" failed: ${messageOf(error)}`);
+    } finally {
+      this.active.delete(task.name);
+    }
+  }
+
+  private async runLeased(task: RecurringTask, ignoreDue: boolean) {
     const { leases, clock, logger, owner } = this.deps;
     try {
       await leases.ensure(task.name);
-      if (!(await leases.claim(task.name, owner, LEASE_MS, clock.now())))
+      if (
+        !(await leases.claim(task.name, owner, LEASE_MS, clock.now(), {
+          ignoreDue,
+        }))
+      )
         return;
     } catch (error) {
       logger.warn(

@@ -7,6 +7,7 @@ import {
   publicContentListQuerySchema,
   publicContentSchema,
   publicContentSummarySchema,
+  permalinkPathIssue,
 } from '@cms/sdk';
 import type {
   Paginated,
@@ -19,6 +20,10 @@ import type {
 import { authorize } from '#api/domain/auth/authorization';
 import type { Actor } from '#api/domain/auth/authorization';
 import type { ContentReader } from '@cms/sdk/plugin';
+import {
+  searchHookQuerySchema,
+  searchHookResultsSchema,
+} from '@cms/sdk/plugin';
 import { toPublic, toPublicSummary } from '#api/domain/content/content-mapper';
 import type {
   PublishedContentRepository,
@@ -32,6 +37,7 @@ import type { HookDispatcher } from '#api/domain/ports';
 import type { SearchService } from '#api/domain/search/search-service';
 import { notFound, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
+import { z } from 'zod';
 
 /**
  * The filter result is served as is, so it must be exactly the public shape (no extra keys,
@@ -183,6 +189,7 @@ export class PublicContentService {
     private readonly fields: Pick<FieldService, 'present'>,
     private readonly types: Pick<ContentTypeService, 'list'>,
     private readonly search?: Pick<SearchService, 'find'>,
+    private readonly ownedPaths?: (id: string) => Promise<readonly string[]>,
   ) {}
 
   /**
@@ -190,13 +197,55 @@ export class PublicContentService {
    * index answers when it is current; the database otherwise (and for author filters).
    */
   async list(query: unknown): Promise<Paginated<PublicContentSummary>> {
-    const criteria = parseInput(publicContentListQuerySchema, query);
-    const types =
+    let criteria = parseInput(publicContentListQuerySchema, query);
+    const searching = !!criteria.search;
+    const activeTypes = (await this.types.list()).map((type) => type.key);
+    let types: readonly string[] | undefined =
       criteria.search && !criteria.type
         ? (await this.types.list())
             .filter((type) => type.searchable)
             .map((type) => type.key)
         : undefined;
+    if (searching) {
+      const initial = searchHookQuerySchema.parse({
+        ...criteria,
+        text: criteria.search,
+        types: criteria.type ? [criteria.type] : types,
+      });
+      const toCriteria = (args: typeof initial) => ({
+        ...criteria,
+        type: undefined,
+        search: args.text,
+        category: args.category,
+        tag: args.tag,
+        year: args.year,
+        month: args.month,
+        sticky: args.sticky,
+        page: args.page,
+        pageSize: args.pageSize,
+      });
+      const filtered = await this.hooks.applyFilter(
+        'search.query',
+        initial,
+        (value) => {
+          const result = searchHookQuerySchema.safeParse(value);
+          return (
+            result.success &&
+            publicContentListQuerySchema.safeParse(toCriteria(result.data))
+              .success
+          );
+        },
+      );
+      const args = searchHookQuerySchema.parse(filtered);
+      types = args.types;
+      criteria = publicContentListQuerySchema.parse(toCriteria(args));
+    }
+    types = activeTypes.filter(
+      (type) =>
+        (!types || types.includes(type)) &&
+        (!criteria.type || criteria.type === type),
+    );
+    criteria = { ...criteria, type: undefined };
     const page =
       (criteria.search &&
       !criteria.author &&
@@ -213,6 +262,27 @@ export class PublicContentService {
             types: criteria.type ? [criteria.type] : types,
           })
         : null) ?? (await this.reader.summaries(criteria, types));
+    if (searching) {
+      const initial = {
+        ids: page.items.map((item) => item.id),
+        total: page.total,
+      };
+      const filtered = await this.hooks.applyFilter(
+        'search.results',
+        initial,
+        (value) => {
+          const result = searchHookResultsSchema.safeParse(value);
+          return (
+            result.success &&
+            result.data.ids.every((id) => initial.ids.includes(id))
+          );
+        },
+      );
+      const hits = searchHookResultsSchema.parse(filtered);
+      const items = new Map(page.items.map((item) => [item.id, item]));
+      page.items = hits.ids.flatMap((id) => items.get(id) ?? []);
+      page.total = hits.total;
+    }
     return {
       ...page,
       items: await Promise.all(page.items.map((item) => this.summarize(item))),
@@ -275,6 +345,8 @@ export class PublicContentService {
   private async indexed(
     criteria: Parameters<SearchService['find']>[0],
   ): Promise<Paginated<PublicContentSummary> | null> {
+    // A plugin can become active before a background index rebuild restores its documents.
+    if (criteria.types?.some((type) => type.startsWith('plugin:'))) return null;
     const hits = await this.search?.find(criteria);
     if (!hits) return null;
     return {
@@ -294,6 +366,7 @@ export class PublicContentService {
   }
 
   private async present(content: PublicContent): Promise<PublicContent> {
+    content = { ...content, path: await this.permalink(content) };
     const filtered = await this.hooks.applyFilter(
       'content.public',
       {
@@ -324,6 +397,7 @@ export class PublicContentService {
   private async summarize(
     content: PublicContentSummary,
   ): Promise<PublicContentSummary> {
+    content = { ...content, path: await this.permalink(content) };
     const filtered = await this.hooks.applyFilter(
       'content.publicSummary',
       content,
@@ -338,5 +412,27 @@ export class PublicContentService {
       parentId: content.parentId,
       seo: content.seo,
     });
+  }
+
+  private async permalink(content: PublicContentSummary) {
+    const owned = new Set(
+      this.ownedPaths ? await this.ownedPaths(content.id) : [content.path],
+    );
+    const result = await this.hooks.applyFilter(
+      'content.permalink',
+      { contentId: content.id, path: content.path },
+      (value) => {
+        const parsed = z
+          .object({ contentId: z.literal(content.id), path: z.string() })
+          .strict()
+          .safeParse(value);
+        return (
+          parsed.success &&
+          !permalinkPathIssue(parsed.data.path) &&
+          owned.has(parsed.data.path)
+        );
+      },
+    );
+    return result.path;
   }
 }

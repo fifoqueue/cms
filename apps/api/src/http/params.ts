@@ -10,6 +10,11 @@ const params = <const K extends string>(key: K) => ({
 });
 
 export const idParams = params('id');
+export const methodParams = params('method');
+export const factorParams = params('factor');
+export const factorCredentialParams = {
+  params: t.Object({ factor: t.String(), credential: t.String() }),
+};
 
 export const slugParams = params('slug');
 

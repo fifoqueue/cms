@@ -1,5 +1,10 @@
 import { loadTermArchive } from '#lib/server/archive.js';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ fetch, url, params, parent }) =>
-  loadTermArchive(fetch, url, params.taxonomy, params.slug, parent());
+export const load: PageServerLoad = async (event) =>
+  loadTermArchive(
+    event,
+    event.params.taxonomy,
+    event.params.slug,
+    event.parent(),
+  );

@@ -2,6 +2,11 @@
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import PluginProfileFieldsCard from '#lib/admin/PluginProfileFieldsCard.svelte';
+  import {
+    profileFieldsRefusal,
+    splitProfileIssues,
+  } from '#lib/admin/plugin-profile-fields.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
     Card,
@@ -26,6 +31,12 @@
   const target = $derived(data.target);
   const isSelf = $derived(target.id === data.user.id);
 
+  /** A refused save of the plugin profile fields; its field issues show next to the fields. */
+  const profileRefusal = $derived(profileFieldsRefusal(form));
+  const profileIssues = $derived(
+    splitProfileIssues(profileRefusal?.issues ?? [], data.profileFields),
+  );
+
   const confirmDelete: SubmitFunction = ({ cancel }) => {
     if (!confirm(m.confirmDelete)) cancel();
   };
@@ -34,7 +45,11 @@
 <svelte:head><title>{target.name}</title></svelte:head>
 
 <h1 class="text-2xl font-semibold">{target.name}</h1>
-<FormMessage {form} />
+<FormMessage
+  form={profileRefusal
+    ? { ...profileRefusal, issues: profileIssues.apart }
+    : form}
+/>
 
 <Card>
   <CardHeader><CardTitle>{m.profileTitle}</CardTitle></CardHeader>
@@ -67,11 +82,21 @@
   </CardContent>
 </Card>
 
+<PluginProfileFieldsCard
+  meta={data.profileFields}
+  typed={profileRefusal?.typed}
+  issues={profileIssues.placed}
+/>
+
 <Card>
   <CardHeader><CardTitle>{m.usersAccountManagement}</CardTitle></CardHeader>
   <CardContent class="flex flex-wrap gap-2">
     <form method="POST" action="?/reset" use:enhance>
-      <Button type="submit" variant="outline">{m.usersSendReset}</Button>
+      <Button type="submit" variant="outline"
+        >{data.passwordAllowed
+          ? m.usersSendReset
+          : m.usersSendSignInLink}</Button
+      >
     </form>
     {#if !isSelf}
       <form

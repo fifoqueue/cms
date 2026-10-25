@@ -1,4 +1,4 @@
-import type { RoleDefinition } from '@cms/sdk';
+import type { RoleDefinition, UserQuery } from '@cms/sdk';
 import type { UserRecord } from '#api/domain/auth/ports';
 
 /** A user as administrators list them: never the password hash. */
@@ -22,7 +22,7 @@ export interface RoleWriter {
  */
 export interface UserDirectory {
   /** Newest first. */
-  list(): Promise<UserListItem[]>;
+  list(query?: UserQuery): Promise<UserListItem[]>;
   get(id: string): Promise<UserListItem | null>;
   /** A user with at least one public entry, by slug; null otherwise. */
   publicAuthor(

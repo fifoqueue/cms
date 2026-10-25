@@ -1,9 +1,4 @@
-import {
-  ROLES,
-  ROLE_CAPABILITIES,
-  roleDefinitionSchema,
-  roleDeleteSchema,
-} from '@cms/sdk';
+import { ROLES, roleDefinitionSchema, roleDeleteSchema } from '@cms/sdk';
 import type { RoleDefinition, Capability } from '@cms/sdk';
 import type { RoleWriter } from '#api/domain/users/user-directory';
 import type { SettingsRepository } from '#api/domain/site/site-service';
@@ -11,6 +6,10 @@ import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
 import { invalidInput, notFound, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
+import type { HookDispatcher } from '#api/domain/ports';
+import type { UserCapabilities } from '#api/domain/users/user-capabilities';
+import { CapabilityRegistry } from '#api/domain/users/capability-registry';
+import { RoleRegistry } from '#api/domain/users/role-registry';
 
 /** Role definitions are validated again when resolving a session. */
 export class RoleService {
@@ -18,30 +17,43 @@ export class RoleService {
     private readonly settings: SettingsRepository,
     /** Definition and assignment writes serialized by the repository's shared user lock. */
     private readonly writer: RoleWriter,
+    private readonly hooks?: HookDispatcher,
+    private readonly resolver?: Pick<UserCapabilities, 'resolve'>,
+    private readonly catalog = new CapabilityRegistry(),
+    private readonly defaults = new RoleRegistry(),
   ) {}
 
   async list(): Promise<RoleDefinition[]> {
     const stored = await this.settings.list('role.');
-    const roles: RoleDefinition[] = ROLES.map((key) => ({
-      key,
-      name: key,
-      capabilities: [...ROLE_CAPABILITIES[key]!],
-    }));
-    for (const value of Object.values(stored)) {
+    const roles = new Map(this.defaults.list().map((role) => [role.key, role]));
+    for (const [setting, value] of Object.entries(stored)) {
+      const key = setting.slice('role.'.length);
+      if ((ROLES as readonly string[]).includes(key)) continue;
+      if (value === null) {
+        roles.delete(key);
+        continue;
+      }
       const parsed = roleDefinitionSchema.safeParse(value);
       if (
         parsed.success &&
         !ROLES.includes(parsed.data.key as (typeof ROLES)[number])
       )
-        roles.push(parsed.data);
+        roles.set(parsed.data.key, { ...parsed.data, source: 'admin' });
     }
-    return roles;
+    return [...roles.values()];
   }
 
-  async capabilities(key: string): Promise<Capability[]> {
-    return (
+  async capabilities(key: string, userId?: string): Promise<Capability[]> {
+    const capabilities = (
       (await this.list()).find((role) => role.key === key)?.capabilities ?? []
-    );
+    ).filter((capability) => this.catalog.has(capability));
+    return userId && this.resolver
+      ? this.resolver.resolve({ id: userId, role: key }, capabilities)
+      : capabilities;
+  }
+
+  capabilityDefinitions() {
+    return this.catalog.list();
   }
 
   async require(key: string) {
@@ -51,10 +63,17 @@ export class RoleService {
 
   async save(input: unknown, actor: Actor) {
     authorize(actor, 'users.manage');
-    const role = parseInput(roleDefinitionSchema, input);
+    const role = {
+      ...parseInput(roleDefinitionSchema, input),
+      source: 'admin',
+    };
+    if (role.capabilities.some((key) => !this.catalog.has(key)))
+      throw invalidInput(Errors.RoleUnknown);
     if ((ROLES as readonly string[]).includes(role.key))
       throw invalidInput(Errors.RoleBuiltin);
+    const exists = (await this.list()).some((item) => item.key === role.key);
     await this.writer.saveRole(role);
+    void this.hooks?.emit(exists ? 'role.updated' : 'role.created', role);
     return role;
   }
 
@@ -75,5 +94,9 @@ export class RoleService {
         { path: 'reassignTo', message: Errors.RoleUnknown },
       ]);
     await this.writer.removeRole(key, reassignTo);
+    void this.hooks?.emit('role.deleted', {
+      role: roles.find((role) => role.key === key)!,
+      reassignTo,
+    });
   }
 }

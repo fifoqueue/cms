@@ -13,10 +13,19 @@ type ContentRow = Omit<SeoDiscoveryRecord, 'path'> & { path: Uint8Array };
 
 /** Bounded, DB-filtered discovery; no documents, HTML, private keywords or author joins. */
 export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly activeTypes?: () => Promise<readonly string[]>,
+  ) {}
 
   async list({ kind, page, pageSize, siteUrl }: SeoDiscoveryCriteria) {
     const skip = (page - 1) * pageSize;
+    const types = await this.activeTypes?.();
+    const visible = types
+      ? types.length
+        ? Prisma.sql`AND c.type IN (${Prisma.join([...types])})`
+        : Prisma.sql`AND 1 = 0`
+      : Prisma.empty;
     if (kind === 'content') {
       // URL inputs are normalized on write; binary equality preserves case-sensitive paths.
       const from = Prisma.sql`
@@ -24,6 +33,7 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
         JOIN contents c ON c.id = p.content_id
         WHERE p.current_for IS NOT NULL
           AND c.status = 'published' AND c.trashed_at IS NULL
+          ${visible}
           AND c.seo_no_index = false
           AND (
             c.seo_canonical_url = ''
@@ -58,7 +68,7 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
     }
 
     if (kind === 'author') {
-      const from = Prisma.sql`FROM users u JOIN contents c ON c.author_id = u.id WHERE c.status = 'published' AND c.trashed_at IS NULL AND c.seo_no_index = false AND c.password_hash IS NULL`;
+      const from = Prisma.sql`FROM users u JOIN contents c ON c.author_id = u.id WHERE c.status = 'published' AND c.trashed_at IS NULL AND c.seo_no_index = false AND c.password_hash IS NULL ${visible}`;
       const count = await this.db.$queryRaw<{ total: bigint }[]>(
         Prisma.sql`SELECT COUNT(DISTINCT u.id) AS total ${from}`,
       );
@@ -129,6 +139,7 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
         JOIN contents c ON c.id = ct.content_id
         WHERE t.taxonomy IN (${Prisma.join(keys)}) AND c.status = 'published'
           AND c.trashed_at IS NULL
+          ${visible}
         UNION DISTINCT
         SELECT parent.id, parent.parent_id, parent.taxonomy
         FROM taxonomy_terms parent

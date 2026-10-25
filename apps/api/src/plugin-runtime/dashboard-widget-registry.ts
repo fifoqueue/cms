@@ -1,6 +1,7 @@
 import { dashboardWidgetSchema, pluginCapabilitySchema } from '@cms/sdk';
 import type { DashboardWidget } from '@cms/sdk';
-import { can } from '@cms/sdk/capabilities';
+import { can, ROLE_CAPABILITIES } from '@cms/sdk/capabilities';
+import { z } from 'zod';
 import type { Capability } from '@cms/sdk/capabilities';
 import type {
   DashboardWidgetDefinition,
@@ -11,6 +12,7 @@ import { isolate } from '#api/shared/isolate';
 import type { Logger } from '#api/shared/logger';
 import { Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
+import type { HookDispatcher } from '#api/domain/ports';
 
 interface Registration {
   owner: string;
@@ -29,7 +31,11 @@ export class DashboardWidgetRegistry {
   private registrations: Registration[] = [];
 
   constructor(
-    private readonly options: { timeoutMs: number; logger: Logger },
+    private readonly options: {
+      timeoutMs: number;
+      logger: Logger;
+      hooks?: HookDispatcher;
+    },
   ) {}
 
   registrar(owner: string): DashboardWidgetRegistrar {
@@ -59,7 +65,44 @@ export class DashboardWidgetRegistry {
         .filter((entry) => can(actor, entry.capability))
         .map((entry) => this.renderOne(entry)),
     );
-    return rendered.filter((widget) => widget !== null);
+    const widgets = rendered.filter((widget) => widget !== null);
+    const capabilities = [
+      ...(actor.capabilities ?? ROLE_CAPABILITIES[actor.role] ?? []),
+    ];
+    const schema = z.object({
+      widgets: dashboardWidgetSchema.array(),
+      capabilities: z.array(z.string()),
+    });
+    const filtered = (await this.options.hooks?.applyFilter(
+      'dashboard.data',
+      { widgets, capabilities },
+      (value) => {
+        const parsed = schema.safeParse(value);
+        if (
+          !parsed.success ||
+          JSON.stringify(parsed.data.capabilities) !==
+            JSON.stringify(capabilities)
+        )
+          return false;
+        const ids = parsed.data.widgets.map(
+          (widget) => `${widget.plugin}:${widget.key}`,
+        );
+        return (
+          new Set(ids).size === ids.length &&
+          parsed.data.widgets.every((widget) =>
+            widgets.some(
+              (original) => JSON.stringify(original) === JSON.stringify(widget),
+            ),
+          )
+        );
+      },
+    )) ?? { widgets, capabilities };
+    return filtered.widgets.map((widget) =>
+      widgets.find(
+        (original) =>
+          original.plugin === widget.plugin && original.key === widget.key,
+      )!,
+    );
   }
 
   private async renderOne(entry: Registration) {

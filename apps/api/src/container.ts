@@ -1,4 +1,8 @@
 import { ArchivePathsService } from '#api/domain/permalinks/archive-paths';
+import { VisibleContentRepository } from '#api/domain/content/visible-content';
+import { PermalinkTokenRegistry } from '#api/domain/permalinks/token-registry';
+import { HealthChecks } from '#api/domain/tools/health-checks';
+import { PluginJobs } from '#api/domain/jobs/plugin-jobs';
 import { PrismaArchivePaths } from '#api/infra/prisma/archive-paths';
 // Composition root: the only place that knows every concrete implementation.
 import { readFileSync } from 'node:fs';
@@ -10,6 +14,34 @@ import { ContentLocks } from '#api/domain/content/content-locks';
 import { Embeds, vimeo, youtube } from '#api/domain/content/embeds';
 import type { HtmlExpander } from '#api/domain/content/embeds';
 import { BlockRegistry } from '#api/plugin-runtime/block-registry';
+import { SignInRegistry } from '#api/plugin-runtime/sign-in-registry';
+import { SignInSettingsService } from '#api/domain/auth/sign-in-settings';
+import { createSsoMethod } from '#api/domain/auth/sso-method';
+import { createPasswordMethod } from '#api/domain/auth/password-method';
+import {
+  createPasskeyMethod,
+  createPasskeyFactor,
+} from '#api/domain/auth/passkey/passkey';
+import { PrismaPasskeyRepository } from '#api/infra/passkey-repository';
+import { simpleWebAuthn } from '#api/infra/passkey-webauthn';
+import { createTotpFactor } from '#api/domain/auth/totp/totp';
+import { resealTotpSecrets } from '#api/domain/auth/totp/maintenance';
+import { PrismaTotpRepository } from '#api/infra/totp-repository';
+import { totpAlgorithm } from '#api/infra/totp-crypto';
+import { createRecoveryFactor } from '#api/domain/auth/recovery-factor';
+import { SignInService } from '#api/domain/auth/sign-in-service';
+import { PrismaSetupTokens } from '#api/infra/prisma/setup-tokens';
+import { PrismaSignInTransactions } from '#api/infra/prisma/sign-in-transactions';
+import { createSignInUsers } from '#api/domain/auth/sign-in-users';
+import { UserCapabilities } from '#api/domain/users/user-capabilities';
+import { CapabilityRegistry } from '#api/domain/users/capability-registry';
+import { RoleRegistry } from '#api/domain/users/role-registry';
+import { ProfileFields } from '#api/domain/users/profile-fields';
+import { ProfileMeta } from '#api/domain/users/profile-meta';
+import { PrismaProfileMeta } from '#api/infra/prisma/profile-meta';
+import { CaptchaRegistry } from '#api/domain/security/captcha-registry';
+import { CORE_CAPTCHA_WIDGETS } from '#api/domain/security/captcha-widgets';
+import { EraserRegistry } from '#api/domain/privacy/eraser-registry';
 import { ResponsiveImages } from '#api/domain/content/responsive-images';
 import { EmbedRegistry } from '#api/plugin-runtime/embed-registry';
 import { MediaService } from '#api/domain/media/media-service';
@@ -19,7 +51,11 @@ import { DashboardPreferencesService } from '#api/domain/dashboard/dashboard-pre
 import { PrismaPatternCatalog } from '#api/infra/prisma/pattern-catalog';
 import { PatternService } from '#api/domain/content/pattern-service';
 import { MenuService } from '#api/domain/appearance/menu-service';
-import { ContentTypeService } from '#api/domain/content/content-types';
+import {
+  BUILTIN_TYPES,
+  ContentTypeService,
+} from '#api/domain/content/content-types';
+import { ContentTypeRegistry } from '#api/domain/content/content-type-registry';
 import { FieldService } from '#api/domain/content/fields';
 import { FsMediaStorage } from '#api/infra/fs-media-storage';
 import { PrismaMediaRepository } from '#api/infra/prisma/media-repository';
@@ -33,6 +69,8 @@ import { hmacSigner } from '#api/infra/hmac-signer';
 import { PrismaRevisionRepository } from '#api/infra/prisma/revision-repository';
 import { join } from 'node:path';
 import { AuthService } from '#api/domain/auth/auth-service';
+import { RecoveryService } from '#api/domain/auth/recovery-service';
+import { PrismaRecoveryCodeRepository } from '#api/infra/prisma/auth-repositories';
 import type { AuthServiceDeps } from '#api/domain/auth/auth-service';
 import { ApiTokenService } from '#api/domain/auth/api-tokens';
 import {
@@ -56,6 +94,8 @@ import { PrismaRateLimitStore } from '#api/infra/prisma/rate-limit-store';
 import { PrismaTaskLeases } from '#api/infra/prisma/task-leases';
 import { aesSecretBox, secretKey } from '#api/infra/secret-box';
 import { createSmtpMailer } from '#api/infra/smtp-mailer';
+import { emailEndpoint } from '#api/infra/http-mailer';
+import { createEmailDelivery } from '#api/infra/email-delivery';
 import type { SessionRepository, UserRepository } from '#api/domain/auth/ports';
 import { InstallationService } from '#api/domain/installation/installation-service';
 import { ContentService } from '#api/domain/content/content-service';
@@ -116,6 +156,9 @@ import {
 } from '#api/infra/system';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
 import { PluginContextFactory } from '#api/plugin-runtime/plugin-context-factory';
+import { CommentCheckers } from '#api/domain/comments/comment-checkers';
+import { MediaProcessors } from '#api/domain/media/media-processors';
+import { ImageSizes } from '#api/domain/media/image-sizes';
 import { PluginHost } from '#api/plugin-runtime/plugin-host';
 import { PluginSettings } from '#api/plugin-runtime/plugin-settings';
 import { PluginRouteRegistry } from '#api/plugin-runtime/route-registry';
@@ -147,10 +190,26 @@ import { SlotService } from '#api/plugin-runtime/slot-service';
 import { consoleLogger } from '#api/shared/logger';
 import type { Logger } from '#api/shared/logger';
 import { invalidInput, messageOf, Errors } from '#api/shared/errors';
-import { TaxonomyTypeService } from '#api/domain/taxonomy/taxonomy-types';
+import {
+  BUILTIN_TAXONOMIES,
+  TaxonomyTypeService,
+} from '#api/domain/taxonomy/taxonomy-types';
+import { DefinitionRegistry } from '#api/domain/content/definition-registry';
+import { taxonomyDefinitionSchema, fieldDefinitionSchema } from '@cms/sdk';
 import { RoleService } from '#api/domain/users/role-service';
 import { SsoService } from '#api/domain/auth/sso-service';
 import { MemoryRateLimiter } from '#api/infra/memory-rate-limiter';
+import { SeoFilterGateway } from '#api/http/seo-filter-gateway';
+import { ProviderRegistry } from '#api/plugin-runtime/provider-registry';
+import { MenuTypeRegistry } from '#api/plugin-runtime/menu-type-registry';
+import {
+  createSearchProviders,
+  createSitemapProviders,
+  createThemeContributions,
+} from '#api/plugin-runtime/discovery-providers';
+import { coreMenuTypes } from '#api/domain/appearance/menu-types';
+import { patternContributionSchema } from '@cms/sdk/plugin';
+import type { PatternContributions } from '@cms/sdk/plugin';
 import { OpenIdClientProvider } from '#api/infra/oidc/openid-client-provider';
 import type { OidcClientSettings } from '#api/infra/oidc/openid-client-provider';
 import { outbound } from '#api/infra/egress-policy';
@@ -158,13 +217,17 @@ import type { EgressRule, EgressService } from '@cms/sdk';
 import {
   PrismaIdentityRepository,
   PrismaSsoTransactionRepository,
+  PrismaSsoAccessTransactions,
 } from '#api/infra/prisma/sso-repositories';
 
 const createAuth = (
   users: UserRepository,
   sessions: SessionRepository,
   config: AppConfig,
-  extras: Pick<AuthServiceDeps, 'protection' | 'apiTokens' | 'roles'> = {},
+  extras: Pick<
+    AuthServiceDeps,
+    'protection' | 'apiTokens' | 'roles' | 'passwordLogin'
+  > = {},
 ) =>
   new AuthService({
     users,
@@ -229,10 +292,15 @@ export const createContainer = async (
   const db = createDatabase(config.DATABASE_URL);
 
   const hooks = new HookBus({ timeoutMs, logger });
+  const healthChecks = new HealthChecks(timeoutMs);
   const slotRegistry = new SlotRegistry({ timeoutMs, logger });
   const widgetRegistry = new WidgetRegistry({ timeoutMs, logger });
   const pluginPages = new AdminPageRegistry({ timeoutMs, logger });
-  const dashboardWidgets = new DashboardWidgetRegistry({ timeoutMs, logger });
+  const dashboardWidgets = new DashboardWidgetRegistry({
+    timeoutMs,
+    logger,
+    hooks,
+  });
   const pluginRoutes = new PluginRouteRegistry();
   const embedRegistry = new EmbedRegistry({ timeoutMs, logger });
   // Core providers first; plugins add more and never replace them.
@@ -242,10 +310,17 @@ export const createContainer = async (
     ...embedRegistry.providers(),
   ]);
 
-  const contentRepository = new PrismaContentRepository(db);
+  const permalinkTokens = new PermalinkTokenRegistry(config.PLUGIN_TIMEOUT_MS);
+  const contentRepository = new PrismaContentRepository(db, permalinkTokens);
   const settingsRepository = new PrismaSettingsRepository(db);
   const blockRegistry = new BlockRegistry({ timeoutMs, logger });
+  const patternContributions = new ProviderRegistry<null, PatternContributions>(
+    patternContributionSchema,
+    { timeoutMs, logger },
+  );
   const patterns = new PatternService({
+    contributions: patternContributions,
+    hooks,
     settings: settingsRepository,
     transactions: new PrismaSettingsTransactions(db),
     catalog: new PrismaPatternCatalog(db),
@@ -254,26 +329,50 @@ export const createContainer = async (
     clock: systemClock,
     blocks: blockRegistry,
   });
-  const taxonomyRepository = new PrismaTaxonomyRepository(db);
+  const taxonomyRepository = new PrismaTaxonomyRepository(
+    db,
+    () => void scheduler.runNow('core:permalink-regeneration'),
+    permalinkTokens,
+  );
+  const taxonomyRegistry = new DefinitionRegistry(
+    taxonomyDefinitionSchema,
+    BUILTIN_TAXONOMIES,
+  );
+  const fieldRegistry = new DefinitionRegistry(fieldDefinitionSchema);
   const taxonomyTypes = new TaxonomyTypeService(
     settingsRepository,
     taxonomyRepository,
+    taxonomyRegistry,
   );
   const adminTaxonomy = new TaxonomyService({
+    content: contentRepository,
+    hooks,
     types: taxonomyTypes,
     repository: taxonomyRepository,
     ids: uuidV7,
     clock: systemClock,
   });
-  const publishedRepository = new PrismaPublishedContentRepository(db);
+  const rawPublishedRepository = new PrismaPublishedContentRepository(db);
   const mediaRepository = new PrismaMediaRepository(db);
-  const contentTypes = new ContentTypeService(settingsRepository, (type) =>
-    contentRepository.typeInUse(type),
+  const contentTypeRegistry = new ContentTypeRegistry(BUILTIN_TYPES);
+  const contentTypes = new ContentTypeService(
+    settingsRepository,
+    (type) => contentRepository.typeInUse(type),
+    hooks,
+    contentTypeRegistry,
   );
   const fields = new FieldService({
+    registry: fieldRegistry,
+    hooks,
     settings: settingsRepository,
     images: (ids) => mediaRepository.publicImages(ids),
   });
+  const activeContentTypes = async () =>
+    (await contentTypes.list()).map((type) => type.key);
+  const publishedRepository = new VisibleContentRepository(
+    rawPublishedRepository,
+    activeContentTypes,
+  );
   const reader = new PublishedContentReader(publishedRepository);
   const responsiveImages = new ResponsiveImages((ids) =>
     mediaRepository.publicImages(ids),
@@ -302,10 +401,17 @@ export const createContainer = async (
     new GravatarSource(),
     signer,
   );
-  const security = new SecuritySettingsService(settingsRepository, secrets);
+  const security = new SecuritySettingsService(
+    settingsRepository,
+    secrets,
+    hooks,
+    () => captchaProviders.list(),
+    (id) => captchaProviders.widget(id),
+  );
   const egress = new EgressSettingsService(
     settingsRepository,
     config.CMS_EGRESS_ALLOWLIST,
+    hooks,
   );
   const access = async (service: EgressService) => ({
     service,
@@ -319,17 +425,45 @@ export const createContainer = async (
     outbound.check(url, await access(service));
   const meilisearchEngine = createMeilisearchEngine(egressFetch('search'));
   const rateLimits = new PrismaRateLimitStore(db);
+  const captchaProviders = new CaptchaRegistry({ timeoutMs, logger });
+  const coreCaptcha = httpCaptchaVerifier(logger);
+  for (const id of ['turnstile', 'hcaptcha', 'recaptcha'])
+    captchaProviders.registerCore(id, {
+      label: id,
+      widget: CORE_CAPTCHA_WIDGETS[id],
+      verify: (input) => coreCaptcha.verify(input),
+    });
+  const privacyErasers = new EraserRegistry({ timeoutMs, logger });
+  const privacyRepository = new PrismaPrivacyRepository(
+    db,
+    secrets,
+    () => void scheduler.runNow('core:permalink-regeneration'),
+    permalinkTokens,
+  );
+  privacyErasers.registerCore('personal-data', {
+    erase: async (request) => {
+      await privacyRepository.erase(
+        request.id,
+        await bunPasswordHasher.hash(randomTokenIssuer.issue()),
+        systemClock.now(),
+      );
+      return { erased: 1, retained: 0 };
+    },
+  });
   const protection = new ProtectionService({
+    hooks,
+    signer,
     settings: security,
     store: rateLimits,
-    captcha: httpCaptchaVerifier(logger),
+    captcha: captchaProviders,
     clock: systemClock,
   });
   const search = new SearchService({
+    hooks,
     settings: settingsRepository,
     secrets,
     engine: meilisearchEngine,
-    source: new PrismaSearchSource(db),
+    source: new PrismaSearchSource(db, activeContentTypes),
     clock: systemClock,
     logger,
     checkDestination: (url) => checkUrl('search', url),
@@ -341,6 +475,8 @@ export const createContainer = async (
     clock: systemClock,
     protection,
   });
+  const { registry: searchEngines, lookup: searchLookup } =
+    createSearchProviders(search, { timeoutMs, logger });
   const publicContent = new PublicContentService(
     reader,
     hooks,
@@ -348,11 +484,16 @@ export const createContainer = async (
     served,
     fields,
     contentTypes,
-    search,
+    searchLookup,
+    (id) => permalinkRepository.pathsFor(id),
   );
-  const permalinkRepository = new PrismaPermalinkRepository(db);
+  const permalinkRepository = new PrismaPermalinkRepository(
+    db,
+    permalinkTokens,
+    logger,
+  );
   const archivePaths = new ArchivePathsService(new PrismaArchivePaths(db));
-  const permalinks = new PermalinkService(permalinkRepository);
+  const permalinks = new PermalinkService(permalinkRepository, hooks);
   const permalinkResolver = new PermalinkResolver(
     permalinkRepository,
     publicContent,
@@ -363,26 +504,48 @@ export const createContainer = async (
     (ids) => mediaRepository.publicImages(ids),
     new PrismaSiteSettingsWriter(db),
   );
-  const reading = new ReadingService(settingsRepository, publishedRepository);
-  const writing = new WritingService(settingsRepository);
+  const reading = new ReadingService(
+    settingsRepository,
+    publishedRepository,
+    hooks,
+  );
+  const writing = new WritingService(settingsRepository, hooks);
   const dashboardPreferences = new DashboardPreferencesService(
     settingsRepository,
   );
+  const menuItemTypes = new MenuTypeRegistry({ timeoutMs, logger });
+  for (const [key, provider] of Object.entries(coreMenuTypes))
+    menuItemTypes.registerCore(key, provider);
   const menus = new MenuService({
+    taxonomyTypes,
+    itemTypes: menuItemTypes,
+    hooks,
     archives: archivePaths,
     settings: settingsRepository,
     published: publishedRepository,
     terms: taxonomyRepository,
   });
-  const seo = new SeoSettingsService(settingsRepository);
-  const seoDiscovery = new SeoDiscoveryService(
-    new PrismaSeoDiscoveryRepository(db),
-    seo,
+  const seo = new SeoSettingsService(settingsRepository, hooks);
+  const discoveryRepository = new PrismaSeoDiscoveryRepository(
+    db,
+    activeContentTypes,
   );
+  const sitemaps = createSitemapProviders(discoveryRepository, {
+    timeoutMs,
+    logger,
+  });
+  const seoDiscovery = new SeoDiscoveryService(
+    discoveryRepository,
+    seo,
+    sitemaps,
+  );
+  const themeContributions = createThemeContributions({ timeoutMs, logger });
   const themes = new ThemeService(
     settingsRepository,
     zipThemeArchive,
     sharpImages,
+    hooks,
+    themeContributions,
   );
   const themePreviews = new ThemePreviews({
     themes,
@@ -402,26 +565,39 @@ export const createContainer = async (
     owner,
   });
   const jobs = new JobRunner({
+    hooks,
     queue: jobQueue,
     clock: systemClock,
     logger,
     owner,
   });
   scheduler.add(jobs.task(5000));
+  scheduler.add({
+    name: 'core:permalink-regeneration',
+    intervalMs: 5000,
+    run: () => permalinkRepository.resume(),
+  });
 
+  const smtp = createSmtpMailer(async (host, port, signal) =>
+    outbound.resolveHost(host, port, {
+      ...(await access('smtp')),
+      signal,
+    }),
+  );
+  const delivery = createEmailDelivery({
+    smtp,
+    egressFetch,
+    checkUrl,
+    checkHost: async (service, host, port) =>
+      outbound.resolveHost(host, port, await access(service)),
+  });
   const email = new EmailService({
+    transports: delivery.mailer,
+    hooks,
     settings: settingsRepository,
     secrets,
-    mailer: createSmtpMailer(async (host, port, signal) =>
-      outbound.resolveHost(host, port, {
-        ...(await access('smtp')),
-        signal,
-      }),
-    ),
+    ...delivery,
     sealedJobs,
-    checkDestination: async (host, port) => {
-      await outbound.resolveHost(host, port, await access('smtp'));
-    },
   });
   await egress.initialize(async () => {
     const [searchSettings, emailSettings] = await Promise.all([
@@ -438,11 +614,22 @@ export const createContainer = async (
       );
       if (rule) rules.push(rule);
     }
-    if (emailSettings.host) {
+    if (emailSettings.transport === 'http') {
+      const endpoint = emailEndpoint(emailSettings.http);
+      if (endpoint) {
+        const url = new URL(endpoint);
+        const rule = await outbound.compatibilityRule(
+          'email-api',
+          url.hostname,
+          url.port ? Number(url.port) : 443,
+        );
+        if (rule) rules.push(rule);
+      }
+    } else if (emailSettings.smtp.host) {
       const rule = await outbound.compatibilityRule(
         'smtp',
-        emailSettings.host,
-        emailSettings.port,
+        emailSettings.smtp.host,
+        emailSettings.smtp.port,
       );
       if (rule) rules.push(rule);
     }
@@ -450,6 +637,7 @@ export const createContainer = async (
   });
   jobs.handle(EMAIL_JOB, (payload) => email.deliver(payload));
   const webhooks = new WebhookService({
+    hooks,
     settings: settingsRepository,
     secrets,
     tokens: randomTokenIssuer,
@@ -460,7 +648,7 @@ export const createContainer = async (
     ids: uuidV7,
     clock: systemClock,
   });
-  webhooks.subscribe(hooks.registrar('core:webhooks'));
+  webhooks.subscribe(hooks.core('core:webhooks'));
   jobs.handle(WEBHOOK_JOB, (payload) => webhooks.deliver(payload));
 
   const users = new PrismaUserRepository(db);
@@ -472,14 +660,33 @@ export const createContainer = async (
     ids: uuidV7,
     clock: systemClock,
   });
-  const directory = new PrismaUserDirectory(db);
-  const roles = new RoleService(settingsRepository, directory);
+  const roleDefaults = new RoleRegistry();
+  const profileFields = new ProfileFields();
+  const directory = new PrismaUserDirectory(
+    db,
+    (key) => roleDefaults.has(key),
+    () => void scheduler.runNow('core:permalink-regeneration'),
+    permalinkTokens,
+  );
+  const capabilities = new CapabilityRegistry();
+  const roles = new RoleService(
+    settingsRepository,
+    directory,
+    hooks,
+    new UserCapabilities(hooks, capabilities, logger),
+    capabilities,
+    roleDefaults,
+  );
   const auth = createAuth(users, sessions, config, {
+    passwordLogin: async () =>
+      (await signInSettings.effective()).methods.includes('password'),
     protection,
     apiTokens,
     roles,
   });
   const passwords = new PasswordService({
+    passwordLogin: async () =>
+      (await signInSettings.effective()).methods.includes('password'),
     users,
     tokens: passwordTokens,
     credentials: new PrismaCredentialRepository(db),
@@ -496,6 +703,7 @@ export const createContainer = async (
     }),
   });
 
+  const totpSecrets = new PrismaTotpRepository(db);
   scheduler.add({
     name: 'maintenance',
     intervalMs: HOUR,
@@ -503,18 +711,30 @@ export const createContainer = async (
       const now = systemClock.now();
       await sessions.deleteExpired(now);
       await passwordTokens.purge(now);
+      const resealed = await resealTotpSecrets({
+        secrets: totpSecrets,
+        box: secrets,
+      });
+      logger.info('TOTP secret maintenance', resealed);
+      if (resealed.unreadable || resealed.skipped)
+        logger.warn(
+          'TOTP secrets remain unreadable or changed during maintenance',
+          resealed,
+        );
       await rateLimits.purge(now);
-      await sealedJobs.recover([
-        EMAIL_JOB,
-        PASSWORD_RESET_REQUEST_JOB,
-        REGISTRATION_JOB,
-        WEBHOOK_JOB,
-      ]);
+      await sealedJobs.recover(jobs.kinds());
       await jobs.purge();
     },
   });
 
+  const mediaProcessors = new MediaProcessors(timeoutMs);
+  mediaProcessors.registerCore({
+    process: ({ bytes, mime }) => sharpImages.clean(bytes, mime),
+  });
+  const imageSizes = new ImageSizes(logger);
   const media = new MediaService({
+    sizes: imageSizes,
+    processors: mediaProcessors,
     repository: mediaRepository,
     storage: new FsMediaStorage(config.MEDIA_DIR),
     images: sharpImages,
@@ -544,6 +764,7 @@ export const createContainer = async (
     },
   });
   const contentRevisions = new RevisionService({
+    hooks,
     content,
     revisions,
     renderer: tiptapRenderer,
@@ -570,6 +791,8 @@ export const createContainer = async (
     run: () => content.emptyTrash(TRASH_DAYS),
   });
   const userAdmin = new UserService({
+    profiles: new ProfileMeta(profileFields, new PrismaProfileMeta(db)),
+    hooks,
     roles,
     settings: settingsRepository,
     protection,
@@ -589,7 +812,9 @@ export const createContainer = async (
   });
 
   const commentRepository = new PrismaCommentRepository(db);
+  const commentCheckers = new CommentCheckers(timeoutMs);
   const comments = new CommentService({
+    checkers: commentCheckers,
     locks,
     signer,
     avatar: avatars,
@@ -625,6 +850,7 @@ export const createContainer = async (
     run: () => comments.purge(),
   });
   const widgets = new WidgetService({
+    hooks,
     settings: settingsRepository,
     published: publishedRepository,
     terms: taxonomyRepository,
@@ -637,6 +863,9 @@ export const createContainer = async (
     egressFetch('oidc')(url, options as RequestInit);
   const ssoProvider = createOidcProvider(config, logger, oidcFetch);
   const ssoSettings = new SsoSettingsService({
+    environmentRedirectUri: config.OIDC_REDIRECT_URI,
+    access: new PrismaSsoAccessTransactions(db),
+    otherMethod: (actor, store) => signInSettings.otherUsable(actor, store),
     settings: settingsRepository,
     secrets,
     siteUrl: async () => (await seo.getPublic()).siteUrl,
@@ -644,13 +873,26 @@ export const createContainer = async (
       new OpenIdClientProvider({ ...client, fetch: oidcFetch }, logger),
     checkIssuer: (issuer) => checkUrl('oidc', issuer),
     environment: ssoProvider && {
+      id: 'environment',
+      issuer: config.OIDC_ISSUER!,
       provider: ssoProvider,
       name: config.OIDC_NAME,
       subjects: new Map(Object.entries(config.OIDC_ALLOWED_SUBJECTS)),
     },
   });
+  const ssoStarts = new MemoryRateLimiter({
+    clock: systemClock,
+    perKey: config.OIDC_STARTS_PER_MINUTE_PER_CLIENT,
+    total: config.OIDC_STARTS_PER_MINUTE,
+    windowMs: 60_000,
+  });
   const sso = new SsoService({
-    setup: () => ssoSettings.setup(),
+    policy: async (store, user) => ({
+      ...(await ssoSettings.policy(store)),
+      otherMethod: await signInSettings.otherUsable(user, store),
+    }),
+    access: new PrismaSsoAccessTransactions(db),
+    setup: (store) => ssoSettings.setup(store),
     users,
     identities: new PrismaIdentityRepository(db),
     transactions: new PrismaSsoTransactionRepository(db),
@@ -663,21 +905,136 @@ export const createContainer = async (
       total: config.OIDC_MAX_PENDING_REQUESTS,
       perClient: config.OIDC_MAX_PENDING_PER_CLIENT,
     },
-    startLimiter: new MemoryRateLimiter({
-      clock: systemClock,
-      perKey: config.OIDC_STARTS_PER_MINUTE_PER_CLIENT,
-      total: config.OIDC_STARTS_PER_MINUTE,
-      windowMs: 60_000,
-    }),
+    startLimiter: ssoStarts,
+  });
+
+  const recovery = new RecoveryService({
+    sessionRepository: sessions,
+    codes: new PrismaRecoveryCodeRepository(db),
+    users,
+    roles,
+    tokens: randomTokenIssuer,
+    ids: uuidV7,
+    clock: systemClock,
+    sessions: auth,
+    protection,
+    email,
+    site: () => site.get(),
+    logger,
   });
 
   const pluginData = new PrismaPluginDataRepository(db);
+  const authentication = new SignInRegistry({ timeoutMs, logger });
+  const signInSettings = new SignInSettingsService({
+    settings: settingsRepository,
+    transactions: new PrismaSettingsTransactions(db),
+    registry: authentication,
+    passwordForced: config.CMS_ALLOW_PASSWORD_LOGIN,
+    logger,
+  });
+  const authUsers = createSignInUsers(users, roles);
+  const coreAuth = authentication.core(authUsers);
+  coreAuth.signInMethod(
+    'sso',
+    createSsoMethod({
+      setup: () => ssoSettings.setup(),
+      identities: new PrismaIdentityRepository(db),
+      resolve: (identity, subjects) => sso.resolve(identity, subjects),
+      ids: uuidV7,
+      clock: systemClock,
+      starts: ssoStarts,
+    }),
+  );
+  coreAuth.signInMethod(
+    'password',
+    createPasswordMethod({
+      users,
+      hasher: bunPasswordHasher,
+      credentials: new PrismaCredentialRepository(db),
+    }),
+  );
+  const passkeyDeps = {
+    passkeys: new PrismaPasskeyRepository(db),
+    webauthn: simpleWebAuthn,
+    ids: uuidV7,
+    clock: systemClock,
+    site: async () => ({
+      siteUrl: (await seo.getPublic()).siteUrl,
+      title: (await site.get()).title,
+    }),
+  };
+  coreAuth.signInMethod('passkey', createPasskeyMethod(passkeyDeps));
+  coreAuth.secondFactor('passkey', createPasskeyFactor(passkeyDeps));
+  coreAuth.secondFactor(
+    'totp',
+    createTotpFactor({
+      secrets: totpSecrets,
+      box: secrets,
+      clock: systemClock,
+      ids: uuidV7,
+      totp: totpAlgorithm,
+      site: () => site.get(),
+    }),
+  );
+  coreAuth.secondFactor(
+    'recovery-code',
+    createRecoveryFactor(
+      new PrismaRecoveryCodeRepository(db),
+      randomTokenIssuer,
+    ),
+  );
+  const signIn = new SignInService({
+    registry: authentication,
+    settings: signInSettings,
+    factorChanges: new PrismaSettingsTransactions(db),
+    transactions: new PrismaSignInTransactions(db),
+    setupTokens: new PrismaSetupTokens(db),
+    tokens: randomTokenIssuer,
+    users: authUsers,
+    clock: systemClock,
+    limits: {
+      total: config.OIDC_MAX_PENDING_REQUESTS,
+      perClient: config.OIDC_MAX_PENDING_PER_CLIENT,
+    },
+    protection,
+    hooks,
+    siteUrl: async () => (await seo.getPublic()).siteUrl,
+    session: async (profile, identityId) => {
+      const user = await users.findById(profile.id);
+      if (!user) throw invalidInput(Errors.InvalidCredentials);
+      return auth.startSession(user, identityId ?? null);
+    },
+  });
   const pluginSettings = new PluginSettings(pluginData);
   const plugins = new PluginHost({
+    hooks,
     state: new PrismaPluginStateRepository(db),
     packages: new FsPluginPackageStore(config.PLUGINS_DIR),
     loader: dynamicImportLoader,
     contexts: new PluginContextFactory({
+      roles: roleDefaults,
+      profileFields,
+      captchaProviders,
+      privacyErasers,
+      contentTypes: contentTypeRegistry,
+      permalinkTokens,
+      taxonomies: taxonomyRegistry,
+      fields: fieldRegistry,
+      capabilities,
+      menuItemTypes,
+      themeContributions,
+      patterns: patternContributions,
+      patternRenderer: tiptapRenderer,
+      mailTransports: delivery.mailer,
+      jobs: new PluginJobs(jobs, sealedJobs, systemClock),
+      healthChecks,
+      sitemaps,
+      searchEngines,
+      mediaProcessors,
+      imageSizes,
+      commentCheckers,
+      authentication,
+      users: authUsers,
       hooks,
       slots: slotRegistry,
       widgets: widgetRegistry,
@@ -700,6 +1057,7 @@ export const createContainer = async (
   });
 
   const importer = new ImportService({
+    hooks,
     parser: fastXmlWxrParser,
     html: tiptapHtmlParser,
     content,
@@ -716,6 +1074,7 @@ export const createContainer = async (
     patterns,
   });
   const exporter = new ExportService({
+    hooks,
     content: contentRepository,
     patterns: () => patterns.exportable(),
     terms: taxonomyRepository,
@@ -734,6 +1093,7 @@ export const createContainer = async (
     signer.sign('frontend-secret');
   const clients = new ClientResolver(frontendSecret);
   const siteHealth = new SiteHealthService({
+    checks: healthChecks,
     siteUrl: async () => (await seo.getPublic()).siteUrl,
     emailEnabled: () => email.enabled(),
     search: () => search.status(),
@@ -753,7 +1113,9 @@ export const createContainer = async (
   });
 
   const privacy = new PrivacyService({
-    repository: new PrismaPrivacyRepository(db, secrets),
+    erasers: privacyErasers,
+    hooks,
+    repository: privacyRepository,
     settings: settingsRepository,
     published: publishedRepository,
     email,
@@ -774,13 +1136,26 @@ export const createContainer = async (
     services: {
       privacy,
       auth,
+      recovery,
       sso,
       clients,
       ssoSettings,
+      signInSettings,
+      signIn,
       frontendSecret,
       site,
       seo,
       seoDiscovery,
+      seoFilter: new SeoFilterGateway(
+        clients,
+        new MemoryRateLimiter({
+          clock: systemClock,
+          perKey: 6000,
+          total: 60000,
+          windowMs: 60_000,
+        }),
+        seo,
+      ),
       archivePaths,
       permalinks,
       permalinkResolver,
@@ -790,6 +1165,7 @@ export const createContainer = async (
       publicTaxonomy: new PublicTaxonomyService(
         taxonomyRepository,
         taxonomyTypes,
+        hooks,
       ),
       adminContent: content,
       reading,
@@ -908,6 +1284,7 @@ export const createBootstrap = async () => {
         }),
     },
     (value) => randomTokenIssuer.digest(value) === tokenHash,
+    () => runtime?.hooks,
   );
 
   if ((await installation.status()).setupRequired)

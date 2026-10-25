@@ -1,35 +1,44 @@
-import { passwordResetSchema, passwordSchema } from '@cms/sdk';
-import { authApi } from '#lib/server/api.js';
-import { failFrom, text } from '#lib/server/errors.js';
+import { passwordResetSchema } from '@cms/sdk';
+import { authApi, contentApi } from '#lib/server/api.js';
+import { allowCaptcha } from '#lib/server/captcha.js';
+import { setupStep } from '#lib/server/sign-in.js';
+import { methodView } from '#lib/server/sign-in-view.js';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
- * Reset and invitation links land here. The token from the emailed link travels in the form,
- * never in page data beyond this page; a malformed one asks for a new link instead of a form.
+ * Reset and invitation links land here and offer every method that can set up the account
+ * (choosing a password is one of them), the same way for core and plugin methods. The token
+ * from the emailed link travels in the forms, never in page data beyond this page; a malformed
+ * one asks for a new link instead.
  */
-export const load: PageServerLoad = ({ url, setHeaders }) => {
+export const load: PageServerLoad = async (event) => {
+  const { url, setHeaders, fetch } = event;
   // The link holds a secret: keep it out of caches and referrers.
   setHeaders({ 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
   const token = url.searchParams.get('token') ?? '';
+  // Emailed links carry password tokens, whichever method they set up.
+  const linkValid = passwordResetSchema.shape.token.safeParse(token).success;
+  // Without a usable link there is nothing to offer; an unreachable API shows a notice.
+  const [info, captcha] = linkValid
+    ? await Promise.all([
+        authApi(fetch)
+          .signIn.info()
+          .catch(() => null),
+        contentApi(fetch)
+          .captcha()
+          .catch(() => null),
+      ])
+    : [null, null];
   return {
     token,
-    linkValid: passwordResetSchema.shape.token.safeParse(token).success,
-    minLength: passwordSchema.minLength ?? 1,
-    maxLength: passwordSchema.maxLength ?? undefined,
+    linkValid,
+    methods: info ? info.setup.map(methodView) : [],
+    unavailable: linkValid && !info,
+    passwordReset: info?.passwordReset ?? false,
+    captcha: allowCaptcha(event, captcha),
   };
 };
 
 export const actions: Actions = {
-  default: async ({ fetch, request }) => {
-    const form = await request.formData();
-    try {
-      await authApi(fetch).password.reset({
-        token: text(form, 'token'),
-        password: text(form, 'password'),
-      });
-    } catch (caught) {
-      return failFrom(caught);
-    }
-    return { done: true };
-  },
+  setup: async (event) => setupStep(event, await event.request.formData()),
 };

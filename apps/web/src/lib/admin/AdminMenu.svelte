@@ -332,6 +332,11 @@
             capability: 'settings.manage',
           },
           {
+            href: resolve('/admin/(app)/settings/sign-in'),
+            label: (m) => m.settingsSignIn,
+            capability: 'settings.manage',
+          },
+          {
             href: resolve('/admin/(app)/settings/sso'),
             label: (m) => m.settingsSso,
             capability: 'settings.manage',

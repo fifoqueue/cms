@@ -29,7 +29,10 @@ export const initializeSite = (
         throw conflict(Errors.InstallCompleted);
       return initialize({
         users: new PrismaUserRepository(transaction),
-        sessions: new PrismaSessionRepository(transaction),
+        sessions: new PrismaSessionRepository({
+          session: transaction.session,
+          $transaction: (work) => work(transaction),
+        }),
         settings: new PrismaSettingsRepository(transaction),
       });
     },

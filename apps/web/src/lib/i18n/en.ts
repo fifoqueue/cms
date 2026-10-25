@@ -62,6 +62,10 @@ export const en = {
   rolesNew: 'Create role',
   rolesKey: 'Role key',
   rolesPermissions: 'Permissions',
+  rolesExtraPermissions: 'Other permissions roles hold',
+  rolesPluginPermissions: (plugin: string) => `Plugin: ${plugin}`,
+  rolesFromPlugin: (name: string, plugin: string) =>
+    `${name} (plugin: ${plugin})`,
   registerTitle: 'Create an account',
   registerHelp:
     'Enter your name and email. Check your inbox to choose a password.',
@@ -81,6 +85,7 @@ export const en = {
         'fields.manage': 'Manage content fields',
         'users.manage': 'Manage users',
         'settings.manage': 'Manage settings',
+        'egress.manage': 'Manage outbound connections',
         'plugins.manage': 'Manage plugins',
         'tools.manage': 'Manage tools',
       }) as Record<string, string>
@@ -118,9 +123,7 @@ export const en = {
   forgotSent:
     'If that address has an account, a link is on its way. Check your inbox.',
   backToSignIn: 'Back to sign in',
-  passwordTitle: 'Choose a password',
   newPassword: 'New password',
-  passwordSaved: 'Your password is set. You can sign in now.',
   captchaHelp: 'Complete the check above to continue.',
 
   // Password and application passwords
@@ -195,6 +198,47 @@ export const en = {
   emailTest: 'Send a test message',
   emailTestTo: 'Recipient',
   emailTestSent: 'Test message sent.',
+  emailSender: 'Sender',
+  emailTransport: 'Send through',
+  emailTransportSmtp: 'SMTP server',
+  emailTransportHttp: 'HTTP mail API',
+  emailPluginTransportHelp: (label: string) =>
+    `Mail is sent through ${label}, provided by a plugin.`,
+  emailPluginTransportMissing:
+    'The selected mail plugin is no longer available, so mail cannot be sent. Choose another way to send and save.',
+  emailFieldRequired: (label: string) => `${label} (required)`,
+  emailProvider: 'Mail service',
+  emailProviderCustom: 'Custom JSON endpoint',
+  emailRegion: 'Region',
+  emailAwsRegion: 'AWS region',
+  emailRegionUs: 'United States (US)',
+  emailRegionEu: 'Europe (EU)',
+  emailRegionDefault: 'Service default',
+  emailSecretReenter:
+    'The service, key ID, address or header changed, so enter the secret again.',
+  emailDomain: 'Sending domain',
+  emailApiKey: 'API key',
+  emailAccessKeyId: 'Access key ID',
+  emailSecretAccessKey: 'Secret access key',
+  emailSecretKey: 'Secret key',
+  emailServerToken: 'Server API token',
+  emailSecretValue: 'Secret value',
+  emailEndpoint: 'Endpoint address (https)',
+  emailAuthHeader: 'Header for the secret',
+  emailAuthHeaderHelp:
+    'The secret value is sent as this header, unchanged (for example "Bearer …" for Authorization). Leave empty to send no header.',
+  emailBodyTemplate: 'JSON body',
+  emailBodyTemplateHelp: (placeholders: string) =>
+    `Put each placeholder alone where a JSON value goes, without quotes, as in "to": {{to}}; it becomes an escaped text value. Available: ${placeholders}.`,
+  emailServerRequired: 'Enter the mail server to send email over SMTP.',
+  emailSenderRequired: 'Enter the sender address to turn on email.',
+  emailProviderFieldRequired: 'This mail service needs this field.',
+  emailRegionInvalid: 'Choose a region this mail service offers.',
+  emailUrlInvalid: 'Use an https:// address.',
+  emailHeaderInvalid: 'Enter a header name such as Authorization.',
+  emailTemplateInvalid:
+    'Enter valid JSON; placeholders such as {{to}} stand for text values.',
+  emailSecretRequired: 'Enter the secret to send email through this service.',
 
   // Content list and editor
   contentTitle: 'Content',
@@ -241,6 +285,7 @@ export const en = {
   restored: 'Restored.',
   sticky: 'Sticky',
   protectedBadge: 'Password',
+  contentInactiveType: 'Inactive type',
   trashedOn: (date: string) => `Trashed ${date}`,
   // Editor
   fieldTitle: 'Title',
@@ -451,6 +496,11 @@ export const en = {
   menuKindCustom: 'Custom link',
   menuHome: 'Home',
   menuMissing: '(not published)',
+  menuPluginItem: (type: string, id: string) => `${type}: ${id}`,
+  menuPluginTypes: 'From plugins',
+  menuPluginType: (label: string, plugin: string) => `${label} (${plugin})`,
+  menuFindObject: (label: string) => `Find ${label}`,
+  menuObjectsFailed: 'Could not load the choices',
   menuLocations: 'Menu locations',
 
   // Appearance: widgets
@@ -897,12 +947,10 @@ export const en = {
   readingCacheHelp:
     'How long a CDN or proxy may serve public pages to visitors who are not signed in. 0 turns it off.',
   settingsSso: 'Single sign-on',
-  ssoEnabled: 'Allow signing in with an identity provider (OpenID Connect)',
   ssoName: 'Button label',
   ssoIssuer: 'Provider address (issuer)',
   ssoClientId: 'Client ID',
   ssoClientSecret: 'Client secret',
-  ssoRemoveSecret: 'Remove the saved secret',
   ssoAuthMethod: 'Client authentication',
   ssoAuthNone: 'None (public client)',
   ssoScopes: 'Scopes',
@@ -910,8 +958,6 @@ export const en = {
   ssoRedirectMissing: 'Set the public site address in SEO settings first.',
   ssoAllowedSubjects:
     'Accounts allowed without linking (one “subject = email” per line)',
-  ssoManagedByEnvironment:
-    'Single sign-on is configured on the server, so these settings are not used.',
 
   // Admin menu and color mode
   navAllContent: 'All content',
@@ -1144,6 +1190,10 @@ export const en = {
   editorStyles: 'Styles',
   editorCustomized: 'Changed',
   editorAdded: 'Added',
+  editorFromPlugin: (plugin: string) => `Plugin: ${plugin}`,
+  editorPluginReadOnly:
+    'A plugin provides this, so it cannot be edited. Choose Customize to make your own copy, which replaces the plugin’s version.',
+  editorCustomize: 'Customize',
   editorAddTemplate: 'Add template',
   editorTemplateKind: 'Template',
   editorTemplateSlug: 'Only for (slug, optional)',
@@ -1352,16 +1402,9 @@ export const en = {
   dashboardNoActivity: 'No activity yet.',
   ssoLinked: 'Linked',
   ssoNotLinked: 'Not linked',
-  ssoLinkHelp: (provider: string) =>
-    `Link an account at ${provider} to sign in to this account with it. Your password keeps working.`,
-  ssoUnavailable: 'Single sign-on is not available on this site.',
   ssoProvider: 'Provider',
   ssoAccountId: 'Account ID',
   ssoLinkedOn: 'Linked on',
-  ssoAssigned:
-    'The site operator has also assigned a single sign-on account to you.',
-  ssoLinkOther: 'Link a different account',
-  ssoLinkWith: (provider: string) => `Link ${provider}`,
   ssoUnlink: 'Unlink',
   ssoUnlinkConfirm: 'Stop signing in with this single sign-on account?',
   ssoBackToAccount: 'Back to account',
@@ -1632,6 +1675,8 @@ export const en = {
   contentSyncedPattern: (title: string) =>
     title ? `Synced pattern: ${title}` : 'Synced pattern',
   patternsTitle: 'Patterns',
+  patternsFromPlugins: 'Patterns from plugins',
+  patternFromPlugin: (plugin: string) => `Plugin: ${plugin}`,
   patternCreate: 'Create pattern',
   patternCreateHelp:
     'Saves the selected blocks as a pattern you can insert into other entries.',
@@ -1688,7 +1733,7 @@ export const en = {
     'Allow only the internal services this site must contact. Metadata and reserved destinations stay blocked.',
   egressRules: 'Allowed destinations',
   egressHelp:
-    'One per line: service host port address[,address]. Services: oidc, search, smtp, webhook. Addresses may use CIDR.',
+    'One per line: service host port address[,address]. Services: oidc, search, smtp, email-api (Email API), webhook. Addresses may use CIDR.',
   egressEnvironment: 'Server-defined destinations',
   egressEnvironmentHelp:
     'These read-only rules come from the server environment.',
@@ -1719,6 +1764,14 @@ export const en = {
   privacyRetained:
     'Published content, uploaded files, and existing URLs remain. Review them separately if they contain personal information.',
   privacyNoRequests: 'No privacy requests.',
+  privacyErasureReport: 'Erasure results',
+  privacyEraserCore: (key: string) => `Site data (${key})`,
+  privacyEraserPlugin: (plugin: string, key: string) =>
+    `Plugin ${plugin} (${key})`,
+  privacyEraserCounts: (erased: number, retained: number) =>
+    `Erased ${erased}, retained ${retained}`,
+  privacyEraserFailed:
+    'Erasure failed. Remove this data manually or try again later.',
   privacyEraseConfirm:
     'Erase this person’s personal data and revoke their sign-in credentials? This cannot be undone.',
   privacyOpenLink: 'Open the confirmation link from your email.',
@@ -1772,4 +1825,211 @@ export const en = {
   mediaUploadedFile: (name: string) => `Uploaded ${name}.`,
   mediaEditedCopy: 'The edited image was saved as a new file.',
   contentCodeCopiedNotice: 'Code copied to the clipboard.',
+  // Single sign-on providers, linking and recovery codes
+  ssoProvidersTitle: 'Identity providers',
+  ssoProvidersHelp:
+    'Each enabled provider gets its own sign-in button. Register the redirect URI below at every provider.',
+  ssoCopyRedirectUri: 'Copy redirect URI',
+  ssoProvidersEmpty: 'No providers yet.',
+  ssoNewProvider: 'New provider',
+  ssoNotSaved: 'Not saved',
+  ssoProviderOn: 'On',
+  ssoProviderOff: 'Off',
+  ssoProviderHasIssues: 'Needs attention',
+  ssoProviderEnabled: 'Show a sign-in button for this provider',
+  ssoProviderId: 'Provider ID',
+  ssoProviderIdHelp:
+    'Lowercase letters, digits and hyphens. It cannot be changed after saving.',
+  ssoProviderIdFixed: 'Saved provider IDs cannot be changed.',
+  ssoAddProvider: 'Add provider',
+  ssoRemoveProvider: 'Remove provider',
+  ssoProvidersMax: (max: number) => `You can add up to ${max} providers.`,
+  ssoEnvironmentProvider: (name: string) =>
+    `Sign-in with ${name} is set up on the server and cannot be changed here. The providers below are kept but not used while it is.`,
+  ssoProviderIdInvalid:
+    'Use 1–32 lowercase letters, digits or hyphens, starting and ending with a letter or digit.',
+  ssoProviderIdDuplicate: 'Another provider already uses this ID.',
+  ssoIssuerRequired:
+    'Enter the provider address and client ID to turn this provider on.',
+  ssoIssuerInvalid: 'Use the provider address, such as https://id.example.com.',
+  ssoScopesOpenid: 'Scopes must include openid.',
+  ssoClaimTokenRequired: 'Open the link from your email again.',
+  ssoPasswordLoginDisabled:
+    'Password sign-in is turned off. Use single sign-on or a recovery code.',
+  ssoProviderRequired:
+    'Turn on at least one provider before turning off password sign-in.',
+  ssoAccessRequired:
+    'Link your account to an enabled provider (or have one assigned) before turning off password sign-in.',
+  ssoLastAccess:
+    'This is your last way to sign in with single sign-on while password sign-in is off, so it cannot be removed.',
+  ssoLinkHelp:
+    'Link an account at a provider to sign in to this account with it.',
+  ssoLink: 'Link',
+  ssoAssignedBadge: 'Assigned',
+  ssoAssigned:
+    'The site operator has assigned an account at this provider to you. It signs in without linking.',
+  ssoOtherAccount: 'Other linked account',
+  ssoProviderUnavailable: 'Provider not in use',
+  ssoAccountLinked: 'Single sign-on account linked.',
+  ssoAccountUnlinked: 'Single sign-on account unlinked.',
+  ssoRequestExpired: 'The sign-in request has expired. Please try again.',
+  ssoClaimRetry:
+    'To try again, open the link from your email again or ask an administrator for a new one.',
+  copyFailed: 'Could not copy. Select the text and copy it yourself.',
+  recoverySignIn: 'Sign in with a recovery code',
+  recoveryCode: 'Recovery code',
+  recoveryCodeHelp: 'Each code works once.',
+  recoveryCodesTitle: 'Recovery codes',
+  recoveryCodesHelp:
+    'If you cannot use your other ways to sign in or two-step verification, sign in with one of these codes. Each code works once.',
+  recoveryCodesNone: 'You have no recovery codes yet.',
+  recoveryCodesStatus: (remaining: number, created: string) =>
+    `${remaining === 1 ? '1 code' : `${remaining} codes`} left · generated ${created}`,
+  recoveryCodesGenerate: 'Generate recovery codes',
+  recoveryCodesRegenerate: 'Generate new codes',
+  recoveryCodesReplaceConfirm:
+    'Generate new recovery codes? Your current codes stop working.',
+  recoveryCodesRemove: 'Remove recovery codes',
+  recoveryCodesRemoveConfirm:
+    'Remove your recovery codes? They stop working immediately.',
+  recoveryCodesShownOnce:
+    'Save these codes somewhere safe now. They are shown only this once.',
+  recoveryCodesCopy: 'Copy codes',
+  recoveryCodesDownload: 'Download (.txt)',
+  recoveryCodesGenerated: 'New recovery codes generated.',
+  recoveryCodesRemoved: 'Recovery codes removed.',
+  // Sign-in methods, steps and second factors
+  signInNoMethods:
+    'No way to sign in is available right now. Ask an administrator for help.',
+  signInContinue: 'Continue',
+  signInCancel: 'Start over',
+  signInCopyCode: 'Copy',
+  signInQrCode: 'QR code to scan with your authenticator app',
+  signInFactorChoose: 'Confirm it’s you with one of these:',
+  signInEnrollChoose:
+    'Your role requires two-step verification. Choose one to set up now:',
+  signInSetupTitle: 'Set up sign-in',
+  signInSetupHelp: 'Choose how you want to sign in to your account.',
+  signInSetupWith: (method: string) => `Set up ${method}`,
+  signInSetupDone: 'Your account is set up. You can sign in now.',
+  signInSetupExpired:
+    'This setup has expired. Open the link from your email again.',
+  signInSetupUnavailable:
+    'Sign-in setup is unavailable right now. Try again in a moment.',
+  signInSetupNone:
+    'This link cannot set up a way to sign in. Ask an administrator for help.',
+  passkeyUse: 'Use passkey',
+  passkeyCreate: 'Create passkey',
+  passkeyUseHelp: 'Use the passkey saved on this device or your phone.',
+  passkeyCreateHelp: 'Your browser will ask where to save the new passkey.',
+  passkeyNeedsScripts:
+    'Passkeys need JavaScript. Turn it on in your browser, or choose another way to sign in.',
+  passkeyUnsupported:
+    'This browser does not support passkeys. Choose another way to sign in.',
+  passkeyFailed:
+    'The passkey was not used. Try again, or choose another way to sign in.',
+  forgotClosed:
+    'Passwords are not used to sign in to this site. Ask an administrator to send you a sign-in link.',
+  usersSendSignInLink: 'Send sign-in setup link',
+  factorsTitle: 'Two-step verification and passkeys',
+  factorsHelp:
+    'A second step after signing in keeps your account safe even if someone learns your password.',
+  factorsRequired: 'Your role requires two-step verification.',
+  factorsRequiredMissing:
+    'Your role requires two-step verification. Set one up below, or you will be asked to the next time you sign in.',
+  factorsNone: 'No second steps are available.',
+  factorSetupTitle: 'Finish setting up',
+  factorSetupCancel: 'Cancel',
+  factorOn: 'On',
+  factorOff: 'Not set up',
+  factorSetUp: 'Set up',
+  factorSetUpAgain: 'Set up again',
+  factorAddAnother: 'Add another',
+  factorRemove: 'Remove',
+  factorRemoveConfirm: (label: string) =>
+    `Remove ${label}? It stops working right away.`,
+  factorAddedOn: (date: string) => `Added ${date}`,
+  factorRecoveryCodesLink: 'Manage recovery codes',
+  factorEnrolled: 'Two-step verification set up.',
+  factorRemoved: 'Removed.',
+  settingsSignIn: 'Sign-in',
+  signInPasswordForced:
+    'The server keeps password sign-in on for everyone, whatever these settings say.',
+  signInMethodsTitle: 'Sign-in methods',
+  signInMethodsHelp:
+    'Allowed methods appear on the sign-in page in this order. Move them up or down to change it.',
+  signInPasswordOff:
+    'Password sign-in is off. Make sure you can sign in another way, and keep your recovery codes somewhere safe.',
+  signInNotReady: 'Not ready',
+  signInNotReadyHelp:
+    'Finish setting this method up; until then it does not appear on the sign-in page.',
+  signInSsoSettings: 'Single sign-on settings',
+  signInMissingHelp:
+    'The plugin that provides this is not active. Uncheck it and save to take it off the list.',
+  signInSourceMissing: 'Unavailable',
+  signInSourcePlugin: (plugin: string) => `Plugin: ${plugin}`,
+  signInMoveUp: (method: string) => `Move ${method} up`,
+  signInMoveDown: (method: string) => `Move ${method} down`,
+  signInFactorsTitle: 'Second steps',
+  signInFactorsHelp:
+    'What users may use to confirm it’s them after signing in, and set up on their account page.',
+  signInRequireTitle: 'Require two-step verification',
+  signInRequireHelp:
+    'Members of these roles must complete a second step. Anyone without one sets it up while signing in.',
+  signInDuplicate: 'Listed more than once.',
+  signInMethodRequired: 'Allow at least one way to sign in.',
+  signInUnknown: 'Choose a registered sign-in method or second step.',
+  signInAccessRequired:
+    'Keep at least one allowed sign-in method that your own account can use.',
+  signInLastFactor:
+    'Your role requires two-step verification, so keep at least one way to do it.',
+  signInExpired: 'This sign-in request is no longer valid. Start again.',
+  recoveryRecentSignIn:
+    'For your security, sign in again before generating recovery codes.',
+  signInInvalidCredentials: 'Invalid email or password.',
+  signInSecondFactorFailed: 'Verification failed. Try again.',
+  authRequired: 'Sign in to continue.',
+  authTooManyAttempts: 'Too many attempts. Please wait a while and try again.',
+  authCaptchaRequired: 'Please confirm that you are not a robot.',
+  authCaptchaInvalid: 'The robot check failed. Please try again.',
+  authPasswordResetLimit:
+    'Too many password reset emails were sent. Try again later.',
+  authPasswordTokenInvalid:
+    'This link is invalid or has expired. Ask for a new one.',
+  authCurrentPasswordWrong: 'The current password is not correct.',
+  authSsoRateLimited:
+    'Too many sign-in attempts. Please wait a minute and try again.',
+  authSsoPendingLimit:
+    'Too many sign-in requests are in progress. Please try again in a few minutes.',
+  authSsoRequestExpired: 'The sign-in request has expired. Please try again.',
+  authSsoLinkSignInRequired:
+    'For your security, sign in again before linking single sign-on.',
+  authSsoAccountUnusable: 'This single sign-on account cannot be used here.',
+  authSsoAccountAssigned:
+    'This account is assigned by the server configuration.',
+  authSsoAccountNotLinked:
+    'This single sign-on account is not linked to an administrator.',
+  authSsoAccountUnlinked:
+    'This single sign-on account is no longer linked. Please try again.',
+  authSsoFailed: 'Single sign-on failed. Please try again.',
+  authSsoAccountLinkedElsewhere:
+    'This single sign-on account is already linked to another administrator.',
+  signInFieldNewPassword: 'New password',
+  pluginFieldSource: (plugin: string) => `Plugin: ${plugin}`,
+  profileFieldsTitle: 'Additional information',
+  profileFieldsHelp:
+    'Private details plugins ask for. They never appear on the public profile.',
+  signInMethodPassword: 'Password',
+  signInMethodPasskey: 'Passkey',
+  signInMethodSso: 'Single sign-on',
+  signInFactorTotp: 'Authenticator app',
+  signInFactorRecoveryCode: 'Recovery code',
+  signInFieldEmail: 'Email',
+  signInFieldPassword: 'Password',
+  signInFieldTotpCode: 'Authentication code',
+  signInFieldRecoveryCode: 'Recovery code',
+  signInFactorRequired:
+    'Allow a second factor users can set up before requiring two-step verification.',
+  recentSignInRequired:
+    'For your security, sign in again before adding a way to sign in to your account.',
 } as const;

@@ -4,8 +4,11 @@ import { authApi, contentApi } from '#lib/server/api.js';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { RETURN_PARAM, returnPath } from '#lib/server/return-path.js';
 import { startSession, takeSignedOut } from '#lib/server/session-cookie.js';
-import { rememberSsoTransaction, ssoApi } from '#lib/server/sso.js';
-import { clientProof, visitorOf } from '#lib/server/visitor.js';
+import { startStep } from '#lib/server/sign-in.js';
+import { methodView } from '#lib/server/sign-in-view.js';
+import { clearPending } from '#lib/server/sso-cookie.js';
+import { allowCaptcha } from '#lib/server/captcha.js';
+import { visitorOf } from '#lib/server/visitor.js';
 
 const loginPath = async (event: RequestEvent) => {
   const path = (await contentApi(event.fetch).site()).loginPath;
@@ -30,60 +33,47 @@ export const loginPage = async (
   const back = returnPath(event.url.searchParams.get(RETURN_PARAM), path);
   if (signedIn) redirect(303, back);
 
-  const [sso, captcha, membership] = await Promise.all([
-    ssoApi(event.fetch).info(),
+  const [info, captcha, membership] = await Promise.all([
+    authApi(event.fetch).signIn.info(),
     contentApi(event.fetch).captcha(),
     authApi(event.fetch).membership(),
   ]);
   return {
     kind: 'login' as const,
-    sso,
-    captcha,
+    signIn: {
+      methods: info.methods.map(methodView),
+      passwordReset: info.passwordReset,
+    },
+    captcha: allowCaptcha(event, captcha),
     membership,
     back,
     signedOut: takeSignedOut(event.cookies, event.url),
   };
 };
 
-/** Sends the browser to the identity provider and remembers its same-site destination. */
-export const loginSsoAction = async (event: RequestEvent) => {
+/** Starts the chosen method (its form, or one of its buttons) with the same-site destination. */
+export const loginStartAction = async (event: RequestEvent) => {
   const path = await loginPath(event);
   const form = await event.request.formData();
-  const back = returnPath(text(form, RETURN_PARAM), path);
-  let start;
-
-  try {
-    start = await ssoApi(event.fetch).start(
-      { intent: 'login' },
-      clientProof(event.getClientAddress()),
-    );
-  } catch (caught) {
-    return failFrom(caught, { back });
-  }
-
-  rememberSsoTransaction(event.cookies, start, event.url, back);
-  redirect(303, start.authorizationUrl, { external: true });
+  return startStep(event, form, returnPath(text(form, RETURN_PARAM), path));
 };
 
-/** Password login at the configured public route. */
-export const loginAction = async (event: RequestEvent) => {
+/** Sign-in with email and a one-time recovery code, protected like password sign-in. */
+export const loginRecoverAction = async (event: RequestEvent) => {
   const path = await loginPath(event);
   const form = await event.request.formData();
   const email = text(form, 'email');
+  const back = returnPath(text(form, RETURN_PARAM), path);
   try {
-    startSession(
-      event.cookies,
-      await authApi(event.fetch).login(
-        { email, password: text(form, 'password') },
-        visitorOf(event, form),
-      ),
-      event.url,
+    const session = await authApi(event.fetch).recover(
+      { email, code: text(form, 'code') },
+      visitorOf(event, form),
     );
+    // Whatever was pending belonged to an earlier visitor of this browser.
+    clearPending(event.cookies, event.url);
+    startSession(event.cookies, session, event.url);
   } catch (caught) {
-    return failFrom(caught, {
-      email,
-      back: returnPath(text(form, RETURN_PARAM), path),
-    });
+    return failFrom(caught, { email, back, recovery: true });
   }
-  redirect(303, returnPath(text(form, RETURN_PARAM), path));
+  redirect(303, back);
 };

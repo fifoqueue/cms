@@ -5,7 +5,10 @@ import { join } from 'node:path';
 import { FsMediaStorage } from '#api/infra/fs-media-storage';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
 import { MediaService } from '#api/domain/media/media-service';
+import { ImageSizes } from '#api/domain/media/image-sizes';
+import { MediaProcessors } from '#api/domain/media/media-processors';
 import type { DomainError } from '#api/shared/errors';
+import { Errors } from '#api/shared/errors';
 import {
   fixedClock,
   recordingLogger,
@@ -48,18 +51,29 @@ test('filesystem uploads release the space lock after each successful commit', a
 const setup = (allowSvg = false) => {
   const repository = new MemoryMediaRepository();
   const storage = new MemoryMediaStorage();
+  const sizes = new ImageSizes();
+  const processors = new MediaProcessors();
+  processors.registerCore({
+    process: ({ bytes, mime }) => fakeImages.clean(bytes, mime),
+  });
+  const hooks = new HookBus({
+    timeoutMs: 50,
+    logger: recordingLogger().logger,
+  });
   const media = new MediaService({
+    processors,
+    sizes,
     repository,
     storage,
     images: fakeImages,
     ids: sequentialIds(),
     clock: fixedClock(),
-    hooks: new HookBus({ timeoutMs: 50, logger: recordingLogger().logger }),
+    hooks,
     limiter: new MemoryRateLimitStore(),
     limits: async () => ({ uploadsPerHour: 60, freeSpaceMb: 256, allowSvg }),
     maxBytes: 1024,
   });
-  return { media, repository, storage };
+  return { media, repository, storage, hooks, sizes, processors };
 };
 
 const author = { id: 'a', role: 'author' };
@@ -67,6 +81,94 @@ const other = { id: 'b', role: 'author' };
 const editor = { id: 'e', role: 'editor' };
 
 describe('media library', () => {
+  test('oversized processor results fall back and bounded sizes fit the TEXT column', async () => {
+    const { media, repository, processors, sizes } = setup();
+    processors.register({ process: () => new Uint8Array(2048) });
+    sizes.register({ name: 'oversize', width: 3000, height: 2000 });
+    for (let i = 0; i < 100; i++)
+      sizes.register({
+        name: `size-${i}-${'x'.repeat(50)}`,
+        width: 100,
+        height: 100,
+      });
+    const uploaded = await media.upload(PNG, 'safe.png', author);
+    expect(uploaded.size).toBe(PNG.length + 1);
+    expect(uploaded.variants.length).toBeLessThanOrEqual(32);
+    expect(uploaded.variants.some(({ name }) => name === 'oversize')).toBe(
+      false,
+    );
+    expect(
+      new TextEncoder().encode(
+        JSON.stringify(repository.rows.get(uploaded.id)!.variants),
+      ).length,
+    ).toBeLessThan(65535);
+  });
+  test('custom derivatives generate on upload and demand, stop after removal, and keep stored files', async () => {
+    const { media, sizes, storage } = setup();
+    const remove = sizes.register({ name: 'card-wide', width: 600 });
+    const first = await media.upload(PNG, 'first.png', author);
+    expect(first.variants.some((variant) => variant.name === 'card-wide')).toBe(
+      true,
+    );
+    expect(await media.derivative(first.id, 'card-wide', author)).toMatchObject(
+      { width: 600 },
+    );
+    const keys = [...storage.files.keys()];
+    remove();
+    expect(await codeOf(media.derivative(first.id, 'card-wide', author))).toBe(
+      'not_found',
+    );
+    const second = await media.upload(PNG, 'second.png', author);
+    expect(
+      second.variants.some((variant) => variant.name === 'card-wide'),
+    ).toBe(false);
+    for (const key of keys) expect(storage.files.has(key)).toBe(true);
+  });
+  test('metadata and filename filters validate output and emit committed metadata', async () => {
+    const { media, hooks } = setup();
+    const plugin = hooks.registrar('metadata');
+    const events: unknown[] = [];
+    plugin.on('media.updated', (value) => {
+      events.push(value);
+    });
+    plugin.filter('media.filename', () => 'renamed.png');
+    plugin.filter('media.filename', () => '../unsafe.png', 20);
+    plugin.filter('media.beforeSave', (value) => ({
+      ...value,
+      alt: '  filtered  ',
+    }));
+    plugin.filter('media.beforeSave', () => ({ alt: 'x'.repeat(501) }), 20);
+    const upload = await media.upload(PNG, 'original.png', author);
+    expect(upload.filename).toBe('renamed.png');
+    const updated = await media.update(upload.id, { alt: 'original' }, author);
+    expect(updated.alt).toBe('filtered');
+    expect(events).toEqual([updated]);
+  });
+  test('upload refusal cannot be reversed and writes no files', async () => {
+    const { media, hooks, storage } = setup();
+    const plugin = hooks.registrar('admission');
+    plugin.filter('media.uploadAllowed', (value) => {
+      expect(value).toEqual({
+        allowed: true,
+        filename: 'cat.png',
+        mime: 'image/png',
+        size: PNG.length,
+      });
+      return { ...value, allowed: false };
+    });
+    plugin.filter(
+      'media.uploadAllowed',
+      (value) => ({ ...value, allowed: true }),
+      20,
+    );
+    expect(await codeOf(media.upload(PNG, 'cat.png', author))).toBe(
+      'forbidden',
+    );
+    expect(storage.files.size).toBe(0);
+    await expect(media.upload(PNG, 'cat.png', author)).rejects.toMatchObject({
+      message: Errors.MediaUploadRefused,
+    });
+  });
   test('UTF BOM uploads cannot bypass SVG policy as MPEG, and valid audio still uploads', async () => {
     const { media, storage } = setup();
     for (const bom of [

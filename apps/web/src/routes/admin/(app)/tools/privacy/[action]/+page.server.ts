@@ -1,8 +1,10 @@
 import { error } from '@sveltejs/kit';
 import { adminFor, requireCapability } from '#lib/server/session.js';
 import { contentApi } from '#lib/server/api.js';
+import { allowCaptcha } from '#lib/server/captcha.js';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { visitorOf } from '#lib/server/visitor.js';
+import { erasureRows } from '#lib/admin/erasure-report.js';
 import type { Actions, PageServerLoad } from './$types';
 const actionOf = (value: string) => {
   if (value !== 'export' && value !== 'erase') error(404, Errors.NotFound);
@@ -22,7 +24,11 @@ export const load: PageServerLoad = async (event) => {
       ),
     ),
   );
-  return { action, requests, captcha: await contentApi(event.fetch).captcha() };
+  return {
+    action,
+    requests,
+    captcha: allowCaptcha(event, await contentApi(event.fetch).captcha()),
+  };
 };
 export const actions: Actions = {
   create: async (event) => {
@@ -41,10 +47,11 @@ export const actions: Actions = {
   erase: async (event) => {
     const form = await event.request.formData();
     try {
-      await adminFor(event).privacy.erase(text(form, 'id'));
+      // Plugin eraser messages are plain text; the page never renders them as HTML.
+      const report = await adminFor(event).privacy.erase(text(form, 'id'));
+      return { notice: 'privacyErased', erasure: erasureRows(report) };
     } catch (error) {
       return failFrom(error);
     }
-    return { notice: 'privacyErased' };
   },
 };

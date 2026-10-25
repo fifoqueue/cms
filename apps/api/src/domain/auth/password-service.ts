@@ -29,6 +29,7 @@ import {
   notFound,
   rateLimited,
   Errors,
+  forbidden,
 } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 
@@ -53,6 +54,7 @@ const LIFETIME: Record<PasswordTokenPurpose, number> = {
 };
 
 export interface PasswordServiceDeps {
+  passwordLogin?: () => Promise<boolean>;
   users: UserRepository;
   tokens: PasswordTokenRepository;
   credentials: CredentialRepository;
@@ -111,6 +113,7 @@ export class PasswordService {
     input: unknown,
     attempt: Omit<Attempt, 'action' | 'account'>,
   ) {
+    await this.allowPassword();
     const { email } = parseInput(passwordResetRequestSchema, input);
     const account = email.toLowerCase();
     const protectedAttempt = {
@@ -167,7 +170,12 @@ export class PasswordService {
       {
         to: user.email,
         subjects,
-        ...templates(site.locale).reset(site.title, link),
+        sensitive: true,
+        ...templates(site.locale).reset(
+          site.title,
+          link,
+          !(await this.passwordLogin()),
+        ),
       },
       new Date(this.deps.clock.now().getTime() + LIFETIME.reset),
     );
@@ -181,7 +189,13 @@ export class PasswordService {
       {
         to: user.email,
         subjects: [user.id],
-        ...templates(site.locale).invite(site.title, user.name, link),
+        sensitive: true,
+        ...templates(site.locale).invite(
+          site.title,
+          user.name,
+          link,
+          !(await this.passwordLogin()),
+        ),
       },
       new Date(this.deps.clock.now().getTime() + LIFETIME.invite),
     );
@@ -189,6 +203,7 @@ export class PasswordService {
 
   /** Sets the password from a reset or invitation link and signs the user out everywhere. */
   async reset(input: unknown) {
+    await this.allowPassword();
     const { token, password } = parseInput(passwordResetSchema, input);
     const tokenHash = this.deps.issuer.digest(token);
     const now = this.deps.clock.now();
@@ -221,5 +236,13 @@ export class PasswordService {
     const site = await this.deps.site();
     if (!site.siteUrl) throw invalidInput(Errors.SiteUrlRequired);
     return site;
+  }
+
+  private passwordLogin() {
+    return this.deps.passwordLogin?.() ?? Promise.resolve(true);
+  }
+  private async allowPassword() {
+    if (!(await this.passwordLogin()))
+      throw forbidden(Errors.PasswordLoginDisabled);
   }
 }

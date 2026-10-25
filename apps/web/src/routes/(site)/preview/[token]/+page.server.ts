@@ -6,12 +6,8 @@ import { withTemplateData } from '#lib/server/theme-queries.js';
 import type { PageServerLoad } from './$types';
 
 /** Unpublished changes rendered by the theme. Never cached or indexed. */
-export const load: PageServerLoad = async ({
-  fetch,
-  params,
-  setHeaders,
-  parent,
-}) => {
+export const load: PageServerLoad = async (event) => {
+  const { fetch, params, setHeaders } = event;
   setHeaders({
     'cache-control': 'no-store',
     'x-robots-tag': 'noindex, nofollow',
@@ -19,7 +15,7 @@ export const load: PageServerLoad = async ({
   });
   const api = contentApi(fetch);
   const content = await api.preview(params.token).catch(notFoundFrom);
-  return withTemplateData(api, parent, {
+  return withTemplateData(api, event, {
     kind: 'preview' as const,
     content: contentView(content),
     slots: emptySlots(),

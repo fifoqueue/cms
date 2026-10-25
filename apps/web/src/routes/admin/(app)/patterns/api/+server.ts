@@ -10,6 +10,21 @@ export const GET: RequestHandler = async (event) => {
   requireCapability(event.locals, 'content.create');
   const id = event.url.searchParams.get('id');
   const headers = { 'cache-control': 'private, no-store' };
+  // Patterns active plugins contribute: insertable copies, labelled by their plugin.
+  if (event.url.searchParams.has('contributions')) {
+    const groups = await adminFor(event).patterns.contributions();
+    return json(
+      groups.flatMap(({ key, source, patterns }) =>
+        patterns.map(({ title, document }, index) => ({
+          id: `${source}:${key}:${index}`,
+          title,
+          source,
+          document,
+        })),
+      ),
+      { headers },
+    );
+  }
   if (id) {
     const {
       id: patternId,

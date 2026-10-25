@@ -1,11 +1,17 @@
 import { authApi, contentApi } from '#lib/server/api.js';
+import { allowCaptcha } from '#lib/server/captcha.js';
 import { failFrom, text } from '#lib/server/errors.js';
+import { passwordAllowed } from '#lib/server/sign-in.js';
 import { visitorOf } from '#lib/server/visitor.js';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ fetch }) => ({
-  captcha: await contentApi(fetch).captcha(),
-});
+export const load: PageServerLoad = async (event) => {
+  const [captcha, passwordReset] = await Promise.all([
+    contentApi(event.fetch).captcha(),
+    passwordAllowed(event.fetch),
+  ]);
+  return { captcha: allowCaptcha(event, captcha), passwordReset };
+};
 
 export const actions: Actions = {
   default: async (event) => {

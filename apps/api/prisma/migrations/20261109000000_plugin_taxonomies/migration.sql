@@ -1,0 +1,1 @@
+ALTER TABLE `taxonomy_terms` MODIFY COLUMN `taxonomy` VARCHAR(136) NOT NULL;

@@ -6,15 +6,24 @@ import {
   userUpdateSchema,
   membershipSchema,
   registrationSchema,
+  publicAuthorSchema,
+  userSaveSchema,
+  userQuerySchema,
 } from '@cms/sdk';
 import { can } from '@cms/sdk';
-import type { AdminUserSummary, PublicAuthor, UserProfile } from '@cms/sdk';
+import type {
+  AdminUserSummary,
+  PublicAuthor,
+  UserProfile,
+  UserSave,
+} from '@cms/sdk';
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import type {
   Attempt,
   ProtectionService,
 } from '#api/domain/security/protection-service';
 import type { RoleService } from '#api/domain/users/role-service';
+import type { ProfileMeta } from '#api/domain/users/profile-meta';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
 import type {
@@ -24,7 +33,7 @@ import type {
   UserRepository,
 } from '#api/domain/auth/ports';
 import { slugify, uniqueSlug } from '#api/domain/content/slug';
-import type { Clock, IdGenerator } from '#api/domain/ports';
+import type { Clock, HookDispatcher, IdGenerator } from '#api/domain/ports';
 import type { SealedJobs } from '#api/domain/jobs/sealed-jobs';
 import { toProfile } from '#api/domain/users/user-mapper';
 import type {
@@ -41,6 +50,8 @@ import {
 import { parseInput } from '#api/shared/validation';
 
 export interface UserServiceDeps {
+  profiles?: ProfileMeta;
+  hooks?: HookDispatcher;
   roles?: RoleService;
   settings?: SettingsRepository;
   protection?: ProtectionService;
@@ -85,19 +96,34 @@ export class UserService {
 
   async list(actor: Actor): Promise<AdminUserSummary[]> {
     authorize(actor, 'users.manage');
-    return (await this.deps.directory.list()).map(toSummary);
+    const query =
+      (await this.deps.hooks?.applyFilter(
+        'user.query',
+        {},
+        (value) => userQuerySchema.safeParse(value).success,
+      )) ?? {};
+    return (await this.deps.directory.list(userQuerySchema.parse(query))).map(
+      toSummary,
+    );
   }
 
   /** A public author archive; only users with published entries have one. */
   async publicAuthor(slug: string): Promise<PublicAuthor> {
     const author = await this.deps.directory.publicAuthor(slug);
     if (!author) throw notFound(Errors.UserNotFound);
-    return {
+    const result: PublicAuthor = {
       name: author.name,
       slug: author.slug,
       bio: author.bio,
       avatarUrl: (await this.deps.avatar?.(`author:${author.slug}`)) ?? null,
     };
+    return publicAuthorSchema.parse(
+      (await this.deps.hooks?.applyFilter(
+        'user.public',
+        result,
+        (value) => publicAuthorSchema.strict().safeParse(value).success,
+      )) ?? result,
+    );
   }
 
   /** Id, name and public slug of every user who can write, for the author picker and filter. */
@@ -127,7 +153,18 @@ export class UserService {
     input: unknown,
     preparedHash?: string,
   ): Promise<AdminUserSummary> {
-    const data = parseInput(userCreateSchema, input);
+    const { password, ...fields } = parseInput(userCreateSchema, input);
+    const filtered = await this.beforeSave({
+      operation: 'create',
+      id: null,
+      data: fields,
+    });
+    // Public registration always creates subscribers, regardless of plugin input changes.
+    const data = {
+      ...filtered.data,
+      role: preparedHash ? 'subscriber' : filtered.data.role,
+      password,
+    };
     await this.deps.roles?.require(data.role);
     const email = data.email.toLowerCase();
     if (!data.password && !(await this.deps.invitations.available()))
@@ -154,8 +191,10 @@ export class UserService {
     };
     if (data.slug) await this.assertSlugFree(data.slug);
     await this.deps.directory.insert(user);
+    const summary = toSummary({ ...user, contentCount: 0 });
+    void this.deps.hooks?.emit('user.created', summary);
     if (!data.password) await this.deps.invitations.send(user);
-    return toSummary({ ...user, contentCount: 0 });
+    return summary;
   }
 
   async membership() {
@@ -177,8 +216,8 @@ export class UserService {
   /** Email possession is proved through the existing single-use password invitation. */
   async register(input: unknown, attempt: Omit<Attempt, 'action' | 'account'>) {
     const data = parseInput(registrationSchema, input);
-    if (!(await this.membership()).enabled)
-      throw invalidInput(Errors.RegistrationClosed);
+    let allowed = (await this.membership()).enabled;
+    if (!allowed) throw invalidInput(Errors.RegistrationClosed);
     await this.deps.protection?.check({
       ...attempt,
       action: 'passwordReset',
@@ -186,6 +225,16 @@ export class UserService {
     });
     if (!(await this.deps.invitations.available()))
       throw invalidInput(Errors.EmailDisabled);
+    await this.deps.hooks?.applyFilter(
+      'user.registrationAllowed',
+      allowed,
+      (value) => {
+        if (typeof value !== 'boolean' || (!allowed && value)) return false;
+        allowed = value;
+        return true;
+      },
+    );
+    if (!allowed) throw invalidInput(Errors.RegistrationClosed);
     await this.deps.sealedJobs.enqueue(
       REGISTRATION_JOB,
       {
@@ -216,10 +265,21 @@ export class UserService {
   /** Changes only the user's role; the profile stays as currently stored. */
   async setRole(id: string, input: unknown, actor: Actor): Promise<void> {
     authorize(actor, 'users.manage');
-    await this.require(id);
-    const { role } = parseInput(userRoleSchema, input);
+    const current = await this.require(id);
+    const {
+      data: { role },
+    } = await this.beforeSave({
+      operation: 'role',
+      id,
+      data: parseInput(userRoleSchema, input),
+    });
     await this.deps.roles?.require(role);
     await this.deps.directory.setRole(id, role);
+    if (current.role !== role)
+      void this.deps.hooks?.emit('user.roleChanged', {
+        user: toProfile({ ...current, role }),
+        previousRole: current.role,
+      });
   }
 
   async update(
@@ -229,7 +289,11 @@ export class UserService {
   ): Promise<AdminUserSummary> {
     authorize(actor, 'users.manage');
     const current = await this.require(id);
-    const data = parseInput(userUpdateSchema, input);
+    const { data } = await this.beforeSave({
+      operation: 'update',
+      id,
+      data: parseInput(userUpdateSchema, input),
+    });
     await this.deps.roles?.require(data.role);
     const email = data.email.toLowerCase();
     await this.assertEmailFree(email, id);
@@ -243,13 +307,21 @@ export class UserService {
       bio: data.bio,
       locale: current.locale,
     });
-    return this.summary(id);
+    const result = await this.summary(id);
+    const profile = toProfile({ ...current, ...data, email });
+    void this.deps.hooks?.emit('user.updated', profile);
+    if (current.role !== data.role)
+      void this.deps.hooks?.emit('user.roleChanged', {
+        user: profile,
+        previousRole: current.role,
+      });
+    return result;
   }
 
   async remove(id: string, input: unknown, actor: Actor): Promise<void> {
     authorize(actor, 'users.manage');
     if (id === actor.id) throw conflict(Errors.UserDeleteSelf);
-    await this.require(id);
+    const current = await this.require(id);
     const { reassignTo } = parseInput(userDeleteSchema, input);
     if (
       reassignTo !== undefined &&
@@ -259,12 +331,20 @@ export class UserService {
         { path: 'reassignTo', message: Errors.ReassignTargetInvalid },
       ]);
     await this.deps.directory.delete(id, reassignTo ?? null);
+    void this.deps.hooks?.emit('user.deleted', {
+      user: toProfile(current),
+      reassignTo: reassignTo ?? null,
+    });
   }
 
   /** Changes the signed-in user's own profile; the role is never changed here. */
   async updateProfile(input: unknown, actor: Actor): Promise<UserProfile> {
     const current = await this.require(actor.id);
-    const data = parseInput(profileUpdateSchema, input);
+    const { data } = await this.beforeSave({
+      operation: 'profile',
+      id: actor.id,
+      data: parseInput(profileUpdateSchema, input),
+    });
     const email = data.email.toLowerCase();
     if (email !== current.email && !can(actor, 'users.manage'))
       throw invalidInput(Errors.EmailChangeRestricted, [
@@ -282,7 +362,11 @@ export class UserService {
     });
     const profile = toProfile(await this.require(current.id));
     if (this.deps.roles)
-      profile.capabilities = await this.deps.roles.capabilities(profile.role);
+      profile.capabilities = await this.deps.roles.capabilities(
+        profile.role,
+        profile.id,
+      );
+    void this.deps.hooks?.emit('user.updated', profile);
     return profile;
   }
 
@@ -290,6 +374,34 @@ export class UserService {
     const user = await this.deps.directory.get(id);
     if (!user) throw notFound(Errors.UserNotFound);
     return toSummary(user);
+  }
+
+  async profileFields(id: string, actor: Actor) {
+    if (id !== actor.id) authorize(actor, 'users.manage');
+    await this.require(id);
+    return this.deps.profiles?.get(id) ?? { fields: [], values: {} };
+  }
+
+  async saveProfileFields(id: string, input: unknown, actor: Actor) {
+    if (id !== actor.id) authorize(actor, 'users.manage');
+    const user = await this.require(id);
+    if (!this.deps.profiles) throw invalidInput(Errors.UserNotFound);
+    const result = await this.deps.profiles.save(id, input);
+    void this.deps.hooks?.emit('user.updated', toProfile(user));
+    return result;
+  }
+
+  private async beforeSave<T extends UserSave>(input: T): Promise<T> {
+    const result =
+      (await this.deps.hooks?.applyFilter('user.beforeSave', input, (value) => {
+        const parsed = userSaveSchema.safeParse(value);
+        return (
+          parsed.success &&
+          parsed.data.operation === input.operation &&
+          parsed.data.id === input.id
+        );
+      })) ?? input;
+    return userSaveSchema.parse(result) as T;
   }
 
   private async require(id: string) {

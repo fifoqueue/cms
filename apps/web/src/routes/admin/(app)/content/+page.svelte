@@ -464,6 +464,9 @@
               <span class="ml-1 inline-flex gap-1 align-middle">
                 {#if item.sticky}<Badge variant="outline">{m.sticky}</Badge
                   >{/if}
+                {#if item.inactiveType}<Badge variant="secondary"
+                    >{m.contentInactiveType}</Badge
+                  >{/if}
                 {#if item.protected}<Badge variant="outline"
                     >{m.protectedBadge}</Badge
                   >{/if}

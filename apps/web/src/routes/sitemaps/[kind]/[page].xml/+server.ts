@@ -7,6 +7,7 @@ import {
   sitemapChunk,
   sitemapChunkCount,
 } from '#lib/server/seo-discovery.js';
+import { notFoundFrom } from '#lib/server/errors.js';
 import type { RequestHandler } from './$types';
 
 /** `/sitemaps/<kind>/<page>.xml`: one API page of sitemap entries. */
@@ -18,7 +19,10 @@ export const GET: RequestHandler = async ({ fetch, params }) => {
   const api = contentApi(fetch);
   const [settings, entries, reading] = await Promise.all([
     api.seo.settings(),
-    api.seo.sitemap({ kind, page, pageSize: SEO_SITEMAP_PAGE_SIZE }),
+    // Any registered provider kind; an unknown one is a 404 from the API.
+    api.seo
+      .sitemap({ kind, page, pageSize: SEO_SITEMAP_PAGE_SIZE })
+      .catch(notFoundFrom),
     api.reading().catch(() => null),
   ]);
   if (

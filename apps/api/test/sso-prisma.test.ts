@@ -7,6 +7,8 @@ import {
 } from '#api/infra/prisma/auth-repositories';
 import { createDatabase } from '#api/infra/prisma/client';
 import { userRecord } from '#test/support/memory';
+import { PrismaCredentialRepository } from '#api/infra/prisma/credentials';
+import { PrismaSignInTransactions } from '#api/infra/prisma/sign-in-transactions';
 import type { Database } from '#api/infra/prisma/client';
 import {
   PrismaIdentityRepository,
@@ -154,17 +156,85 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
       id: 'case-i4',
     });
     expect(await identities.find(ISSUER, 'ALICE')).toBeNull();
-    expect(await identities.findByUser('case-1')).toEqual({
-      id: 'case-i1',
-      issuer: ISSUER,
-      subject: 'Alice',
-      userId: 'case-1',
-      createdAt: expect.any(Date),
-    });
+    expect(await identities.findByUser('case-1')).toEqual([
+      {
+        id: 'case-i1',
+        issuer: ISSUER,
+        subject: 'Alice',
+        userId: 'case-1',
+        createdAt: expect.any(Date),
+      },
+    ]);
 
     await expect(link('case-i5', 'case-5', 'alice')).rejects.toMatchObject({
       code: 'conflict',
     });
+  });
+
+  test('claims revoke sibling proofs, refuse replacement, and credential/session revocation clears recovery codes', async () => {
+    await users('claim-security');
+    const identity = {
+      id: 'claim-sec-id',
+      userId: 'claim-security',
+      issuer: ISSUER,
+      subject: 'claim-sec',
+      createdAt: new Date(),
+    };
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 60000);
+    const tokens = ['claim-sec-1', 'claim-sec-2'].map((label) => ({
+      tokenHash: hash(label),
+      userId: identity.userId,
+      purpose: 'invite' as const,
+      expiresAt,
+    }));
+    await db.passwordToken.createMany({ data: tokens });
+    const identities = new PrismaIdentityRepository(db);
+    expect(await identities.claim(identity, tokens[0]!.tokenHash, now)).toBe(
+      true,
+    );
+    expect(
+      await db.passwordToken.count({ where: { userId: identity.userId } }),
+    ).toBe(0);
+    await db.passwordToken.create({ data: tokens[1]! });
+    expect(
+      await identities.claim(
+        { ...identity, id: 'claim-sec-replace', subject: 'replacement' },
+        tokens[1]!.tokenHash,
+        now,
+      ),
+    ).toBe(false);
+    expect((await identities.findByUser(identity.userId))[0]!.subject).toBe(
+      'claim-sec',
+    );
+    const addCode = () =>
+      db.recoveryCode.create({
+        data: {
+          id: 'sec-code',
+          userId: identity.userId,
+          codeHash: hash('sec-code'),
+          createdAt: now,
+        },
+      });
+    const credentials = new PrismaCredentialRepository(db);
+    await addCode();
+    await credentials.change(identity.userId, 'new-hash', null);
+    expect(
+      await db.recoveryCode.count({ where: { userId: identity.userId } }),
+    ).toBe(0);
+    await addCode();
+    await db.passwordToken.create({ data: tokens[0]! });
+    expect(
+      await credentials.reset(tokens[0]!.tokenHash, now, 'reset-hash'),
+    ).toBe(true);
+    expect(
+      await db.recoveryCode.count({ where: { userId: identity.userId } }),
+    ).toBe(0);
+    await addCode();
+    await new PrismaSessionRepository(db).deleteForUser(identity.userId);
+    expect(
+      await db.recoveryCode.count({ where: { userId: identity.userId } }),
+    ).toBe(0);
   });
 
   test('sessions die with their identity, and a removed identity cannot get new ones', async () => {
@@ -182,6 +252,31 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
       });
 
     await linkAs('rev-i1', 'rev-1', 'rev-subject-1');
+    const pending = new PrismaSignInTransactions(db);
+    const now = new Date();
+    expect(
+      await pending.admit(
+        {
+          handleHash: hash('bound-step'),
+          stage: 'secondFactor',
+          methodId: 'sso',
+          factorId: null,
+          userId: 'rev-1',
+          identityId: 'rev-i1',
+          setupTokenHash: null,
+          state: null,
+          clientKey: hash('client'),
+          expiresAt,
+        },
+        now,
+        { total: 100, perClient: 10 },
+      ),
+    ).toBe(true);
+    expect(
+      (await pending.acquire(hash('bound-step'), hash('client'), now))
+        ?.identityId,
+    ).toBe('rev-i1');
+    await pending.release(hash('bound-step'), now);
     await sessions.insert({
       tokenHash: hash('rev-sso'),
       userId: 'rev-1',
@@ -197,7 +292,10 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
       expiresAt,
     });
 
-    await identities.unlink('rev-1');
+    await identities.unlink('rev-1', 'rev-i1');
+    expect(
+      await pending.acquire(hash('bound-step'), hash('client'), now),
+    ).toBeNull();
 
     expect(await sessions.find(hash('rev-sso'))).toBeNull();
     expect(await sessions.find(hash('rev-password'))).toMatchObject({
@@ -227,9 +325,11 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
     });
     await linkAs('rev-i3', 'rev-2', 'rev-subject-3');
     expect(await sessions.find(hash('rev-old'))).toBeNull();
-    expect(await identities.findByUser('rev-2')).toMatchObject({
-      id: 'rev-i3',
-    });
+    expect(await identities.findByUser('rev-2')).toMatchObject([
+      {
+        id: 'rev-i3',
+      },
+    ]);
   });
 
   test(
@@ -268,8 +368,8 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
           await old.$executeRawUnsafe(statement);
 
         const identities = new PrismaIdentityRepository(old);
-        const u1 = await identities.findByUser('u1');
-        const u2 = await identities.findByUser('u2');
+        const [u1] = await identities.findByUser('u1');
+        const [u2] = await identities.findByUser('u2');
 
         expect(u1).toMatchObject({ issuer: ISSUER, subject: 'Alice' });
         expect(u2).toMatchObject({ issuer: ISSUER, subject: 'Zoë ' });
@@ -279,6 +379,20 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
         expect(await old.session.count()).toBe(0);
         expect(await old.ssoTransaction.count()).toBe(0);
         expect(await old.user.count()).toBe(2);
+        for (const statement of await statementsOf(
+          '20261109000000_sso_providers_recovery',
+        ))
+          await old.$executeRawUnsafe(statement);
+        expect(await identities.findByUser('u1')).toEqual([u1!]);
+        expect(await identities.findByUser('u2')).toEqual([u2!]);
+        await identities.link({
+          id: 'second-issuer',
+          issuer: 'https://second.example',
+          subject: 'Alice',
+          userId: 'u1',
+          createdAt: new Date(),
+        });
+        expect(await identities.findByUser('u1')).toHaveLength(2);
       } finally {
         await old.$disconnect();
         await server.$executeRawUnsafe(`DROP DATABASE \`${upgrade}\``);
@@ -297,6 +411,8 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
         client: string,
         expiresAt = new Date(now.getTime() + 600_000),
       ): SsoTransactionRecord => ({
+        providerId: 'default',
+        claimTokenHash: null,
         handleHash: hash(label),
         state: 'state',
         nonce: 'nonce',

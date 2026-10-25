@@ -31,7 +31,7 @@ export const load: PageServerLoad = async (event) => {
       query ? listPosts(api, url, { search: query }, pageSize) : null,
       loadSlots(api, { path: url.pathname }),
     ]);
-    return withTemplateData(publicApi, parent, {
+    return withTemplateData(publicApi, event, {
       kind: 'search' as const,
       query,
       posts,
@@ -58,7 +58,7 @@ export const load: PageServerLoad = async (event) => {
     latestPosts(api, type, page, pageSize),
     loadSlots(api, { path: url.pathname }),
   ]);
-  return withTemplateData(publicApi, parent, {
+  return withTemplateData(publicApi, event, {
     kind: 'home' as const,
     type,
     posts,

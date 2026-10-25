@@ -6,14 +6,23 @@ import { Errors } from '#sdk/errors';
 /** Types every site has. They cannot be removed, and their keys are reserved. */
 export const BUILTIN_CONTENT_TYPES = ['post', 'article', 'page'] as const;
 
-/** A content type key: built-in or administrator-defined, kebab-case. */
-export const contentTypeKeySchema = z
+/** Stored administrator keys retain their original validation. */
+const customTypeKeySchema = z
   .string()
   .trim()
   .toLowerCase()
   .min(1)
   .max(32)
   .regex(KEBAB_CASE);
+
+/** Plugin keys are namespaced; existing built-in and custom keys stay valid. */
+export const contentTypeKeySchema = z.union([
+  customTypeKeySchema,
+  z
+    .string()
+    .max(136)
+    .regex(/^plugin:[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/),
+]);
 
 /** What the editor offers for entries of a type. */
 export const contentTypeSupportsSchema = z.object({
@@ -48,7 +57,9 @@ export const contentTypeSchema = z.object({
 export type ContentTypeDefinition = z.output<typeof contentTypeSchema>;
 
 /** Creating or changing a custom type; `builtin` is never accepted from clients. */
-export const contentTypeInputSchema = contentTypeSchema.omit({ builtin: true });
+export const contentTypeInputSchema = contentTypeSchema
+  .omit({ builtin: true })
+  .extend({ key: customTypeKeySchema });
 
 export type ContentTypeInput = z.input<typeof contentTypeInputSchema>;
 
@@ -68,12 +79,18 @@ export type FieldType = (typeof FIELD_TYPES)[number];
 /** A custom field shown in the editor for the listed content types. */
 export const fieldDefinitionSchema = z
   .object({
-    key: z
-      .string()
-      .trim()
-      .min(1)
-      .max(64)
-      .regex(/^[a-z][a-z0-9_]*$/),
+    key: z.union([
+      z
+        .string()
+        .trim()
+        .min(1)
+        .max(64)
+        .regex(/^[a-z][a-z0-9_]*$/),
+      z
+        .string()
+        .max(136)
+        .regex(/^plugin:[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    ]),
     label: z.string().trim().min(1).max(100),
     type: z.enum(FIELD_TYPES),
     /** Choices of a `select` field. */
@@ -94,7 +111,7 @@ export type FieldDefinitionInput = z.input<typeof fieldDefinitionSchema>;
 
 /** Values of an entry's custom fields: plain JSON by key. */
 export const fieldValuesSchema = z
-  .record(z.string().max(64), z.unknown())
+  .record(z.string().max(136), z.unknown())
   .refine((values) => isJsonValue(values), Errors.FieldValuesInvalid);
 
 export type FieldValues = Record<string, unknown>;

@@ -8,6 +8,10 @@ import { dashboardPreferencesSchema } from '#sdk/dashboard';
 import type { DashboardPreferences } from '#sdk/dashboard';
 // HTTP clients for the API. Frontends must talk to the API through these only.
 import { z } from 'zod';
+import { capabilityInfoSchema } from '#sdk/capability-contracts';
+import type { CapabilityInfo } from '#sdk/capability-contracts';
+import { discoveryFilterSchemas } from '#sdk/hooks/seo';
+import type { SeoFilterHooks } from '#sdk/hooks/seo';
 import { publicPrivacyClient, privacyAdminClient } from '#sdk/clients/privacy';
 import { createTransport, pageSchema } from '#sdk/transport';
 import { profileClient, usersClient } from '#sdk/clients/users';
@@ -40,12 +44,15 @@ import {
   visitorHeaders,
 } from '#sdk/clients/security';
 import type { ClientProof, Visitor } from '#sdk/clients/security';
+import { signInAdminClient, signInClient } from '#sdk/clients/sign-in';
 import type { ClientOptions, Query } from '#sdk/transport';
 import type {
   SessionGrant,
   SessionInfo,
   SetupStatus,
   LoginInput,
+  RecoveryCodesStatus,
+  RecoveryLoginInput,
   SsoCallbackInput,
   SsoCallbackResult,
   SsoIdentityStatus,
@@ -65,6 +72,8 @@ import {
   ssoStartResultSchema,
   ssoCallbackResultSchema,
   ssoIdentityStatusSchema,
+  recoveryCodesSchema,
+  recoveryCodesStatusSchema,
 } from '#sdk/auth';
 import type { Paginated } from '#sdk/common';
 import type {
@@ -199,6 +208,47 @@ export const createContentClient = (options: ClientOptions, token?: string) => {
         }),
     },
     seo: {
+      /** Ordered results; one admission/body budget covers the entire batch. */
+      filterBatch: (
+        inputs: {
+          [K in keyof typeof discoveryFilterSchemas]: {
+            kind: K;
+            value: SeoFilterHooks[K];
+          };
+        }[keyof typeof discoveryFilterSchemas][],
+        proof: ClientProof,
+      ) =>
+        request<unknown[]>('POST', '/api/v1/seo/filter', {
+          json: inputs,
+          headers: visitorHeaders({ proof }),
+          response: z
+            .array(z.unknown())
+            .length(inputs.length)
+            .refine((values) =>
+              values.every(
+                (value, index) =>
+                  discoveryFilterSchemas[inputs[index]!.kind].safeParse(value)
+                    .success,
+              ),
+            ),
+        }),
+      /** Server-only: never expose the frontend proof to browser code. */
+      filter: <K extends keyof typeof discoveryFilterSchemas>(
+        kind: K,
+        value: SeoFilterHooks[K],
+        proof: ClientProof,
+      ) =>
+        request<SeoFilterHooks[K]>('POST', '/api/v1/seo/filter', {
+          json: { kind, value },
+          headers: visitorHeaders({ proof }),
+          response: discoveryFilterSchemas[kind] as unknown as z.ZodType<
+            SeoFilterHooks[K]
+          >,
+        }),
+      providers: () =>
+        request<string[]>('GET', '/api/v1/seo/providers', {
+          response: z.array(z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)),
+        }),
       settings: () =>
         request<PublicSeoSettings>('GET', '/api/v1/seo', {
           response: publicSeoSettingsSchema,
@@ -276,6 +326,26 @@ export const createAuthClient = (options: ClientOptions, token?: string) => {
         response: sessionGrantSchema,
         headers: visitorHeaders(visitor),
       }),
+    /** Signs in with email and a one-time recovery code; the code is used up. */
+    recover: (input: RecoveryLoginInput, visitor?: Visitor) =>
+      request<SessionGrant>('POST', '/api/v1/auth/recovery', {
+        json: input,
+        response: sessionGrantSchema,
+        headers: visitorHeaders(visitor),
+      }),
+    /** The signed-in administrator's recovery codes (`settings.manage`). */
+    recoveryCodes: {
+      status: () =>
+        request<RecoveryCodesStatus>('GET', '/api/v1/auth/recovery-codes', {
+          response: recoveryCodesStatusSchema,
+        }),
+      /** Replaces any previous set; the returned codes are never shown again. */
+      generate: () =>
+        request<{ codes: string[] }>('POST', '/api/v1/auth/recovery-codes', {
+          response: recoveryCodesSchema,
+        }),
+      remove: () => request<void>('DELETE', '/api/v1/auth/recovery-codes'),
+    },
     membership: () =>
       request<{ enabled: boolean }>('GET', '/api/v1/auth/register', {
         response: membershipSchema,
@@ -287,6 +357,7 @@ export const createAuthClient = (options: ClientOptions, token?: string) => {
       }),
     password: passwordRecoveryClient(request),
     ...credentialsClient(request),
+    ...signInClient(request),
     logout: () => request<void>('POST', '/api/v1/auth/logout'),
     me: () =>
       request<UserProfile>('GET', '/api/v1/auth/me', {
@@ -318,7 +389,7 @@ export const createSsoClient = (options: ClientOptions, token?: string) => {
         response: ssoInfoSchema,
       }),
     /** Without `client`, the request counts against a quota shared by all unproven clients. */
-    start: (input: SsoStartInput = {}, client?: ClientProof) =>
+    start: (input: SsoStartInput, client?: ClientProof) =>
       request<SsoStart>('POST', '/api/v1/auth/sso/start', {
         json: input,
         response: ssoStartResultSchema,
@@ -336,7 +407,12 @@ export const createSsoClient = (options: ClientOptions, token?: string) => {
       request<SsoIdentityStatus>('GET', '/api/v1/auth/sso/identity', {
         response: ssoIdentityStatusSchema,
       }),
-    unlink: () => request<void>('DELETE', '/api/v1/auth/sso/identity'),
+    /** `id` from `identity().identities`. */
+    unlink: (id: string) =>
+      request<void>(
+        'DELETE',
+        `/api/v1/auth/sso/identity/${encodeURIComponent(id)}`,
+      ),
   };
 };
 
@@ -353,6 +429,10 @@ export const createAdminClient = (options: ClientOptions, token: string) => {
     `/api/v1/admin/themes/${encodeURIComponent(id)}`;
   return {
     roles: {
+      capabilities: () =>
+        request<CapabilityInfo[]>('GET', '/api/v1/admin/capabilities', {
+          response: capabilityInfoSchema.array(),
+        }),
       list: () =>
         request<RoleDefinition[]>('GET', '/api/v1/admin/roles', {
           response: roleDefinitionSchema.array(),
@@ -415,6 +495,7 @@ export const createAdminClient = (options: ClientOptions, token: string) => {
     ...privacyAdminClient(request),
     ...securityAdminClient(request),
     ...ssoAdminClient(request),
+    ...signInAdminClient(request),
     archivePaths: {
       get: () =>
         request<ArchivePathsState>('GET', '/api/v1/permalinks/archives', {

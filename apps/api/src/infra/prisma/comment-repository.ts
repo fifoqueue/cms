@@ -369,7 +369,6 @@ export class PrismaCommentRepository implements CommentRepository {
       select: { id: true },
       take: limit,
     });
-    if (rows.length) await this.delete(rows.map((row) => row.id));
-    return rows.length;
+    return rows.length ? this.delete(rows.map((row) => row.id)) : [];
   }
 }

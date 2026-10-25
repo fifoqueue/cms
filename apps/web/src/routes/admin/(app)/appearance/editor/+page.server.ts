@@ -46,9 +46,46 @@ const editorView = ({
   name,
   settings,
   styles,
-  templates,
-  parts,
+  // `source` is `theme`, `admin` or the contributing plugin's id.
+  templates: templates.map(
+    ({ name, blocks, inTheme, customized, source, readOnly }) => ({
+      name,
+      blocks,
+      inTheme,
+      customized,
+      source,
+      readOnly,
+    }),
+  ),
+  parts: parts.map(
+    ({ slug, title, area, blocks, inTheme, customized, source, readOnly }) => ({
+      slug,
+      title,
+      area,
+      blocks,
+      inTheme,
+      customized,
+      source,
+      readOnly,
+    }),
+  ),
 });
+
+/** A template (by name) or part (by slug) of the site editor. */
+const itemOf = (editor: ThemeEditor, kind: 'template' | 'part', key: string) =>
+  kind === 'part'
+    ? editor.parts.find((part) => part.slug === key)
+    : editor.templates.find((template) => template.name === key);
+
+/** Plugin-provided items stay read-only until customized (`customize`). */
+const readOnly = (
+  editor: ThemeEditor,
+  kind: 'template' | 'part',
+  key: string,
+) => itemOf(editor, kind, key)?.readOnly === true;
+
+const readOnlyFailure = () =>
+  fail(409, { message: Errors.ThemeItemReadOnly, code: 'conflict' });
 
 /** `?theme=` picks the theme (the active one by default), `?edit=` what to edit. */
 export const load: PageServerLoad = async (event) => {
@@ -187,12 +224,44 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const read = readBlocks(form.get('blocks'));
     if ('failure' in read) return read.failure;
+    const admin = adminFor(event);
+    const theme = text(form, 'theme');
+    const name = text(form, 'name');
+    try {
+      if (readOnly(await admin.themes.editor(theme), 'template', name))
+        return readOnlyFailure();
+    } catch (caught) {
+      return failFrom(caught);
+    }
     return submitAction(() =>
-      adminFor(event).themes.saveTemplate(
-        text(form, 'theme'),
-        text(form, 'name'),
-        read.blocks,
-      ),
+      admin.themes.saveTemplate(theme, name, read.blocks),
+    );
+  },
+  /**
+   * Turns a read-only plugin template or part into the administrator's own copy: its current
+   * blocks are saved as a customization, which then overrides the plugin's version.
+   */
+  customize: async (event) => {
+    const form = await event.request.formData();
+    const theme = text(form, 'theme');
+    const kind = text(form, 'kind') === 'part' ? 'part' : 'template';
+    const key = text(form, 'key');
+    const admin = adminFor(event);
+    try {
+      const editor = await admin.themes.editor(theme);
+      const item = itemOf(editor, kind, key);
+      if (!item) return fail(404, { message: Errors.NotFound });
+      if (item.readOnly) {
+        if (kind === 'part')
+          await admin.themes.savePart(theme, key, item.blocks);
+        else await admin.themes.saveTemplate(theme, key, item.blocks);
+      }
+    } catch (caught) {
+      return failFrom(caught);
+    }
+    redirect(
+      303,
+      `?theme=${encodeURIComponent(theme)}&edit=${encodeURIComponent(`${kind}:${key}`)}`,
     );
   },
   resetTemplate: async (event) => {
@@ -208,13 +277,16 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const read = readBlocks(form.get('blocks'));
     if ('failure' in read) return read.failure;
-    return submitAction(() =>
-      adminFor(event).themes.savePart(
-        text(form, 'theme'),
-        text(form, 'slug'),
-        read.blocks,
-      ),
-    );
+    const admin = adminFor(event);
+    const theme = text(form, 'theme');
+    const slug = text(form, 'slug');
+    try {
+      if (readOnly(await admin.themes.editor(theme), 'part', slug))
+        return readOnlyFailure();
+    } catch (caught) {
+      return failFrom(caught);
+    }
+    return submitAction(() => admin.themes.savePart(theme, slug, read.blocks));
   },
   resetPart: async (event) => {
     const form = await event.request.formData();

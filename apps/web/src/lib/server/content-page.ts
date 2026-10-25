@@ -1,6 +1,7 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import type { PublicContent, PublicContentType, SlotMap } from '@cms/sdk';
 import type { ContentClient } from '@cms/sdk/client';
+import { allowCaptcha } from '#lib/server/captcha.js';
 import { commentAction, loadComments } from '#lib/server/comments.js';
 import { moderateCommentAction } from '#lib/server/comment-moderation.js';
 import { unlockAction } from '#lib/server/unlock.js';
@@ -10,6 +11,8 @@ import { Errors } from '#lib/server/errors.js';
 import { contentView, pageParam } from '#lib/server/public-view.js';
 import type { BlockData } from '#lib/server/theme-queries.js';
 import type { ThemePage } from '#lib/theme/template.js';
+import { withSeoMeta } from '#lib/server/page-meta.js';
+import type { HeadLayout } from '#lib/server/page-meta.js';
 
 /** Form actions of every page that can show an entry: unlocking, commenting, moderating. */
 export const entryActions = {
@@ -27,8 +30,14 @@ export const entryPage = async (
   api: ContentClient,
   event: Pick<
     RequestEvent,
-    'url' | 'cookies' | 'fetch' | 'request' | 'setHeaders'
-  >,
+    | 'url'
+    | 'cookies'
+    | 'fetch'
+    | 'request'
+    | 'setHeaders'
+    | 'locals'
+    | 'getClientAddress'
+  > & { parent: () => Promise<HeadLayout> },
   content: PublicContent,
   types: Promise<PublicContentType[]>,
   slots: Promise<SlotMap>,
@@ -46,14 +55,18 @@ export const entryPage = async (
     pages: { current, total: parts.length },
   };
   const captcha = api.captcha().catch(() => null);
-  const [definitions, comments, unlockCaptcha, blocks, loadedSlots] =
+  const page = { kind: 'content' as const, content: view };
+  const [definitions, comments, unlockCaptcha, blocks, loadedSlots, meta] =
     await Promise.all([
       types,
       content.protected ? null : loadComments(api, content.id, event, captcha),
       content.protected ? captcha : null,
-      templateData({ kind: 'content', content: view }),
+      templateData(page),
       slots,
+      withSeoMeta(event, () => event.parent(), page),
     ]);
+  // The comment form or the unlock form may render the captcha widget.
+  allowCaptcha(event, comments?.captcha ?? unlockCaptcha);
   return {
     kind: 'content' as const,
     content: view,
@@ -66,6 +79,7 @@ export const entryPage = async (
     /** Set after a held comment was sent. */
     moderation: event.url.searchParams.has('moderation'),
     slots: loadedSlots,
+    seoMeta: meta.seoMeta,
     ...blocks,
   };
 };

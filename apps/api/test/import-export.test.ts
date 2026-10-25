@@ -23,9 +23,15 @@ import { MemoryCommentRepository } from '#test/support/memory-comments';
 import { MemoryTaxonomyRepository } from '#test/support/memory-taxonomy';
 import { MemoryUserDirectory } from '#test/support/memory-users';
 import { MemoryUsers } from '#test/support/sso-memory';
+import { HookBus } from '#api/plugin-runtime/hook-bus';
+import { recordingLogger } from '#test/support/memory';
 
 /** One site on in-memory adapters. */
 const site = async (accounts?: Pick<UserService, 'create'>) => {
+  const hooks = new HookBus({
+    timeoutMs: 50,
+    logger: recordingLogger().logger,
+  });
   const content = new MemoryContentRepository();
   const ids = sequentialIds();
   const clock = fixedClock('2026-06-01T00:00:00.000Z');
@@ -50,6 +56,7 @@ const site = async (accounts?: Pick<UserService, 'create'>) => {
     locations: { primary: null, footer: null },
   };
   return {
+    hooks,
     content,
     service,
     taxonomy,
@@ -57,6 +64,7 @@ const site = async (accounts?: Pick<UserService, 'create'>) => {
     patterns,
     clock,
     importer: new ImportService({
+      hooks,
       parser: fastXmlWxrParser,
       html: tiptapHtmlParser,
       content: service,
@@ -80,6 +88,7 @@ const site = async (accounts?: Pick<UserService, 'create'>) => {
     }),
     menus: () => menus,
     exporter: new ExportService({
+      hooks,
       content,
       terms,
       comments,
@@ -89,6 +98,61 @@ const site = async (accounts?: Pick<UserService, 'create'>) => {
     }),
   };
 };
+
+test('WXR extension items round trip, validate filters, and emit completion', async () => {
+  const source = await site();
+  const target = await site();
+  const actions: unknown[] = [];
+  source.hooks.registrar('test').on('export.generated', (value) => {
+    actions.push(value);
+  });
+  target.hooks.registrar('test').on('import.completed', (value) => {
+    actions.push(value);
+  });
+  source.hooks.registrar('test').filter('export.data', () => [
+    {
+      id: 'extra',
+      type: 'post',
+      title: 'Extra',
+      slug: 'extra',
+      html: '<p>Hello</p>',
+      excerpt: '',
+      status: 'publish',
+      publishedAt: null,
+      author: '',
+      password: 'open-sesame',
+      sticky: false,
+      commentsOpen: true,
+      categories: [],
+      tags: [],
+      comments: [],
+    },
+  ]);
+  source.hooks.registrar('bad').filter('export.data', () => [null] as never);
+  source.hooks
+    .registrar('oversized')
+    .filter('export.data', (items) =>
+      items.map((item) => ({ ...item, html: 'x'.repeat(16 * 1024 * 1024) })),
+    );
+  let items = 0;
+  target.hooks.registrar('test').filter('import.item', (item) => {
+    items++;
+    expect(item).not.toHaveProperty('password');
+    return { ...item, title: 'Changed', password: '' } as typeof item;
+  });
+  target.hooks.registrar('bad').filter('import.item', () => null as never);
+  const xml = await source.exporter.exportWxr(ADMIN);
+  expect(xml).toContain('Extra');
+  const result = await target.importer.importWxr(xml, ADMIN);
+  expect(result.content).toBe(1);
+  expect(items).toBe(1);
+  // The file's password survives a filter that tries to clear it.
+  expect(
+    [...target.content.rows.values()].map((row) => row.passwordHash !== null),
+  ).toEqual([true]);
+  expect(actions).toEqual([{ format: 'wxr' }, result]);
+  expect(await target.exporter.exportWxr(ADMIN)).toContain('Changed');
+});
 
 test('classic imports bound malformed shortcodes and generated galleries', () => {
   const attachments = {

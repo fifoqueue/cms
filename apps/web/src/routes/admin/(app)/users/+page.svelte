@@ -1,5 +1,9 @@
 <script lang="ts">
   import { listQuery } from '#lib/admin/list-query.js';
+  import {
+    capabilityGroups,
+    rolePlugin,
+  } from '#lib/admin/capability-groups.js';
   import { CAPABILITIES, ROLES } from '@cms/sdk/capabilities';
   let roleKey = $state('');
   import { enhance } from '$app/forms';
@@ -38,6 +42,15 @@
   const selectedRole = $derived(
     data.roles.find((role) => role.key === roleKey),
   );
+  /** Registered capabilities beyond the core list, by plugin, plus any saved roles still hold. */
+  const extraGroups = $derived(
+    capabilityGroups(data.capabilities, data.roles, CAPABILITIES),
+  );
+  /** Core labels come from the catalog; the API's label covers anything it does not know. */
+  const coreLabel = (key: string) =>
+    m.capabilityLabel(key) !== key
+      ? m.capabilityLabel(key)
+      : (data.capabilities?.find((entry) => entry.key === key)?.label ?? key);
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
@@ -243,7 +256,9 @@
                   <form method="POST" action="?/reset" use:enhance>
                     <input type="hidden" name="id" value={user.id} />
                     <button type="submit" class="text-primary hover:underline"
-                      >{m.usersSendReset}</button
+                      >{data.passwordAllowed
+                        ? m.usersSendReset
+                        : m.usersSendSignInLink}</button
                     >
                   </form>
                 </div>
@@ -372,7 +387,10 @@
         <NativeSelect bind:value={roleKey}>
           <NativeSelectOption value="">{m.rolesNew}</NativeSelectOption>
           {#each data.roles.filter((role) => !(ROLES as readonly string[]).includes(role.key)) as role (role.key)}
-            <NativeSelectOption value={role.key}>{role.name}</NativeSelectOption
+            <NativeSelectOption value={role.key}
+              >{rolePlugin(role.source)
+                ? m.rolesFromPlugin(role.name, rolePlugin(role.source)!)
+                : role.name}</NativeSelectOption
             >
           {/each}
         </NativeSelect>
@@ -404,10 +422,34 @@
                 name="capability"
                 value={capability}
                 checked={selectedRole?.capabilities.includes(capability)}
-              />{m.capabilityLabel(capability)}</label
+              />{coreLabel(capability)}</label
             >
           {/each}
         </fieldset>
+        {#each extraGroups as group (group.source)}
+          <!-- Every listed capability stays on the role when it is saved. -->
+          <fieldset class="grid gap-2 sm:grid-cols-2">
+            <legend class="mb-2"
+              >{group.source === null
+                ? m.rolesExtraPermissions
+                : group.source === 'core'
+                  ? m.rolesPermissions
+                  : m.rolesPluginPermissions(group.source)}</legend
+            >
+            {#each group.capabilities as capability (capability.key)}
+              <label class="flex items-center gap-2 text-sm"
+                ><input
+                  type="checkbox"
+                  name="capability"
+                  value={capability.key}
+                  checked={selectedRole?.capabilities.includes(capability.key)}
+                />{#if capability.label === capability.key}<code
+                    >{capability.key}</code
+                  >{:else}{capability.label}{/if}</label
+              >
+            {/each}
+          </fieldset>
+        {/each}
       {/key}
       <Button type="submit">{m.save}</Button>
     </form>

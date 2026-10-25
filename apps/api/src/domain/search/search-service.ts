@@ -25,6 +25,8 @@ import {
   Errors,
 } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
+import type { HookDispatcher } from '#api/domain/ports';
+import { searchHookDocumentSchema } from '@cms/sdk/plugin';
 
 const KEY = 'search';
 const STATE_KEY = 'search.state';
@@ -68,6 +70,7 @@ export class SearchService {
   constructor(
     private readonly deps: {
       settings: SettingsRepository;
+      hooks?: HookDispatcher;
       secrets: SecretBox;
       engine: SearchEngine;
       source: SearchSource;
@@ -210,6 +213,10 @@ export class SearchService {
             lastError: null,
             syncedAt: this.deps.clock.now().toISOString(),
           });
+          void this.deps.hooks?.emit('search.indexed', {
+            operation: 'rebuild',
+            contentIds: null,
+          });
           rebuild = false;
           continue;
         }
@@ -220,7 +227,9 @@ export class SearchService {
           continue;
         }
         const ids = [...new Set(batch.map((entry) => entry.contentId!))];
-        const documents = await this.deps.source.documents(ids);
+        const documents = await this.documents(
+          await this.deps.source.documents(ids),
+        );
         const present = new Set(documents.map((document) => document.id));
         if (documents.length)
           await this.deps.engine.upsert(connection, documents);
@@ -228,6 +237,10 @@ export class SearchService {
         if (gone.length) await this.deps.engine.remove(connection, gone);
         await this.deps.source.acknowledge(batch.at(-1)!.id);
         await this.saveState({ syncedAt: this.deps.clock.now().toISOString() });
+        void this.deps.hooks?.emit('search.indexed', {
+          operation: 'update',
+          contentIds: ids,
+        });
       }
       if (state.failedAt)
         await this.saveState({ failedAt: null, lastError: null });
@@ -241,7 +254,7 @@ export class SearchService {
     for (;;) {
       const page = await this.deps.source.page(after, BATCH);
       if (!page.length) return;
-      yield page;
+      yield await this.documents(page);
       after = page.at(-1)!.id;
     }
   }
@@ -250,6 +263,22 @@ export class SearchService {
     return (
       !!state.failedAt &&
       this.deps.clock.now().getTime() - Date.parse(state.failedAt) < RETRY_MS
+    );
+  }
+
+  private async documents(documents: SearchDocument[]) {
+    return Promise.all(
+      documents.map(async (document) => {
+        const filtered = await this.deps.hooks?.applyFilter(
+          'search.document',
+          document,
+          (value) => {
+            const result = searchHookDocumentSchema.safeParse(value);
+            return result.success && result.data.id === document.id;
+          },
+        );
+        return searchHookDocumentSchema.parse(filtered ?? document);
+      }),
     );
   }
 

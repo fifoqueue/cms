@@ -1,4 +1,10 @@
 import type { PermalinkSettings } from '@cms/sdk';
+import {
+  permalinkPatternFor,
+  canonicalPermalinkPath,
+  PERMALINK_TOKENS,
+} from '@cms/sdk';
+import { PermalinkTokenRegistry } from '#api/domain/permalinks/token-registry';
 import { contentPath } from '#api/domain/permalinks/content-path';
 import type { PermalinkSubject } from '#api/domain/permalinks/content-path';
 import { conflict, Errors } from '#api/shared/errors';
@@ -55,11 +61,17 @@ export const pathChanges = (
   settings: PermalinkSettings,
   entries: Iterable<PathEntry>,
   timeZone = 'UTC',
+  expanded?: ReadonlyMap<string, string>,
 ): PathChange[] => {
   const changes: PathChange[] = [];
 
   for (const { subject, current, retainPrevious } of entries) {
-    const to = contentPath(settings, { ...subject, timeZone }, current);
+    const to = contentPath(
+      settings,
+      { ...subject, timeZone },
+      current,
+      expanded?.get(subject.id),
+    );
 
     if (to !== current)
       changes.push({
@@ -71,6 +83,42 @@ export const pathChanges = (
   }
 
   return changes;
+};
+
+export const resolvePathChanges = async (
+  settings: PermalinkSettings,
+  entries: PathEntry[],
+  timeZone = 'UTC',
+  tokens = new PermalinkTokenRegistry(),
+) => {
+  const expanded = new Map<string, string>();
+  for (const { subject } of entries) {
+    const path = await tokens.expand(
+      permalinkPatternFor(settings, subject.type),
+      {
+        ...subject,
+        timeZone,
+        publishedAt: subject.publishedAt?.toISOString() ?? null,
+        createdAt: subject.createdAt.toISOString(),
+      },
+    );
+    const canonical = canonicalPermalinkPath(path);
+    const custom = permalinkPatternFor(settings, subject.type)
+      .split('%')
+      .some(
+        (part, index) =>
+          index % 2 === 1 &&
+          !(PERMALINK_TOKENS as readonly string[]).includes(part),
+      );
+    expanded.set(
+      subject.id,
+      canonical ??
+        (custom
+          ? contentPath({ ...settings, [subject.type]: '/%slug%' }, subject)
+          : path),
+    );
+  }
+  return pathChanges(settings, entries, timeZone, expanded);
 };
 
 /**

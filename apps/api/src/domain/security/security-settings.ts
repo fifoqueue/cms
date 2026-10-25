@@ -1,17 +1,23 @@
 import {
   DEFAULT_SECURITY_SETTINGS,
+  CAPTCHA_PROVIDERS,
   PROTECTED_ACTIONS,
   adminSecuritySettingsSchema,
   securitySettingsInputSchema,
+  publicCaptchaSchema,
 } from '@cms/sdk';
 import type {
   AdminSecuritySettings,
   CaptchaProvider,
   PublicCaptcha,
+  CaptchaWidget,
 } from '@cms/sdk';
-import type { SecretBox } from '#api/domain/ports';
+import { CORE_CAPTCHA_WIDGETS } from '#api/domain/security/captcha-widgets';
+import type { HookDispatcher, SecretBox } from '#api/domain/ports';
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import { parseInput } from '#api/shared/validation';
+import { invalidInput } from '#api/shared/errors';
+import { Errors } from '@cms/sdk/errors';
 
 const KEY = 'security';
 
@@ -35,7 +41,22 @@ export class SecuritySettingsService {
   constructor(
     private readonly settings: SettingsRepository,
     private readonly secrets: SecretBox,
+    private readonly hooks?: HookDispatcher,
+    private readonly providers: () => {
+      id: string;
+      label: string;
+    }[] = () =>
+      CAPTCHA_PROVIDERS.filter((id) => id !== 'none').map((id) => ({
+        id,
+        label: id,
+      })),
+    private readonly widget: (id: string) => CaptchaWidget | null = (id) =>
+      CORE_CAPTCHA_WIDGETS[id] ?? null,
   ) {}
+
+  captchaProviders() {
+    return this.providers();
+  }
 
   async getAdmin(): Promise<AdminSecuritySettings> {
     const { settings, secretKey } = await this.load();
@@ -57,7 +78,8 @@ export class SecuritySettingsService {
       captcha.provider !== 'none' && captcha.siteKey && captcha.secretKey
         ? captcha.provider
         : 'none';
-    return {
+    const widget = provider === 'none' ? null : this.widget(provider);
+    return publicCaptchaSchema.parse({
       provider,
       siteKey: provider === 'none' ? '' : captcha.siteKey,
       always:
@@ -66,16 +88,37 @@ export class SecuritySettingsService {
           : PROTECTED_ACTIONS.filter(
               (action) => captcha.modes[action] === 'always',
             ),
-    };
+      widget: widget
+        ? {
+            script: widget.script,
+            render: widget.render,
+            origins: widget.origins,
+            attributes:
+              widget.render === null &&
+              !Object.hasOwn(widget.attributes, 'data-sitekey')
+                ? { ...widget.attributes, 'data-sitekey': captcha.siteKey }
+                : widget.attributes,
+            responseField: widget.responseField,
+            scriptOrigin: new URL(widget.script).origin,
+          }
+        : null,
+    });
   }
 
   async update(input: unknown): Promise<AdminSecuritySettings> {
     const data = parseInput(securitySettingsInputSchema, input);
+    if (
+      data.captcha.provider !== 'none' &&
+      !this.providers().some(({ id }) => id === data.captcha.provider)
+    )
+      throw invalidInput(Errors.CaptchaProviderUnknown);
     const current = await this.stored();
     const { secretKey, ...captcha } = data.captcha;
     const secret =
       secretKey === undefined
-        ? current.secret
+        ? captcha.provider === current.settings.captcha.provider
+          ? current.secret
+          : ''
         : secretKey
           ? this.secrets.seal(secretKey)
           : '';
@@ -83,7 +126,9 @@ export class SecuritySettingsService {
       settings: { captcha, rules: data.rules, media: data.media },
       secret,
     } satisfies Stored);
-    return this.getAdmin();
+    const result = await this.getAdmin();
+    void this.hooks?.emit('security.updated', result);
+    return result;
   }
 
   private async load() {

@@ -20,6 +20,8 @@ interface Registration {
   handler: Handler;
   priority: number;
   sequence: number;
+  /** Core handlers run directly: no isolation or timeout, and their errors propagate. */
+  core: boolean;
 }
 
 /**
@@ -43,8 +45,10 @@ export interface HookBusOptions {
 }
 
 /**
- * Hook registry and dispatcher. Every handler gets a copy of the value, runs isolated,
- * and is skipped (with a warning) when it throws, times out or returns an invalid value.
+ * Hook registry and dispatcher. Every handler gets a copy of the value. Plugin handlers run
+ * isolated and are skipped (with a warning) when they throw, time out or return an invalid
+ * value. Core action handlers (`core`) run directly and are awaited; a failure is logged as a
+ * core error and rejects `emit`.
  */
 export class HookBus implements HookDispatcher {
   private readonly actions = new Map<string, Registration[]>();
@@ -66,14 +70,49 @@ export class HookBus implements HookDispatcher {
     };
   }
 
-  async emit<K extends ActionName>(
+  /**
+   * Core action subscriptions; for the composition root only, never handed to plugins.
+   * Handlers are awaited by `emit` without isolation or timeout.
+   */
+  core(owner: string): Pick<HookRegistrar, 'on'> {
+    return {
+      on: <K extends ActionName>(name: K, handler: ActionHandler<K>) =>
+        this.register(this.actions, name, owner, handler as Handler, 0, true),
+    };
+  }
+
+  /**
+   * Resolves once every handler settled. Rejects with the first core handler failure (after
+   * all handlers ran); the rejection is pre-observed so fire-and-forget publishers do not
+   * raise unhandled rejections — the failure is logged as a core error either way.
+   */
+  emit<K extends ActionName>(
     name: K,
     payload: ActionHookMap[K],
   ): Promise<void> {
+    const dispatched = this.dispatch(name, payload);
+    dispatched.catch(() => {});
+    return dispatched;
+  }
+
+  private async dispatch(name: ActionName, payload: unknown): Promise<void> {
     const registrations = [...(this.actions.get(name) ?? [])];
+    const failures: unknown[] = [];
     await Promise.all(
       registrations.map(async (entry) => {
         const { owner, handler } = entry;
+        if (entry.core) {
+          if (!this.actions.get(name)?.includes(entry)) return;
+          try {
+            await handler(structuredClone(payload));
+          } catch (error) {
+            this.options.logger.error(
+              `Core handler "${owner}" failed on "${name}": ${error instanceof Error ? error.message : String(error)}`,
+            );
+            failures.push(error);
+          }
+          return;
+        }
         const result = await isolate(
           () =>
             this.actions.get(name)?.includes(entry)
@@ -87,12 +126,18 @@ export class HookBus implements HookDispatcher {
           );
       }),
     );
+    if (failures.length) throw failures[0];
   }
 
   async applyFilter<K extends FilterName>(
     name: K,
     value: FilterHookMap[K],
     accept: (value: unknown) => boolean,
+    observe?: (
+      owner: string,
+      previous: FilterHookMap[K],
+      next: FilterHookMap[K],
+    ) => void,
   ): Promise<FilterHookMap[K]> {
     let current = value;
     for (const entry of [...(this.filters.get(name) ?? [])]) {
@@ -115,8 +160,11 @@ export class HookBus implements HookDispatcher {
       if (!this.filters.get(name)?.includes(entry)) continue;
       const accepted = snapshot(result.value, accept);
 
-      if (accepted) current = accepted.value as FilterHookMap[K];
-      else
+      if (accepted) {
+        const next = accepted.value as FilterHookMap[K];
+        observe?.(owner, structuredClone(current), structuredClone(next));
+        current = next;
+      } else
         this.options.logger.warn(
           `Plugin "${owner}" returned an invalid value for "${name}"; ignored`,
         );
@@ -130,12 +178,14 @@ export class HookBus implements HookDispatcher {
     owner: string,
     handler: Handler,
     priority: number,
+    core = false,
   ): Unsubscribe {
     const registration = {
       owner,
       handler,
       priority,
       sequence: this.sequence++,
+      core,
     };
     const list = [...(table.get(name) ?? []), registration];
     table.set(

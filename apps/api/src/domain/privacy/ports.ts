@@ -11,9 +11,13 @@ export interface PrivacyRecord extends Omit<
 }
 export const PERSONAL_SECTIONS = [
   'profile',
+  'profileFields',
   'comments',
   'apiTokens',
   'identities',
+  'recoveryCodes',
+  'passkeys',
+  'totp',
   'content',
   'media',
 ] as const;

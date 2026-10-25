@@ -1,4 +1,9 @@
 // Shared contracts between the API, every frontend and every plugin.
+export { patternContributionGroupSchema } from '#sdk/appearance-contracts';
+export type { PatternContributionGroup } from '#sdk/appearance-contracts';
+export { capabilityInfoSchema } from '#sdk/capability-contracts';
+export type { CapabilityInfo } from '#sdk/capability-contracts';
+export * from '#sdk/user-contracts';
 export * from '#sdk/common';
 export * from '#sdk/content';
 export * from '#sdk/content-types';
@@ -31,6 +36,7 @@ export * from '#sdk/search';
 export * from '#sdk/webhooks';
 export * from '#sdk/health';
 export * from '#sdk/sso-settings';
+export * from '#sdk/sign-in';
 export * from '#sdk/egress';
 
 export * from '#sdk/roles';

@@ -138,7 +138,8 @@ export { formatSeoTitle } from '#sdk/format';
 export const SEO_SITEMAP_PAGE_SIZE = 1000;
 export const seoSitemapQuerySchema = z.object({
   kind: z
-    .enum(['content', 'category', 'tag', 'author', 'taxonomy'])
+    .string()
+    .regex(/^[a-z][a-z0-9-]{0,63}$/)
     .default('content'),
   page: z.coerce.number().int().min(1).max(PAGINATION_MAX_PAGE).default(1),
   pageSize: z.coerce

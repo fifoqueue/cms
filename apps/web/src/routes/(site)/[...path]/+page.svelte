@@ -9,7 +9,7 @@
 
 {#if data.kind === 'login'}
   <LoginForm
-    sso={data.sso}
+    signIn={data.signIn}
     captcha={data.captcha}
     membership={data.membership}
     back={data.back}

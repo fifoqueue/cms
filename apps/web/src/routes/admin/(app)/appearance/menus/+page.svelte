@@ -63,7 +63,54 @@
   let newMenu = $state('');
   const current = $derived(menus.find((menu) => menu.id === selected));
 
-  let kind = $state<MenuItem['kind']>('content');
+  /** A core item kind, or `type:<key>` for a plugin item type. */
+  let choice = $state<string>('content');
+  const kind = $derived<MenuItem['kind']>(
+    choice.startsWith('type:') ? 'plugin' : (choice as MenuItem['kind']),
+  );
+  const pluginType = $derived(
+    data.itemTypes.find(({ key }) => `type:${key}` === choice),
+  );
+  let objectId = $state('');
+  let objectQuery = $state('');
+  /** Objects of the chosen plugin type; null until loaded. */
+  let objects = $state<{ id: string; label: string }[] | null>(null);
+  let objectsFailed = $state(false);
+  /** Labels of plugin objects picked here, by `<type>:<id>`. */
+  const pickedObjects = new SvelteMap<string, string>();
+
+  const findObjects = async () => {
+    if (!pluginType) return;
+    searching = true;
+    objectsFailed = false;
+    try {
+      const body = new FormData();
+      body.set('type', pluginType.key);
+      body.set('q', pluginType.searchable ? objectQuery : '');
+      const response = await fetch('?/objects', {
+        method: 'POST',
+        body,
+        headers: { accept: 'application/json', 'x-sveltekit-action': 'true' },
+      });
+      const result = deserialize(await response.text());
+      objectsFailed = result.type !== 'success';
+      objects =
+        result.type === 'success'
+          ? ((result.data?.objects as typeof objects) ?? [])
+          : [];
+      objectId = '';
+    } finally {
+      searching = false;
+    }
+  };
+
+  const chooseKind = (next: string) => {
+    choice = next;
+    objects = null;
+    objectId = '';
+    objectQuery = '';
+    if (next.startsWith('type:')) void findObjects();
+  };
   let url = $state('');
   let label = $state('');
   let contentId = $state('');
@@ -108,7 +155,17 @@
       ...data.categories.map((entry) => [`category:${entry.id}`, entry.name]),
       ...data.tags.map((entry) => [`tag:${entry.id}`, entry.name]),
       ...data.archives.map((entry) => [`archive:${entry.key}`, entry.name]),
+      ...data.taxonomies.flatMap((taxonomy) =>
+        taxonomy.terms.map((entry) => [
+          `${taxonomy.key}:${entry.id}`,
+          entry.name,
+        ]),
+      ),
+      ...[...pickedObjects].map(([key, title]) => [`plugin:${key}`, title]),
     ] as [string, string][]),
+  );
+  const typeNames = $derived(
+    new Map(data.itemTypes.map(({ key, label }) => [key, label])),
   );
 
   const target = (row: MenuRow) => {
@@ -123,6 +180,14 @@
         return titles.get(`${row.taxonomy}:${row.termId}`) ?? m.menuMissing;
       case 'archive':
         return titles.get(`archive:${row.archive}`) ?? m.menuMissing;
+      case 'plugin':
+        return (
+          titles.get(`plugin:${row.provider}:${row.objectId}`) ??
+          m.menuPluginItem(
+            typeNames.get(row.provider ?? '') ?? row.provider ?? '',
+            row.objectId ?? '',
+          )
+        );
     }
   };
 
@@ -161,7 +226,13 @@
   const addItem = () => {
     const choice = found?.find((entry) => entry.id === contentId);
     if (kind === 'content' && choice) picked.set(choice.id, choice.title);
-    const [taxonomy, termId] = term.split(':') as ['category' | 'tag', string];
+    // Plugin taxonomy keys contain colons; the term id follows the last one.
+    const split = term.lastIndexOf(':');
+    const taxonomy = term.slice(0, split);
+    const termId = term.slice(split + 1);
+    const object = objects?.find((entry) => entry.id === objectId);
+    if (kind === 'plugin' && pluginType && object)
+      pickedObjects.set(`${pluginType.key}:${object.id}`, object.label);
     const row: MenuRow = {
       id: crypto.randomUUID(),
       label: label.trim(),
@@ -172,6 +243,7 @@
       ...(kind === 'content' && { contentId }),
       ...(kind === 'term' && { taxonomy, termId }),
       ...(kind === 'archive' && { archive }),
+      ...(kind === 'plugin' && { provider: pluginType?.key, objectId }),
     };
     edit((rows) => [...rows, row]);
     label = '';
@@ -183,7 +255,8 @@
       (kind === 'custom' && url.trim() !== '') ||
       (kind === 'content' && contentId !== '') ||
       (kind === 'term' && term !== '') ||
-      (kind === 'archive' && archive !== ''),
+      (kind === 'archive' && archive !== '') ||
+      (kind === 'plugin' && !!pluginType && objectId !== ''),
   );
 
   const payload = $derived(
@@ -375,7 +448,11 @@
           <div class="flex flex-wrap items-end gap-3">
             <div class="grid gap-2">
               <Label for="item-kind">{m.menuItemKind}</Label>
-              <NativeSelect id="item-kind" bind:value={kind}>
+              <NativeSelect
+                id="item-kind"
+                value={choice}
+                onchange={(event) => chooseKind(event.currentTarget.value)}
+              >
                 <NativeSelectOption value="content"
                   >{m.menuKindContent}</NativeSelectOption
                 >
@@ -391,6 +468,15 @@
                 <NativeSelectOption value="home"
                   >{m.menuHome}</NativeSelectOption
                 >
+                {#if data.itemTypes.length}
+                  <optgroup label={m.menuPluginTypes}>
+                    {#each data.itemTypes as type (type.key)}
+                      <option value="type:{type.key}"
+                        >{m.menuPluginType(type.label, type.source)}</option
+                      >
+                    {/each}
+                  </optgroup>
+                {/if}
               </NativeSelect>
             </div>
             {#if kind === 'content'}
@@ -454,6 +540,62 @@
                       <option value="tag:{entry.id}">{entry.name}</option>
                     {/each}
                   </optgroup>
+                  {#each data.taxonomies as taxonomy (taxonomy.key)}
+                    <optgroup label={taxonomy.name}>
+                      {#each taxonomy.terms as entry (entry.id)}
+                        <option value="{taxonomy.key}:{entry.id}"
+                          >{entry.name}</option
+                        >
+                      {/each}
+                    </optgroup>
+                  {/each}
+                </NativeSelect>
+              </div>
+            {:else if kind === 'plugin' && pluginType}
+              {#if pluginType.searchable}
+                <div class="grid gap-2">
+                  <Label for="item-object-find"
+                    >{m.menuFindObject(pluginType.label)}</Label
+                  >
+                  <div class="flex gap-2">
+                    <Input
+                      id="item-object-find"
+                      type="search"
+                      maxlength={200}
+                      class="w-48"
+                      bind:value={objectQuery}
+                      onkeydown={(event) => {
+                        if (event.key !== 'Enter') return;
+                        event.preventDefault();
+                        void findObjects();
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      aria-label={m.search}
+                      disabled={searching}
+                      onclick={findObjects}><Search class="size-4" /></Button
+                    >
+                  </div>
+                </div>
+              {/if}
+              <div class="grid gap-2">
+                <Label for="item-object">{pluginType.label}</Label>
+                <NativeSelect id="item-object" bind:value={objectId}>
+                  <NativeSelectOption value=""
+                    >{objectsFailed
+                      ? m.menuObjectsFailed
+                      : objects && !objects.length
+                        ? m.menuNoResults
+                        : m.noChoice}</NativeSelectOption
+                  >
+                  {#each objects ?? [] as entry (entry.id)}
+                    <NativeSelectOption value={entry.id}
+                      >{entry.label}</NativeSelectOption
+                    >
+                  {/each}
                 </NativeSelect>
               </div>
             {:else if kind === 'archive'}

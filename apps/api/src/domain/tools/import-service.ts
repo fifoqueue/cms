@@ -22,7 +22,8 @@ import { authorize } from '#api/domain/auth/authorization';
 import type { CommentRepository } from '#api/domain/comments/ports';
 import type { ContentService } from '#api/domain/content/content-service';
 import type { ContentTypeService } from '#api/domain/content/content-types';
-import type { Clock, IdGenerator } from '#api/domain/ports';
+import type { Clock, HookDispatcher, IdGenerator } from '#api/domain/ports';
+import { platformImportItemSchema } from '@cms/sdk/plugin';
 import type { TaxonomyService } from '#api/domain/taxonomy/taxonomy-service';
 import { fromWordPressHtml } from '#api/domain/tools/wxr';
 import type { PatternService } from '#api/domain/content/pattern-service';
@@ -141,6 +142,7 @@ export class ImportService {
   constructor(
     private readonly deps: {
       parser: WxrParser;
+      hooks?: HookDispatcher;
       html: HtmlParser;
       content: Pick<ContentService, 'create'>;
       taxonomy: Pick<TaxonomyService, 'list' | 'create'>;
@@ -168,6 +170,20 @@ export class ImportService {
     authorize(actor, 'tools.manage');
     const { authors: mode } = parseInput(wxrImportOptionsSchema, options);
     const document = this.deps.parser.parse(xml);
+    // Filters get password-free items; the file's password is re-applied afterwards.
+    if (this.deps.hooks)
+      document.items = await Promise.all(
+        document.items.map(async ({ password, ...item }) => ({
+          ...platformImportItemSchema.parse(
+            await this.deps.hooks!.applyFilter(
+              'import.item',
+              item,
+              (value) => platformImportItemSchema.safeParse(value).success,
+            ),
+          ),
+          password,
+        })),
+      );
     const result: WxrImportResult = {
       content: 0,
       categories: 0,
@@ -369,6 +385,7 @@ export class ImportService {
       featured: featured.get(item.id) ?? 0,
     }));
     await this.menus(document, created, { categories, tags }, actor, result);
+    void this.deps.hooks?.emit('import.completed', result);
     return result;
   }
 

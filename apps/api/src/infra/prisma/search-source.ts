@@ -22,7 +22,10 @@ const columns = {
 type Row = Prisma.ContentGetPayload<{ select: typeof columns }>;
 
 export class PrismaSearchSource implements SearchSource {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly activeTypes?: () => Promise<readonly string[]>,
+  ) {}
 
   async pending(limit: number) {
     const rows = await this.db.searchOutbox.findMany({
@@ -59,18 +62,28 @@ export class PrismaSearchSource implements SearchSource {
 
   async documents(ids: readonly string[]) {
     if (!ids.length) return [];
+    const types = await this.activeTypes?.();
     return this.toDocuments(
       await this.db.content.findMany({
-        where: { id: { in: [...ids] }, ...PUBLIC_CONTENT },
+        where: {
+          id: { in: [...ids] },
+          ...PUBLIC_CONTENT,
+          ...(types && { type: { in: [...types] } }),
+        },
         select: columns,
       }),
     );
   }
 
   async page(afterId: string | null, limit: number) {
+    const types = await this.activeTypes?.();
     return this.toDocuments(
       await this.db.content.findMany({
-        where: { ...PUBLIC_CONTENT, ...(afterId && { id: { gt: afterId } }) },
+        where: {
+          ...PUBLIC_CONTENT,
+          ...(afterId && { id: { gt: afterId } }),
+          ...(types && { type: { in: [...types] } }),
+        },
         select: columns,
         orderBy: { id: 'asc' },
         take: limit,

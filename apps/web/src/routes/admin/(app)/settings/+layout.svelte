@@ -49,6 +49,10 @@
       label: (m: Messages) => m.settingsSecurity,
     },
     {
+      route: '/admin/(app)/settings/sign-in',
+      label: (m: Messages) => m.settingsSignIn,
+    },
+    {
       route: '/admin/(app)/settings/sso',
       label: (m: Messages) => m.settingsSso,
     },

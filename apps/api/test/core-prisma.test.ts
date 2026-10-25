@@ -1,5 +1,6 @@
 import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
-import { DEFAULT_EMAIL_SETTINGS } from '@cms/sdk';
+import { Scheduler } from '#api/domain/jobs/scheduler';
+import { DEFAULT_EMAIL_SETTINGS, permalinkPathSchema } from '@cms/sdk';
 import { PrivacyService } from '#api/domain/privacy/privacy-service';
 import { RoleService } from '#api/domain/users/role-service';
 import { readSiteSettings } from '#api/domain/site/site-service';
@@ -49,6 +50,7 @@ import { PrismaSiteSettingsWriter } from '#api/infra/prisma/site-settings';
 import { PrismaTaskLeases } from '#api/infra/prisma/task-leases';
 import { PrismaTaxonomyRepository } from '#api/infra/prisma/taxonomy-repository';
 import { PrismaUserDirectory } from '#api/infra/prisma/user-directory';
+import { PermalinkTokenRegistry } from '#api/domain/permalinks/token-registry';
 import { sharpImages } from '#api/infra/sharp-images';
 import { tiptapRenderer, uuidV7, systemClock } from '#api/infra/system';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
@@ -71,6 +73,14 @@ import { textDocument } from '#test/support/content';
 const serverUrl = process.env.CMS_TEST_DATABASE_URL;
 const meiliUrl = process.env.CMS_TEST_MEILISEARCH_URL;
 const SLOW = 60_000;
+
+const waitFor = async (check: () => Promise<boolean>, message: string) => {
+  const deadline = Date.now() + 2500;
+  while (!(await check())) {
+    if (Date.now() >= deadline) throw new Error(message);
+    await Bun.sleep(10);
+  }
+};
 
 describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
   let db: Database;
@@ -947,6 +957,19 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     expect(await leases.release('task', leaseOwner, new Date(), null)).toBe(
       true,
     );
+    await db.scheduledTask.update({
+      where: { name: 'task' },
+      data: { nextRunAt: new Date(Date.now() + 60000) },
+    });
+    expect(await leases.claim('task', 'ordinary', 60000, new Date())).toBe(
+      false,
+    );
+    const immediate = await Promise.all(
+      ['a', 'b'].map((owner) =>
+        leases.claim('task', owner, 60000, new Date(), { ignoreDue: true }),
+      ),
+    );
+    expect(immediate.filter(Boolean)).toHaveLength(1);
 
     const limits = new PrismaRateLimitStore(db);
     const otherLimits = new PrismaRateLimitStore(db);
@@ -1060,6 +1083,352 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       height: 80,
     });
     expect(storage.files.has(stored!.storageKey)).toBe(true);
+  });
+
+  test('core-only category rename refreshes paths before returning without a regeneration marker', async () => {
+    const { content, taxonomy } = services();
+    const paths = new PrismaPermalinkRepository(db);
+    const original = await paths.readSettings();
+    const suffix = uuidV7.next();
+    try {
+      await paths.saveSettings({ ...original, post: '/%category%/%slug%' });
+      const term = await taxonomy.create('category', {
+        name: `Sync ${suffix}`,
+        slug: `sync-${suffix}`,
+      });
+      const entry = await content.create(
+        {
+          type: 'post',
+          title: `Sync entry ${suffix}`,
+          categoryIds: [term.id],
+          document: textDocument('Body'),
+          status: 'published',
+        },
+        ADMIN,
+      );
+      expect(entry.path).toBe(`/sync-${suffix}/${entry.slug}`);
+      await taxonomy.update('category', term.id, {
+        name: `Renamed ${suffix}`,
+        slug: `renamed-${suffix}`,
+      });
+      expect((await content.get(entry.id, ADMIN)).path).toBe(
+        `/renamed-${suffix}/${entry.slug}`,
+      );
+      expect(
+        await db.setting.findUnique({
+          where: { key: 'permalinks.regeneration' },
+        }),
+      ).toBeNull();
+      expect(await paths.findByPath(entry.path)).toEqual({
+        contentId: entry.id,
+        current: false,
+      });
+    } finally {
+      await paths.saveSettings(original);
+    }
+  });
+
+  test('a plugin overriding author defers rename and kicks after commit without blocking an unrelated save', async () => {
+    const tokens = new PermalinkTokenRegistry(4000);
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let blocked = false;
+    let resolving = false;
+    let resolutions = 0;
+    tokens.register('author', async (values) => {
+      if (blocked) {
+        resolutions++;
+        resolving = true;
+        await gate;
+      }
+      return `by-${values.author}`;
+    });
+    const { logger, lines } = recordingLogger();
+    const paths = new PrismaPermalinkRepository(db, tokens, logger);
+    const original = await paths.readSettings();
+    const id = uuidV7.next();
+    const scheduler = new Scheduler({
+      leases: new PrismaTaskLeases(db),
+      clock: systemClock,
+      logger,
+      owner: id,
+    });
+    let passes = 0;
+    scheduler.add({
+      name: 'core:permalink-regeneration',
+      intervalMs: 5000,
+      run: async () => {
+        passes++;
+        await paths.resume();
+      },
+    });
+    let running: Promise<void> | undefined;
+    const user = userRecord({
+      id,
+      email: `${id}@example.test`,
+      slug: `author-${id}`,
+    });
+    await new PrismaUserRepository(db).insert(user);
+    const { content } = services(new PrismaContentRepository(db, tokens));
+    let entryId: string | undefined;
+    let kicked = false;
+    try {
+      await paths.saveSettings({ ...original, post: '/%author%/%slug%' });
+      const entry = await content.create(
+        {
+          type: 'post',
+          title: `Token-${id}`,
+          document: textDocument('Body'),
+          authorId: id,
+          status: 'published',
+        },
+        ADMIN,
+      );
+      entryId = entry.id;
+      const unrelated = await content.create(
+        {
+          type: 'page',
+          title: `Unrelated-${id}`,
+          document: textDocument('Original'),
+        },
+        ADMIN,
+      );
+      lines.length = 0;
+      blocked = true;
+      const directory = new PrismaUserDirectory(
+        db,
+        undefined,
+        () => {
+          kicked = true;
+          running = scheduler.runNow('core:permalink-regeneration');
+        },
+        tokens,
+      );
+      await directory.updateProfile({
+        id,
+        email: user.email,
+        name: user.name,
+        slug: `renamed-${id}`,
+        bio: '',
+        locale: '',
+      });
+      expect(kicked).toBe(true);
+      await waitFor(
+        async () => resolving,
+        'Post-commit kick did not start the resolver',
+      );
+      expect((await content.get(entry.id, ADMIN)).path).toBe(entry.path);
+      expect(
+        await db.setting.findUnique({
+          where: { key: 'permalinks.regeneration' },
+        }),
+      ).not.toBeNull();
+      const saved = await content.update(
+        unrelated.id,
+        {
+          ...inputOf(unrelated),
+          title: `Saved-${id}`,
+          document: textDocument('Saved while pending'),
+        },
+        ADMIN,
+      );
+      expect(saved.title).toBe(`Saved-${id}`);
+      expect(saved.path).toBe(unrelated.path);
+      await Promise.all(
+        Array.from({ length: 5 }, () =>
+          scheduler.runNow('core:permalink-regeneration'),
+        ),
+      );
+      release();
+      await running;
+      expect(passes).toBe(2);
+      expect(resolutions).toBe(1);
+      await waitFor(
+        async () =>
+          !(await db.setting.findUnique({
+            where: { key: 'permalinks.regeneration' },
+          })),
+        'Post-commit regeneration did not finish without a scheduler',
+      );
+      expect((await content.get(entry.id, ADMIN)).path).toBe(
+        `/by-renamed-${id}/${entry.slug}`,
+      );
+      expect(await paths.findByPath(entry.path)).toEqual({
+        contentId: entry.id,
+        current: false,
+      });
+    } finally {
+      blocked = false;
+      release();
+      await running;
+      if (kicked)
+        await waitFor(
+          async () =>
+            lines.some(
+              (line) => line.includes('complete') || line.startsWith('error '),
+            ),
+          'Detached regeneration did not settle',
+        );
+      if (entryId) await db.content.delete({ where: { id: entryId } });
+      await paths.saveSettings(original);
+      await db.user.delete({ where: { id } });
+    }
+  });
+
+  test('two plugin category renames merge pending IDs before the retry worker runs', async () => {
+    const tokens = new PermalinkTokenRegistry(50);
+    tokens.register(
+      'section',
+      (values) => `section-${values.category?.join('-')}`,
+    );
+    const paths = new PrismaPermalinkRepository(db, tokens);
+    const original = await paths.readSettings();
+    const { content, taxonomy } = services(
+      new PrismaContentRepository(db, tokens),
+    );
+    const suffix = uuidV7.next();
+    try {
+      await paths.saveSettings({ ...original, post: '/%section%/%slug%' });
+      const entries = [];
+      for (const name of ['first', 'second']) {
+        const term = await taxonomy.create('category', {
+          name: `${name}-${suffix}`,
+          slug: `${name}-${suffix}`,
+        });
+        const entry = await content.create(
+          {
+            type: 'post',
+            title: `Merge ${name} ${suffix}`,
+            categoryIds: [term.id],
+            status: 'published',
+            document: textDocument('Body'),
+          },
+          ADMIN,
+        );
+        entries.push({ term, entry, slug: `renamed-${name}-${suffix}` });
+      }
+      // No kick is wired here: exercise two committed writes before a scheduler retry.
+      for (const { term, slug } of entries)
+        await taxonomy.update('category', term.id, { name: slug, slug });
+      const marker = await db.setting.findUniqueOrThrow({
+        where: { key: 'permalinks.regeneration' },
+      });
+      expect(JSON.parse(marker.value).ids.sort()).toEqual(
+        entries.map(({ entry }) => entry.id).sort(),
+      );
+      for (const { entry } of entries)
+        expect((await content.get(entry.id, ADMIN)).path).toBe(entry.path);
+      await paths.resume();
+      for (const { entry, slug } of entries) {
+        expect((await content.get(entry.id, ADMIN)).path).toBe(
+          `/section-${slug}/${entry.slug}`,
+        );
+        expect(await paths.findByPath(entry.path)).toEqual({
+          contentId: entry.id,
+          current: false,
+        });
+      }
+      expect(
+        await db.setting.findUnique({
+          where: { key: 'permalinks.regeneration' },
+        }),
+      ).toBeNull();
+    } finally {
+      await paths.saveSettings(original);
+    }
+  });
+
+  test('a throwing plugin resolver warns, keeps valid fallback paths and clears regeneration intent', async () => {
+    const { logger, lines } = recordingLogger();
+    const tokens = new PermalinkTokenRegistry(50, logger);
+    let failing = false;
+    let failures = 0;
+    tokens.register('section', (values) => {
+      if (failing) {
+        failures++;
+        throw new Error('Resolver unavailable: PRIVATE_PLUGIN_SECRET');
+      }
+      return `section-${values.category?.join('-')}`;
+    });
+    const paths = new PrismaPermalinkRepository(db, tokens, logger);
+    const original = await paths.readSettings();
+    const { content, taxonomy } = services(
+      new PrismaContentRepository(db, tokens),
+    );
+    const suffix = uuidV7.next();
+    try {
+      await paths.saveSettings({ ...original, post: '/%section%/%slug%' });
+      const term = await taxonomy.create('category', {
+        name: `Failure ${suffix}`,
+        slug: `failure-${suffix}`,
+      });
+      const entry = await content.create(
+        {
+          type: 'post',
+          title: `Retry ${suffix}`,
+          categoryIds: [term.id],
+          status: 'published',
+          document: textDocument('Body'),
+        },
+        ADMIN,
+      );
+      const slug = `recovered-${suffix}`;
+      await taxonomy.update('category', term.id, { name: slug, slug });
+      failing = true;
+      lines.length = 0;
+      const scheduler = new Scheduler({
+        leases: new PrismaTaskLeases(db),
+        clock: systemClock,
+        logger,
+        owner: suffix,
+      });
+      scheduler.add({
+        name: 'core:permalink-regeneration',
+        intervalMs: 5000,
+        run: () => paths.resume(),
+      });
+      await scheduler.runNow('core:permalink-regeneration');
+      await waitFor(
+        async () =>
+          lines.some(
+            (line) => line.includes('complete') || line.startsWith('error '),
+          ),
+        'Failed resolver worker did not settle',
+      );
+      const current = (await content.get(entry.id, ADMIN)).path;
+      expect(current).toBe(`/${entry.slug}`);
+      expect(permalinkPathSchema.safeParse(current).success).toBe(true);
+      expect(await paths.findByPath(current)).toEqual({
+        contentId: entry.id,
+        current: true,
+      });
+      expect(await paths.findByPath(entry.path)).toMatchObject({
+        contentId: entry.id,
+      });
+      const pending = await db.setting.findUnique({
+        where: { key: 'permalinks.regeneration' },
+      });
+      expect(pending).toBeNull();
+      expect(lines).toContain(
+        `warn Permalink token "section" failed for entry "${entry.id}"; using core fallback`,
+      );
+      expect(lines.join('\n')).not.toContain('PRIVATE_PLUGIN_SECRET');
+      expect(failures).toBe(1);
+      // A scheduler tick must not retry a failing plugin once fallback succeeded.
+      await paths.resume();
+      expect(failures).toBe(1);
+      expect((await content.get(entry.id, ADMIN)).path).toBe(current);
+      expect(
+        await db.setting.findUnique({
+          where: { key: 'permalinks.regeneration' },
+        }),
+      ).toBeNull();
+    } finally {
+      failing = false;
+      await paths.saveSettings(original);
+    }
   });
 
   test('moving a page tree updates descendant paths atomically and preserves redirects', async () => {
@@ -1362,7 +1731,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       await email.update({
         ...DEFAULT_EMAIL_SETTINGS,
         enabled: true,
-        host: 'smtp.example.com',
+        smtp: { ...DEFAULT_EMAIL_SETTINGS.smtp, host: 'smtp.example.com' },
         fromEmail: 'site@example.com',
       });
       const subject = `confirm-${uuidV7.next()}@example.com`;
@@ -1612,7 +1981,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       await email.update({
         ...DEFAULT_EMAIL_SETTINGS,
         enabled: true,
-        host: 'smtp.example.com',
+        smtp: { ...DEFAULT_EMAIL_SETTINGS.smtp, host: 'smtp.example.com' },
         fromEmail: 'site@example.com',
       });
       const id = uuidV7.next();
@@ -1716,7 +2085,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       await email.update({
         ...DEFAULT_EMAIL_SETTINGS,
         enabled: true,
-        host: 'smtp.example.com',
+        smtp: { ...DEFAULT_EMAIL_SETTINGS.smtp, host: 'smtp.example.com' },
         fromEmail: 'site@example.com',
       });
       const id = uuidV7.next(),
@@ -1743,6 +2112,78 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       );
       const mediaId = uuidV7.next(),
         identityId = uuidV7.next();
+      const passkeyId = uuidV7.next(),
+        totpId = uuidV7.next(),
+        recoveryId = uuidV7.next();
+      await db.passkey.create({
+        data: {
+          id: passkeyId,
+          userId: id,
+          credentialId: Buffer.from(passkeyId),
+          publicKey: Buffer.from('PRIVATE-KEY-MATERIAL'),
+          counter: 0n,
+          transports: '[]',
+          deviceType: 'singleDevice',
+          backedUp: false,
+          discoverable: true,
+          name: 'Laptop',
+          createdAt: now,
+        },
+      });
+      await db.totpSecret.create({
+        data: {
+          id: totpId,
+          userId: id,
+          sealedSecret: 'SEALED-TOTP-SECRET',
+          lastStep: 1n,
+          createdAt: now,
+        },
+      });
+      await db.recoveryCode.create({
+        data: {
+          id: recoveryId,
+          userId: id,
+          codeHash: randomTokenIssuer.digest('recovery-secret'),
+          createdAt: now,
+        },
+      });
+      await db.signInTransaction.create({
+        data: {
+          handleHash: randomTokenIssuer.digest(`signin:${id}`),
+          userId: id,
+          methodId: 'passkey',
+          stage: 'account',
+          factorId: 'passkey',
+          state: '{"secret":"PENDING-SECRET"}',
+          clientKey: randomTokenIssuer.digest(id),
+          expiresAt: new Date(now.getTime() + 60000),
+        },
+      });
+      const personal = new PrismaPrivacyRepository(db, secrets);
+      expect(await personal.data(subject, 'passkeys', null, 10)).toEqual([
+        {
+          id: passkeyId,
+          factor: 'passkey',
+          label: 'Laptop',
+          createdAt: now.toISOString(),
+        },
+      ]);
+      expect(await personal.data(subject, 'totp', null, 10)).toEqual([
+        {
+          id: totpId,
+          factor: 'totp',
+          label: 'Authenticator app',
+          createdAt: now.toISOString(),
+        },
+      ]);
+      expect(await personal.data(subject, 'recoveryCodes', null, 10)).toEqual([
+        {
+          id: recoveryId,
+          factor: 'recovery-code',
+          label: 'Recovery code',
+          createdAt: now.toISOString(),
+        },
+      ]);
       await db.media.create({
         data: {
           id: mediaId,
@@ -1770,6 +2211,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       await db.ssoTransaction.create({
         data: {
           handleHash: randomTokenIssuer.digest(`sso:${id}`),
+          providerId: 'default',
           userId: id,
           state: 'state',
           nonce: 'nonce',
@@ -1873,6 +2315,12 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       await expect(privacy.erase(request.id, ADMIN)).rejects.toMatchObject({
         code: 'conflict',
       });
+      expect(await db.passkey.count({ where: { userId: id } })).toBe(1);
+      expect(await db.totpSecret.count({ where: { userId: id } })).toBe(1);
+      expect(await db.signInTransaction.count({ where: { userId: id } })).toBe(
+        1,
+      );
+      expect(await db.recoveryCode.count({ where: { userId: id } })).toBe(1);
       expect((await db.user.findUnique({ where: { id } }))?.email).toBe(
         subject,
       );
@@ -1901,6 +2349,12 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       expect(await db.content.count({ where: { id: entry.id } })).toBe(1);
       expect(await db.userIdentity.count({ where: { userId: id } })).toBe(0);
       expect(await db.ssoTransaction.count({ where: { userId: id } })).toBe(0);
+      expect(await db.passkey.count({ where: { userId: id } })).toBe(0);
+      expect(await db.totpSecret.count({ where: { userId: id } })).toBe(0);
+      expect(await db.recoveryCode.count({ where: { userId: id } })).toBe(0);
+      expect(await db.signInTransaction.count({ where: { userId: id } })).toBe(
+        0,
+      );
       expect(
         await db.media.findUnique({ where: { id: mediaId } }),
       ).toMatchObject({

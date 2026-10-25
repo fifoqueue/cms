@@ -5,12 +5,10 @@
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
-  import { Label } from '#lib/components/ui/label/index.js';
   import { useI18n } from '#lib/i18n/index.js';
   import { authMessages } from '#lib/i18n/auth.js';
-  import AuthForm from '#lib/security/AuthForm.svelte';
   import AuthShell from '#lib/security/AuthShell.svelte';
-  import PasswordInput from '#lib/security/PasswordInput.svelte';
+  import SignInMethods from '#lib/security/SignInMethods.svelte';
   import type { PageProps } from './$types';
 
   let { data, form }: PageProps = $props();
@@ -21,12 +19,21 @@
   const done = $derived(!!form && 'done' in form);
   const signIn = $derived(resolve(data.loginPath as Path));
   const request = resolve('/admin/(auth)/forgot-password');
+  const result = $derived(
+    form && 'message' in form
+      ? (form as {
+          method?: string;
+          values?: Record<string, string>;
+          captcha?: boolean;
+        })
+      : null,
+  );
   // After a failed attempt (an expired link, say) a new link is one step away.
   const links = $derived(
     done
       ? []
       : [
-          ...(data.linkValid && form && 'message' in form
+          ...(data.linkValid && data.passwordReset && result
             ? [
                 {
                   href: '/admin/forgot-password' as Path,
@@ -40,12 +47,12 @@
 </script>
 
 <svelte:head>
-  <title>{m.passwordTitle}</title>
+  <title>{m.signInSetupTitle}</title>
   <meta name="robots" content="noindex" />
 </svelte:head>
 
 <AuthShell
-  title={m.passwordTitle}
+  title={m.signInSetupTitle}
   siteTitle={data.siteTitle}
   privacyPolicy={data.privacyPolicy}
   {links}
@@ -53,7 +60,7 @@
   {#if done}
     <Alert role="status">
       <CircleCheck aria-hidden="true" />
-      <AlertTitle>{m.passwordSaved}</AlertTitle>
+      <AlertTitle>{m.signInSetupDone}</AlertTitle>
     </Alert>
     <Button href={signIn} class="w-full">{m.signIn}</Button>
   {:else if !data.linkValid}
@@ -61,25 +68,28 @@
       ><AlertTitle>{auth.linkInvalid}</AlertTitle></Alert
     >
     <Button href={request} class="w-full">{auth.requestLink}</Button>
+  {:else if data.unavailable}
+    <Alert variant="destructive"
+      ><AlertTitle>{m.signInSetupUnavailable}</AlertTitle></Alert
+    >
+  {:else if !data.methods.length}
+    <Alert variant="destructive"
+      ><AlertTitle>{m.signInSetupNone}</AlertTitle></Alert
+    >
   {:else}
     <FormMessage {form} />
-    <AuthForm submit={m.save} enhanced>
+    <p class="text-sm text-muted-foreground">{m.signInSetupHelp}</p>
+    {#snippet hidden()}
       <input type="hidden" name="token" value={data.token} />
-      <div class="grid gap-2">
-        <Label for="password">{m.newPassword}</Label>
-        <PasswordInput
-          id="password"
-          name="password"
-          autocomplete="new-password"
-          minlength={data.minLength}
-          maxlength={data.maxLength}
-          required
-          aria-describedby="password-hint"
-        />
-        <p id="password-hint" class="text-xs text-muted-foreground">
-          {auth.passwordHint(data.minLength)}
-        </p>
-      </div>
-    </AuthForm>
+    {/snippet}
+    <SignInMethods
+      methods={data.methods}
+      action="?/setup"
+      submit={m.save}
+      buttonLabel={m.signInSetupWith}
+      captcha={data.captcha ?? undefined}
+      {result}
+      {hidden}
+    />
   {/if}
 </AuthShell>

@@ -15,6 +15,8 @@ import { zipThemeArchive } from '#api/infra/zip-theme-archive';
 import { sharpImages } from '#api/infra/sharp-images';
 import { DomainError } from '#api/shared/errors';
 import { MemoryJsonSettings } from '#test/support/json-settings';
+import { HookBus } from '#api/plugin-runtime/hook-bus';
+import { recordingLogger } from '#test/support/memory';
 
 const manifest = (id: string, overrides: Record<string, unknown> = {}) => ({
   id,
@@ -68,6 +70,30 @@ const setup = () => {
   const settings = new MemoryJsonSettings();
   return { settings, themes: new ThemeService(settings, zipThemeArchive) };
 };
+
+test('theme install and deletion publish admin DTOs after successful writes only', async () => {
+  const settings = new MemoryJsonSettings();
+  const hooks = new HookBus({
+    timeoutMs: 20,
+    logger: recordingLogger().logger,
+  });
+  const themes = new ThemeService(settings, zipThemeArchive, undefined, hooks);
+  const events: string[] = [];
+  for (const event of ['theme.installed', 'theme.deleted'] as const)
+    hooks.registrar('test').on(event, (dto) => {
+      expect(dto.id).toBe('hook-theme');
+      expect(dto.name).toBe('Theme hook-theme');
+      expect(dto.active).toBe(false);
+      expect(settings.writes).toBeGreaterThan(0);
+      events.push(event);
+    });
+  await themes.install(archive('hook-theme'));
+  await themes.remove('hook-theme');
+  await expect(themes.remove('hook-theme')).rejects.toMatchObject({
+    code: 'not_found',
+  });
+  expect(events).toEqual(['theme.installed', 'theme.deleted']);
+});
 
 const codeOf = async (promise: Promise<unknown>) => {
   try {

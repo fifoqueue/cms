@@ -7,6 +7,7 @@ import type {
 } from '@cms/sdk';
 import { conflict, unauthorized, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
+import type { HookDispatcher } from '#api/domain/ports';
 
 /** Configuration is durable before configure resolves; complete is atomic. */
 export interface InstallationBackend {
@@ -22,6 +23,7 @@ export class InstallationService {
   constructor(
     private readonly backend: InstallationBackend,
     private readonly validToken: (token: string) => boolean,
+    private readonly hooks?: () => HookDispatcher | undefined,
   ) {}
 
   async status(): Promise<InstallationStatus> {
@@ -50,7 +52,14 @@ export class InstallationService {
         throw conflict(Errors.InstallDatabaseRequired);
       if (!(await this.backend.setupRequired()))
         throw conflict(Errors.InstallCompleted);
-      return this.backend.complete(values);
+      const result = await this.backend.complete(values);
+      void this.hooks?.()?.emit('site.installed', {
+        title: values.site.title,
+        description: values.site.description,
+        locale: values.site.locale,
+        siteUrl: values.siteUrl,
+      });
+      return result;
     });
   }
 

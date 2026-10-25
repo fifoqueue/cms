@@ -91,4 +91,27 @@ describe('HookBus', () => {
     await bus.emit('site.updated', site);
     expect(lines).toEqual(['warn Plugin "p" failed on "site.updated": boom']);
   });
+
+  test('core handlers run without the plugin timeout and their failures propagate', async () => {
+    const { logger, lines } = recordingLogger();
+    const bus = new HookBus({ timeoutMs: 5, logger });
+    let finished = false;
+    bus.core('core:slow').on('site.updated', async () => {
+      await Bun.sleep(20);
+      finished = true;
+    });
+    await bus.emit('site.updated', site);
+    expect(finished).toBe(true);
+    const off = bus.core('core:failing').on('site.updated', () => {
+      throw new Error('enqueue failed');
+    });
+    await expect(bus.emit('site.updated', site)).rejects.toThrow(
+      'enqueue failed',
+    );
+    expect(lines).toEqual([
+      'error Core handler "core:failing" failed on "site.updated": enqueue failed',
+    ]);
+    off();
+    await bus.emit('site.updated', site);
+  });
 });

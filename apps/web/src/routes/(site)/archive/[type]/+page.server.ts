@@ -7,7 +7,8 @@ import { withTemplateData } from '#lib/server/theme-queries.js';
 import type { PageServerLoad } from './$types';
 
 /** The list of a content type that publishes an archive. */
-export const load: PageServerLoad = async ({ fetch, url, params, parent }) => {
+export const load: PageServerLoad = async (event) => {
+  const { fetch, url, params, parent } = event;
   const api = contentApi(fetch);
   const slots = loadSlots(api, { path: url.pathname });
   const pageSize = (await parent()).reading.postsPerPage;
@@ -16,7 +17,7 @@ export const load: PageServerLoad = async ({ fetch, url, params, parent }) => {
   );
   if (!type) error(404, Errors.NotFound);
   const posts = await listPosts(api, url, { type: type.key }, pageSize);
-  return withTemplateData(api, parent, {
+  return withTemplateData(api, event, {
     kind: 'archive' as const,
     archive: {
       key: type.key,

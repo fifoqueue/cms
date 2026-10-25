@@ -1,4 +1,23 @@
-import type { ResolvedManifest } from '@cms/sdk';
+import type { ResolvedManifest, ContentDocument } from '@cms/sdk';
+import { PermalinkTokenRegistry } from '#api/domain/permalinks/token-registry';
+import { HealthChecks } from '#api/domain/tools/health-checks';
+import type { PluginHealthChecks } from '#api/domain/tools/health-checks';
+import { taxonomyDefinitionSchema, fieldDefinitionSchema } from '@cms/sdk';
+import type { TaxonomyDefinition, FieldDefinition } from '@cms/sdk';
+import { DefinitionRegistry } from '#api/domain/content/definition-registry';
+import { BUILTIN_TAXONOMIES } from '#api/domain/taxonomy/taxonomy-types';
+import type { JobRegistrar } from '@cms/sdk/plugin';
+import type { PluginJobs } from '#api/domain/jobs/plugin-jobs';
+import { ContentTypeRegistry } from '#api/domain/content/content-type-registry';
+import { BUILTIN_TYPES } from '#api/domain/content/content-types';
+import { CapabilityRegistry } from '#api/domain/users/capability-registry';
+import { RoleRegistry } from '#api/domain/users/role-registry';
+import { ProfileFields } from '#api/domain/users/profile-fields';
+import { CaptchaRegistry } from '#api/domain/security/captcha-registry';
+import { EraserRegistry } from '#api/domain/privacy/eraser-registry';
+import type { MailTransportRegistry } from '#api/domain/email/transport-registry';
+import type { UserDirectory } from '@cms/sdk/plugin';
+import type { SignInRegistry } from '#api/plugin-runtime/sign-in-registry';
 import type {
   ActionHandler,
   ActionName,
@@ -24,8 +43,56 @@ import type { PluginRouteRegistry } from '#api/plugin-runtime/route-registry';
 import type { SlotRegistry } from '#api/plugin-runtime/slot-registry';
 import type { WidgetRegistry } from '#api/plugin-runtime/widget-registry';
 import { Errors } from '#api/shared/errors';
+import { CommentCheckers } from '#api/domain/comments/comment-checkers';
+import { MediaProcessors } from '#api/domain/media/media-processors';
+import { ImageSizes } from '#api/domain/media/image-sizes';
+import {
+  themeContributionSchema,
+  patternContributionSchema,
+} from '@cms/sdk/plugin';
+import type {
+  ThemeContributionRequest,
+  ThemeContribution,
+  PatternContributions,
+} from '@cms/sdk/plugin';
+import { ProviderRegistry } from '#api/plugin-runtime/provider-registry';
+import { MenuTypeRegistry } from '#api/plugin-runtime/menu-type-registry';
+import { sitemapPageSchema, searchHookResultsSchema } from '@cms/sdk/plugin';
+import type {
+  SitemapRequest,
+  SitemapPage,
+  SearchRequest,
+  SearchHits,
+} from '@cms/sdk/plugin';
 
 export interface PluginContextServices {
+  patternRenderer?: { render(document: ContentDocument): string };
+  /** Plugin registrations only; core checks are registered by `SiteHealthService`. */
+  healthChecks?: PluginHealthChecks;
+  roles?: RoleRegistry;
+  profileFields?: ProfileFields;
+  captchaProviders?: CaptchaRegistry;
+  privacyErasers?: EraserRegistry;
+  jobs?: PluginJobs;
+  contentTypes?: ContentTypeRegistry;
+  permalinkTokens?: PermalinkTokenRegistry;
+  taxonomies?: DefinitionRegistry<TaxonomyDefinition>;
+  fields?: DefinitionRegistry<FieldDefinition>;
+  capabilities?: CapabilityRegistry;
+  mailTransports?: MailTransportRegistry;
+  menuItemTypes?: MenuTypeRegistry;
+  themeContributions?: ProviderRegistry<
+    ThemeContributionRequest,
+    ThemeContribution
+  >;
+  patterns?: ProviderRegistry<null, PatternContributions>;
+  imageSizes?: ImageSizes;
+  sitemaps?: ProviderRegistry<SitemapRequest, SitemapPage>;
+  searchEngines?: ProviderRegistry<SearchRequest, SearchHits>;
+  mediaProcessors?: MediaProcessors;
+  commentCheckers?: CommentCheckers;
+  authentication: SignInRegistry;
+  users: UserDirectory;
   hooks: HookBus;
   slots: SlotRegistry;
   widgets: WidgetRegistry;
@@ -56,7 +123,35 @@ const checkKey = (key: string) => {
 
 /** Builds the capabilities handed to `activate`. Every registration is tracked by the scope. */
 export class PluginContextFactory {
-  constructor(private readonly services: PluginContextServices) {}
+  constructor(private readonly services: PluginContextServices) {
+    services.contentTypes ??= new ContentTypeRegistry(BUILTIN_TYPES);
+    services.permalinkTokens ??= new PermalinkTokenRegistry();
+    services.taxonomies ??= new DefinitionRegistry(
+      taxonomyDefinitionSchema,
+      BUILTIN_TAXONOMIES,
+    );
+    services.fields ??= new DefinitionRegistry(fieldDefinitionSchema);
+    services.capabilities ??= new CapabilityRegistry();
+    const options = { timeoutMs: 3000, logger: services.logger('core') };
+    services.roles ??= new RoleRegistry();
+    services.profileFields ??= new ProfileFields();
+    services.captchaProviders ??= new CaptchaRegistry(options);
+    services.privacyErasers ??= new EraserRegistry(options);
+    services.menuItemTypes ??= new MenuTypeRegistry(options);
+    services.themeContributions ??= new ProviderRegistry(
+      themeContributionSchema,
+      options,
+    );
+    services.patterns ??= new ProviderRegistry(
+      patternContributionSchema,
+      options,
+    );
+    services.sitemaps ??= new ProviderRegistry(sitemapPageSchema, options);
+    services.searchEngines ??= new ProviderRegistry(
+      searchHookResultsSchema,
+      options,
+    );
+  }
 
   create(manifest: ResolvedManifest, scope: PluginScope): PluginContext {
     const {
@@ -84,9 +179,177 @@ export class PluginContextFactory {
     const widgetBoxes = dashboardWidgets.registrar(id);
     const log = logger(id);
     const routeRegistrar = routes.registrar(id);
+    const auth = this.services.authentication.registrar(
+      id,
+      this.services.users,
+    );
 
     return Object.freeze({
+      permalinkTokens: {
+        register: (key, resolver) =>
+          scope.track(() =>
+            this.services.permalinkTokens!.register(key, resolver),
+          ),
+      },
+      roles: {
+        register: (role) =>
+          scope.track(() => this.services.roles!.register(role, id)),
+      },
+      profileFields: {
+        register: (key, field) =>
+          scope.track(() =>
+            this.services.profileFields!.register(id, key, field),
+          ),
+      },
+      captchaProviders: {
+        register: (key, provider) =>
+          scope.track(() =>
+            this.services.captchaProviders!.register(
+              ['turnstile', 'hcaptcha', 'recaptcha'].includes(key)
+                ? key
+                : `plugin:${id}:${key}`,
+              provider,
+            ),
+          ),
+      },
+      privacyErasers: {
+        register: (key, eraser) =>
+          scope.track(() =>
+            this.services.privacyErasers!.register(id, key, eraser),
+          ),
+      },
+      taxonomies: {
+        register: (key, definition) =>
+          scope.track(() =>
+            this.services.taxonomies!.register(id, key, definition),
+          ),
+      },
+      fields: {
+        register: (key, definition) =>
+          scope.track(() =>
+            this.services.fields!.register(id, key, definition),
+          ),
+      },
+      contentTypes: {
+        register: (key, definition) =>
+          scope.track(() =>
+            this.services.contentTypes!.register(id, key, definition),
+          ),
+      },
+      capabilities: {
+        register: (definition) =>
+          scope.track(() =>
+            this.services.capabilities!.register(definition, id),
+          ),
+      },
       pluginId: id,
+      healthChecks: {
+        register: (key, check) =>
+          scope.track(() =>
+            (this.services.healthChecks ??= new HealthChecks()).plugin(
+              id,
+              key,
+              check,
+            ),
+          ),
+      },
+      jobs: (() => {
+        const registrar = this.services.jobs?.registrar(id);
+        return {
+          register: (kind, definition) =>
+            scope.track(() => {
+              if (!registrar) throw new Error(Errors.PluginInactive);
+              return registrar.register(kind, definition);
+            }),
+          enqueue: (kind, payload, options) =>
+            scope.run(() => {
+              if (!registrar) throw new Error(Errors.PluginInactive);
+              return registrar.enqueue(kind, payload, options);
+            }),
+        } satisfies JobRegistrar;
+      })(),
+      mailTransports: {
+        register: (key, transport) =>
+          scope.track(() => {
+            if (!this.services.mailTransports)
+              throw new Error(Errors.EmailDisabled);
+            return this.services.mailTransports.plugin(id, key, transport);
+          }),
+      },
+      menuItemTypes: {
+        register: (key, provider) =>
+          scope.track(() =>
+            this.services.menuItemTypes!.register(id, key, provider),
+          ),
+      },
+      themeContributions: {
+        register: (key, provider) =>
+          scope.track(() =>
+            this.services.themeContributions!.register(id, key, provider),
+          ),
+      },
+      patterns: {
+        register: (key, definitions) =>
+          scope.track(() => {
+            const snapshot = structuredClone(
+              patternContributionSchema.parse(definitions),
+            );
+            for (const pattern of snapshot) {
+              blocks.check(pattern.document);
+              if (!this.services.patternRenderer)
+                throw new Error(Errors.PluginInactive);
+              this.services.patternRenderer.render(pattern.document);
+            }
+            return this.services.patterns!.register(id, key, () =>
+              structuredClone(snapshot),
+            );
+          }),
+      },
+      imageSizes: {
+        register: (size) =>
+          scope.track(() =>
+            (this.services.imageSizes ??= new ImageSizes()).register(size),
+          ),
+      },
+      sitemaps: {
+        register: (key, provider) =>
+          scope.track(() =>
+            this.services.sitemaps!.register(id, key, provider),
+          ),
+      },
+      searchEngines: {
+        register: (key, provider) =>
+          scope.track(() =>
+            this.services.searchEngines!.register(id, key, provider),
+          ),
+      },
+      mediaProcessors: {
+        register: (processor) =>
+          scope.track(() =>
+            (this.services.mediaProcessors ??= new MediaProcessors()).register(
+              processor,
+            ),
+          ),
+      },
+      commentCheckers: {
+        register: (checker) =>
+          scope.track(() =>
+            (this.services.commentCheckers ??= new CommentCheckers()).register(
+              checker,
+            ),
+          ),
+      },
+      auth: {
+        signInMethod: (key, method) =>
+          scope.track(() => auth.signInMethod(key, method)),
+        secondFactor: (key, factor) =>
+          scope.track(() => auth.secondFactor(key, factor)),
+        users: Object.freeze<UserDirectory>({
+          findById: (userId) => scope.run(() => auth.users.findById(userId)),
+          findByEmail: (email) =>
+            scope.run(() => auth.users.findByEmail(email)),
+        }),
+      },
       hooks: {
         on: <K extends ActionName>(name: K, handler: ActionHandler<K>) =>
           scope.track(() => hookRegistrar.on(name, handler)),

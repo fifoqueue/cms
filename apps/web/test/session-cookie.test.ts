@@ -9,10 +9,6 @@ import {
   markSignedOut,
   takeSignedOut,
 } from '#lib/server/session-cookie.js';
-import {
-  consumeSsoTransaction,
-  setSsoTransaction,
-} from '#lib/server/sso-cookie.js';
 
 const cookies = (initial: Record<string, string> = {}) => {
   const values = new Map(Object.entries(initial));
@@ -87,33 +83,6 @@ describe('session cookie', () => {
     endSession(state.api);
     expect(
       sessionToken(state.api, new URL('http://localhost:5173/admin')),
-    ).toBeNull();
-  });
-
-  test('HTTPS SSO uses only its host-bound transaction cookie', () => {
-    const state = cookies({ cms_sso: 'planted' });
-    const url = new URL('https://cms.example/login');
-    setSsoTransaction(
-      state.api,
-      {
-        transaction: 'real',
-        expiresAt: '2030-01-01T00:00:00.000Z',
-      } as never,
-      url,
-      '/admin/sso/callback',
-      '/blog?ref=sso',
-    );
-
-    expect(state.values.get('__Host-cms_sso')).not.toContain('/blog');
-    expect(state.options.get('__Host-cms_sso')).toMatchObject({
-      path: '/',
-      secure: true,
-    });
-    expect(
-      consumeSsoTransaction(state.api, url, '/admin/sso/callback'),
-    ).toEqual({ transaction: 'real', back: '/blog?ref=sso' });
-    expect(
-      consumeSsoTransaction(state.api, url, '/admin/sso/callback'),
     ).toBeNull();
   });
 });

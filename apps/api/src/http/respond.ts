@@ -7,6 +7,7 @@ import { Errors } from '#api/shared/errors';
 const STATUS: Record<ErrorCode, number> = {
   invalid_input: 400,
   unauthorized: 401,
+  sign_in_expired: 410,
   forbidden: 403,
   not_found: 404,
   conflict: 409,

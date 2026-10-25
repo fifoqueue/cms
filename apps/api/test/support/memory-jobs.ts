@@ -29,11 +29,17 @@ export class MemoryTaskLeases implements TaskLeases {
       });
   }
 
-  async claim(name: string, owner: string, leaseMs: number, now: Date) {
+  async claim(
+    name: string,
+    owner: string,
+    leaseMs: number,
+    now: Date,
+    options: { ignoreDue?: boolean } = {},
+  ) {
     const row = this.rows.get(name);
     if (
       !row ||
-      row.nextRunAt > now ||
+      (!options.ignoreDue && row.nextRunAt > now) ||
       (row.lockedUntil && row.lockedUntil >= now)
     )
       return false;

@@ -7,7 +7,8 @@ import { withTemplateData } from '#lib/server/theme-queries.js';
 import type { PageServerLoad } from './$types';
 
 /** Posts published in a site-local year (`/date/2026`) or month (`/date/2026/03`). */
-export const load: PageServerLoad = async ({ fetch, url, params, parent }) => {
+export const load: PageServerLoad = async (event) => {
+  const { fetch, url, params, parent } = event;
   const year = /^\d{4}$/.test(params.year) ? Number(params.year) : NaN;
   const month =
     params.month === undefined
@@ -24,7 +25,7 @@ export const load: PageServerLoad = async ({ fetch, url, params, parent }) => {
     { type: 'post', year, month: month ?? undefined },
     (await parent()).reading.postsPerPage,
   );
-  return withTemplateData(api, parent, {
+  return withTemplateData(api, event, {
     kind: 'date' as const,
     date: { year, month },
     posts,

@@ -57,14 +57,16 @@ test('page parent rejects moving a page beneath its own descendant', async () =>
 const setup = () => {
   const repository = new MemoryContentRepository();
   const ids = sequentialIds();
-  const taxonomy = new TaxonomyService({
-    repository: new MemoryTaxonomyRepository(repository),
-    ids,
-    clock: fixedClock(),
-  });
   const hooks = new HookBus({
     timeoutMs: 50,
     logger: recordingLogger().logger,
+  });
+  const taxonomy = new TaxonomyService({
+    hooks,
+    content: repository,
+    repository: new MemoryTaxonomyRepository(repository),
+    ids,
+    clock: fixedClock(),
   });
   const events: string[] = [];
   const listener = hooks.registrar('listener');
@@ -90,6 +92,7 @@ const setup = () => {
   /** Revision use cases over `service`, numbering their own ids unless given others. */
   const revisionService = (revisionIds = sequentialIds()) =>
     new RevisionService({
+      hooks,
       content: service,
       revisions,
       renderer: tiptapRenderer,
@@ -107,6 +110,11 @@ const setup = () => {
     new Embeds(() => [youtube, vimeo]),
     testFields(),
     testTypes(),
+    undefined,
+    async (id) =>
+      [...repository.permalinks.paths.values()]
+        .filter((path) => path.contentId === id)
+        .map((path) => path.path),
   );
   return {
     service,
@@ -134,6 +142,174 @@ const codeOf = async (promise: Promise<unknown>) =>
   ((await promise.catch((error: unknown) => error)) as DomainError).code;
 
 describe('ContentService', () => {
+  test('scheduled publishing and trash cleanup emit one event per item', async () => {
+    const { service, clock, hooks } = setup();
+    const entries = [];
+    for (let index = 0; index < 2; index++)
+      entries.push(
+        await service.create(
+          input({
+            status: 'scheduled',
+            publishedAt: '2026-01-02T00:00:00.000Z',
+          }),
+          ADMIN,
+        ),
+      );
+    const published: string[] = [];
+    const deleted: string[] = [];
+    hooks.registrar('batch').on('content.published', (entry) => {
+      published.push(entry.id);
+    });
+    hooks.registrar('batch').on('content.deleted', (entry) => {
+      deleted.push(entry.id);
+    });
+    clock.set('2026-01-03T00:00:00.000Z');
+    await service.publishDue();
+    expect(published.sort()).toEqual(entries.map((entry) => entry.id).sort());
+    for (const entry of entries) await service.trash(entry.id, ADMIN);
+    clock.set('2026-03-01T00:00:00.000Z');
+    await service.emptyTrash(30);
+    expect(deleted.sort()).toEqual(entries.map((entry) => entry.id).sort());
+  });
+
+  test('term deletion emits one committed assignment event per affected entry', async () => {
+    const { service, taxonomy, hooks } = setup();
+    const term = await taxonomy.create('category', { name: 'Shared' });
+    const first = await service.create(
+      input({ categoryIds: [term.id] }),
+      ADMIN,
+    );
+    const second = await service.create(
+      input({ categoryIds: [term.id] }),
+      ADMIN,
+    );
+    await service.create(input(), ADMIN);
+    const events: unknown[] = [];
+    hooks.registrar('deletion').on('content.termsChanged', (entry) => {
+      events.push(entry);
+    });
+    await taxonomy.remove('category', term.id);
+    expect(events).toEqual([
+      await service.get(first.id, ADMIN),
+      await service.get(second.id, ADMIN),
+    ]);
+    expect((await service.get(first.id, ADMIN)).categories).toEqual([]);
+  });
+
+  test('database search filters query and results and ignores invalid output', async () => {
+    const { service, publicContent, hooks } = setup();
+    const entry = await service.create(input({ status: 'published' }), ADMIN);
+    const filters = hooks.registrar('search');
+    filters.filter('search.query', (query) => ({ ...query, text: 'Hello' }));
+    filters.filter('search.query', (query) => ({ ...query, page: -1 }));
+    let results = 0;
+    filters.filter('search.results', (hits) => {
+      results++;
+      expect(hits.ids).toEqual([entry.id]);
+      return { ...hits, total: -1 };
+    });
+    expect(
+      (await publicContent.list({ search: 'missing' })).items.map(
+        (item) => item.id,
+      ),
+    ).toEqual([entry.id]);
+    expect(results).toBe(1);
+  });
+  test('revision and autosave actions expose persisted values', async () => {
+    const { service, hooks, revisionService } = setup();
+    const revisions: unknown[] = [];
+    const autosaves: unknown[] = [];
+    hooks.registrar('history').on('content.revisionSaved', (entry) => {
+      revisions.push(entry);
+    });
+    hooks.registrar('history').on('content.autosaved', (entry) => {
+      autosaves.push(entry);
+    });
+    const entry = await service.create(input(), ADMIN);
+    const history = revisionService();
+    await history.autosave(
+      entry.id,
+      { title: 'Unsaved', excerpt: '', document: textDocument('Changed') },
+      ADMIN,
+    );
+    expect(revisions).toEqual([entry]);
+    expect(autosaves).toEqual([
+      {
+        contentId: entry.id,
+        revision: await history.pendingAutosave(entry.id, ADMIN),
+      },
+    ]);
+  });
+
+  test('publication and deletion vetoes cannot be reversed by later plugins', async () => {
+    const { service, hooks } = setup();
+    const draft = await service.create(input(), ADMIN);
+    for (const hook of [
+      'content.publishAllowed',
+      'content.deleteAllowed',
+    ] as const) {
+      hooks.registrar('deny').filter(hook, () => false, 1);
+      hooks.registrar('grant').filter(hook, () => true, 2);
+    }
+    await expect(
+      service.update(draft.id, input({ status: 'published' }), ADMIN),
+    ).rejects.toMatchObject({ code: 'forbidden' });
+    await expect(service.remove(draft.id, ADMIN)).rejects.toMatchObject({
+      code: 'forbidden',
+    });
+    expect((await service.get(draft.id, ADMIN)).status).toBe('draft');
+  });
+
+  test('assignment events describe committed terms and skip unchanged assignments', async () => {
+    const { service, taxonomy, hooks } = setup();
+    const term = await taxonomy.create('category', { name: 'Topic' });
+    const events: unknown[] = [];
+    hooks.registrar('assignments').on('content.termsChanged', (entry) => {
+      events.push(entry);
+    });
+    const entry = await service.create(
+      input({ categoryIds: [term.id] }),
+      ADMIN,
+    );
+    await service.update(entry.id, input({ categoryIds: [term.id] }), ADMIN);
+    const cleared = await service.update(entry.id, input(), ADMIN);
+    expect(events).toEqual([entry, cleared]);
+  });
+
+  test('permalink filters apply to details and summaries and reject unsafe paths', async () => {
+    const { service, publicContent, hooks, repository } = setup();
+    const entry = await service.create(input({ status: 'published' }), ADMIN);
+    const other = await service.create(input({ status: 'published' }), ADMIN);
+    await repository.permalinks.addRedirect(entry.id, '/alternate');
+    const registrar = hooks.registrar('paths');
+    registrar.filter('content.permalink', (value) => ({
+      ...value,
+      path: '/alternate',
+    }));
+    registrar.filter('content.permalink', (value) => ({
+      ...value,
+      path: '//external.example',
+    }));
+    registrar.filter('content.permalink', (value) => ({
+      ...value,
+      path: '/unrouted',
+    }));
+    registrar.filter('content.permalink', (value) => ({
+      ...value,
+      path: other.path,
+    }));
+    expect((await publicContent.getBySlug(entry.slug)).path).toBe('/alternate');
+    expect(
+      (await publicContent.list({})).items.find((item) => item.id === entry.id)
+        ?.path,
+    ).toBe('/alternate');
+    const resolved = await new PermalinkResolver(
+      repository.permalinks,
+      publicContent,
+    ).resolve({ path: '/alternate' });
+    expect(resolved.redirect).toBe(false);
+  });
+
   test('creates drafts with generated, unique slugs and rendered HTML', async () => {
     const { service } = setup();
     const first = await service.create(input(), ADMIN);

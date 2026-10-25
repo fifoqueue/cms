@@ -478,15 +478,109 @@ const compact = (node: Record<string, unknown>) =>
     ),
   );
 
-export const buildHead = ({
-  site,
-  settings,
-  page,
-}: {
+/** What the head is built from. */
+export interface HeadInput {
   site: SiteView;
   settings: SeoSettingsView;
   page: SitePage | null;
-}): Head => {
+}
+
+/**
+ * The `seo.meta` discovery filter value: presentation data plugins may adjust before the
+ * head escapes it. `og` holds the first value of each `og:*` property; a page without a
+ * canonical URL submits `/` (`NO_CANONICAL`), which keeps it without one.
+ */
+export interface SeoMeta {
+  title: string;
+  description: string;
+  canonicalUrl: string;
+  og: Record<string, string>;
+  jsonLd: unknown[];
+}
+
+const NO_CANONICAL = '/';
+
+interface HeadParts {
+  title: string;
+  meta: HeadMeta[];
+  links: HeadLink[];
+  graph: unknown[];
+}
+
+const isOg = (tag: HeadMeta) => tag.property?.startsWith('og:') ?? false;
+
+/** The filter value of a head. */
+const seoMetaOf = ({ title, meta, links, graph }: HeadParts): SeoMeta => {
+  const og: Record<string, string> = {};
+  for (const tag of meta) if (isOg(tag)) og[tag.property!] ??= tag.content;
+  return {
+    title,
+    description: meta.find((tag) => tag.name === 'description')?.content ?? '',
+    canonicalUrl:
+      links.find((link) => link.rel === 'canonical')?.href ?? NO_CANONICAL,
+    og,
+    jsonLd: graph,
+  };
+};
+
+/** The head with a filtered value applied; the head escapes it as usual. */
+const applyMeta = (parts: HeadParts, filtered: SeoMeta): HeadParts => {
+  const original = seoMetaOf(parts);
+  const description: HeadMeta[] = filtered.description
+    ? [{ name: 'description', content: filtered.description }]
+    : [];
+  const og = Object.entries(filtered.og)
+    .filter(([key]) => key.startsWith('og:'))
+    .map(([property, content]) => ({ property, content }));
+  const rest = parts.meta.filter((tag) => tag.name !== 'description');
+  const at = rest.findIndex(isOg);
+  const others = rest.filter((tag) => !isOg(tag));
+  const ogAt = at < 0 ? others.length : at;
+  const canonical =
+    filtered.canonicalUrl === NO_CANONICAL &&
+    original.canonicalUrl === NO_CANONICAL
+      ? []
+      : [{ rel: 'canonical', href: filtered.canonicalUrl }];
+  return {
+    title: filtered.title,
+    meta: [
+      ...description,
+      ...others.slice(0, ogAt),
+      ...og,
+      ...others.slice(ogAt),
+    ],
+    links: [
+      ...canonical,
+      ...parts.links.filter((link) => link.rel !== 'canonical'),
+    ],
+    graph: filtered.jsonLd,
+  };
+};
+
+/** The `seo.meta` filter value of a page, for the server to submit. */
+export const headMeta = (input: HeadInput) => seoMetaOf(headParts(input));
+
+/**
+ * The page's head. `filtered` is the page's `seo.meta` filter result (page data `seoMeta`,
+ * set by the server only when a plugin changed something).
+ */
+export const buildHead = ({
+  filtered,
+  ...input
+}: HeadInput & { filtered?: SeoMeta | null }): Head => {
+  const parts = headParts(input);
+  const { title, meta, links, graph } = filtered
+    ? applyMeta(parts, filtered)
+    : parts;
+  return {
+    title,
+    meta,
+    links,
+    jsonLd: jsonLdScript({ '@context': 'https://schema.org', '@graph': graph }),
+  };
+};
+
+const headParts = ({ site, settings, page }: HeadInput): HeadParts => {
   const absolute = (path: string) =>
     settings.siteUrl ? `${settings.siteUrl}${path}` : '';
   const href = (path: string) => absolute(path) || path;
@@ -696,10 +790,5 @@ export const buildHead = ({
     breadcrumb,
   ].filter((node) => node !== null);
 
-  return {
-    title: facts.title,
-    meta,
-    links,
-    jsonLd: jsonLdScript({ '@context': 'https://schema.org', '@graph': graph }),
-  };
+  return { title: facts.title, meta, links, graph };
 };

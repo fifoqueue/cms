@@ -125,9 +125,13 @@ const assignments = ({
   [...categoryIds, ...tagIds, ...extraTermIds].map((termId) => ({ termId }));
 
 type Transaction = Prisma.TransactionClient;
+import type { PermalinkTokenRegistry } from '#api/domain/permalinks/token-registry';
 
 export class PrismaContentRepository implements ContentRepository {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly tokens?: PermalinkTokenRegistry,
+  ) {}
 
   async findById(id: string) {
     const row = await this.db.content.findUnique({
@@ -282,7 +286,7 @@ export class PrismaContentRepository implements ContentRepository {
       await lockPermalinks(tx);
       // Assignments, current route and redirects go with it (ON DELETE CASCADE).
       await tx.content.deleteMany({ where: { id } });
-      await refreshContentPaths(tx, { type: 'page' });
+      await refreshContentPaths(tx, { type: 'page' }, this.tokens);
       await tx.searchOutbox.create({ data: { contentId: id } });
     });
   }
@@ -463,6 +467,7 @@ export class PrismaContentRepository implements ContentRepository {
               tx,
               row,
               current?.publishedAt != null,
+              this.tokens,
             );
             await saveRevisionIn(tx, row, revision);
             return toRecord(row, path);

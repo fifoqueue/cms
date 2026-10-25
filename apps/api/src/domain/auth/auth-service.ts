@@ -6,9 +6,16 @@ import type {
   SetupStatus,
   UserProfile,
 } from '@cms/sdk';
-import { conflict, notFound, unauthorized, Errors } from '#api/shared/errors';
+import {
+  conflict,
+  notFound,
+  unauthorized,
+  forbidden,
+  Errors,
+} from '#api/shared/errors';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
+import { requireRecentSignIn } from '#api/domain/auth/recent-sign-in';
 import { parseInput } from '#api/shared/validation';
 import { toProfile } from '#api/domain/users/user-mapper';
 import { slugify } from '#api/domain/content/slug';
@@ -27,7 +34,8 @@ import type {
 } from '#api/domain/auth/ports';
 
 export interface AuthServiceDeps {
-  roles?: { capabilities(role: string): Promise<Capability[]> };
+  passwordLogin?: () => Promise<boolean>;
+  roles?: { capabilities(role: string, userId: string): Promise<Capability[]> };
   users: UserRepository;
   sessions: SessionRepository;
   hasher: PasswordHasher;
@@ -45,6 +53,10 @@ export class AuthService {
   private dummyHash: Promise<string> | undefined;
 
   constructor(private readonly deps: AuthServiceDeps) {}
+
+  requireRecent(actor: Actor, token: string) {
+    return requireRecentSignIn(this.deps, actor, token);
+  }
 
   async status(): Promise<SetupStatus> {
     return { setupRequired: (await this.deps.users.count()) === 0 };
@@ -84,6 +96,8 @@ export class AuthService {
       captchaToken: null,
     },
   ): Promise<SessionGrant> {
+    if (this.deps.passwordLogin && !(await this.deps.passwordLogin()))
+      throw forbidden(Errors.PasswordLoginDisabled);
     const { email, password } = parseInput(loginSchema, input);
     const attempt: Attempt = {
       ...client,
@@ -159,7 +173,10 @@ export class AuthService {
   private async profile(user: UserRecord): Promise<UserProfile> {
     const profile = toProfile(user);
     if (this.deps.roles)
-      profile.capabilities = await this.deps.roles.capabilities(user.role);
+      profile.capabilities = await this.deps.roles.capabilities(
+        user.role,
+        user.id,
+      );
     return profile;
   }
 

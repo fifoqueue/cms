@@ -12,9 +12,22 @@ import type {
   ExternalIdentityRepository,
   SsoTransactionRecord,
   SsoTransactionRepository,
+  SsoAccessTransactions,
+  SsoAccessContext,
 } from '#api/domain/auth/sso-ports';
 import { conflict, unauthorized } from '#api/shared/errors';
 import { takenSlugs } from '#test/support/memory-rows';
+import { MemoryPasswordTokens } from '#test/support/memory-security';
+
+export class MemorySsoAccessTransactions implements SsoAccessTransactions {
+  private tail: Promise<unknown> = Promise.resolve();
+  constructor(private readonly context: SsoAccessContext) {}
+  run<T>(work: (context: SsoAccessContext) => Promise<T>) {
+    const next = this.tail.then(() => work(this.context));
+    this.tail = next.catch(() => undefined);
+    return next;
+  }
+}
 
 export class MemoryUsers implements UserRepository {
   readonly rows = new Map<string, UserRecord>();
@@ -109,7 +122,10 @@ export class MemorySessions implements SessionRepository {
 export class MemoryIdentities implements ExternalIdentityRepository {
   readonly rows = new Map<string, ExternalIdentityRecord>();
 
-  constructor(private readonly sessions: MemorySessions) {}
+  constructor(
+    private readonly sessions: MemorySessions,
+    readonly tokens = new MemoryPasswordTokens(),
+  ) {}
 
   has(id: string) {
     return [...this.rows.values()].some((row) => row.id === id);
@@ -120,24 +136,55 @@ export class MemoryIdentities implements ExternalIdentityRepository {
   }
 
   async findByUser(userId: string) {
-    const row = [...this.rows.values()].find((row) => row.userId === userId);
-    return structuredClone(row ?? null);
+    return structuredClone(
+      [...this.rows.values()].filter((row) => row.userId === userId),
+    );
+  }
+
+  async claimUser(tokenHash: string, now: Date) {
+    const token = this.tokens.rows.get(tokenHash);
+    return token && token.expiresAt > now ? token.userId : null;
+  }
+
+  async claim(identity: ExternalIdentityRecord, tokenHash: string, now: Date) {
+    const token = this.tokens.rows.get(tokenHash);
+    if (!token || token.userId !== identity.userId || token.expiresAt <= now)
+      return false;
+    if (
+      [...this.rows.values()].some(
+        (row) =>
+          row.userId === identity.userId && row.issuer === identity.issuer,
+      )
+    )
+      return false;
+    this.setLink(identity);
+    for (const [hash, row] of this.tokens.rows)
+      if (row.userId === identity.userId) this.tokens.rows.delete(hash);
+    return true;
   }
 
   async link(identity: ExternalIdentityRecord) {
+    this.setLink(identity);
+  }
+
+  private setLink(identity: ExternalIdentityRecord) {
     const key = `${identity.issuer}\n${identity.subject}`;
     const owner = this.rows.get(key)?.userId;
     if (owner && owner !== identity.userId)
       throw conflict(
         'This single sign-on account is already linked to another administrator.',
       );
-    await this.unlink(identity.userId);
+    for (const [key, row] of this.rows)
+      if (row.userId === identity.userId && row.issuer === identity.issuer) {
+        this.rows.delete(key);
+        this.sessions.deleteByIdentity(row.id);
+      }
     this.rows.set(key, structuredClone(identity));
   }
 
-  async unlink(userId: string) {
+  async unlink(userId: string, identityId: string) {
     for (const [key, row] of this.rows)
-      if (row.userId === userId) {
+      if (row.userId === userId && row.id === identityId) {
         this.rows.delete(key);
         this.sessions.deleteByIdentity(row.id);
       }

@@ -31,6 +31,12 @@
     plugins: m.healthPluginsFix,
     visitorProof: m.healthVisitorProofFix,
   });
+  type Key = (typeof data.checks)[number]['key'];
+  /** Plugin checks (`plugin:<id>:<key>`) have no translation; their key is the title. */
+  const titleOf = (key: Key) =>
+    Object.hasOwn(titles, key) ? titles[key as keyof typeof titles] : key;
+  const fixOf = (key: Key) =>
+    Object.hasOwn(fixes, key) ? fixes[key as keyof typeof fixes] : '';
   const order = { critical: 0, recommended: 1, good: 2 } as const;
   const checks = $derived(
     [...data.checks].sort((a, b) => order[a.status] - order[b.status]),
@@ -58,10 +64,10 @@
                   ? 'secondary'
                   : 'outline'}>{statusNames[check.status]}</Badge
             >
-            {titles[check.key]}
+            {titleOf(check.key)}
           </p>
-          {#if check.status !== 'good'}
-            <p class="text-sm text-muted-foreground">{fixes[check.key]}</p>
+          {#if check.status !== 'good' && fixOf(check.key)}
+            <p class="text-sm text-muted-foreground">{fixOf(check.key)}</p>
           {/if}
           {#if check.detail.length}
             <ul class="text-sm text-muted-foreground">

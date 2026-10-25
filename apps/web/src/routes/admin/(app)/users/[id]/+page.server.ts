@@ -1,6 +1,11 @@
 import { error, redirect } from '@sveltejs/kit';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
+import {
+  profileFieldsOf,
+  saveProfileFields,
+} from '#lib/server/profile-fields.js';
 import { adminFor, requireCapability } from '#lib/server/session.js';
+import { passwordAllowed as passwordSignIn } from '#lib/server/sign-in.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
@@ -8,9 +13,17 @@ export const load: PageServerLoad = async (event) => {
   const users = await adminFor(event).users.list();
   const target = users.find((user) => user.id === event.params.id);
   if (!target) error(404, Errors.NotFound);
+  const [roles, passwordAllowed, profileFields] = await Promise.all([
+    adminFor(event).roles.list(),
+    passwordSignIn(event.fetch),
+    profileFieldsOf(event, target.id),
+  ]);
   return {
     target,
-    roles: await adminFor(event).roles.list(),
+    roles,
+    passwordAllowed,
+    /** Private fields plugins declare, with this user's values. */
+    profileFields,
     others: users
       .filter((user) => user.id !== target.id)
       .map(({ id, name }) => ({ id, name })),
@@ -53,6 +66,10 @@ export const actions: Actions = {
       return failFrom(caught);
     }
     return { notice: 'saved' };
+  },
+  profileFields: (event) => {
+    requireCapability(event.locals, 'users.manage');
+    return saveProfileFields(event, event.params.id);
   },
   delete: async (event) => {
     requireCapability(event.locals, 'users.manage');

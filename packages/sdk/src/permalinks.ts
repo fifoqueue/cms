@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { calendar } from '#sdk/calendar';
 import { Errors } from '#sdk/errors';
+import { contentTypeKeySchema } from '#sdk/content-types';
 
 /**
  * Configurable, WordPress-style permalinks: one path template per content type. A template is a
@@ -170,7 +171,8 @@ const patternIssue = (pattern: string): string | undefined => {
   if (parts.length < 3) return 'Template needs at least one %token%';
 
   for (const [index, part] of parts.entries()) {
-    if (index % 2 === 1 && !isToken(part)) return `Unknown token %${part}%`;
+    if (index % 2 === 1 && !/^[a-z][a-z0-9_]{0,63}$/.test(part))
+      return `Invalid token %${part}%`;
     if (index % 2 === 0 && !LITERAL.test(part))
       return 'Only letters, digits, "-", ".", "_", "~" and "/" may appear outside tokens';
   }
@@ -196,13 +198,7 @@ export const permalinkPatternSchema = z
  * uses `/<key>/%slug%` (`permalinkPatternFor`).
  */
 export const permalinkSettingsSchema = z
-  .record(
-    z
-      .string()
-      .max(32)
-      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-    permalinkPatternSchema,
-  )
+  .record(contentTypeKeySchema, permalinkPatternSchema)
   .refine(
     (settings) => PERMALINK_CONTENT_TYPES.every((type) => type in settings),
     Errors.PermalinkBuiltinsRequired,

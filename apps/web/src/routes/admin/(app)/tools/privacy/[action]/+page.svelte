@@ -22,6 +22,40 @@
     {m.privacyRetained}
   </p>{/if}
 <FormMessage {form} />
+{#if form && 'erasure' in form && form.erasure}
+  <section class="max-w-2xl space-y-2" aria-label={m.privacyErasureReport}>
+    <h2 class="text-lg font-semibold">{m.privacyErasureReport}</h2>
+    <ul class="space-y-2">
+      {#each form.erasure as row (row.id)}
+        <li
+          class="rounded-lg border p-3 text-sm {row.result
+            ? ''
+            : 'border-destructive text-destructive'}"
+        >
+          <p class="font-medium">
+            {row.owner === null
+              ? m.privacyEraserCore(row.key)
+              : m.privacyEraserPlugin(row.owner, row.key)}
+          </p>
+          {#if row.result}
+            <p class="text-muted-foreground">
+              {m.privacyEraserCounts(row.result.erased, row.result.retained)}
+            </p>
+            {#if row.result.messages.length}
+              <ul class="list-disc pl-5 text-muted-foreground">
+                {#each row.result.messages as message, index (index)}
+                  <li>{message}</li>
+                {/each}
+              </ul>
+            {/if}
+          {:else}
+            <p>{m.privacyEraserFailed}</p>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  </section>
+{/if}
 <form
   method="POST"
   action="?/create"

@@ -1,8 +1,127 @@
 // Plugin authoring API. A plugin may depend on this module and on `@cms/sdk` only.
+import type { PermalinkTokenRegistrar } from '#sdk/permalink-contracts';
+import type { CapabilityRegistrar } from '#sdk/capability-contracts';
+import type {
+  RoleRegistrar,
+  ProfileFieldRegistrar,
+  CaptchaRegistrar,
+  PrivacyEraserRegistrar,
+} from '#sdk/user-contracts';
+export { permalinkSegmentSchema } from '#sdk/permalink-contracts';
+export type {
+  PermalinkTokenRegistrar,
+  PermalinkTokenResolver,
+} from '#sdk/permalink-contracts';
+export {
+  extensionKeySchema,
+  profileFieldSchema,
+  profileValuesSchema,
+  profileMetaSchema,
+  captchaProviderIdSchema,
+  captchaWidgetSchema,
+  captchaOriginSchema,
+  privacyErasureResultSchema,
+} from '#sdk/user-contracts';
+export type {
+  ProfileField,
+  ProfileValues,
+  CaptchaProviderDefinition,
+  CaptchaWidget,
+  CaptchaWidgetInput,
+  CaptchaVerification,
+  PrivacyEraser,
+  PrivacyErasureResult,
+} from '#sdk/user-contracts';
+import type {
+  HealthCheckRegistrar,
+  JobRegistrar,
+} from '#sdk/platform-contracts';
+import type {
+  MenuItemRegistrar,
+  ThemeContributionRegistrar,
+  PatternRegistrar,
+} from '#sdk/appearance-contracts';
+import type {
+  SitemapRegistrar,
+  SearchEngineRegistrar,
+} from '#sdk/discovery-contracts';
+export type {
+  HealthCheckRegistrar,
+  JobRegistrar,
+} from '#sdk/platform-contracts';
+export type {
+  MenuItemRegistrar,
+  ThemeContributionRegistrar,
+  PatternRegistrar,
+} from '#sdk/appearance-contracts';
+export type {
+  SitemapRegistrar,
+  SearchEngineRegistrar,
+} from '#sdk/discovery-contracts';
+export type {
+  MailField,
+  MailValues,
+  PluginMailTransport,
+  MailTransportRegistrar,
+} from '#sdk/email';
+export type {
+  RoleRegistrar,
+  ProfileFieldRegistrar,
+  CaptchaRegistrar,
+  PrivacyEraserRegistrar,
+} from '#sdk/user-contracts';
+import type { MailTransportRegistrar } from '#sdk/email';
+import type {
+  ContentTypeRegistrar,
+  TaxonomyRegistrar,
+  FieldRegistrar,
+} from '#sdk/content-contracts';
+export type {
+  ContentTypeRegistrar,
+  TaxonomyRegistrar,
+  FieldRegistrar,
+} from '#sdk/content-contracts';
+export {
+  capabilitySchema,
+  capabilityDefinitionSchema,
+} from '#sdk/capability-contracts';
+export type {
+  CapabilityDefinition,
+  CapabilityRegistrar,
+} from '#sdk/capability-contracts';
+export {
+  outgoingEmailSchema,
+  platformImportItemSchema,
+  platformWxrItemSchema,
+} from '#sdk/hooks/platform';
+import type {
+  PlatformActionHooks,
+  PlatformFilterHooks,
+} from '#sdk/hooks/platform';
 import type { UserProfile } from '#sdk/auth';
+import type {
+  AppearanceActionHooks,
+  AppearanceFilterHooks,
+} from '#sdk/hooks/appearance';
+import type { SearchActionHooks, SearchFilterHooks } from '#sdk/hooks/search';
+import type { SeoActionHooks, SeoFilterHooks } from '#sdk/hooks/seo';
+import type { UserActionHooks, UserFilterHooks } from '#sdk/hooks/users';
+import type { MediaActionHooks, MediaFilterHooks } from '#sdk/hooks/media';
+import type { MediaProcessorRegistrar } from '#sdk/hooks/media';
+import type { ImageSizeRegistrar } from '#sdk/hooks/media';
+export type { ImageSize, ImageSizeRegistrar } from '#sdk/hooks/media';
+export type { MediaProcessor, MediaProcessorRegistrar } from '#sdk/hooks/media';
+import type {
+  CommentActionHooks,
+  CommentCheckerRegistrar,
+  CommentFilterHooks,
+} from '#sdk/hooks/comments';
+import type {
+  ContentActionHooks,
+  ContentFilterHooks,
+} from '#sdk/hooks/content';
 import type { Awaitable, Paginated } from '#sdk/common';
 import type {
-  ContentData,
   ContentEntry,
   PublicContent,
   PublicContentListQuery,
@@ -18,10 +137,17 @@ import type {
   SettingValue,
   SettingValues,
 } from '#sdk/plugins';
+import type { SignInDisplay, SignInField } from '#sdk/sign-in';
 import type { SiteSettings } from '#sdk/site';
 import type { SlotName } from '#sdk/slots';
 
 export type Unsubscribe = () => void;
+export type {
+  CommentCheck,
+  CommentChecker,
+  CommentCheckerRegistrar,
+  CommentVerdict,
+} from '#sdk/hooks/comments';
 
 /** A stored comment as plugins see it (including the private email address). */
 export interface PluginComment {
@@ -51,7 +177,20 @@ export interface CommentDraft {
 }
 
 /** Notifications. Handlers run after the fact and cannot change the outcome. */
-export interface ActionHookMap {
+interface CoreActionHooks {
+  /** A session was issued. `method` and `secondFactor` are sign-in method / factor ids. */
+  'user.signedIn': {
+    user: UserProfile;
+    method: string;
+    secondFactor: string | null;
+  };
+  /** A sign-in step was refused. `account` is the email the visitor typed, if any. */
+  'user.signInFailed': { method: string; account: string | null };
+  'user.secondFactorChanged': {
+    user: UserProfile;
+    factor: string;
+    change: 'enrolled' | 'removed';
+  };
   'content.created': ContentEntry;
   'content.updated': ContentEntry;
   'content.published': ContentEntry;
@@ -67,19 +206,61 @@ export interface ActionHookMap {
 }
 
 /** Transformations. Each handler receives the previous handler's output. Invalid output is discarded. */
-export interface FilterHookMap {
-  /** Validated content right before it is stored. */
-  'content.beforeSave': ContentData;
+interface CoreFilterHooks {
   /** Published content (with its body) right before it leaves the public API. */
   'content.public': PublicContent;
   /** A published content list item (no body) right before it leaves the public API. */
   'content.publicSummary': PublicContentSummary;
   /** A visitor's comment right before it is stored. */
   'comment.beforeSave': CommentDraft;
+  /**
+   * Whether an authenticated user may get a session (WordPress `wp_authenticate_user`). Filters
+   * can only refuse: a `true` returned after core said `false` is ignored.
+   */
+  'user.signInAllowed': { user: UserProfile; method: string; allowed: boolean };
+  /** Monotonic: plugins may require another factor, never remove an existing requirement.
+   * False after true is ignored and warned. A UV passkey has already satisfied core policy. */
+  'user.secondFactorRequired': {
+    user: UserProfile;
+    method: string;
+    required: boolean;
+  };
 }
+
+/**
+ * Every hook. Each domain declares its hooks in `#sdk/hooks/<domain>` (`<Domain>ActionHooks`,
+ * `<Domain>FilterHooks`) and joins them here, so domains grow without editing one interface.
+ */
+export type ActionHookMap = CoreActionHooks &
+  SearchActionHooks &
+  AppearanceActionHooks &
+  PlatformActionHooks &
+  ContentActionHooks &
+  SeoActionHooks &
+  UserActionHooks &
+  MediaActionHooks &
+  CommentActionHooks;
+export type FilterHookMap = CoreFilterHooks &
+  PlatformFilterHooks &
+  SearchFilterHooks &
+  AppearanceFilterHooks &
+  UserFilterHooks &
+  SeoFilterHooks &
+  ContentFilterHooks &
+  MediaFilterHooks &
+  CommentFilterHooks;
 
 export type ActionName = keyof ActionHookMap;
 export type FilterName = keyof FilterHookMap;
+export {
+  searchHookQuerySchema,
+  searchHookResultsSchema,
+  searchHookDocumentSchema,
+} from '#sdk/hooks/search';
+export {
+  discoveryFilterSchemas,
+  discoveryFilterInputSchema,
+} from '#sdk/hooks/seo';
 export type ActionHandler<K extends ActionName> = (
   payload: Readonly<ActionHookMap[K]>,
 ) => Awaitable<void>;
@@ -255,6 +436,133 @@ export interface ContentReader {
   getBySlug(slug: string): Promise<PublicContent | null>;
 }
 
+/** Field values the browser sent. Untrusted strings; validate them. */
+export type SignInValues = Readonly<Record<string, string>>;
+
+/**
+ * What a sign-in step produces. `state` (JSON, at most 8 KB) is kept on the server with the
+ * pending sign-in and handed back to `continue`; the browser only holds an opaque handle.
+ * `failed` answers the visitor uniformly ("invalid credentials"), whatever the reason.
+ */
+export type SignInOutcome =
+  | { kind: 'user'; userId: string }
+  | { kind: 'redirect'; url: string; state?: unknown }
+  | {
+      kind: 'webauthn';
+      ceremony: 'get' | 'create';
+      /** WebAuthn options JSON (`PublicKeyCredentialRequestOptionsJSON` / `…CreationOptionsJSON`). */
+      options: Record<string, unknown>;
+      display?: SignInDisplay[];
+      state?: unknown;
+    }
+  | {
+      kind: 'fields';
+      fields: SignInField[];
+      display?: SignInDisplay[];
+      message?: string;
+      state?: unknown;
+    }
+  | { kind: 'failed' };
+
+export interface SignInRequest {
+  /** The chosen option (`options()`), if the method has any. */
+  option: string | null;
+  values: SignInValues;
+  /** The visitor's address when the frontend proved it. */
+  address: string | null;
+  /** Verified, normalized visitor identity (IPv4 address/IPv6 /64); null for unproven clients. */
+  client?: string | null;
+  /** Where a redirect-based method sends the browser back; register it at the provider. */
+  callbackUrl: string;
+}
+
+export interface SignInContinuation {
+  /** The `state` of the previous outcome. */
+  state: unknown;
+  values: SignInValues;
+  /** `PublicKeyCredential.toJSON()` after a `webauthn` outcome. */
+  credential: Record<string, unknown> | null;
+  /** The query string the browser came back with after a `redirect` outcome. */
+  query: string | null;
+  address: string | null;
+}
+
+/**
+ * A primary way to sign in (WordPress `authenticate`). Core's password, passkey and single
+ * sign-on use this same contract. A step ends with `user` once the visitor is proven to be that
+ * user; core then applies `user.signInAllowed`, the second factor and issues the session.
+ * Methods never create users.
+ */
+export interface SignInMethodDefinition {
+  label: string;
+  /** Buttons on the login page, e.g. one per configured provider. */
+  options?(): Awaitable<{ id: string; label: string }[]>;
+  /** Fields of the first step (email, password…); without them the method is a button. */
+  fields?: SignInField[];
+  /** Whether it can sign anyone in now; methods that are not ready are not offered. Default true. */
+  ready?(): Awaitable<boolean>;
+  /** Whether `user` can sign in this way now; keeps administrators from locking themselves out. */
+  usableBy(user: UserProfile): Awaitable<boolean>;
+  begin(request: SignInRequest): Awaitable<SignInOutcome>;
+  continue?(step: SignInContinuation): Awaitable<SignInOutcome>;
+  /**
+   * Sets the method up for `user`, who proved ownership of the account with an emailed
+   * invitation or reset link (choosing a password, linking a provider account, registering a
+   * passkey). `user` from a setup step must be that same user.
+   */
+  setup?: {
+    /** Setup-specific first-step fields; omission inherits the sign-in fields. */
+    fields?: SignInField[];
+    begin(user: UserProfile, request: SignInRequest): Awaitable<SignInOutcome>;
+    continue?(
+      user: UserProfile,
+      step: SignInContinuation,
+    ): Awaitable<SignInOutcome>;
+  };
+}
+
+/** A step a second factor asks the user to complete. */
+export type SecondFactorChallenge = Extract<
+  SignInOutcome,
+  { kind: 'fields' | 'webauthn' }
+>;
+
+/** A second factor (TOTP, passkey, recovery code, or a plugin's). Never a primary method. */
+export interface SecondFactorDefinition {
+  label: string;
+  /** Whether `user` has this factor set up. */
+  enrolled(user: UserProfile): Awaitable<boolean>;
+  challenge(user: UserProfile): Awaitable<SecondFactorChallenge>;
+  verify(user: UserProfile, step: SignInContinuation): Awaitable<boolean>;
+  /** Setting it up, from the account page or while a required factor is missing at sign-in. */
+  enroll?: {
+    begin(user: UserProfile): Awaitable<SecondFactorChallenge>;
+    finish(user: UserProfile, step: SignInContinuation): Awaitable<boolean>;
+  };
+  /** Individual credentials for the account page (e.g. each passkey). */
+  credentials?(
+    user: UserProfile,
+  ): Awaitable<{ id: string; label: string; createdAt?: string }[]>;
+  remove?(user: UserProfile, credentialId: string): Awaitable<void>;
+}
+
+/** Local accounts a method resolves to. Read-only: plugins never create users. */
+export interface UserDirectory {
+  findById(id: string): Promise<UserProfile | null>;
+  findByEmail(email: string): Promise<UserProfile | null>;
+}
+
+export interface AuthenticationRegistrar {
+  /**
+   * `key` is kebab-case; the method id becomes `plugin:<plugin id>:<key>`. It signs in only
+   * after an administrator allows it in Settings → Sign-in.
+   */
+  signInMethod(key: string, method: SignInMethodDefinition): Unsubscribe;
+  /** `key` is kebab-case; the factor id becomes `plugin:<plugin id>:<key>`. */
+  secondFactor(key: string, factor: SecondFactorDefinition): Unsubscribe;
+  readonly users: UserDirectory;
+}
+
 export interface PluginLogger {
   info(message: string, ...details: unknown[]): void;
   warn(message: string, ...details: unknown[]): void;
@@ -268,6 +576,26 @@ export interface PluginLogger {
  * started work and arbitrary JavaScript cannot be cancelled.
  */
 export interface PluginContext {
+  readonly healthChecks: HealthCheckRegistrar;
+  readonly roles: RoleRegistrar;
+  readonly profileFields: ProfileFieldRegistrar;
+  readonly captchaProviders: CaptchaRegistrar;
+  readonly privacyErasers: PrivacyEraserRegistrar;
+  readonly jobs: JobRegistrar;
+  readonly contentTypes: ContentTypeRegistrar;
+  readonly permalinkTokens: PermalinkTokenRegistrar;
+  readonly taxonomies: TaxonomyRegistrar;
+  readonly fields: FieldRegistrar;
+  readonly capabilities: CapabilityRegistrar;
+  readonly mailTransports: MailTransportRegistrar;
+  readonly menuItemTypes: MenuItemRegistrar;
+  readonly themeContributions: ThemeContributionRegistrar;
+  readonly patterns: PatternRegistrar;
+  readonly imageSizes: ImageSizeRegistrar;
+  readonly sitemaps: SitemapRegistrar;
+  readonly searchEngines: SearchEngineRegistrar;
+  readonly mediaProcessors: MediaProcessorRegistrar;
+  readonly commentCheckers: CommentCheckerRegistrar;
   readonly pluginId: string;
   readonly hooks: HookRegistrar;
   readonly slots: SlotRegistrar;
@@ -277,6 +605,7 @@ export interface PluginContext {
   readonly tasks: TaskRegistrar;
   readonly admin: AdminPageRegistrar & DashboardWidgetRegistrar;
   readonly routes: RouteRegistrar;
+  readonly auth: AuthenticationRegistrar;
   readonly settings: SettingsReader;
   readonly storage: KeyValueStore;
   readonly content: ContentReader;
@@ -297,3 +626,25 @@ export interface PluginDefinition {
 /** Identity helper for type inference. A plugin bundle exports its definition as `plugin`. */
 export const definePlugin = (definition: PluginDefinition): PluginDefinition =>
   definition;
+export { providerKeySchema, sitemapPageSchema } from '#sdk/discovery-contracts';
+export { menuLinkSchema } from '#sdk/menus';
+export {
+  themeContributionSchema,
+  patternContributionSchema,
+} from '#sdk/appearance-contracts';
+export type {
+  MenuResolution,
+  MenuLink,
+  MenuItemProvider,
+  ThemeContributionRequest,
+  ThemeContribution,
+  PatternContributions,
+} from '#sdk/appearance-contracts';
+export type {
+  SitemapRequest,
+  SitemapPage,
+  SitemapProvider,
+  SearchRequest,
+  SearchHits,
+  SearchProvider,
+} from '#sdk/discovery-contracts';

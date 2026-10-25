@@ -24,6 +24,9 @@ import {
   templateCandidates,
 } from '#lib/theme/template.js';
 import type { ThemePage } from '#lib/theme/template.js';
+import { withSeoMeta } from '#lib/server/page-meta.js';
+import type { HeadLayout } from '#lib/server/page-meta.js';
+import type { FilterEvent } from '#lib/server/seo-filter.js';
 
 type Api = ReturnType<typeof contentApi>;
 
@@ -441,15 +444,24 @@ export const loadTemplateData = (
     layout,
   );
 
-/** Page data plus the block data of its template; the layout is loaded alongside. */
+/**
+ * Page data plus the block data of its template and the page's filtered head
+ * (`withSeoMeta`); the layout is loaded alongside.
+ */
 export const withTemplateData = async <P extends ThemePage>(
   api: Api,
-  parent: () => Promise<LayoutBlockData>,
+  event: FilterEvent & {
+    parent: () => Promise<LayoutBlockData & HeadLayout>;
+  },
   page: P,
-) => ({
-  ...page,
-  ...(await loadTemplateData(api, await parent(), page)),
-});
+) => {
+  const layout = await event.parent();
+  const [blocks, seoMeta] = await Promise.all([
+    loadTemplateData(api, layout, page),
+    withSeoMeta(event, layout, page).then((data) => data.seoMeta),
+  ]);
+  return { ...page, ...blocks, seoMeta };
+};
 
 /**
  * Block data of every template and part, for the site editor's canvas. `context` describes

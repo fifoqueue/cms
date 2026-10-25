@@ -1,4 +1,19 @@
+import {
+  SIGN_IN_MESSAGES,
+  SSO_MESSAGES,
+  VISITOR_MESSAGES,
+} from '#lib/admin/sso-messages.js';
 import type { Messages } from '#lib/i18n/index.js';
+
+/**
+ * Catalog keys for specific messages of the SDK `Errors` catalog, whether the API refuses with
+ * one or reports it as a field issue. More precise than the error code, so they win.
+ */
+const MESSAGES: Record<string, keyof Messages> = {
+  ...SSO_MESSAGES,
+  ...SIGN_IN_MESSAGES,
+  ...VISITOR_MESSAGES,
+};
 
 /** Catalog keys for the API's error codes. */
 const CODES: Record<string, keyof Messages> = {
@@ -52,15 +67,17 @@ export interface FormError {
  * What a failed action shows. English readers get the server's own (more specific) text; other
  * languages get catalog text by error code, so no untranslated English reaches them.
  */
-export const errorMessage = (
-  m: Messages,
-  language: string,
-  error: FormError,
-) =>
-  language === 'en' && error.message
+export const errorMessage = (m: Messages, language: string, error: FormError) =>
+  text(m, error.message ? MESSAGES[error.message] : undefined) ??
+  (language === 'en' && error.message
     ? error.message
     : (text(m, error.code ? CODES[error.code] : undefined) ??
-      (error.issues?.length ? m.errorInvalidInput : m.errorGeneric));
+      (error.issues?.length ? m.errorInvalidInput : m.errorGeneric)));
+
+/** A field issue's message in the reader's language: catalog text when known. */
+export const issueText = (m: Messages, language: string, message: string) =>
+  text(m, MESSAGES[message]) ??
+  (language === 'en' ? message : m.errorFieldInvalid);
 
 /** One line per field issue, with the field's label instead of its path. */
 export const issueLines = (
@@ -70,7 +87,7 @@ export const issueLines = (
 ) =>
   issues.map(({ path, message }) => {
     const label = text(m, FIELDS[path.split('.')[0] ?? '']);
-    const detail = language === 'en' ? message : m.errorFieldInvalid;
+    const detail = issueText(m, language, message);
     return label
       ? `${label}: ${detail}`
       : language === 'en' && path

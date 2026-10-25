@@ -4,8 +4,11 @@ import type {
   ExternalIdentityRepository,
   SsoTransactionRecord,
   SsoTransactionRepository,
+  SsoAccessTransactions,
+  SsoAccessContext,
 } from '#api/domain/auth/sso-ports';
-import { guardUnique } from '#api/infra/prisma/client';
+import { guardUnique, lockSetting } from '#api/infra/prisma/client';
+import { PrismaSettingsRepository } from '#api/infra/prisma/settings-repository';
 import { Errors } from '#api/shared/errors';
 import type { Database } from '#api/infra/prisma/client';
 
@@ -28,6 +31,27 @@ const toRecord = (row: IdentityRow): ExternalIdentityRecord => ({
   createdAt: row.createdAt,
 });
 
+export class PrismaSsoAccessTransactions implements SsoAccessTransactions {
+  constructor(private readonly db: Database) {}
+  run<T>(work: (context: SsoAccessContext) => Promise<T>) {
+    return this.db.$transaction(async (tx) => {
+      await lockSetting(tx, 'signIn.admission');
+      return work({
+        settings: new PrismaSettingsRepository(tx),
+        identities: {
+          findByUser: async (userId) =>
+            (await tx.userIdentity.findMany({ where: { userId } })).map(
+              toRecord,
+            ),
+          unlink: async (userId, id) => {
+            await tx.userIdentity.deleteMany({ where: { userId, id } });
+          },
+        },
+      });
+    });
+  }
+}
+
 /**
  * Issuer and subject live in VARBINARY columns as UTF-8 bytes, so lookups and the unique index
  * compare bytes: no collation folds case, normalizes or ignores trailing spaces.
@@ -36,7 +60,10 @@ const toRecord = (row: IdentityRow): ExternalIdentityRecord => ({
  */
 export class PrismaIdentityRepository implements ExternalIdentityRepository {
   constructor(
-    private readonly db: Pick<Database, 'userIdentity' | '$transaction'>,
+    private readonly db: Pick<
+      Database,
+      'userIdentity' | 'passwordToken' | '$transaction'
+    >,
   ) {}
 
   async find(issuer: string, subject: string) {
@@ -53,9 +80,54 @@ export class PrismaIdentityRepository implements ExternalIdentityRepository {
   }
 
   async findByUser(userId: string) {
-    const row = await this.db.userIdentity.findUnique({ where: { userId } });
+    return (await this.db.userIdentity.findMany({ where: { userId } })).map(
+      toRecord,
+    );
+  }
 
-    return row && toRecord(row);
+  async claimUser(tokenHash: string, now: Date) {
+    const token = await this.db.passwordToken.findFirst({
+      where: { tokenHash, expiresAt: { gt: now } },
+    });
+    return token?.userId ?? null;
+  }
+
+  async claim(identity: ExternalIdentityRecord, tokenHash: string, now: Date) {
+    return guardUnique(
+      () =>
+        this.db.$transaction(async (tx) => {
+          await lockSetting(tx, 'sso.claim');
+          if (
+            await tx.userIdentity.findFirst({
+              where: {
+                userId: identity.userId,
+                issuer: encoder.encode(identity.issuer),
+              },
+            })
+          )
+            return false;
+          const consumed = await tx.passwordToken.deleteMany({
+            where: {
+              tokenHash,
+              userId: identity.userId,
+              expiresAt: { gt: now },
+            },
+          });
+          if (!consumed.count) return false;
+          await tx.passwordToken.deleteMany({
+            where: { userId: identity.userId },
+          });
+          await tx.userIdentity.create({
+            data: {
+              ...identity,
+              issuer: encoder.encode(identity.issuer),
+              subject: encoder.encode(identity.subject),
+            },
+          });
+          return true;
+        }),
+      Errors.SsoAccountLinkedElsewhere,
+    );
   }
 
   async link(identity: ExternalIdentityRecord) {
@@ -63,7 +135,10 @@ export class PrismaIdentityRepository implements ExternalIdentityRepository {
       () =>
         this.db.$transaction([
           this.db.userIdentity.deleteMany({
-            where: { userId: identity.userId },
+            where: {
+              userId: identity.userId,
+              issuer: encoder.encode(identity.issuer),
+            },
           }),
           this.db.userIdentity.create({
             data: {
@@ -77,8 +152,10 @@ export class PrismaIdentityRepository implements ExternalIdentityRepository {
     );
   }
 
-  async unlink(userId: string) {
-    await this.db.userIdentity.deleteMany({ where: { userId } });
+  async unlink(userId: string, identityId: string) {
+    await this.db.userIdentity.deleteMany({
+      where: { userId, id: identityId },
+    });
   }
 }
 

@@ -38,6 +38,7 @@
     pluginBlockView,
   } from '#lib/admin/editor/plugin-blocks.js';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
+  import { sizeLabel } from '#lib/admin/image-sizes.js';
   import type { MediaChoice } from '#lib/admin/MediaPicker.svelte';
   import { uploadFile } from '#lib/admin/upload.js';
   import { Button } from '#lib/components/ui/button/index.js';
@@ -49,7 +50,7 @@
   import { useI18n } from '#lib/i18n/index.js';
   import type { Component } from 'svelte';
   import { onMount } from 'svelte';
-  import { MediaQuery } from 'svelte/reactivity';
+  import { MediaQuery, SvelteMap } from 'svelte/reactivity';
 
   interface Props {
     /** Form field that receives the document as JSON. */
@@ -390,15 +391,44 @@
       : null;
   };
 
+  /** Library files of selected images, for their generated sizes (core and plugin-registered). */
+  const files = new SvelteMap<string, AdminMedia | null>();
+  $effect(() => {
+    const id = image?.mediaId;
+    if (typeof id !== 'string' || files.has(id)) return;
+    files.set(id, null);
+    void fetch(`/admin/media/picker?id=${encodeURIComponent(id)}`)
+      .then((response) =>
+        response.ok ? (response.json() as Promise<AdminMedia>) : null,
+      )
+      .catch(() => null)
+      .then((media) => media && files.set(id, media));
+  });
+  const file = $derived(
+    typeof image?.mediaId === 'string' ? files.get(image.mediaId) : null,
+  );
+
   const imageSize = $derived(
-    image?.width === IMAGE_SIZES.thumbnail
-      ? 'thumbnail'
-      : image?.width === IMAGE_SIZES.medium
-        ? 'medium'
-        : '',
+    file
+      ? (file.variants.find((variant) => variant.url === image?.src)?.name ??
+          '')
+      : image?.width === IMAGE_SIZES.thumbnail
+        ? 'thumbnail'
+        : image?.width === IMAGE_SIZES.medium
+          ? 'medium'
+          : '',
   );
 
   const resize = (size: string) => {
+    if (file) {
+      const variant = file.variants.find((entry) => entry.name === size);
+      setImage(
+        variant
+          ? { src: variant.url, width: variant.width, height: variant.height }
+          : { src: file.url, width: file.width, height: file.height },
+      );
+      return;
+    }
     const full = natural();
     if (!full) return;
     const width =
@@ -635,12 +665,20 @@
             value={imageSize}
             onchange={(event) => resize(event.currentTarget.value)}
           >
-            <NativeSelectOption value="thumbnail"
-              >{m.sizeThumbnail}</NativeSelectOption
-            >
-            <NativeSelectOption value="medium"
-              >{m.sizeMedium}</NativeSelectOption
-            >
+            {#if file}
+              {#each file.variants as variant (variant.name)}
+                <NativeSelectOption value={variant.name}
+                  >{sizeLabel(m, variant.name)} – {variant.width} × {variant.height}</NativeSelectOption
+                >
+              {/each}
+            {:else}
+              <NativeSelectOption value="thumbnail"
+                >{m.sizeThumbnail}</NativeSelectOption
+              >
+              <NativeSelectOption value="medium"
+                >{m.sizeMedium}</NativeSelectOption
+              >
+            {/if}
             <NativeSelectOption value="">{m.sizeFull}</NativeSelectOption>
           </NativeSelect>
         </label>

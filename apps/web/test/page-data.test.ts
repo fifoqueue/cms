@@ -183,7 +183,29 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     case '/api/v1/auth/status':
       return json({ setupRequired: false });
     case '/api/v1/auth/sso':
-      return json({ enabled: false, name: null });
+      return json({ providers: [] });
+    case '/api/v1/auth/sign-in':
+      return json({
+        methods: [
+          {
+            id: 'password',
+            label: 'Password',
+            options: [],
+            fields: [
+              { name: 'email', label: 'Email', type: 'email' },
+              { name: 'password', label: 'Password', type: 'password' },
+            ],
+          },
+          {
+            id: 'plugin:magic:link',
+            label: 'Magic link',
+            options: [{ id: 'mail', label: 'Email me', secret: SECRET }],
+            fields: [],
+          },
+        ],
+        setup: [],
+        passwordReset: true,
+      });
     case '/api/v1/auth/register':
       return json({ enabled: false });
     case '/api/v1/security/captcha':
@@ -494,19 +516,29 @@ describe('public page data', () => {
   });
 
   test('the configured public login path renders there with a safe return path', async () => {
-    expect(
-      await loadEntry(
-        publicEvent(
-          '/members/sign-in?redirect_to=%2Fhello',
-          {},
-          '/(site)/[...path]',
-          '/members/sign-in',
-        ),
+    const data = await loadEntry(
+      publicEvent(
+        '/members/sign-in?redirect_to=%2Fhello',
+        {},
+        '/(site)/[...path]',
+        '/members/sign-in',
       ),
-    ).toMatchObject({
+    );
+    // Methods are projected field by field; nothing a plugin adds reaches the page.
+    expect(JSON.stringify(data)).not.toContain(SECRET);
+    expect(data).toMatchObject({
       kind: 'login',
       back: '/hello',
-      sso: { enabled: false },
+      signIn: {
+        methods: [
+          { id: 'password', options: [] },
+          {
+            id: 'plugin:magic:link',
+            options: [{ id: 'mail', label: 'Email me' }],
+          },
+        ],
+        passwordReset: true,
+      },
       captcha: { provider: 'none' },
     });
   });
@@ -549,6 +581,7 @@ describe('public page data', () => {
       const headers: Record<string, string> = {};
       const data = await loadPasswordPage({
         url: new URL(`http://web.test/admin/password${query}`),
+        fetch: fakeFetch,
         setHeaders: (values: Record<string, string>) =>
           Object.assign(headers, values),
       } as never);
@@ -556,7 +589,12 @@ describe('public page data', () => {
         'cache-control': 'no-store',
         'referrer-policy': 'no-referrer',
       });
-      expect(data).toMatchObject({ linkValid, minLength: 8, maxLength: 200 });
+      // The setup methods are asked for only with a usable link.
+      expect(data).toMatchObject({
+        linkValid,
+        methods: [],
+        unavailable: false,
+      });
     }
   });
 
@@ -1558,6 +1596,50 @@ const handleSignedOut = (
     }),
   );
 };
+
+test('only pages that render the captcha widget admit its origin in their policy', async () => {
+  const origin = 'https://captcha.example';
+  override = ({ url }) =>
+    url.pathname === '/api/v1/install/status'
+      ? json({ databaseConfigured: true, setupRequired: false })
+      : undefined;
+  const run = (path: string, policy: string, widget: boolean) => {
+    const event = Object.assign(publicEvent(path, {}, '/(site)'), {
+      request: new Request(`http://web.test${path}`),
+      locals: { token: null, user: null } as App.Locals,
+    });
+    return with_request_store({ event, state: {} as never }, () =>
+      handleRequest({
+        event,
+        resolve: async () => {
+          // What a load does through `allowCaptcha` when its page renders the widget.
+          if (widget) event.locals.captchaOrigins = [origin];
+          return new Response('ok', {
+            headers: { 'content-security-policy': policy },
+          });
+        },
+      }),
+    );
+  };
+  const strict = "default-src 'self'; script-src 'self'";
+  const rendered = (await run('/', strict, true)).headers.get(
+    'content-security-policy',
+  )!;
+  expect(rendered).toContain(`script-src 'self' ${origin}`);
+  expect(rendered).toContain(`frame-src 'self' ${origin}`);
+  expect(rendered).toContain(`connect-src 'self' ${origin}`);
+  expect(rendered).toContain(`img-src 'self' ${origin}`);
+  expect(rendered).toContain(`style-src 'self' ${origin}`);
+  expect(
+    (await run('/', strict, false)).headers.get('content-security-policy'),
+  ).toBe(strict);
+  // A policy that restricts no widget directive is left as it is.
+  expect(
+    (await run('/', "frame-ancestors 'none'", true)).headers.get(
+      'content-security-policy',
+    ),
+  ).not.toContain(origin);
+});
 
 test('removed and unknown admin routes stay private 404s instead of login redirects', async () => {
   for (const [path, method] of [

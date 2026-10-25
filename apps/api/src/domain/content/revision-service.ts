@@ -12,7 +12,7 @@ import type {
   RevisionRecord,
   RevisionRepository,
 } from '#api/domain/content/revisions';
-import type { Clock, IdGenerator } from '#api/domain/ports';
+import type { Clock, HookDispatcher, IdGenerator } from '#api/domain/ports';
 import { notFound, invalidInput, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 
@@ -64,6 +64,7 @@ export class RevisionService {
   constructor(
     private readonly deps: {
       content: ContentService;
+      hooks?: HookDispatcher;
       revisions: RevisionRepository;
       renderer: DocumentRenderer;
       ids: IdGenerator;
@@ -126,7 +127,7 @@ export class RevisionService {
 
   /** Keeps the actor's unsaved text; the next save of the entry discards it. */
   async autosave(contentId: string, input: unknown, actor: Actor) {
-    await this.editable(contentId, actor);
+    const record = await this.editable(contentId, actor);
     const data = parseInput(autosaveInputSchema, input);
     // Rejects documents outside the editor schema, like a save would.
     this.deps.renderer.render(data.document);
@@ -140,6 +141,16 @@ export class RevisionService {
       document: data.document,
       createdAt: this.deps.clock.now(),
     });
+    const saved = await this.deps.revisions.pendingAutosave(
+      contentId,
+      actor.id,
+      record.textSavedAt,
+    );
+    if (saved)
+      void this.deps.hooks?.emit('content.autosaved', {
+        contentId,
+        revision: toRevision(saved, record.textSavedAt),
+      });
   }
 
   /** The actor's autosave when it is newer than the entry's last saved text. */

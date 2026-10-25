@@ -1,5 +1,4 @@
 import {
-  IMAGE_SIZES,
   imageEditSchema,
   MEDIA_TYPES,
   mediaListQuerySchema,
@@ -38,8 +37,12 @@ import {
   Errors,
 } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
+import { MediaProcessors } from '#api/domain/media/media-processors';
+import { ImageSizes } from '#api/domain/media/image-sizes';
 
 export interface MediaServiceDeps {
+  sizes?: ImageSizes;
+  processors?: MediaProcessors;
   repository: MediaRepository;
   storage: MediaStorage;
   images: ImageProcessor;
@@ -69,8 +72,6 @@ const CLEANED: readonly MediaType[] = [
   'image/avif',
 ];
 
-const sizeNames = Object.keys(IMAGE_SIZES) as ImageSizeName[];
-
 /** A safe display name: path and control characters removed. */
 const displayName = (name: string) =>
   name
@@ -82,7 +83,15 @@ const displayName = (name: string) =>
 
 /** The media library. */
 export class MediaService {
-  constructor(private readonly deps: MediaServiceDeps) {}
+  private derivatives = 0;
+  private readonly processors: MediaProcessors;
+  constructor(private readonly deps: MediaServiceDeps) {
+    this.processors = deps.processors ?? new MediaProcessors();
+    if (!deps.processors)
+      this.processors.registerCore({
+        process: ({ bytes, mime }) => deps.images.clean(bytes, mime),
+      });
+  }
 
   get maxBytes() {
     return this.deps.maxBytes;
@@ -155,6 +164,39 @@ export class MediaService {
     if (mime === 'image/svg+xml' && limits.allowSvg !== true)
       throw invalidInput(Errors.MediaTypeUnsupported);
 
+    let allowed = true;
+    await this.deps.hooks.applyFilter(
+      'media.uploadAllowed',
+      {
+        allowed,
+        filename: displayName(filename),
+        mime,
+        size: bytes.byteLength,
+      },
+      (value) => {
+        if (!value || typeof value !== 'object') return false;
+        const result = value as Record<string, unknown>;
+        if (
+          typeof result.allowed !== 'boolean' ||
+          result.filename !== displayName(filename) ||
+          result.mime !== mime ||
+          result.size !== bytes.byteLength ||
+          (!allowed && result.allowed)
+        )
+          return false;
+        allowed = result.allowed;
+        return true;
+      },
+    );
+    if (!allowed) throw forbidden(Errors.MediaUploadRefused);
+    const name = await this.deps.hooks.applyFilter(
+      'media.filename',
+      displayName(filename),
+      (value) =>
+        typeof value === 'string' &&
+        value.length > 0 &&
+        value === displayName(value),
+    );
     const id = this.deps.ids.next();
     const now = this.deps.clock.now();
     const base = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}`;
@@ -176,12 +218,23 @@ export class MediaService {
           throw invalidInput(Errors.MediaTypeUnsupported);
         });
         if (CLEANED.includes(mime))
+          original = await this.processors.process(bytes, mime);
+        if (original.byteLength > this.deps.maxBytes)
           original = await this.deps.images.clean(bytes, mime);
-        for (const name of sizeNames) {
-          if (size.width === null || size.width <= IMAGE_SIZES[name]) continue;
+        size = await this.deps.images.dimensions(original);
+        for (const definition of (this.deps.sizes ?? new ImageSizes()).list()) {
+          const { name, width, height, crop } = definition;
+          if (
+            size.width === null ||
+            (size.width <= width &&
+              (!height || (size.height !== null && size.height <= height)))
+          )
+            continue;
           const resized = await this.deps.images.resize(
             original,
-            IMAGE_SIZES[name],
+            width,
+            height,
+            crop,
           );
           const key = `${base}-${name}.webp`;
           files.push({ key, bytes: resized.bytes });
@@ -201,7 +254,7 @@ export class MediaService {
       const record: MediaWrite = {
         id,
         uploaderId: actor.id,
-        filename: displayName(filename),
+        filename: name,
         mime,
         size: original.byteLength,
         width: size?.width ?? null,
@@ -225,9 +278,43 @@ export class MediaService {
 
   async update(id: string, input: unknown, actor: Actor): Promise<AdminMedia> {
     const media = await this.editable(id, actor);
-    const changes = parseInput(mediaUpdateSchema, input);
+    const changes = mediaUpdateSchema.parse(
+      await this.deps.hooks.applyFilter(
+        'media.beforeSave',
+        parseInput(mediaUpdateSchema, input),
+        (value) => mediaUpdateSchema.safeParse(value).success,
+      ),
+    );
     await this.deps.repository.update(media.id, changes);
-    return toAdminMedia(await this.require(id));
+    const updated = toAdminMedia(await this.require(id));
+    void this.deps.hooks.emit('media.updated', updated);
+    return updated;
+  }
+
+  /** At most two on-demand transforms per service; excess requests never queue image work. */
+  async derivative(id: string, name: string, actor: Actor) {
+    const media = await this.editable(id, actor);
+    const size = (this.deps.sizes ?? new ImageSizes())
+      .list()
+      .find((size) => size.name === name);
+    if (!size) throw notFound(Errors.MediaNotFound);
+    if (!CLEANED.includes(media.mime))
+      throw invalidInput(Errors.MediaTypeUnsupported);
+    if (this.derivatives >= 2) throw rateLimited(Errors.MediaStorageBusy);
+    this.derivatives += 1;
+    try {
+      const file = await this.deps.storage.read(media.storageKey);
+      if (!file) throw notFound(Errors.MediaNotFound);
+      const bytes = new Uint8Array(await new Response(file.body).arrayBuffer());
+      return await this.deps.images.resize(
+        bytes,
+        size.width,
+        size.height,
+        size.crop,
+      );
+    } finally {
+      this.derivatives -= 1;
+    }
   }
 
   /** Save edits as a copy so embedded originals and their immutable URLs remain intact. */
@@ -274,16 +361,19 @@ export class MediaService {
     await this.deps.repository.delete(id);
     await this.deps.storage.remove([
       media.storageKey,
-      ...Object.values(media.variants).map((variant) => variant.key),
+      ...Object.values(media.variants).flatMap((variant) =>
+        variant ? [variant.key] : [],
+      ),
     ]);
     void this.deps.hooks.emit('media.deleted', toAdminMedia(media));
   }
 
   /** A stored file for serving; keys are opaque and unguessable per upload. */
   async file(key: string, range?: { start: number; end?: number }) {
-    const match = /^\d{4}\/\d{2}\/([0-9a-f-]{36})(?:-[a-z]+)?\.[a-z0-9]+$/.exec(
-      key,
-    );
+    const match =
+      /^\d{4}\/\d{2}\/([0-9a-f-]{36})(?:-[a-z][a-z0-9-]{0,63})?\.[a-z0-9]+$/.exec(
+        key,
+      );
     if (!match || !(await this.deps.repository.exists(match[1]!))) return null;
     return this.deps.storage.read(key, range);
   }

@@ -1,4 +1,6 @@
 import { readable } from '#api/shared/stream';
+import { platformWxrItemSchema } from '@cms/sdk/plugin';
+import type { HookDispatcher } from '#api/domain/ports';
 import type { ContentStatus } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
@@ -97,6 +99,7 @@ export class ExportService {
   constructor(
     private readonly deps: {
       content: Pick<ContentRepository, 'exportPage'>;
+      hooks?: HookDispatcher;
       terms: Pick<TaxonomyRepository, 'list'>;
       comments: Pick<CommentRepository, 'exportPage'>;
       users: Pick<UserDirectory, 'list'>;
@@ -177,6 +180,21 @@ export class ExportService {
       }
       afterContent = records.at(-1)!.id;
     }
+    const extras =
+      (await this.deps.hooks?.applyFilter(
+        'export.data',
+        [],
+        (value) =>
+          platformWxrItemSchema.array().max(10_000).safeParse(value).success &&
+          new TextEncoder().encode(JSON.stringify(value)).byteLength <=
+            16 * 1024 * 1024,
+      )) ?? [];
+    for (const item of platformWxrItemSchema.array().parse(extras)) {
+      yield wxrItemStart(item, header, names);
+      for (const comment of item.comments) yield wxrComment(comment);
+      yield wxrItemEnd;
+    }
     yield wxrFooter;
+    void this.deps.hooks?.emit('export.generated', { format: 'wxr' });
   }
 }

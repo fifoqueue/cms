@@ -9,6 +9,49 @@ import { aesSecretBox } from '#api/infra/secret-box';
 import { Errors } from '#api/shared/errors';
 
 describe('scheduler and jobs', () => {
+  test('immediate kicks coalesce with a running tick and respect leases held elsewhere', async () => {
+    const clock = fixedClock();
+    const leases = new MemoryTaskLeases(clock.now);
+    const { logger, lines } = recordingLogger();
+    const scheduler = new Scheduler({ leases, clock, logger, owner: 'local' });
+    let release = () => {};
+    let started = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const entered = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let calls = 0;
+    scheduler.add({
+      name: 'immediate',
+      intervalMs: 60000,
+      run: async () => {
+        calls++;
+        if (calls === 1) {
+          started();
+          await gate;
+        } else throw new Error('failure');
+      },
+    });
+    const tick = scheduler.tick();
+    await entered;
+    await Promise.all(
+      Array.from({ length: 5 }, () => scheduler.runNow('immediate')),
+    );
+    release();
+    await tick;
+    expect(calls).toBe(2);
+    expect(lines).toContain('warn Task "immediate" failed: failure');
+    expect(
+      await leases.claim('immediate', 'remote', 60000, clock.now(), {
+        ignoreDue: true,
+      }),
+    ).toBe(true);
+    await scheduler.runNow('immediate');
+    expect(calls).toBe(2);
+  });
+
   test('a recurring task runs in one process per interval, even when it fails', async () => {
     const clock = fixedClock();
     const leases = new MemoryTaskLeases(clock.now);

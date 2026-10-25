@@ -3,8 +3,10 @@ import { contentApi } from '#lib/server/api.js';
 import { listPosts } from '#lib/server/archive.js';
 import { Errors } from '#lib/server/errors.js';
 import { loadSlots } from '#lib/server/slots.js';
+import { withSeoMeta } from '#lib/server/page-meta.js';
 import type { PageServerLoad } from './$types';
-export const load: PageServerLoad = async ({ fetch, params, url, parent }) => {
+export const load: PageServerLoad = async (event) => {
+  const { fetch, params, url, parent } = event;
   const year = Number(params.year),
     month = Number(params.month),
     day = Number(params.day);
@@ -23,10 +25,10 @@ export const load: PageServerLoad = async ({ fetch, params, url, parent }) => {
     { type: 'post', year, month, day },
     (await parent()).reading.postsPerPage,
   );
-  return {
+  return withSeoMeta(event, parent, {
     kind: 'date' as const,
     date: { year, month, day },
     posts,
     slots: await loadSlots(api, { path: url.pathname }),
-  };
+  });
 };

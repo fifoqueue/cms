@@ -38,14 +38,48 @@ model User {
   contents       Content[]
   revisions      ContentRevision[]
   media          Media[]
-  identity       UserIdentity?
+  identities     UserIdentity[]
+  recoveryCodes  RecoveryCode[]
   ssoRequests    SsoTransaction[]
+  signInRequests SignInTransaction[]
   passwordTokens PasswordToken[]
   apiTokens      ApiToken[]
   comments       Comment[]
+  passkeys       Passkey[]
+  totpSecret     TotpSecret?
 
   @@index([role])
   @@map("users")
+}
+
+model Passkey {
+  id           String    @id @db.Char(36)
+  userId       String    @map("user_id") @db.Char(36)
+  credentialId Bytes     @unique @map("credential_id") @db.VarBinary(1024)
+  publicKey    Bytes     @map("public_key") @db.Blob
+  counter      BigInt    @db.UnsignedBigInt
+  transports   String    @db.Text
+  deviceType   String    @map("device_type") @db.VarChar(32)
+  backedUp     Boolean   @map("backed_up")
+  discoverable Boolean   @default(false)
+  name         String    @db.VarChar(100)
+  createdAt    DateTime  @map("created_at") @db.DateTime(3)
+  lastUsedAt   DateTime? @map("last_used_at") @db.DateTime(3)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("passkeys")
+}
+
+model TotpSecret {
+  id           String   @id @db.Char(36)
+  userId       String   @unique @map("user_id") @db.Char(36)
+  sealedSecret String   @map("sealed_secret") @db.Text
+  lastStep     BigInt   @map("last_step")
+  createdAt    DateTime @map("created_at") @db.DateTime(3)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("totp_secrets")
 }
 
 /// OpenID Connect identity explicitly linked to a local user. Never matched by email.
@@ -56,17 +90,21 @@ model UserIdentity {
   id        String    @id @db.Char(36)
   issuer    Bytes     @db.VarBinary(255)
   subject   Bytes     @db.VarBinary(255)
-  userId    String    @unique @map("user_id") @db.Char(36)
+  userId    String    @map("user_id") @db.Char(36)
   createdAt DateTime  @map("created_at") @db.DateTime(3)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   sessions  Session[]
+  signInRequests SignInTransaction[]
 
   @@unique([issuer, subject])
+  @@unique([userId, issuer])
   @@map("user_identities")
 }
 
 /// Pending single sign-on request. Single use, expires after a few minutes.
 model SsoTransaction {
+  providerId   String   @default("default") @map("provider_id") @db.VarChar(32)
+  claimTokenHash String? @map("claim_token_hash") @db.Char(64)
   handleHash   String   @id @map("handle_hash") @db.Char(64)
   state        String   @db.VarChar(255)
   nonce        String   @db.VarChar(255)
@@ -82,6 +120,39 @@ model SsoTransaction {
   @@index([clientKey])
   @@index([expiresAt])
   @@map("sso_transactions")
+}
+
+model SignInTransaction {
+  handleHash     String   @id @map("handle_hash") @db.Char(64)
+  stage          String   @db.VarChar(16)
+  methodId       String   @map("method_id") @db.VarChar(136)
+  factorId       String?  @map("factor_id") @db.VarChar(136)
+  userId         String?  @map("user_id") @db.Char(36)
+  setupTokenHash String?  @map("setup_token_hash") @db.Char(64)
+  identityId     String?  @map("identity_id") @db.Char(36)
+  identity       UserIdentity? @relation(fields: [identityId], references: [id], onDelete: Cascade)
+  inProgress     Boolean  @default(false) @map("in_progress")
+  state          String   @db.Text
+  clientKey      String   @map("client_key") @db.Char(64)
+  expiresAt      DateTime @map("expires_at") @db.DateTime(3)
+  user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([clientKey])
+  @@index([expiresAt])
+  @@map("sign_in_transactions")
+  @@index([identityId])
+}
+
+model RecoveryCode {
+  id String @id @db.Char(36)
+  userId String @map("user_id") @db.Char(36)
+  codeHash String @unique @map("code_hash") @db.Char(64)
+  createdAt DateTime @map("created_at") @db.DateTime(3)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("recovery_codes")
 }
 
 model Session {
@@ -105,7 +176,7 @@ model Content {
   parent               Content?          @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: SetNull, onUpdate: Restrict)
   children             Content[]         @relation("PageHierarchy")
   id                   String            @id @db.Char(36)
-  type                 String            @db.VarChar(32)
+  type                 String            @db.VarChar(136)
   slug                 String            @unique @db.VarChar(191)
   title                String            @db.VarChar(255)
   excerpt              String            @db.Text
@@ -186,7 +257,7 @@ model ContentPath {
 /// Category (hierarchical) or tag (flat). The taxonomy never changes after creation.
 model TaxonomyTerm {
   id                   String         @id @db.Char(36)
-  taxonomy             String         @db.VarChar(32)
+  taxonomy             String         @db.VarChar(136)
   name                 String         @db.VarChar(191)
   slug                 String         @db.VarChar(191)
   description          String         @db.Text

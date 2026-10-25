@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { SearchDocument } from '#api/domain/search/ports';
 import { SearchService } from '#api/domain/search/search-service';
+import { HookBus } from '#api/plugin-runtime/hook-bus';
 import {
   fixedClock,
   MemorySettings,
@@ -26,11 +27,12 @@ const doc = (id: string, title: string): SearchDocument => ({
 
 const query = (text: string) => ({ text, page: 1, pageSize: 10 });
 
-const setup = () => {
+const setup = (hooks?: HookBus) => {
   const clock = fixedClock();
   const engine = new MemorySearchEngine();
   const source = new MemorySearchSource();
   const search = new SearchService({
+    hooks,
     settings: new MemorySettings(),
     secrets: plainSecretBox,
     engine,
@@ -40,6 +42,48 @@ const setup = () => {
   });
   return { clock, engine, source, search };
 };
+
+test('search validates document identity on both indexing paths', async () => {
+  const hooks = new HookBus({
+    timeoutMs: 20,
+    logger: recordingLogger().logger,
+  });
+  const registrar = hooks.registrar('test');
+  const { search, source, engine } = setup(hooks);
+  const indexed: unknown[] = [];
+  registrar.on('search.indexed', (event) => {
+    expect(source.outbox).toEqual([]);
+    indexed.push(event);
+  });
+  let documents = 0;
+  registrar.filter('search.document', (value) => {
+    documents++;
+    return { ...value, title: 'Filtered' };
+  });
+  registrar.filter('search.document', (value) => ({ ...value, id: 'wrong' }));
+  await search.update({ enabled: true, host: 'http://meili.test' });
+  source.write(doc('a', 'Original'));
+  await search.sync();
+  expect(await search.find(query('Filtered'))).toEqual({
+    ids: ['a'],
+    total: 1,
+  });
+  source.write(doc('a', 'Updated'));
+  await search.sync();
+  expect(await search.find(query('Filtered'))).toEqual({
+    ids: ['a'],
+    total: 1,
+  });
+  expect(documents).toBe(2);
+  expect(indexed).toEqual([
+    { operation: 'rebuild', contentIds: null },
+    { operation: 'update', contentIds: ['a'] },
+  ]);
+  engine.failing = true;
+  source.write(doc('a', 'Failed update'));
+  await search.sync();
+  expect(indexed).toHaveLength(2);
+});
 
 describe('SearchService', () => {
   test('the index answers only while it holds every committed change', async () => {

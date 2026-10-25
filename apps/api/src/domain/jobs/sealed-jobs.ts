@@ -15,11 +15,11 @@ export class SealedJobs {
     private readonly secrets: SecretBox,
   ) {}
 
-  enqueue(kind: string, payload: unknown, expiresAt?: Date) {
+  enqueue(kind: string, payload: unknown, expiresAt?: Date, runAt?: Date) {
     return this.queue.enqueue(
       kind,
       sealJob(payload, this.secrets),
-      undefined,
+      runAt,
       expiresAt,
     );
   }

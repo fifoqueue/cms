@@ -25,6 +25,7 @@ import type {
 } from '#api/domain/taxonomy/taxonomy-repository';
 import { invalidInput, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
+import type { HookDispatcher } from '#api/domain/ports';
 
 const KEY = 'widgets';
 
@@ -72,6 +73,7 @@ export class WidgetService {
   constructor(
     private readonly deps: {
       settings: SettingsRepository;
+      hooks?: HookDispatcher;
       published: Pick<PublishedContentRepository, 'summaries' | 'months'>;
       terms: Pick<TaxonomyRepository, 'list'>;
       menus: Pick<MenuService, 'publicItems'>;
@@ -97,7 +99,14 @@ export class WidgetService {
   /** Replaces both areas. Types must be core widgets or plugin widgets (`plugin:` prefix). */
   async update(input: unknown, actor: Actor): Promise<WidgetsSettings> {
     authorize(actor, 'appearance.manage');
-    const settings = parseInput(widgetsSettingsSchema, input);
+    const initial = parseInput(widgetsSettingsSchema, input);
+    const settings = widgetsSettingsSchema.parse(
+      (await this.deps.hooks?.applyFilter(
+        'widgets.beforeSave',
+        initial,
+        (value) => widgetsSettingsSchema.safeParse(value).success,
+      )) ?? initial,
+    );
     for (const area of WIDGET_AREAS)
       settings[area].forEach((widget, index) => {
         if (
@@ -112,6 +121,7 @@ export class WidgetService {
           ]);
       });
     await this.deps.settings.set(KEY, settings);
+    void this.deps.hooks?.emit('widgets.updated', settings);
     return settings;
   }
 

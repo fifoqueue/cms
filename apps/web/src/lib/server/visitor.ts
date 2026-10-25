@@ -1,6 +1,7 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import type { ClientProof, Visitor } from '@cms/sdk/client';
 import { frontendSecret } from '#lib/server/frontend-secret.js';
+import { CAPTCHA_TOKEN_FIELD } from '#lib/security/captcha-widget.js';
 
 /**
  * Vouches for the visitor's address (`getClientAddress()`, which honours the adapter's proxy
@@ -12,20 +13,15 @@ export const clientProof = (address: string): ClientProof | undefined => {
   return secret ? { address, secret } : undefined;
 };
 
-/** Form fields in which the captcha widgets submit their token. */
-const CAPTCHA_FIELDS = [
-  'cf-turnstile-response',
-  'h-captcha-response',
-  'g-recaptcha-response',
-];
-
 /** The visitor of a form submission: proven address and any solved captcha. */
 export const visitorOf = (
   event: Pick<RequestEvent, 'getClientAddress'>,
   form?: FormData,
 ): Visitor => {
-  const token = CAPTCHA_FIELDS.map((field) => form?.get(field)).find(
-    (value): value is string => typeof value === 'string' && value !== '',
-  );
-  return { proof: clientProof(event.getClientAddress()), captchaToken: token };
+  // `Captcha.svelte` copies whichever provider's response field into this one.
+  const value = form?.get(CAPTCHA_TOKEN_FIELD);
+  return {
+    proof: clientProof(event.getClientAddress()),
+    captchaToken: typeof value === 'string' && value !== '' ? value : undefined,
+  };
 };

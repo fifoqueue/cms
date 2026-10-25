@@ -3,7 +3,7 @@ import type { PermalinkSettings } from '@cms/sdk';
 import { readPermalinkSettings } from '#api/domain/permalinks/content-path';
 import type { PermalinkSubject } from '#api/domain/permalinks/content-path';
 import {
-  pathChanges,
+  resolvePathChanges,
   planPathChanges,
   regenerationEntry,
 } from '#api/domain/permalinks/path-plan';
@@ -50,7 +50,7 @@ export class MemoryPermalinkRepository
       regenerationEntry(source, this.current(source.id)),
     );
 
-    this.apply(pathChanges(settings, entries));
+    this.apply(await resolvePathChanges(settings, entries));
     this.stored = JSON.stringify(settings);
   }
 
@@ -74,7 +74,7 @@ export class MemoryPermalinkRepository
         retainPrevious:
           source.id === subject.id ? retainPrevious : !!source.publishedAt,
       }));
-    const changes = pathChanges(settings, entries);
+    const changes = await resolvePathChanges(settings, entries);
 
     this.apply(changes);
 

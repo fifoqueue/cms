@@ -47,5 +47,11 @@ export interface HookDispatcher {
     name: K,
     value: FilterHookMap[K],
     accept: (value: unknown) => boolean,
+    /** Core observer of validated snapshots; used for owner-attributed capability audit. */
+    accepted?: (
+      owner: string,
+      previous: FilterHookMap[K],
+      next: FilterHookMap[K],
+    ) => void,
   ): Promise<FilterHookMap[K]>;
 }

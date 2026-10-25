@@ -14,9 +14,12 @@ export type HealthCheckKey = (typeof HEALTH_CHECKS)[number];
 
 /** One finding of Tools → Site health. `detail` is data (names, counts, messages), not prose. */
 export const healthCheckSchema = z.object({
-  key: z.enum(HEALTH_CHECKS),
+  key: z.union([
+    z.enum(HEALTH_CHECKS),
+    z.templateLiteral(['plugin:', z.string(), ':', z.string()]),
+  ]),
   status: z.enum(['good', 'recommended', 'critical']),
-  detail: z.array(z.string()),
+  detail: z.array(z.string().max(2048)).max(100),
 });
 
 export type HealthCheck = z.output<typeof healthCheckSchema>;

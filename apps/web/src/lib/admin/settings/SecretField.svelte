@@ -10,12 +10,20 @@
     configured,
     removeName,
     helpId,
+    maxlength = 500,
+    error,
+    help,
   }: {
     name: string;
     label: string;
     configured: boolean;
     removeName: string;
     helpId: string;
+    maxlength?: number;
+    /** A field issue, shown under the input. */
+    error?: string;
+    /** Replaces the "leave empty to keep" hint. */
+    help?: string;
   } = $props();
   const i18n = useI18n();
   const m = $derived(i18n.m);
@@ -33,10 +41,16 @@
     {name}
     type="password"
     autocomplete="off"
-    maxlength={500}
-    aria-describedby={helpId}
+    {maxlength}
+    aria-invalid={error ? true : undefined}
+    aria-describedby={error ? `${helpId} ${name}-error` : helpId}
   />
-  <p id={helpId} class="text-xs text-muted-foreground">{m.secretKeep}</p>
+  {#if error}
+    <p id="{name}-error" class="text-xs text-destructive">{error}</p>
+  {/if}
+  <p id={helpId} class="text-xs text-muted-foreground">
+    {help ?? m.secretKeep}
+  </p>
   {#if configured}
     <label class="flex items-center gap-2 text-sm">
       <input type="checkbox" name={removeName} />

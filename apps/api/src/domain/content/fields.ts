@@ -2,10 +2,12 @@ import { fieldDefinitionSchema } from '@cms/sdk';
 import type { FieldDefinition, FieldValues, PublicImage } from '@cms/sdk';
 import { z } from 'zod';
 import type { Actor } from '#api/domain/auth/authorization';
+import type { HookDispatcher } from '#api/domain/ports';
 import { authorize } from '#api/domain/auth/authorization';
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import { conflict, invalidInput, notFound, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
+import type { DefinitionRegistry } from '#api/domain/content/definition-registry';
 
 const KEY = 'contentFields';
 
@@ -54,12 +56,18 @@ export class FieldService {
   constructor(
     private readonly deps: {
       settings: SettingsRepository;
+      hooks?: HookDispatcher;
+      registry?: DefinitionRegistry<FieldDefinition>;
       /** Public projections of library images by id. */
       images: (ids: readonly string[]) => Promise<Map<string, PublicImage>>;
     },
   ) {}
 
   async list(): Promise<FieldDefinition[]> {
+    return [...(this.deps.registry?.list() ?? []), ...(await this.stored())];
+  }
+
+  private async stored(): Promise<FieldDefinition[]> {
     const stored = await this.deps.settings.get(KEY);
     const fields: FieldDefinition[] = [];
     for (const entry of Array.isArray(stored) ? stored : []) {
@@ -81,11 +89,12 @@ export class FieldService {
 
   async create(input: unknown, actor: Actor): Promise<FieldDefinition> {
     authorize(actor, 'fields.manage');
-    const field = parseInput(fieldDefinitionSchema, input);
-    const fields = await this.list();
+    const field = await this.prepare(input);
+    const fields = await this.stored();
     if (fields.some((existing) => existing.key === field.key))
       throw conflict(Errors.FieldExists);
     await this.deps.settings.set(KEY, [...fields, field]);
+    void this.deps.hooks?.emit('field.created', field);
     return field;
   }
 
@@ -96,25 +105,41 @@ export class FieldService {
     actor: Actor,
   ): Promise<FieldDefinition> {
     authorize(actor, 'fields.manage');
-    const fields = await this.list();
+    const fields = await this.stored();
     const index = fields.findIndex((field) => field.key === key);
     if (index === -1) throw notFound(Errors.FieldNotFound);
-    const field = { ...parseInput(fieldDefinitionSchema, input), key };
+    const field = { ...(await this.prepare(input)), key };
     fields[index] = field;
     await this.deps.settings.set(KEY, fields);
+    void this.deps.hooks?.emit('field.updated', field);
     return field;
   }
 
   /** Removes a definition; stored values are no longer shown or served. */
   async remove(key: string, actor: Actor): Promise<void> {
     authorize(actor, 'fields.manage');
-    const fields = await this.list();
-    if (!fields.some((field) => field.key === key))
-      throw notFound(Errors.FieldNotFound);
+    const fields = await this.stored();
+    const removed = fields.find((field) => field.key === key);
+    if (!removed) throw notFound(Errors.FieldNotFound);
     await this.deps.settings.set(
       KEY,
       fields.filter((field) => field.key !== key),
     );
+    void this.deps.hooks?.emit('field.deleted', removed);
+  }
+
+  private async prepare(input: unknown) {
+    const data = parseInput(fieldDefinitionSchema, input);
+    if (data.key.startsWith('plugin:')) throw invalidInput(Errors.FieldExists);
+    const filtered = await this.deps.hooks?.applyFilter(
+      'field.beforeSave',
+      data,
+      (value) => fieldDefinitionSchema.safeParse(value).success,
+    );
+    const result = fieldDefinitionSchema.parse(filtered ?? data);
+    if (result.key.startsWith('plugin:'))
+      throw invalidInput(Errors.FieldExists);
+    return result;
   }
 
   /**
@@ -138,11 +163,16 @@ export class FieldService {
           message,
         })),
       );
-    return Object.fromEntries(
-      Object.entries(result.data).filter(
+    return Object.fromEntries([
+      ...Object.entries(values).filter(
+        ([key]) =>
+          key.startsWith('plugin:') &&
+          !fields.some((field) => field.key === key),
+      ),
+      ...Object.entries(result.data).filter(
         ([, value]) => value !== undefined && value !== null,
       ),
-    );
+    ]);
   }
 
   /** Public fields of an entry; image fields become public images (missing ones are left out). */

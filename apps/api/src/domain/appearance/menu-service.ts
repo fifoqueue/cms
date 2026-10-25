@@ -1,4 +1,7 @@
-import { archivePath } from '@cms/sdk';
+import { publicMenuItemSchema } from '@cms/sdk';
+import type { MenuResolution, MenuLink } from '@cms/sdk/plugin';
+import { coreMenuTypes } from '#api/domain/appearance/menu-types';
+import type { HookDispatcher } from '#api/domain/ports';
 import { readCache } from '#api/domain/appearance/read-cache';
 import type { ArchivePathsService } from '#api/domain/permalinks/archive-paths';
 import { MENU_LOCATIONS, menusSettingsSchema } from '@cms/sdk';
@@ -15,6 +18,10 @@ import type { PublishedContentRepository } from '#api/domain/content/published-c
 import type { TaxonomyRepository } from '#api/domain/taxonomy/taxonomy-repository';
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import { parseInput } from '#api/shared/validation';
+import type { MenuObjectQuery } from '@cms/sdk';
+import type { z } from 'zod';
+import type { menuItemTypeSchema, menuObjectsSchema } from '@cms/sdk';
+import type { TaxonomyTypeService } from '#api/domain/taxonomy/taxonomy-types';
 
 const KEY = 'menus';
 
@@ -26,6 +33,16 @@ export class MenuService {
   constructor(
     private readonly deps: {
       settings: SettingsRepository;
+      hooks?: HookDispatcher;
+      itemTypes?: {
+        resolve(query: MenuResolution, key: string): Promise<MenuLink | null>;
+        types?(): z.output<typeof menuItemTypeSchema>[];
+        objects?(
+          key: string,
+          query: MenuObjectQuery,
+        ): Promise<z.output<typeof menuObjectsSchema>>;
+      };
+      taxonomyTypes?: Pick<TaxonomyTypeService, 'list'>;
       archives?: Pick<ArchivePathsService, 'get'>;
       published: Pick<PublishedContentRepository, 'summariesByIds'>;
       terms: Pick<TaxonomyRepository, 'list'>;
@@ -35,6 +52,21 @@ export class MenuService {
   async get(actor: Actor): Promise<MenusSettings> {
     authorize(actor, 'appearance.manage');
     return this.stored();
+  }
+
+  types(actor: Actor) {
+    authorize(actor, 'appearance.manage');
+    return this.deps.itemTypes?.types?.() ?? [];
+  }
+
+  async objects(key: string, query: MenuObjectQuery, actor: Actor) {
+    authorize(actor, 'appearance.manage');
+    return (
+      (await this.deps.itemTypes?.objects?.(key, query)) ?? {
+        items: [],
+        total: 0,
+      }
+    );
   }
 
   /**
@@ -69,7 +101,15 @@ export class MenuService {
   /** Replaces every menu and location assignment at once. Unknown menus at a location are cleared. */
   async update(input: unknown, actor: Actor): Promise<MenusSettings> {
     authorize(actor, 'appearance.manage');
-    const settings = parseInput(menusSettingsSchema, input);
+    const initial = parseInput(menusSettingsSchema, input);
+    const settings = menusSettingsSchema.parse(
+      (await this.deps.hooks?.applyFilter(
+        'menu.beforeSave',
+        initial,
+        (value) => menusSettingsSchema.safeParse(value).success,
+      )) ?? initial,
+    );
+    const previous = await this.stored();
     const ids = new Set(settings.menus.map((menu) => menu.id));
     const locations = Object.fromEntries(
       Object.entries(settings.locations).map(([location, id]) => [
@@ -79,6 +119,17 @@ export class MenuService {
     ) as MenusSettings['locations'];
     const saved = { ...settings, locations };
     await this.deps.settings.set(KEY, saved);
+    for (const menu of saved.menus) {
+      const before = previous.menus.find((entry) => entry.id === menu.id);
+      if (!before || JSON.stringify(before) !== JSON.stringify(menu))
+        void this.deps.hooks?.emit(
+          before ? 'menu.updated' : 'menu.created',
+          menu,
+        );
+    }
+    for (const menu of previous.menus)
+      if (!saved.menus.some((entry) => entry.id === menu.id))
+        void this.deps.hooks?.emit('menu.deleted', menu);
     return saved;
   }
 
@@ -123,69 +174,83 @@ export class MenuService {
     const contentIds = items.flatMap((item) =>
       item.kind === 'content' && item.contentId ? [item.contentId] : [],
     );
-    const usesTerms = items.some((item) => item.kind === 'term');
-    const [entries, categories, tags] = await Promise.all([
+    const registered = new Set(
+      (
+        (await this.deps.taxonomyTypes?.list()) ?? [
+          { key: 'category' },
+          { key: 'tag' },
+        ]
+      ).map((type) => type.key),
+    );
+    const taxonomies = [
+      ...new Set(
+        items.flatMap((item) =>
+          item.kind === 'term' && item.taxonomy && registered.has(item.taxonomy)
+            ? [item.taxonomy]
+            : [],
+        ),
+      ),
+    ];
+    const [entries, groups] = await Promise.all([
       this.deps.published.summariesByIds(contentIds),
-      usesTerms
-        ? once('terms:category', () =>
-            this.deps.terms.list('category', 'published'),
-          )
-        : [],
-      usesTerms
-        ? once('terms:tag', () => this.deps.terms.list('tag', 'published'))
-        : [],
+      Promise.all(
+        taxonomies.map((taxonomy) =>
+          once(`terms:${taxonomy}`, () =>
+            this.deps.terms.list(taxonomy, 'published'),
+          ),
+        ),
+      ),
     ]);
     const bases = (await this.deps.archives?.get())?.bases ?? {
       category: '/category',
       tag: '/tag',
     };
-    const content = new Map(entries.map((entry) => [entry.id, entry]));
-    const terms = new Map(
-      [...categories, ...tags].map((term) => [
-        `${term.taxonomy}:${term.id}`,
-        term,
+    const content = Object.fromEntries(
+      entries.map((entry) => [
+        entry.id,
+        { path: entry.path, title: entry.title },
       ]),
     );
+    const terms = Object.fromEntries(
+      groups
+        .flat()
+        .map((term) => [
+          `${term.taxonomy}:${term.id}`,
+          { taxonomy: term.taxonomy, slug: term.slug, name: term.name },
+        ]),
+    );
 
-    const resolve = (item: MenuItem): PublicMenuItem | null => {
-      let url: string;
-      let title: string;
-      switch (item.kind) {
-        case 'home':
-          [url, title] = ['/', ''];
-          break;
-        case 'custom':
-          [url, title] = [item.url ?? '/', item.url ?? ''];
-          break;
-        case 'archive':
-          [url, title] = [`/archive/${item.archive}`, item.archive ?? ''];
-          break;
-        case 'content': {
-          const entry = content.get(item.contentId ?? '');
-          if (!entry) return null;
-          [url, title] = [entry.path, entry.title];
-          break;
-        }
-        case 'term': {
-          const term = terms.get(`${item.taxonomy}:${item.termId}`);
-          if (!term) return null;
-          [url, title] = [
-            term.taxonomy === 'category' || term.taxonomy === 'tag'
-              ? archivePath(bases, term.taxonomy, term.slug)
-              : `/taxonomy/${encodeURIComponent(term.taxonomy)}/${encodeURIComponent(term.slug)}`,
-            term.name,
-          ];
-          break;
-        }
-      }
+    const resolve = async (item: MenuItem): Promise<PublicMenuItem | null> => {
+      if (
+        item.kind === 'plugin' &&
+        item.provider &&
+        item.provider in coreMenuTypes
+      )
+        return null;
+      const query = { item, content, terms, bases };
+      const key = item.kind === 'plugin' ? item.provider! : item.kind;
+      const link = this.deps.itemTypes
+        ? await this.deps.itemTypes.resolve(query, key)
+        : await coreMenuTypes[key]?.(query);
+      if (!link) return null;
       return {
-        label: item.label || title,
-        url,
+        label: item.label || link.title,
+        url: link.url,
         newTab: item.newTab,
-        children: item.children.flatMap((child) => resolve(child) ?? []),
+        children: (await Promise.all(item.children.map(resolve))).filter(
+          (child) => child !== null,
+        ),
       };
     };
-    return menu.items.flatMap((item) => resolve(item) ?? []);
+    const output = (await Promise.all(menu.items.map(resolve))).filter(
+      (item) => item !== null,
+    );
+    const filtered = await this.deps.hooks?.applyFilter(
+      'menu.items',
+      output,
+      (value) => publicMenuItemSchema.array().safeParse(value).success,
+    );
+    return publicMenuItemSchema.array().parse(filtered ?? output);
   }
 
   private async stored(): Promise<MenusSettings> {

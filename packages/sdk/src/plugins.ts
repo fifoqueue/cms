@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { KEBAB_CASE } from '#sdk/common';
 import { CAPABILITIES } from '#sdk/capabilities';
+import { Errors } from '#sdk/errors';
 
 /** Omission uses the management grant; an unknown explicit grant is never accepted. */
 export const pluginCapabilitySchema = z
@@ -43,7 +44,11 @@ export type SettingValues = Record<string, SettingValue>;
 const rangeSchema = z.string().trim().min(1).max(100);
 
 export const pluginManifestSchema = z.object({
-  id: z.string().max(64).regex(KEBAB_CASE),
+  id: z
+    .string()
+    .max(64)
+    .regex(KEBAB_CASE)
+    .refine((id) => id !== 'core', Errors.PluginIdReserved),
   name: z.string().min(1).max(100),
   version: z.string().min(1).max(32),
   description: z.string().max(500).default(''),

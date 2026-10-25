@@ -113,6 +113,6 @@ export interface CommentRepository {
   recent(
     limit: number,
   ): Promise<{ author: string; title: string; path: string }[]>;
-  /** Deletes spam and trashed comments last changed before `before`; returns how many. */
-  purge(before: Date, limit: number): Promise<number>;
+  /** Deletes spam and trashed comments last changed before `before`; returns deleted rows. */
+  purge(before: Date, limit: number): Promise<CommentRecord[]>;
 }

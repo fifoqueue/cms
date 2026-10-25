@@ -10,6 +10,7 @@
 
 <script lang="ts">
   import { thumbnailUrl } from '#lib/admin/media-thumbnail.js';
+  import { sizeLabel } from '#lib/admin/image-sizes.js';
   import { deserialize } from '$app/forms';
   import { page as current } from '$app/state';
   import type { AdminMedia, MediaKind, Paginated } from '@cms/sdk';
@@ -361,11 +362,7 @@
               <NativeSelect class="w-full" bind:value={size}>
                 {#each selected.variants as variant (variant.name)}
                   <NativeSelectOption value={variant.name}
-                    >{{
-                      thumbnail: m.sizeThumbnail,
-                      medium: m.sizeMedium,
-                      large: m.sizeLarge,
-                    }[variant.name]} – {variant.width} × {variant.height}</NativeSelectOption
+                    >{sizeLabel(m, variant.name)} – {variant.width} × {variant.height}</NativeSelectOption
                   >
                 {/each}
                 <NativeSelectOption value=""

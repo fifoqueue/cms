@@ -1,65 +1,46 @@
-import type {
-  HealthCheck,
-  PluginInfo,
-  SearchStatus,
-  SiteHealth,
-} from '@cms/sdk';
+import type { PluginInfo, SearchStatus, SiteHealth } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
 import type { JobQueue, TaskLeases } from '#api/domain/jobs/ports';
 import type { Clock } from '#api/domain/ports';
+import { HealthChecks } from '#api/domain/tools/health-checks';
 
-/** A recurring task this late is not being run by any instance. */
 const OVERDUE_MS = 15 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface SiteHealthDeps {
+  checks?: HealthChecks;
   siteUrl: () => Promise<string>;
   emailEnabled: () => Promise<boolean>;
   search: () => Promise<SearchStatus>;
   leases: Pick<TaskLeases, 'list'>;
   jobs: Pick<JobQueue, 'failures'>;
   plugins: () => Promise<PluginInfo[]>;
-  /** Whether the web server proves visitor addresses (per-visitor rate limits). */
   visitorProof: () => boolean;
   info: { cms: string; runtime: string; database: () => Promise<string> };
   clock: Clock;
 }
 
-/** Tools → Site health: configuration and background work that need attention. */
+/**
+ * Built-ins register through the registry's core-only path and run directly: their errors
+ * propagate. A failing plugin check never hides the rest.
+ */
 export class SiteHealthService {
-  constructor(private readonly deps: SiteHealthDeps) {}
+  private readonly checks: HealthChecks;
 
-  async report(actor: Actor): Promise<SiteHealth> {
-    authorize(actor, 'tools.manage');
-    const now = this.deps.clock.now().getTime();
-    const [siteUrl, email, search, tasks, failures, plugins, database] =
-      await Promise.all([
-        this.deps.siteUrl(),
-        this.deps.emailEnabled(),
-        this.deps.search(),
-        this.deps.leases.list(),
-        this.deps.jobs.failures(20),
-        this.deps.plugins(),
-        this.deps.info.database().catch(() => 'unknown'),
-      ]);
-    const overdue = tasks.filter(
-      (task) => now - task.nextRunAt.getTime() > OVERDUE_MS,
-    );
-    const erring = tasks.filter((task) => task.lastError);
-    const recentFailures = failures.filter(
-      (failure) => now - failure.failedAt.getTime() < DAY_MS,
-    );
-    const failed = plugins.filter((plugin) => plugin.status === 'failed');
-    const checks: HealthCheck[] = [
-      {
-        key: 'siteUrl',
-        status: siteUrl ? 'good' : 'recommended',
-        detail: siteUrl ? [siteUrl] : [],
-      },
-      { key: 'email', status: email ? 'good' : 'recommended', detail: [] },
-      {
-        key: 'search',
+  constructor(private readonly deps: SiteHealthDeps) {
+    this.checks = deps.checks ?? new HealthChecks();
+    this.checks.registerCore('siteUrl', async () => {
+      const url = await deps.siteUrl();
+      return { status: url ? 'good' : 'recommended', detail: url ? [url] : [] };
+    });
+    this.checks.registerCore('email', async () => ({
+      status: (await deps.emailEnabled()) ? 'good' : 'recommended',
+      detail: [],
+    }));
+    this.checks.registerCore('search', async () => {
+      const search = await deps.search();
+      return {
         status:
           search.state === 'failing'
             ? 'critical'
@@ -67,34 +48,57 @@ export class SiteHealthService {
               ? 'recommended'
               : 'good',
         detail: [search.state, ...(search.lastError ? [search.lastError] : [])],
-      },
-      {
-        key: 'scheduler',
+      };
+    });
+    this.checks.registerCore('scheduler', async () => {
+      const tasks = await deps.leases.list();
+      const overdue = tasks.filter(
+        (task) =>
+          deps.clock.now().getTime() - task.nextRunAt.getTime() > OVERDUE_MS,
+      );
+      const erring = tasks.filter((task) => task.lastError);
+      return {
         status: overdue.length
           ? 'critical'
           : erring.length
             ? 'recommended'
             : 'good',
         detail: [...new Set([...overdue, ...erring].map((task) => task.name))],
-      },
-      {
-        key: 'jobs',
-        status: recentFailures.length ? 'recommended' : 'good',
-        detail: recentFailures
+      };
+    });
+    this.checks.registerCore('jobs', async () => {
+      const failures = (await deps.jobs.failures(20)).filter(
+        (failure) =>
+          deps.clock.now().getTime() - failure.failedAt.getTime() < DAY_MS,
+      );
+      return {
+        status: failures.length ? 'recommended' : 'good',
+        detail: failures
           .slice(0, 5)
           .map((failure) => `${failure.kind}: ${failure.error}`),
-      },
-      {
-        key: 'plugins',
+      };
+    });
+    this.checks.registerCore('plugins', async () => {
+      const failed = (await deps.plugins()).filter(
+        (plugin) => plugin.status === 'failed',
+      );
+      return {
         status: failed.length ? 'recommended' : 'good',
         detail: failed.map((plugin) => plugin.id),
-      },
-      {
-        key: 'visitorProof',
-        status: this.deps.visitorProof() ? 'good' : 'recommended',
-        detail: [],
-      },
-    ];
+      };
+    });
+    this.checks.registerCore('visitorProof', () => ({
+      status: deps.visitorProof() ? 'good' : 'recommended',
+      detail: [],
+    }));
+  }
+
+  async report(actor: Actor): Promise<SiteHealth> {
+    authorize(actor, 'tools.manage');
+    const [checks, database] = await Promise.all([
+      this.checks.run(),
+      this.deps.info.database().catch(() => 'unknown'),
+    ]);
     return {
       checks,
       info: {

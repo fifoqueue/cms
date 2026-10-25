@@ -4,6 +4,7 @@ import { InstallationService } from '#api/domain/installation/installation-servi
 import type { InstallationBackend } from '#api/domain/installation/installation-service';
 import { createInstallerApp } from '#api/http/app';
 import { recordingLogger } from '#test/support/memory';
+import { HookBus } from '#api/plugin-runtime/hook-bus';
 
 const key = 'installation-test-key';
 const database = {
@@ -67,6 +68,32 @@ const fixture = () => {
 };
 
 describe('InstallationService', () => {
+  test('installed notification follows commit and excludes credentials', async () => {
+    const backend = new MemoryInstallation();
+    backend.connected = true;
+    const hooks = new HookBus({
+      timeoutMs: 50,
+      logger: recordingLogger().logger,
+    });
+    const events: unknown[] = [];
+    hooks.registrar('test').on('site.installed', (value) => {
+      expect(backend.installed).toBe(true);
+      events.push(value);
+    });
+    const service = new InstallationService(
+      backend,
+      () => true,
+      () => hooks,
+    );
+    backend.failure = true;
+    await expect(service.complete(completion)).rejects.toThrow();
+    expect(events).toEqual([]);
+    backend.failure = false;
+    await service.complete(completion);
+    expect(events).toEqual([
+      { ...completion.site, siteUrl: completion.siteUrl },
+    ]);
+  });
   test('walks through database configuration and installation, then locks both writes', async () => {
     const { backend, service } = fixture();
     expect(await service.status()).toEqual({

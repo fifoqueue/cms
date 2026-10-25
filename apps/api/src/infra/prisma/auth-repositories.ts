@@ -9,6 +9,37 @@ import { guardUnique } from '#api/infra/prisma/client';
 import type { Database } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
 import { takenSlugs } from '#api/infra/prisma/taken-slugs';
+import type {
+  RecoveryCodeRecord,
+  RecoveryCodeRepository,
+} from '#api/domain/auth/recovery-service';
+
+export class PrismaRecoveryCodeRepository implements RecoveryCodeRepository {
+  constructor(private readonly db: Database) {}
+  async status(userId: string) {
+    const rows = await this.db.recoveryCode.findMany({
+      where: { userId },
+      select: { createdAt: true },
+    });
+    return {
+      remaining: rows.length,
+      createdAt: rows[0]?.createdAt.toISOString() ?? null,
+    };
+  }
+  async replace(userId: string, codes: RecoveryCodeRecord[]) {
+    await this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
+      await tx.recoveryCode.deleteMany({ where: { userId } });
+      if (codes.length) await tx.recoveryCode.createMany({ data: codes });
+    });
+  }
+  async consume(userId: string, codeHash: string) {
+    return (
+      (await this.db.recoveryCode.deleteMany({ where: { userId, codeHash } }))
+        .count === 1
+    );
+  }
+}
 
 export class PrismaUserRepository implements UserRepository {
   constructor(private readonly db: Pick<Database, 'user' | '$queryRaw'>) {}
@@ -42,7 +73,13 @@ export class PrismaUserRepository implements UserRepository {
 }
 
 export class PrismaSessionRepository implements SessionRepository {
-  constructor(private readonly db: Pick<Database, 'session'>) {}
+  constructor(
+    private readonly db: Pick<Database, 'session'> & {
+      $transaction(
+        work: (tx: Pick<Database, 'session' | 'recoveryCode'>) => Promise<void>,
+      ): Promise<void>;
+    },
+  ) {}
 
   async insert(session: SessionRecord) {
     try {
@@ -72,8 +109,11 @@ export class PrismaSessionRepository implements SessionRepository {
   }
 
   async deleteForUser(userId: string, keep?: string) {
-    await this.db.session.deleteMany({
-      where: { userId, ...(keep ? { tokenHash: { not: keep } } : {}) },
+    await this.db.$transaction(async (tx) => {
+      await tx.session.deleteMany({
+        where: { userId, ...(keep ? { tokenHash: { not: keep } } : {}) },
+      });
+      await tx.recoveryCode.deleteMany({ where: { userId } });
     });
   }
 

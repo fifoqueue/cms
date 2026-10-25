@@ -68,6 +68,7 @@ const urlWithoutQuery = (protocol: RegExp) =>
 const configSchema = z
   .object({
     DATABASE_URL: databaseUrlSchema.optional(),
+    CMS_ALLOW_PASSWORD_LOGIN: z.stringbool().default(false),
     API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
     /** Only the web server talks to the API, so it listens on this machine unless told otherwise. */
     API_HOST: z.string().trim().min(1).default('127.0.0.1'),

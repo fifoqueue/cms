@@ -315,11 +315,13 @@ export type ContentEntry = z.output<typeof adminContentSchema>;
 export type AdminContent = ContentEntry;
 
 /** Admin list item: the full record without the editor document and rendered body. */
-export const adminContentSummarySchema = adminContentSchema.omit({
-  document: true,
-  html: true,
-  fields: true,
-});
+export const adminContentSummarySchema = adminContentSchema
+  .omit({
+    document: true,
+    html: true,
+    fields: true,
+  })
+  .extend({ inactiveType: z.boolean().optional() });
 
 export type AdminContentSummary = z.output<typeof adminContentSummarySchema>;
 

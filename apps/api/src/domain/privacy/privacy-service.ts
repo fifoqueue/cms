@@ -4,12 +4,18 @@ import {
   privacySettingsSchema,
   privacyRequestSchema,
   stringifyJson,
+  privacyExportDataSchema,
 } from '@cms/sdk';
 import type { PrivacyAction, PublicPrivacy } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
 import type { TokenIssuer, PasswordHasher } from '#api/domain/auth/ports';
-import type { Clock, IdGenerator, Signer } from '#api/domain/ports';
+import type {
+  Clock,
+  HookDispatcher,
+  IdGenerator,
+  Signer,
+} from '#api/domain/ports';
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import type { PublishedContentRepository } from '#api/domain/content/published-content-repository';
 import type { EmailService } from '#api/domain/email/email-service';
@@ -26,6 +32,7 @@ import type {
 import { readable } from '#api/shared/stream';
 import { parseInput } from '#api/shared/validation';
 import { invalidInput, notFound, Errors } from '#api/shared/errors';
+import type { EraserRegistry } from '#api/domain/privacy/eraser-registry';
 
 const view = (row: PrivacyRecord) =>
   privacyRequestSchema.parse({
@@ -41,6 +48,8 @@ const view = (row: PrivacyRecord) =>
 export class PrivacyService {
   constructor(
     private readonly deps: {
+      hooks?: HookDispatcher;
+      erasers?: Pick<EraserRegistry, 'erase'>;
       repository: PrivacyRepository;
       settings: SettingsRepository;
       published: Pick<PublishedContentRepository, 'summariesByIds'>;
@@ -129,9 +138,11 @@ export class PrivacyService {
       completedAt: null,
     };
     await this.deps.repository.insert(row);
+    void this.deps.hooks?.emit('privacy.requested', view(row));
     await this.deps.email.queue(
       {
         to: data.email,
+        sensitive: true,
         subjects: [data.email],
         ...templates(site.locale).privacy(
           site.title,
@@ -171,6 +182,7 @@ export class PrivacyService {
     const row = await this.ready(id, 'export', actor);
     const repository = this.deps.repository;
     const clock = this.deps.clock;
+    const hooks = this.deps.hooks;
     async function* chunks() {
       yield `{"email":${JSON.stringify(row.email)}`;
       for (const section of PERSONAL_SECTIONS) {
@@ -188,18 +200,45 @@ export class PrivacyService {
         }
         yield ']';
       }
-      yield '}';
-      await repository.complete(row.id, clock.now());
+      const request = view(row);
+      const extra = (await hooks?.applyFilter(
+        'privacy.exportData',
+        { request, data: {} },
+        (value) => {
+          const parsed = privacyExportDataSchema.safeParse(value);
+          return (
+            parsed.success &&
+            JSON.stringify(parsed.data.request) === JSON.stringify(request)
+          );
+        },
+      )) ?? { request, data: {} };
+      yield `,"extensions":${stringifyJson(extra.data)}}`;
+      const completedAt = clock.now();
+      await repository.complete(row.id, completedAt);
+      void hooks?.emit(
+        'privacy.exported',
+        view({ ...row, status: 'completed', completedAt }),
+      );
     }
     return readable(chunks());
   }
   async erase(id: string, actor: Actor) {
-    await this.ready(id, 'erase', actor);
-    await this.deps.repository.erase(
-      id,
-      await this.deps.hasher.hash(this.deps.tokens.issue()),
-      this.deps.clock.now(),
+    const row = await this.ready(id, 'erase', actor);
+    const completedAt = this.deps.clock.now();
+    const report = this.deps.erasers
+      ? await this.deps.erasers.erase(view(row))
+      : await this.deps.repository
+          .erase(
+            id,
+            await this.deps.hasher.hash(this.deps.tokens.issue()),
+            completedAt,
+          )
+          .then(() => ({ results: {}, failed: [] }));
+    void this.deps.hooks?.emit(
+      'privacy.erased',
+      view({ ...row, status: 'completed', completedAt }),
     );
+    return report;
   }
   private async ready(id: string, action: PrivacyAction, actor: Actor) {
     authorize(actor, 'users.manage');

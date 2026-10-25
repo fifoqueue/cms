@@ -39,10 +39,10 @@ export const IMAGE_SIZES = {
   medium: 768,
   large: 1536,
 } as const;
-export type ImageSizeName = keyof typeof IMAGE_SIZES;
+export type ImageSizeName = string;
 
 export const mediaVariantSchema = z.object({
-  name: z.enum(['thumbnail', 'medium', 'large']),
+  name: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
   url: z.string(),
   width: z.number().int(),
   height: z.number().int(),

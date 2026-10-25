@@ -14,23 +14,27 @@ import {
 import { loadSlots } from '#lib/server/slots.js';
 import { loadTemplateData } from '#lib/server/theme-queries.js';
 import type { LayoutBlockData } from '#lib/server/theme-queries.js';
+import { withSeoMeta } from '#lib/server/page-meta.js';
+import type { HeadLayout } from '#lib/server/page-meta.js';
+import type { FilterEvent } from '#lib/server/seo-filter.js';
 
 /** A category or tag archive: the term (404 when unknown) and all assigned published content. */
 export const loadTermArchive = async (
-  fetch: typeof globalThis.fetch,
-  url: URL,
+  event: FilterEvent & { url: URL },
   taxonomy: TaxonomyType,
   slug: string,
   layout: Promise<
-    LayoutBlockData & {
-      reading: { postsPerPage: number };
-      archives?: ArchivePathsState;
-    }
+    LayoutBlockData &
+      HeadLayout & {
+        reading: { postsPerPage: number };
+        archives?: ArchivePathsState;
+      }
   >,
   /** Already requested by a caller that learned late that the path is an archive. */
-  slots = loadSlots(contentApi(fetch), { path: url.pathname }),
+  slots = loadSlots(contentApi(event.fetch), { path: event.url.pathname }),
 ) => {
-  const api = contentApi(fetch);
+  const { url } = event;
+  const api = contentApi(event.fetch);
   const loaded = await layout;
   const { reading, archives } = loaded;
   const pageSize = reading.postsPerPage;
@@ -64,11 +68,12 @@ export const loadTermArchive = async (
     term: { ...termArchiveView(term), path: canonicalPath },
     posts: listView(posts),
   };
-  const [blocks, loadedSlots] = await Promise.all([
+  const [blocks, loadedSlots, meta] = await Promise.all([
     loadTemplateData(api, loaded, page),
     slots,
+    withSeoMeta(event, loaded, page),
   ]);
-  return { ...page, slots: loadedSlots, ...blocks };
+  return { ...page, slots: loadedSlots, seoMeta: meta.seoMeta, ...blocks };
 };
 
 /** Page `?page=` of the published entries `query` selects; 404 past the last page. */

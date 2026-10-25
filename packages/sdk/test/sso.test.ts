@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { ssoCallbackSchema, ssoStartSchema } from '#sdk/auth';
-import { createSsoClient } from '#sdk/client';
+import { createSsoClient, createAuthClient } from '#sdk/client';
 
 const ssoResponse = (input: RequestInfo | URL) => {
   const path = new URL(String(input)).pathname;
@@ -11,8 +11,8 @@ const ssoResponse = (input: RequestInfo | URL) => {
       expiresAt: '2026-01-01T00:00:00.000Z',
     };
   if (path.endsWith('/callback')) return { kind: 'linked' };
-  if (path.endsWith('/identity')) return { identity: null, assigned: false };
-  return { enabled: false, name: null };
+  if (path.endsWith('/identity')) return { identities: [], assigned: [] };
+  return { providers: [] };
 };
 
 test('SSO client uses the shared HTTP contract and sends the session only when given', async () => {
@@ -41,11 +41,11 @@ test('SSO client uses the shared HTTP contract and sends the session only when g
   );
 
   await anonymous.info();
-  await anonymous.start();
+  await anonymous.start({ provider: 'default' });
   await anonymous.callback({ transaction: 't', query: '?code=c&state=s' });
-  await signedIn.start({ intent: 'link' });
+  await signedIn.start({ provider: 'default', intent: 'link' });
   await signedIn.identity();
-  await signedIn.unlink();
+  await signedIn.unlink('identity-1');
 
   expect(calls).toEqual([
     {
@@ -58,7 +58,7 @@ test('SSO client uses the shared HTTP contract and sends the session only when g
       url: 'http://cms/api/v1/auth/sso/start',
       method: 'POST',
       authorization: null,
-      body: {},
+      body: { provider: 'default' },
     },
     {
       url: 'http://cms/api/v1/auth/sso/callback',
@@ -70,7 +70,7 @@ test('SSO client uses the shared HTTP contract and sends the session only when g
       url: 'http://cms/api/v1/auth/sso/start',
       method: 'POST',
       authorization: 'Bearer session',
-      body: { intent: 'link' },
+      body: { provider: 'default', intent: 'link' },
     },
     {
       url: 'http://cms/api/v1/auth/sso/identity',
@@ -79,7 +79,7 @@ test('SSO client uses the shared HTTP contract and sends the session only when g
       body: undefined,
     },
     {
-      url: 'http://cms/api/v1/auth/sso/identity',
+      url: 'http://cms/api/v1/auth/sso/identity/identity-1',
       method: 'DELETE',
       authorization: 'Bearer session',
       body: undefined,
@@ -97,8 +97,11 @@ test('SSO client uses the shared HTTP contract and sends the session only when g
     return Response.json(ssoResponse(input));
   }) as typeof fetch;
   const frontend = createSsoClient({ baseUrl: 'http://cms', fetch: recording });
-  await frontend.start({}, { address: '203.0.113.5', secret: 'shared' });
-  await frontend.start({});
+  await frontend.start(
+    { provider: 'default' },
+    { address: '203.0.113.5', secret: 'shared' },
+  );
+  await frontend.start({ provider: 'default' });
   await frontend.info();
   // The proof travels only with the start request it was given to.
   expect(proofs).toEqual([
@@ -107,9 +110,91 @@ test('SSO client uses the shared HTTP contract and sends the session only when g
     [null, null],
   ]);
 
-  expect(ssoStartSchema.parse({})).toEqual({ intent: 'login' });
+  expect(ssoStartSchema.parse({ provider: 'default' })).toEqual({
+    provider: 'default',
+    intent: 'login',
+  });
+  expect(ssoStartSchema.safeParse({}).success).toBe(false);
+  expect(
+    ssoStartSchema.safeParse({ provider: 'default', intent: 'claim' }).success,
+  ).toBe(false);
+  expect(
+    ssoStartSchema.parse({
+      provider: 'default',
+      intent: 'claim',
+      token: 'invite',
+    }),
+  ).toEqual({ provider: 'default', intent: 'claim', token: 'invite' });
   expect(ssoStartSchema.safeParse({ intent: 'admin' }).success).toBe(false);
   expect(
     ssoCallbackSchema.safeParse({ transaction: '', query: '' }).success,
   ).toBe(false);
+});
+
+test('recovery client uses session routes and sends visitor proof only with recovery', async () => {
+  const calls: {
+    path: string;
+    method: string;
+    proof: string | null;
+    authorization: string | null;
+  }[] = [];
+  const client = createAuthClient(
+    {
+      baseUrl: 'https://cms.example',
+      fetch: (async (input, init) => {
+        const path = new URL(String(input)).pathname;
+        const headers = new Headers(init?.headers);
+        calls.push({
+          path,
+          method: init!.method!,
+          proof: headers.get('x-cms-client-address'),
+          authorization: headers.get('authorization'),
+        });
+        if (init?.method === 'DELETE')
+          return new Response(null, { status: 204 });
+        if (path.endsWith('/recovery'))
+          return Response.json({
+            token: 'session',
+            expiresAt: '2026-01-01T00:00:00.000Z',
+            user: {
+              id: 'admin',
+              email: 'admin@example.com',
+              name: 'Admin',
+              role: 'administrator',
+              slug: 'admin',
+              bio: '',
+              locale: '',
+            },
+          });
+        return Response.json(
+          init?.method === 'POST'
+            ? { codes: ['AAAAA-BBBBB'] }
+            : { remaining: 1, createdAt: null },
+        );
+      }) as typeof fetch,
+    },
+    'session',
+  );
+  await client.recover(
+    { email: 'admin@example.com', code: 'AAAAA-BBBBB' },
+    { proof: { address: '203.0.113.5', secret: 'proof' } },
+  );
+  await client.recoveryCodes.status();
+  await client.recoveryCodes.generate();
+  await client.recoveryCodes.remove();
+  expect(calls.map(({ path, method }) => [path, method])).toEqual([
+    ['/api/v1/auth/recovery', 'POST'],
+    ['/api/v1/auth/recovery-codes', 'GET'],
+    ['/api/v1/auth/recovery-codes', 'POST'],
+    ['/api/v1/auth/recovery-codes', 'DELETE'],
+  ]);
+  expect(calls.map((call) => call.proof)).toEqual([
+    '203.0.113.5',
+    null,
+    null,
+    null,
+  ]);
+  expect(calls.every((call) => call.authorization === 'Bearer session')).toBe(
+    true,
+  );
 });

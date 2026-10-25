@@ -52,6 +52,6 @@ export interface TaxonomyRepository {
   insert(record: TaxonomyTermRecord): Promise<void>;
   /** The taxonomy of `record` is ignored; the stored one is kept. */
   update(record: TaxonomyTermRecord): Promise<void>;
-  /** Unassigns the term from all content and moves its children up to its parent. */
-  delete(id: string): Promise<void>;
+  /** Unassigns the term, reparents children, and returns affected content IDs after commit. */
+  delete(id: string): Promise<string[]>;
 }

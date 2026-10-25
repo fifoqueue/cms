@@ -15,6 +15,7 @@ export class PrismaCredentialRepository implements CredentialRepository {
         },
       });
       await tx.apiToken.deleteMany({ where: { userId } });
+      await tx.recoveryCode.deleteMany({ where: { userId } });
     });
   }
 
@@ -43,6 +44,7 @@ export class PrismaCredentialRepository implements CredentialRepository {
       await tx.passwordToken.deleteMany({ where: { userId: token.userId } });
       await tx.session.deleteMany({ where: { userId: token.userId } });
       await tx.apiToken.deleteMany({ where: { userId: token.userId } });
+      await tx.recoveryCode.deleteMany({ where: { userId: token.userId } });
       return true;
     });
   }

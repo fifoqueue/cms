@@ -30,6 +30,7 @@ const setup = (secrets: SecretBox = plainSecretBox) => {
     logger: recordingLogger().logger,
   });
   const webhooks = new WebhookService({
+    hooks,
     settings,
     secrets,
     tokens: { issue: () => 'whsec-1' },
@@ -44,7 +45,7 @@ const setup = (secrets: SecretBox = plainSecretBox) => {
     ids: sequentialIds(),
     clock,
   });
-  webhooks.subscribe(hooks.registrar('core:webhooks'));
+  webhooks.subscribe(hooks.core('core:webhooks'));
   return {
     jobs,
     sent,
@@ -58,6 +59,51 @@ const setup = (secrets: SecretBox = plainSecretBox) => {
 };
 
 describe('WebhookService', () => {
+  test('CRUD and delivery actions are secret-free; payload filters reject non-JSON', async () => {
+    const { webhooks, hooks, payloads, sent, answer } = setup();
+    const events: { name: string; value: unknown }[] = [];
+    const registrar = hooks.registrar('observer');
+    for (const name of [
+      'webhook.created',
+      'webhook.updated',
+      'webhook.deleted',
+      'webhook.delivered',
+      'webhook.failed',
+    ] as const)
+      registrar.on(name, (value) => {
+        events.push({ name, value });
+      });
+    registrar.filter('webhook.payload', () => ({
+      extra: 'ok',
+      id: 'forged',
+      event: 'forged',
+      occurredAt: 'forged',
+    }));
+    registrar.filter('webhook.payload', () => ({ bad: undefined }));
+    registrar.filter('webhook.payload', () => ({ large: 'x'.repeat(65_536) }));
+    const input = { url: 'https://hooks.example/a', events: ['site.updated'] };
+    const hook = await webhooks.create(input, ADMIN);
+    await webhooks.update(hook.id, input, ADMIN);
+    await webhooks.ping(hook.id, ADMIN);
+    await webhooks.deliver(payloads()[0]);
+    expect(JSON.parse(sent[0]!.body).data.extra).toBe('ok');
+    expect(JSON.parse(sent[0]!.body).event).toBe('ping');
+    expect(JSON.parse(sent[0]!.body).id).not.toBe('forged');
+    expect(JSON.parse(sent[0]!.body).occurredAt).not.toBe('forged');
+    answer(500);
+    await expect(webhooks.deliver(payloads()[0])).rejects.toThrow();
+    await webhooks.remove(hook.id, ADMIN);
+    expect(events.map(({ name }) => name)).toEqual([
+      'webhook.created',
+      'webhook.updated',
+      'webhook.delivered',
+      'webhook.failed',
+      'webhook.deleted',
+    ]);
+    expect(events[2]!.value).toMatchObject({ id: hook.id, status: 200 });
+    expect(events[3]!.value).toMatchObject({ id: hook.id, status: 500 });
+    expect(JSON.stringify(events)).not.toContain('whsec');
+  });
   test('queues signed deliveries for subscribed, enabled webhooks only', async () => {
     const { webhooks, hooks, sent, payloads } = setup();
     const created = await webhooks.create(

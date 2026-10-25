@@ -1,5 +1,5 @@
 import { createTransport } from 'nodemailer';
-import type { Mailer, MailTransport } from '#api/domain/email/ports';
+import type { EmailMessage, MailTransport } from '#api/domain/email/ports';
 import { outbound } from '#api/infra/egress-policy';
 import type { Address } from '#api/infra/egress-policy';
 
@@ -18,8 +18,11 @@ const connectionFailure = (error: unknown) =>
   (error as Error & { command?: string }).command === 'CONN';
 
 /** SMTP through nodemailer; fallback occurs only before an SMTP connection succeeds. */
-export const createSmtpMailer = (resolve: Resolve): Mailer => ({
-  async send(transport: MailTransport, message) {
+export const createSmtpMailer = (resolve: Resolve) => ({
+  async send(
+    transport: Extract<MailTransport, { kind: 'smtp' }>,
+    message: EmailMessage,
+  ) {
     const started = Date.now();
     const signal = AbortSignal.timeout(TIMEOUT_MS);
     const targets = await resolve(transport.host, transport.port, signal);

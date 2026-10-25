@@ -48,6 +48,7 @@ import type { SettingsRepository } from '#api/domain/site/site-service';
 import type { UserDirectory } from '#api/domain/users/user-directory';
 import { forbidden, invalidInput, notFound, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
+import { CommentCheckers } from '#api/domain/comments/comment-checkers';
 
 const KEY = 'discussion';
 const DAY = 24 * 60 * 60 * 1000;
@@ -67,8 +68,6 @@ const authorName = (name: string) =>
     .slice(0, COMMENT_AUTHOR_NAME_MAX)
     .replace(/[\uD800-\uDBFF]$/, '')
     .trim();
-
-const links = (text: string) => (text.match(/https?:\/\//gi) ?? []).length;
 
 const toPlugin = (record: CommentRecord): PluginComment => ({
   id: record.id,
@@ -101,6 +100,7 @@ const toAdmin = (
 });
 
 export interface CommentServiceDeps {
+  checkers?: Pick<CommentCheckers, 'check'>;
   repository: CommentRepository;
   locks: Pick<ContentLocks, 'unlocked'>;
   signer: Signer;
@@ -111,7 +111,7 @@ export interface CommentServiceDeps {
   hooks: HookDispatcher;
   email: Pick<EmailService, 'enabled' | 'queue'>;
   roles?: {
-    capabilities(role: string): Promise<Capability[]>;
+    capabilities(role: string, userId?: string): Promise<Capability[]>;
   };
   users: Pick<UserDirectory, 'list' | 'get'>;
   /** Public origin and display settings for notification mail. */
@@ -122,7 +122,10 @@ export interface CommentServiceDeps {
 
 /** Comments: visitors' submissions, public threads and moderation (WordPress "Comments"). */
 export class CommentService {
-  constructor(private readonly deps: CommentServiceDeps) {}
+  private readonly checkers: Pick<CommentCheckers, 'check'>;
+  constructor(private readonly deps: CommentServiceDeps) {
+    this.checkers = deps.checkers ?? new CommentCheckers();
+  }
 
   async discussion(): Promise<DiscussionSettings> {
     const result = discussionSettingsSchema.safeParse(
@@ -133,8 +136,15 @@ export class CommentService {
 
   async updateDiscussion(input: unknown, actor: Actor) {
     authorize(actor, 'settings.manage');
-    const settings = parseInput(discussionSettingsSchema, input);
+    const settings = discussionSettingsSchema.parse(
+      await this.deps.hooks.applyFilter(
+        'discussion.beforeSave',
+        parseInput(discussionSettingsSchema, input),
+        (value) => discussionSettingsSchema.safeParse(value).success,
+      ),
+    );
     await this.deps.settings.set(KEY, settings);
+    void this.deps.hooks.emit('discussion.updated', settings);
     return settings;
   }
 
@@ -166,8 +176,8 @@ export class CommentService {
     const ownPending = await this.pending(pendingProof, target.id);
     const viewer = actor ? await this.deps.users.get(actor.id) : null;
     return {
-      items: items.map((item) =>
-        this.toPublic(item, target, item.depth, settings),
+      items: await Promise.all(
+        items.map((item) => this.toPublic(item, target, item.depth, settings)),
       ),
       requireLogin: settings.requireLogin,
       fields: {
@@ -177,7 +187,7 @@ export class CommentService {
       },
       viewer: viewer ? { name: viewer.name } : null,
       ownPending: ownPending
-        ? this.toPublic(ownPending, target, 0, settings)
+        ? await this.toPublic(ownPending, target, 0, settings)
         : null,
       total,
       count: target.commentCount,
@@ -254,6 +264,33 @@ export class CommentService {
     if (!(await this.open(target, settings)))
       throw forbidden(Errors.CommentsClosed);
     const depth = await this.replyDepth(data.parentId, target, settings);
+    let allowed = true;
+    const admission = {
+      allowed,
+      contentId: target.id,
+      authorName: data.authorName,
+      authorEmail: data.authorEmail,
+      address: attempt.address,
+    };
+    await this.deps.hooks.applyFilter(
+      'comment.submitAllowed',
+      admission,
+      (value) => {
+        const result = z
+          .object({
+            allowed: z.boolean(),
+            contentId: z.literal(admission.contentId),
+            authorName: z.literal(admission.authorName),
+            authorEmail: z.literal(admission.authorEmail),
+            address: z.literal(admission.address),
+          })
+          .safeParse(value);
+        if (!result.success || (!allowed && result.data.allowed)) return false;
+        allowed = result.data.allowed;
+        return true;
+      },
+    );
+    if (!allowed) throw forbidden(Errors.CommentsClosed);
     const recognized = !user
       ? await this.knownCommenter(commenterProof, data.authorEmail)
       : false;
@@ -270,12 +307,25 @@ export class CommentService {
       authorEmail: data.authorEmail,
       authorUrl: data.authorUrl,
       body: data.body,
-      status: this.initialStatus(
-        data,
-        settings,
-        known,
-        !!actor && can(actor, 'comments.moderate'),
-      ),
+      status:
+        actor && can(actor, 'comments.moderate')
+          ? 'approved'
+          : ({ approve: 'approved', hold: 'pending', spam: 'spam' } as const)[
+              (
+                await this.checkers.check({
+                  comment: {
+                    contentId: target.id,
+                    authorName: data.authorName,
+                    authorEmail: data.authorEmail,
+                    authorUrl: data.authorUrl,
+                    body: data.body,
+                  },
+                  settings,
+                  known,
+                  moderator: false,
+                })
+              ).status
+            ],
     };
     const filtered = await this.deps.hooks.applyFilter(
       'comment.beforeSave',
@@ -311,7 +361,7 @@ export class CommentService {
       status: status === 'approved' ? 'approved' : 'pending',
       comment:
         status === 'approved'
-          ? this.toPublic(record, target, depth, settings)
+          ? await this.toPublic(record, target, depth, settings)
           : null,
       page,
       // Spam gets the same receipt shape, but a receipt can only reveal a pending comment.
@@ -372,7 +422,13 @@ export class CommentService {
 
   async list(query: unknown, actor: Actor) {
     authorize(actor, 'comments.moderate');
-    const criteria = parseInput(commentListQuerySchema, query);
+    const criteria = commentListQuerySchema.parse(
+      await this.deps.hooks.applyFilter(
+        'comment.query',
+        parseInput(commentListQuerySchema, query),
+        (value) => commentListQuerySchema.safeParse(value).success,
+      ),
+    );
     const { items, total } = await this.deps.repository.list(criteria);
     return {
       items: items.map(toAdmin),
@@ -397,6 +453,7 @@ export class CommentService {
     );
     if (!result) throw notFound(Errors.CommentNotFound);
     this.statusChanged(result.before, result.after.status);
+    void this.deps.hooks.emit('comment.updated', toPlugin(result.after));
   }
 
   /** A moderator's reply, approved at once and marked as theirs. */
@@ -439,7 +496,9 @@ export class CommentService {
         throw notFound(Errors.CommentNotFound);
     }
     if (action === 'delete') {
-      await this.deps.repository.delete(ids);
+      const deleted = await this.deps.repository.delete(ids);
+      for (const record of deleted)
+        void this.deps.hooks.emit('comment.deleted', toPlugin(record));
       return;
     }
     const status = (
@@ -462,6 +521,7 @@ export class CommentService {
     authorize(actor, 'comments.moderate');
     const [deleted] = await this.deps.repository.delete([id]);
     if (!deleted) throw notFound(Errors.CommentNotFound);
+    void this.deps.hooks.emit('comment.deleted', toPlugin(deleted));
   }
 
   /** Deletes spam and trash older than `COMMENT_PURGE_DAYS`. */
@@ -469,7 +529,12 @@ export class CommentService {
     const before = new Date(
       this.deps.clock.now().getTime() - COMMENT_PURGE_DAYS * DAY,
     );
-    while ((await this.deps.repository.purge(before, 500)) === 500);
+    let deleted;
+    do {
+      deleted = await this.deps.repository.purge(before, 500);
+      for (const record of deleted)
+        void this.deps.hooks.emit('comment.deleted', toPlugin(record));
+    } while (deleted.length === 500);
   }
 
   private statusChanged(before: CommentRecord, status: CommentStatus) {
@@ -517,40 +582,13 @@ export class CommentService {
     return depth;
   }
 
-  private initialStatus(
-    data: {
-      authorName: string;
-      authorEmail: string;
-      authorUrl: string;
-      body: string;
-    },
-    settings: DiscussionSettings,
-    known: boolean,
-    moderator: boolean,
-  ): CommentDraft['status'] {
-    if (moderator) return 'approved';
-
-    const text = [data.authorName, data.authorEmail, data.authorUrl, data.body]
-      .join('\n')
-      .toLowerCase();
-    if (settings.blockWords.some((word) => text.includes(word))) return 'spam';
-    if (
-      settings.holdWords.some((word) => text.includes(word)) ||
-      links(data.body) > settings.maxLinks
-    )
-      return 'pending';
-    if (settings.moderation === 'auto') return 'approved';
-    if (settings.moderation === 'manual') return 'pending';
-    return known ? 'approved' : 'pending';
-  }
-
-  private toPublic(
+  private async toPublic(
     record: CommentRecord,
     target: CommentTarget,
     depth: number,
     settings: DiscussionSettings,
-  ): PublicComment {
-    return publicCommentSchema.parse({
+  ): Promise<PublicComment> {
+    const output = publicCommentSchema.parse({
       id: record.id,
       parentId: record.parentId,
       depth,
@@ -564,6 +602,13 @@ export class CommentService {
       body: record.body,
       createdAt: record.createdAt.toISOString(),
     });
+    return publicCommentSchema.parse(
+      await this.deps.hooks.applyFilter(
+        'comment.public',
+        output,
+        (value) => publicCommentSchema.safeParse(value).success,
+      ),
+    );
   }
 
   /** A bearer proof whose referenced comment must still be approved for the same email. */
@@ -615,6 +660,26 @@ export class CommentService {
   }
 
   /** Mail about a new comment: moderators when it waits, the entry's author when it is shown. */
+  private async notice(input: Parameters<EmailService['queue']>[0]) {
+    const schema = z.object({
+      to: z.literal(input.to),
+      subject: z
+        .string()
+        .min(1)
+        .max(998)
+        .regex(/^[^\r\n]+$/),
+      text: z.string().min(1).max(100000),
+    });
+    const output = schema.parse(
+      await this.deps.hooks.applyFilter(
+        'comment.notification',
+        schema.parse(input),
+        (value) => schema.safeParse(value).success,
+      ),
+    );
+    await this.deps.email.queue({ ...input, ...output });
+  }
+
   private async notify(
     record: CommentRecord,
     target: CommentTarget,
@@ -635,7 +700,10 @@ export class CommentService {
             allowed: can(
               {
                 role: user.role,
-                capabilities: await this.deps.roles?.capabilities(user.role),
+                capabilities: await this.deps.roles?.capabilities(
+                  user.role,
+                  user.id,
+                ),
               },
               'comments.moderate',
             ),
@@ -645,7 +713,7 @@ export class CommentService {
         .filter((item) => item.allowed)
         .map((item) => item.user);
       for (const user of moderators)
-        await this.deps.email.queue({
+        await this.notice({
           to: user.email,
           subjects: [
             user.id,
@@ -662,7 +730,7 @@ export class CommentService {
       const link = site.siteUrl
         ? `${site.siteUrl}${target.path}#comment-${record.id}`
         : '';
-      await this.deps.email.queue({
+      await this.notice({
         to: author.email,
         subjects: [
           author.id,

@@ -184,7 +184,7 @@ test('permalink workflow: templates, atomic regeneration, redirects, drafts and 
     expect(await codeOf(() => save(write))).toBe('invalid_input');
   expect(paths.current('f')).toBe('/post/Other');
 
-  // Templates cannot shadow reserved routes or carry traversal, queries or unknown tokens.
+  // Templates cannot shadow reserved routes or carry traversal or queries.
   for (const pattern of [
     '/category/%slug%',
     '/%slug%.md',
@@ -194,7 +194,7 @@ test('permalink workflow: templates, atomic regeneration, redirects, drafts and 
     '/p/../%slug%',
     '/p\\%slug%',
     '/p/%slug%?x=1',
-    '/%foo%',
+    '/%invalid-token%',
     '/p/static',
   ])
     expect(

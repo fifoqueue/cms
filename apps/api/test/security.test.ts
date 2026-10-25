@@ -158,6 +158,15 @@ describe('sign-in protection', () => {
       provider: 'turnstile',
       siteKey: 'site',
       always: [],
+      widget: {
+        script:
+          'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit',
+        scriptOrigin: 'https://challenges.cloudflare.com',
+        render: 'turnstile.render',
+        origins: ['https://challenges.cloudflare.com'],
+        attributes: {},
+        responseField: 'cf-turnstile-response',
+      },
     });
   });
 });
@@ -246,10 +255,22 @@ describe('password reset', () => {
     });
     await email.update({
       enabled: true,
-      host: 'smtp.example.com',
-      port: 587,
-      security: 'starttls',
-      username: '',
+      transport: 'smtp',
+      http: {
+        provider: 'sendgrid',
+        region: '',
+        domain: '',
+        keyId: '',
+        url: '',
+        authHeader: '',
+        bodyTemplate: '',
+      },
+      smtp: {
+        host: 'smtp.example.com',
+        port: 587,
+        security: 'starttls',
+        username: '',
+      },
       fromName: 'Site',
       fromEmail: 'site@example.com',
     });
@@ -257,7 +278,9 @@ describe('password reset', () => {
     let apiTokensRevoked = false;
     let hashes = 0;
     let issued = '';
+    let passwordLogin = true;
     const passwords = new PasswordService({
+      passwordLogin: async () => passwordLogin,
       users,
       tokens: passwordTokens,
       credentials: new MemoryCredentials(
@@ -352,5 +375,18 @@ describe('password reset', () => {
         passwords.sendReset('admin', { id: 'boss', role: 'administrator' }),
       ),
     ).toBe('rate_limited');
+    passwordLogin = false;
+    await expect(
+      passwords.requestReset({ email: 'admin@example.com' }, visitor),
+    ).rejects.toMatchObject({ code: 'forbidden' });
+    await expect(
+      passwords.reset({ token: issued, password: 'new-password' }),
+    ).rejects.toMatchObject({ code: 'forbidden' });
+    await passwords.invite(
+      userRecord({ id: 'invited', email: 'invited@example.com' }),
+    );
+    const invitation = [...queue.rows.values()].at(-1)!;
+    await email.deliver(invitation.payload);
+    expect(sent.at(-1)).toContain('Set up your sign-in');
   });
 });

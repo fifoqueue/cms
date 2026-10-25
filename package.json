@@ -8,9 +8,9 @@
     "plugins/*"
   ],
   "scripts": {
-    "dev": "bun run --parallel dev:api dev:web",
-    "dev:api": "bun --filter @cms/api dev",
-    "dev:web": "bun --filter @cms/web dev",
+    "dev": "bun scripts/parallel.mjs dev:api dev:web",
+    "dev:api": "bun run --cwd apps/api dev",
+    "dev:web": "bun run --cwd apps/web dev",
     "build": "bun --filter \"*\" build",
     "typecheck": "bun --filter \"*\" typecheck",
     "lint": "eslint .",

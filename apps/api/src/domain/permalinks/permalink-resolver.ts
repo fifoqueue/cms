@@ -24,7 +24,7 @@ export interface ResolvedPath {
 /**
  * Maps a request path to published content with one exact indexed lookup. Drafts and removed
  * content are never found, through current paths or redirects alike. `redirect` comes from the
- * stored path row and the request's own spelling, never from filtered content fields.
+ * ownership-validated selected path and the request's own spelling.
  */
 export class PermalinkResolver {
   constructor(
@@ -50,6 +50,6 @@ export class PermalinkResolver {
 
     if (!owner || !content) throw notFound(Errors.ContentNotFound);
 
-    return { content, redirect: !owner.current || content.path !== path };
+    return { content, redirect: content.path !== path };
   }
 }

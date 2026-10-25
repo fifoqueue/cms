@@ -11,6 +11,7 @@ export const MENU_ITEM_KINDS = [
   'term',
   'home',
   'archive',
+  'plugin',
 ] as const;
 
 /** A web address or a path on this site; never another scheme. */
@@ -36,10 +37,12 @@ export interface MenuItem {
   /** `content` items. */
   contentId?: string;
   /** `term` items. */
-  taxonomy?: 'category' | 'tag';
+  taxonomy?: string;
   termId?: string;
   /** `archive` items: a content type key. */
   archive?: string;
+  provider?: string;
+  objectId?: string;
   newTab: boolean;
   children: MenuItem[];
 }
@@ -53,9 +56,17 @@ const itemSchema = (depth: number): z.ZodType<MenuItem> =>
       kind: z.enum(MENU_ITEM_KINDS),
       url: linkSchema.optional(),
       contentId: z.string().max(36).optional(),
-      taxonomy: z.enum(['category', 'tag']).optional(),
+      taxonomy: z
+        .string()
+        .regex(/^[a-z][a-z0-9-]{0,63}$/)
+        .optional(),
       termId: z.string().max(36).optional(),
       archive: z.string().max(32).optional(),
+      provider: z
+        .string()
+        .regex(/^[a-z][a-z0-9-]{0,63}$/)
+        .optional(),
+      objectId: z.string().min(1).max(191).optional(),
       newTab: z.boolean().default(false),
       children:
         depth > 1
@@ -71,6 +82,7 @@ const itemSchema = (depth: number): z.ZodType<MenuItem> =>
         (item.kind === 'content' && !!item.contentId) ||
         (item.kind === 'term' && !!item.termId && !!item.taxonomy) ||
         (item.kind === 'archive' && !!item.archive) ||
+        (item.kind === 'plugin' && !!item.provider && !!item.objectId) ||
         item.kind === 'home',
       Errors.MenuTargetMissing,
     ) as z.ZodType<MenuItem>;
@@ -108,10 +120,12 @@ export interface PublicMenuItem {
 
 export const publicMenuItemSchema: z.ZodType<PublicMenuItem> = z.object({
   label: z.string(),
-  url: z.string(),
+  url: linkSchema,
   newTab: z.boolean(),
   children: z.array(z.lazy(() => publicMenuItemSchema)),
 });
+
+export const menuLinkSchema = z.object({ url: linkSchema, title: z.string() });
 
 /** A published entry a saved menu links to, as the menu editor labels it. */
 export const menuTargetSchema = z.object({
@@ -124,3 +138,24 @@ export type MenuTarget = z.output<typeof menuTargetSchema>;
 
 /** A location's menu with every target resolved; null when none is assigned. */
 export const publicMenuSchema = z.array(publicMenuItemSchema).nullable();
+
+export const menuObjectQuerySchema = z.object({
+  search: z.string().trim().max(200).default(''),
+  page: z.coerce.number().int().min(1).max(10000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+export type MenuObjectQuery = Partial<z.output<typeof menuObjectQuerySchema>>;
+export const menuObjectSchema = z.strictObject({
+  id: z.string().min(1).max(191),
+  label: z.string().min(1).max(191),
+});
+export const menuObjectsSchema = z.strictObject({
+  items: menuObjectSchema.array().max(100),
+  total: z.number().int().nonnegative(),
+});
+export const menuItemTypeSchema = z.strictObject({
+  key: z.string(),
+  label: z.string(),
+  source: z.string(),
+  searchable: z.boolean(),
+});

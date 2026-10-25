@@ -4,7 +4,7 @@ import type { PermalinkSettings } from '@cms/sdk';
 import { readPermalinkSettings } from '#api/domain/permalinks/content-path';
 import type { PermalinkSubject } from '#api/domain/permalinks/content-path';
 import {
-  pathChanges,
+  resolvePathChanges,
   planPathChanges,
   regenerationEntry,
 } from '#api/domain/permalinks/path-plan';
@@ -28,6 +28,16 @@ import {
 import type { Database } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
 import { Errors } from '#api/shared/errors';
+import type { PermalinkTokenRegistry } from '#api/domain/permalinks/token-registry';
+import { regeneratePaths } from '#api/domain/permalinks/regeneration';
+import type { Logger } from '#api/shared/logger';
+import { conflict } from '#api/shared/errors';
+import {
+  PERMALINK_TOKENS,
+  permalinkPatternFor,
+  permalinkSettingsSchema,
+} from '@cms/sdk';
+import { z } from 'zod';
 
 /**
  * `content_paths` holds every content path as ASCII bytes (`VARBINARY`) keyed by its SHA-256
@@ -38,6 +48,62 @@ import { Errors } from '#api/shared/errors';
 
 const SETTINGS_KEY = 'permalinks';
 const BATCH = 500;
+const REGENERATION_KEY = 'permalinks.regeneration';
+const regenerationSchema = z.object({
+  settings: permalinkSettingsSchema,
+  cursor: z.string().nullable(),
+  ids: z.array(z.string()).optional(),
+});
+
+/** Persist intent in the metadata transaction; the worker resolves tokens after commit. */
+export const queueContentPaths = async (
+  tx: Transaction,
+  where: Prisma.ContentWhereInput = {},
+  tokens?: PermalinkTokenRegistry,
+) => {
+  const settings = await readSettings(tx);
+  const rows = await tx.content.findMany({
+    where,
+    select: { id: true, type: true },
+  });
+  if (!rows.length) return;
+  if (
+    rows.every(({ type }) =>
+      permalinkPatternFor(settings, type)
+        .split('%')
+        .every(
+          (part, index) =>
+            index % 2 === 0 ||
+            ((PERMALINK_TOKENS as readonly string[]).includes(part) &&
+              !tokens?.isPluginResolved(part)),
+        ),
+    )
+  ) {
+    await refreshContentPaths(tx, where);
+    return;
+  }
+  const stored = await tx.setting.findUnique({
+    where: { key: REGENERATION_KEY },
+  });
+  const pending = stored && regenerationSchema.parse(JSON.parse(stored.value));
+  const value = JSON.stringify({
+    settings:
+      pending?.settings ??
+      Object.fromEntries(
+        Object.entries(settings).sort(([a], [b]) => a.localeCompare(b)),
+      ),
+    cursor: null,
+    ids:
+      pending && !pending.ids
+        ? undefined
+        : [...new Set([...(pending?.ids ?? []), ...rows.map(({ id }) => id)])],
+  });
+  await tx.setting.upsert({
+    where: { key: REGENERATION_KEY },
+    create: { key: REGENERATION_KEY, value },
+    update: { value },
+  });
+};
 
 type Transaction = Prisma.TransactionClient;
 
@@ -56,8 +122,21 @@ const chunks = <T>(items: readonly T[]) =>
  * Takes the permalink lock. Must be the first statement of every transaction that writes paths,
  * so its reads (settings, paths) see everything committed before the lock was granted.
  */
-export const lockPermalinks = async (tx: Transaction) => {
+export const lockPermalinks = async (tx: Transaction, regeneration = false) => {
   await lockPublicPaths(tx);
+  // A concurrent write invalidates the worker's snapshot instead of rejecting the editor.
+  if (!regeneration) {
+    const stored = await tx.setting.findUnique({
+      where: { key: REGENERATION_KEY },
+    });
+    if (stored) {
+      const pending = regenerationSchema.parse(JSON.parse(stored.value));
+      await tx.setting.update({
+        where: { key: REGENERATION_KEY },
+        data: { value: JSON.stringify({ ...pending, cursor: null }) },
+      });
+    }
+  }
 };
 
 const readSettings = async (db: Pick<Transaction, 'setting'>) => {
@@ -156,6 +235,7 @@ const applyChanges = async (tx: Transaction, changes: PathChange[]) => {
 const addressEntries = async (
   tx: Transaction,
   where: Prisma.ContentWhereInput = {},
+  take?: number,
 ): Promise<PathEntry[]> => {
   const rows = await tx.content.findMany({
     where,
@@ -174,6 +254,7 @@ const addressEntries = async (
       },
     },
     orderBy: { id: 'asc' },
+    take,
   });
   const [pages, categories] = await Promise.all([
     rows.some((row) => row.parentId)
@@ -236,14 +317,16 @@ const addressEntries = async (
 export const refreshContentPaths = async (
   tx: Transaction,
   where: Prisma.ContentWhereInput = {},
+  tokens?: PermalinkTokenRegistry,
 ) => {
   const settings = await readSettings(tx);
   await applyChanges(
     tx,
-    pathChanges(
+    await resolvePathChanges(
       settings,
       await addressEntries(tx, where),
       await siteTimeZone(tx),
+      tokens,
     ),
   );
 };
@@ -252,6 +335,7 @@ export const assignContentPath = async (
   tx: Transaction,
   subject: Pick<PermalinkSubject, 'id' | 'type'>,
   retainPrevious: boolean,
+  tokens?: PermalinkTokenRegistry,
 ): Promise<string> => {
   const settings = await readSettings(tx);
   // Parent edits can move descendants. One plan prevents partially updated page trees.
@@ -263,7 +347,7 @@ export const assignContentPath = async (
   own.retainPrevious = retainPrevious;
   await applyChanges(
     tx,
-    pathChanges(settings, entries, await siteTimeZone(tx)),
+    await resolvePathChanges(settings, entries, await siteTimeZone(tx), tokens),
   );
   const current = await tx.contentPath.findUnique({
     where: { currentFor: subject.id },
@@ -276,7 +360,11 @@ export const assignContentPath = async (
 export class PrismaPermalinkRepository
   implements PermalinkRepository, RedirectWriter
 {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly tokens?: PermalinkTokenRegistry,
+    private readonly logger?: Logger,
+  ) {}
 
   async addRedirect(contentId: string, path: string) {
     if (permalinkPathIssue(path)) return false;
@@ -304,6 +392,14 @@ export class PrismaPermalinkRepository
     return readSettings(this.db);
   }
 
+  async pathsFor(contentId: string): Promise<string[]> {
+    const rows = await this.db.contentPath.findMany({
+      where: { contentId },
+      select: { path: true },
+    });
+    return rows.map(({ path }) => decodePath(path));
+  }
+
   async findByPath(path: string) {
     const row = await this.db.contentPath.findUnique({
       where: { pathHash: pathHash(path) },
@@ -315,26 +411,128 @@ export class PrismaPermalinkRepository
       : null;
   }
 
-  async saveSettings(settings: PermalinkSettings) {
-    await this.db.$transaction(
-      async (tx) => {
-        await lockPermalinks(tx);
+  async resume() {
+    const state = await this.db.setting.findUnique({
+      where: { key: REGENERATION_KEY },
+    });
+    if (state)
+      await this.saveSettings(
+        regenerationSchema.parse(JSON.parse(state.value)).settings,
+        true,
+      );
+  }
 
-        await applyChanges(
-          tx,
-          pathChanges(
-            settings,
-            await addressEntries(tx),
-            await siteTimeZone(tx),
-          ),
-        );
-        await tx.setting.upsert({
-          where: { key: SETTINGS_KEY },
-          create: { key: SETTINGS_KEY, value: JSON.stringify(settings) },
-          update: { value: JSON.stringify(settings) },
-        });
-      },
-      { timeout: 120_000 },
+  async saveSettings(settings: PermalinkSettings, resume = false) {
+    settings = Object.fromEntries(
+      Object.entries(permalinkSettingsSchema.parse(settings)).sort(([a], [b]) =>
+        a.localeCompare(b),
+      ),
     );
+    let cursor: string | null = null;
+    let ids: string[] | undefined;
+    let initialized = false;
+    await this.db.$transaction(async (tx) => {
+      await lockPermalinks(tx, true);
+      const stored = await tx.setting.findUnique({
+        where: { key: REGENERATION_KEY },
+      });
+      if (resume && !stored) return;
+      if (stored) {
+        const pending = regenerationSchema.parse(JSON.parse(stored.value));
+        if (
+          resume &&
+          JSON.stringify(pending.settings) !== JSON.stringify(settings)
+        )
+          throw conflict(Errors.ContentChanged);
+        if (
+          JSON.stringify(pending.settings) === JSON.stringify(settings) &&
+          (resume || !pending.ids)
+        ) {
+          cursor = pending.cursor;
+          ids = pending.ids;
+        } else
+          await tx.setting.update({
+            where: { key: REGENERATION_KEY },
+            data: { value: JSON.stringify({ settings, cursor }) },
+          });
+      } else {
+        await tx.setting.create({
+          data: {
+            key: REGENERATION_KEY,
+            value: JSON.stringify({ settings, cursor }),
+          },
+        });
+      }
+      initialized = true;
+    });
+    if (!initialized) return;
+    const timeZone = await siteTimeZone(this.db);
+    await regeneratePaths({
+      load: () =>
+        addressEntries(
+          this.db,
+          {
+            id: { ...(cursor && { gt: cursor }), ...(ids && { in: ids }) },
+          },
+          200,
+        ),
+      resolve: async (entry) =>
+        resolvePathChanges(settings, [entry], timeZone, this.tokens),
+      commit: async (entries, changes) => {
+        await this.db.$transaction(async (tx) => {
+          await lockPermalinks(tx, true);
+          const state = await tx.setting.findUnique({
+            where: { key: REGENERATION_KEY },
+          });
+          const pending =
+            state && regenerationSchema.parse(JSON.parse(state.value));
+          if (
+            !pending ||
+            pending.cursor !== cursor ||
+            JSON.stringify(pending.ids) !== JSON.stringify(ids) ||
+            JSON.stringify(pending.settings) !== JSON.stringify(settings)
+          )
+            throw conflict(Errors.ContentChanged);
+          const current = await addressEntries(tx, {
+            id: { in: entries.map((entry) => entry.subject.id) },
+          });
+          if (JSON.stringify(current) !== JSON.stringify(entries))
+            throw conflict(Errors.ContentChanged);
+          await applyChanges(tx, changes.flat());
+          const next = entries[entries.length - 1]!.subject.id;
+          await tx.setting.update({
+            where: { key: REGENERATION_KEY },
+            data: { value: JSON.stringify({ settings, cursor: next, ids }) },
+          });
+        });
+        cursor = entries[entries.length - 1]!.subject.id;
+      },
+      progress: (count) =>
+        this.logger?.info(
+          `Permalink regeneration: committed ${count} entries through ${cursor}`,
+        ),
+    });
+    await this.db.$transaction(async (tx) => {
+      await lockPermalinks(tx, true);
+      const state = await tx.setting.findUnique({
+        where: { key: REGENERATION_KEY },
+      });
+      const pending =
+        state && regenerationSchema.parse(JSON.parse(state.value));
+      if (
+        !pending ||
+        pending.cursor !== cursor ||
+        JSON.stringify(pending.ids) !== JSON.stringify(ids) ||
+        JSON.stringify(pending.settings) !== JSON.stringify(settings)
+      )
+        throw conflict(Errors.ContentChanged);
+      await tx.setting.upsert({
+        where: { key: SETTINGS_KEY },
+        create: { key: SETTINGS_KEY, value: JSON.stringify(settings) },
+        update: { value: JSON.stringify(settings) },
+      });
+      await tx.setting.delete({ where: { key: REGENERATION_KEY } });
+    });
+    this.logger?.info('Permalink regeneration: complete');
   }
 }

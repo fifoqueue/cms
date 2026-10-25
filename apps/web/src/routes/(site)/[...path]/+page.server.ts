@@ -7,7 +7,11 @@ import { Errors, notFoundFrom } from '#lib/server/errors.js';
 import { latestPosts, loadTermArchive } from '#lib/server/archive.js';
 import { pageParam } from '#lib/server/public-view.js';
 import { isInternalPath } from '#lib/server/permalink.js';
-import { loginAction, loginPage, loginSsoAction } from '#lib/server/login.js';
+import {
+  loginPage,
+  loginRecoverAction,
+  loginStartAction,
+} from '#lib/server/login.js';
 import { loadSlots } from '#lib/server/slots.js';
 import {
   loadTemplateData,
@@ -39,8 +43,7 @@ export const load: PageServerLoad = async (event) => {
   if (archive) {
     if (archive.redirect) redirect(308, `${archive.path}${url.search}`);
     return loadTermArchive(
-      fetch,
-      url,
+      event,
       archive.taxonomy,
       archive.slug,
       layout,
@@ -57,7 +60,7 @@ export const load: PageServerLoad = async (event) => {
   // Block data is public: it never uses the visitor's session.
   const publicApi = contentApi(fetch);
   if (reading.postsPagePath === content.path) {
-    return withTemplateData(publicApi, parent, {
+    return withTemplateData(publicApi, event, {
       kind: 'home' as const,
       type: 'post' as const,
       path: content.path,
@@ -78,6 +81,6 @@ export const load: PageServerLoad = async (event) => {
 
 export const actions: Actions = {
   ...entryActions,
-  login: loginAction,
-  sso: loginSsoAction,
+  signIn: loginStartAction,
+  recover: loginRecoverAction,
 };

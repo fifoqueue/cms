@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { can } from '@cms/sdk';
+import type { UserSave, PublicAuthor } from '@cms/sdk';
+import { HookBus } from '#api/plugin-runtime/hook-bus';
+import { recordingLogger } from '#test/support/memory';
 import { AuthService } from '#api/domain/auth/auth-service';
 import { RoleService } from '#api/domain/users/role-service';
 import { UserService } from '#api/domain/users/user-service';
@@ -57,6 +60,219 @@ const setup = async (overrides: Partial<UserServiceDeps> = {}) => {
 const admin = { id: 'admin', role: 'administrator' };
 
 describe('user administration', () => {
+  test('registration hooks run only after membership and protection allow the request', async () => {
+    const hooks = new HookBus({
+      timeoutMs: 100,
+      logger: recordingLogger().logger,
+    });
+    const calls: string[] = [];
+    hooks.registrar('policy').filter('user.registrationAllowed', () => {
+      calls.push('hook');
+      return false;
+    });
+    const protection = {
+      check: async () => {
+        calls.push('protection');
+      },
+    } as unknown as UserServiceDeps['protection'];
+    const { service, settings } = await setup({
+      hooks,
+      protection,
+      invitations: { available: async () => true, send: async () => {} },
+    });
+    const input = { name: 'Person', email: 'person@example.com' };
+    const attempt = { client: null, address: null, captchaToken: null };
+    await expect(service.register(input, attempt)).rejects.toMatchObject({
+      code: 'invalid_input',
+    });
+    expect(calls).toEqual([]);
+    await settings.set('membership', { enabled: true });
+    await expect(service.register(input, attempt)).rejects.toMatchObject({
+      code: 'invalid_input',
+    });
+    expect(calls).toEqual(['protection', 'hook']);
+    calls.length = 0;
+    protection!.check = async () => {
+      calls.push('protection');
+      throw new Error('blocked');
+    };
+    await expect(service.register(input, attempt)).rejects.toThrow('blocked');
+    expect(calls).toEqual(['protection']);
+  });
+  test('beforeSave covers create, update, profile and role with validated credential-free payloads', async () => {
+    const hooks = new HookBus({
+      timeoutMs: 100,
+      logger: recordingLogger().logger,
+    });
+    const inputs: UserSave[] = [];
+    hooks.registrar('save').filter('user.beforeSave', (input) => {
+      inputs.push(input);
+      if (input.operation === 'role')
+        return { ...input, data: { role: 'subscriber' } };
+      input.data.name = 'Filtered';
+      return input;
+    });
+    // Invalid output, including an injected credential, must preserve the last valid value.
+    hooks.registrar('invalid').filter(
+      'user.beforeSave',
+      (input) =>
+        ({
+          ...input,
+          data: { ...input.data, password: 'not-allowed' },
+        }) as unknown as UserSave,
+    );
+    const { service, users } = await setup({ hooks });
+    const created = await service.create(
+      {
+        name: 'Original',
+        email: 'new@example.com',
+        role: 'author',
+        password: 'password123',
+      },
+      admin,
+    );
+    expect(created.name).toBe('Filtered');
+    expect((await users.findById(created.id))?.passwordHash).toBe(
+      'hash:password123',
+    );
+    await service.update(
+      created.id,
+      { name: 'New', email: 'new@example.com', slug: 'person', role: 'author' },
+      admin,
+    );
+    const profile = await service.updateProfile(
+      { name: 'Profile', email: 'new@example.com', slug: 'person' },
+      { id: created.id, role: 'author' },
+    );
+    expect(profile.name).toBe('Filtered');
+    await service.setRole(created.id, { role: 'author' }, admin);
+    expect((await users.findById(created.id))?.role).toBe('subscriber');
+    expect(inputs.map((input) => input.operation)).toEqual([
+      'create',
+      'update',
+      'profile',
+      'role',
+    ]);
+    expect(inputs.map((input) => input.id)).toEqual([
+      null,
+      created.id,
+      created.id,
+      created.id,
+    ]);
+    expect(JSON.stringify(inputs)).not.toContain('password');
+  });
+
+  test('query applies before listing and invalid filters retain core query; public output rejects private data', async () => {
+    const hooks = new HookBus({
+      timeoutMs: 100,
+      logger: recordingLogger().logger,
+    });
+    const { service, directory } = await setup({ hooks });
+    const remove = hooks.registrar('query').filter('user.query', (query) => {
+      expect(query).toEqual({});
+      return { role: 'author' };
+    });
+    hooks
+      .registrar('invalid')
+      .filter('user.query', () => ({ role: 42 }) as never);
+    expect((await service.list(admin)).map((user) => user.id)).toEqual([
+      'writer',
+    ]);
+    remove();
+    expect(await service.list(admin)).toHaveLength(2);
+    directory.publicAuthor = async () => ({
+      name: 'Writer',
+      slug: 'writer',
+      bio: '',
+    });
+    hooks
+      .registrar('private')
+      .filter(
+        'user.public',
+        (value) => ({ ...value, email: 'private@example.com' }) as PublicAuthor,
+      );
+    expect(await service.publicAuthor('writer')).toEqual({
+      name: 'Writer',
+      slug: 'writer',
+      bio: '',
+      avatarUrl: null,
+    });
+  });
+
+  test('registration filters cannot enable disabled membership or return a non-boolean', async () => {
+    const hooks = new HookBus({
+      timeoutMs: 100,
+      logger: recordingLogger().logger,
+    });
+    const { service } = await setup({ hooks });
+    hooks
+      .registrar('invalid')
+      .filter('user.registrationAllowed', () => 'true' as never);
+    hooks.registrar('grant').filter('user.registrationAllowed', () => true);
+    expect(
+      await codeOf(
+        service.register(
+          { name: 'Person', email: 'p@example.com' },
+          { client: null, address: null, captchaToken: null },
+        ),
+      ),
+    ).toBe('invalid_input');
+  });
+
+  test('registration denial cannot be reversed by a later plugin', async () => {
+    const hooks = new HookBus({
+      timeoutMs: 100,
+      logger: recordingLogger().logger,
+    });
+    const { service, settings } = await setup({
+      hooks,
+      invitations: { available: async () => true, send: async () => {} },
+    });
+    await settings.set('membership', { enabled: true });
+    hooks.registrar('deny').filter('user.registrationAllowed', () => false);
+    hooks.registrar('grant').filter('user.registrationAllowed', () => true);
+    expect(
+      await codeOf(
+        service.register(
+          { name: 'Person', email: 'person@example.com' },
+          { client: null, address: null, captchaToken: null },
+        ),
+      ),
+    ).toBe('invalid_input');
+  });
+
+  test('user actions project committed records without credentials', async () => {
+    const hooks = new HookBus({
+      timeoutMs: 100,
+      logger: recordingLogger().logger,
+    });
+    const events: unknown[] = [];
+    hooks.registrar('test').on('user.created', (value) => {
+      events.push(value);
+    });
+    hooks.registrar('test').on('user.deleted', (value) => {
+      events.push(value);
+    });
+    const { service } = await setup({ hooks });
+    const user = await service.create(
+      {
+        name: 'Person',
+        email: 'person@example.com',
+        password: 'secret-password',
+        role: 'subscriber',
+      },
+      admin,
+    );
+    await service.remove(user.id, { reassignTo: 'writer' }, admin);
+    expect(events).toHaveLength(2);
+    expect(events[0]).toEqual(user);
+    expect(events[1]).toMatchObject({
+      user: { id: user.id },
+      reassignTo: 'writer',
+    });
+    expect(JSON.stringify(events)).not.toContain('password');
+  });
+
   test('existing sessions lose custom permissions when their role changes', async () => {
     const { directory, service, settings, users } = await setup();
     const roles = new RoleService(settings, directory);

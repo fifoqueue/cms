@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import { menuItemTypeSchema, menuObjectsSchema } from '#sdk/menus';
+import type { MenuObjectQuery } from '#sdk/menus';
+import { patternContributionGroupSchema } from '#sdk/appearance-contracts';
+import type { PatternContributionGroup } from '#sdk/appearance-contracts';
 import {
   menuTargetSchema,
   menusSettingsSchema,
@@ -69,6 +73,14 @@ export const publicAppearanceClient = (request: Request) => ({
 export const appearanceAdminClient = (request: Request) => ({
   /** Patterns: writers list and use them; changing another user's needs `content.editOthers`. */
   patterns: {
+    contributions: () =>
+      request<PatternContributionGroup[]>(
+        'GET',
+        '/api/v1/admin/patterns/contributions',
+        {
+          response: patternContributionGroupSchema.array(),
+        },
+      ),
     list: (query: PatternListQuery = {}) =>
       request<Paginated<PatternSummary>>('GET', '/api/v1/admin/patterns', {
         query,
@@ -121,6 +133,15 @@ export const appearanceAdminClient = (request: Request) => ({
       }),
   },
   menus: {
+    types: () =>
+      request('GET', '/api/v1/admin/menus/types', {
+        response: menuItemTypeSchema.array(),
+      }),
+    objects: (type: string, query: MenuObjectQuery = {}) =>
+      request('GET', '/api/v1/admin/menus/objects', {
+        query: { ...query, type },
+        response: menuObjectsSchema,
+      }),
     get: () =>
       request<MenusSettings>('GET', '/api/v1/admin/menus', {
         response: menusSettingsSchema,

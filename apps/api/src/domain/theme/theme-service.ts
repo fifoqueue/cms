@@ -29,6 +29,11 @@ import {
   ThemeStateStore,
 } from '#api/domain/theme/theme-state';
 import type { ThemeState } from '#api/domain/theme/theme-state';
+import type { HookDispatcher } from '#api/domain/ports';
+import type {
+  ThemeContributionRequest,
+  ThemeContribution,
+} from '@cms/sdk/plugin';
 
 const EMPTY: ThemeCustomization = {
   templates: {},
@@ -152,6 +157,18 @@ export class ThemeService {
     settings: SettingsRepository,
     private readonly archive: ThemeArchive,
     images?: Pick<ImageProcessor, 'dimensions'>,
+    private readonly hooks?: HookDispatcher,
+    private readonly contributions?: {
+      keys(): string[];
+      resolve(
+        query: ThemeContributionRequest,
+        key: string,
+      ): Promise<ThemeContribution | null>;
+      resolveEntry(
+        query: ThemeContributionRequest,
+        key: string,
+      ): Promise<{ source: string; value: ThemeContribution } | null>;
+    },
   ) {
     this.state = new ThemeStateStore(settings);
     this.screenshots = new ThemeScreenshots(settings, images);
@@ -166,8 +183,11 @@ export class ThemeService {
   async getPublic(): Promise<PublicTheme> {
     const state = await this.state.load();
 
-    return toPublic(
-      this.require(state, state.active),
+    return this.contributed(
+      toPublic(
+        this.require(state, state.active),
+        state.customizations[state.active],
+      ),
       state.customizations[state.active],
     );
   }
@@ -176,7 +196,55 @@ export class ThemeService {
   async find(id: string): Promise<PublicTheme | null> {
     const state = await this.state.load();
     const theme = findTheme(state, id);
-    return theme ? toPublic(theme, state.customizations[id]) : null;
+    return theme
+      ? this.contributed(
+          toPublic(theme, state.customizations[id]),
+          state.customizations[id],
+        )
+      : null;
+  }
+
+  private async contributed(
+    theme: PublicTheme,
+    custom: ThemeCustomization = EMPTY,
+    sources?: {
+      templates: Record<string, string>;
+      parts: Record<string, string>;
+    },
+  ) {
+    const base = { templates: theme.templates, parts: theme.parts };
+    for (const key of this.contributions?.keys() ?? []) {
+      const entry = await this.contributions!.resolveEntry(
+        { themeId: theme.id, base },
+        key,
+      );
+      if (!entry) continue;
+      const contribution = entry.value;
+      const parts = new Map(theme.parts.map((part) => [part.slug, part]));
+      for (const part of contribution.parts)
+        if (!parts.has(part.slug)) parts.set(part.slug, part);
+      const merged = publicThemeSchema.safeParse({
+        ...theme,
+        templates: {
+          ...contribution.templates,
+          ...theme.templates,
+          ...custom.templates,
+        },
+        parts: [...parts.values()],
+      });
+      if (merged.success) {
+        if (sources) {
+          for (const name of Object.keys(contribution.templates))
+            if (!(name in theme.templates))
+              sources.templates[name] = entry.source;
+          for (const part of contribution.parts)
+            if (!theme.parts.some((existing) => existing.slug === part.slug))
+              sources.parts[part.slug] = entry.source;
+        }
+        theme = merged.data;
+      }
+    }
+    return theme;
   }
 
   /** Built-in themes first, then installed ones in install order. */
@@ -213,7 +281,9 @@ export class ThemeService {
       // An upgrade without a screenshot drops the old one.
       await this.screenshots.save(theme.manifest.id, screenshot);
 
-      return toAdmin(state, theme, await this.screenshots.versions());
+      const dto = toAdmin(state, theme, await this.screenshots.versions());
+      void this.hooks?.emit('theme.installed', dto);
+      return dto;
     });
   }
 
@@ -225,7 +295,9 @@ export class ThemeService {
       state.active = theme.manifest.id;
       await this.state.save(state);
 
-      return toAdmin(state, theme);
+      const dto = toAdmin(state, theme);
+      void this.hooks?.emit('theme.activated', dto);
+      return dto;
     });
   }
 
@@ -235,7 +307,7 @@ export class ThemeService {
 
       const state = await this.state.load();
 
-      this.require(state, id);
+      const dto = toAdmin(state, this.require(state, id));
 
       if (state.active === id) throw conflict(Errors.ThemeActiveRemove);
 
@@ -248,6 +320,7 @@ export class ThemeService {
         await this.state.saveCustomizations(state);
       }
       await this.screenshots.save(id, null);
+      void this.hooks?.emit('theme.deleted', dto);
     });
   }
 
@@ -256,10 +329,16 @@ export class ThemeService {
     const state = await this.state.load();
     const theme = this.require(state, id);
     const custom = state.customizations[id] ?? EMPTY;
-    const current = toPublic(theme, custom);
+    const sources = {
+      templates: {} as Record<string, string>,
+      parts: {} as Record<string, string>,
+    };
+    const contributed = await this.contributed(toPublic(theme), EMPTY, sources);
+    const current = await this.contributed(toPublic(theme, custom), custom);
     const names = new Set([
       ...Object.keys(theme.templates),
       ...Object.keys(custom.templates),
+      ...Object.keys(contributed.templates),
     ]);
 
     return {
@@ -279,14 +358,24 @@ export class ThemeService {
         blocks: current.templates[name] ?? [],
         inTheme: name in theme.templates,
         customized: name in custom.templates,
+        source:
+          sources.templates[name] ??
+          (name in theme.templates ? 'theme' : 'admin'),
+        readOnly: !!sources.templates[name] && !(name in custom.templates),
       })),
-      parts: partsOf(theme, custom).map((part) => ({
+      parts: current.parts.map((part) => ({
         slug: part.slug,
-        title: part.title,
+        title:
+          partsOf(theme, custom).find((entry) => entry.slug === part.slug)
+            ?.title ?? part.slug,
         area: part.area,
-        blocks: custom.parts[part.slug] ?? theme.parts[part.slug] ?? [],
+        blocks: part.blocks,
         inTheme: part.slug in theme.parts,
         customized: part.slug in custom.parts,
+        source:
+          sources.parts[part.slug] ??
+          (part.slug in theme.parts ? 'theme' : 'admin'),
+        readOnly: !!sources.parts[part.slug] && !(part.slug in custom.parts),
       })),
     };
   }
@@ -295,14 +384,14 @@ export class ThemeService {
   async saveTemplate(id: string, name: string, input: unknown): Promise<void> {
     if (!TEMPLATE_NAME.test(name)) throw notFound(Errors.ThemeTemplateNotFound);
     const { blocks } = parseInput(themeBlocksInputSchema, input);
-    return this.customize(id, (custom) => {
+    return this.customize(id, 'template.updated', (custom) => {
       custom.templates[name] = blocks;
     });
   }
 
   /** Restores the theme's own template, or deletes a template the editor added. */
   resetTemplate(id: string, name: string): Promise<void> {
-    return this.customize(id, (custom) => {
+    return this.customize(id, 'template.updated', (custom) => {
       if (!(name in custom.templates))
         throw notFound(Errors.ThemeTemplateNotFound);
       delete custom.templates[name];
@@ -311,7 +400,7 @@ export class ThemeService {
 
   async savePart(id: string, slug: string, input: unknown): Promise<void> {
     const { blocks } = parseInput(themeBlocksInputSchema, input);
-    return this.customize(id, (custom) => {
+    return this.customize(id, 'templatePart.updated', (custom) => {
       if (!SLUG.test(slug) || slug.length > 64)
         throw invalidInput(Errors.ThemePartNotFound);
       if (!(slug in custom.parts) && Object.keys(custom.parts).length >= 32)
@@ -321,7 +410,7 @@ export class ThemeService {
   }
 
   resetPart(id: string, slug: string): Promise<void> {
-    return this.customize(id, (custom) => {
+    return this.customize(id, 'templatePart.updated', (custom) => {
       if (!(slug in custom.parts)) throw notFound(Errors.ThemePartNotFound);
       delete custom.parts[slug];
     });
@@ -330,7 +419,7 @@ export class ThemeService {
   /** Global styles: palette colors (existing slugs only) and typography. */
   async saveStyles(id: string, input: unknown): Promise<void> {
     const { colors, styles } = parseInput(themeStylesInputSchema, input);
-    return this.customize(id, (custom, theme) => {
+    return this.customize(id, 'styles.updated', (custom, theme) => {
       const palette = theme.manifest.settings.color.palette;
       const fonts = theme.manifest.settings.typography.fontFamilies.map(
         (font) => font.slug,
@@ -360,7 +449,7 @@ export class ThemeService {
   }
 
   resetStyles(id: string): Promise<void> {
-    return this.customize(id, (custom) => {
+    return this.customize(id, 'styles.updated', (custom) => {
       custom.colors = {};
       custom.styles = {};
     });
@@ -368,17 +457,21 @@ export class ThemeService {
 
   private customize(
     id: string,
+    event: 'template.updated' | 'templatePart.updated' | 'styles.updated',
     change: (custom: ThemeCustomization, theme: ThemePackage) => void,
   ): Promise<void> {
     return this.exclusive(async () => {
       const state = await this.state.load();
       const theme = this.require(state, id);
-      const custom = structuredClone(state.customizations[id] ?? EMPTY);
+      const previous = state.customizations[id] ?? EMPTY;
+      const custom = structuredClone(previous);
       change(custom, theme);
       parseInput(publicThemeSchema, toPublic(theme, custom));
       if (isCustomized(custom)) state.customizations[id] = custom;
       else delete state.customizations[id];
       await this.state.saveCustomizations(state);
+      const payload = { themeId: id, customization: custom };
+      void this.hooks?.emit(event, payload);
     });
   }
 

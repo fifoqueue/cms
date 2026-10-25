@@ -53,7 +53,8 @@ export interface ContentServiceDeps {
   clock: Clock;
   users: Pick<UserRepository, 'findById'>;
   hasher: PasswordHasher;
-  types: Pick<ContentTypeService, 'require'>;
+  types: Pick<ContentTypeService, 'require'> &
+    Partial<Pick<ContentTypeService, 'list'>>;
   fields: Pick<FieldService, 'validate' | 'forType'>;
   /** Checks the attributes of active plugins' blocks in a document. */
   blocks?: { check(document: ContentDocument): void };
@@ -64,8 +65,11 @@ export interface ContentServiceDeps {
 /** Revisions kept per entry; older ones are pruned on save. */
 export const REVISIONS_KEPT = 25;
 
-const isContentData = (value: unknown) =>
-  contentInputSchema.safeParse(value).success;
+/** `content.beforeSave` value: filters never see, set or change the password. */
+const contentSaveSchema = contentInputSchema.omit({ password: true });
+
+const isContentSave = (value: unknown) =>
+  contentSaveSchema.safeParse(value).success;
 
 const isUnpublished = (status: ContentRecord['status']) =>
   UNPUBLISHED_STATUSES.includes(status);
@@ -80,16 +84,31 @@ export class ContentService {
     actor: Actor,
   ): Promise<Paginated<AdminContentSummary>> {
     authorize(actor, 'content.create');
-    const { page, pageSize, ...filters } = parseInput(
-      contentListQuerySchema,
-      query,
+    const validated = parseInput(contentListQuerySchema, query);
+    const filtered = await this.deps.hooks.applyFilter(
+      'content.query',
+      validated,
+      (value) => contentListQuerySchema.safeParse(value).success,
     );
+    const { page, pageSize, ...filters } =
+      contentListQuerySchema.parse(filtered);
     const { items, total } = await this.deps.repository.list({
       ...filters,
       page,
       pageSize,
     });
-    return { items: items.map(toEntrySummary), total, page, pageSize };
+    const active = await this.deps.types.list?.();
+    return {
+      items: items.map((item) => ({
+        ...toEntrySummary(item),
+        inactiveType: active
+          ? !active.some((type) => type.key === item.type)
+          : false,
+      })),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   async counts(query: unknown, actor: Actor) {
@@ -107,7 +126,7 @@ export class ContentService {
   async create(input: unknown, actor: Actor): Promise<ContentEntry> {
     authorize(actor, 'content.create');
     const data = await this.prepare(input);
-    this.assertStatus(actor, data);
+    await this.assertStatus(actor, data);
     const authorId = await this.authorFor(actor, data.authorId, actor.id);
     const id = this.deps.ids.next();
     const now = this.deps.clock.now();
@@ -139,6 +158,11 @@ export class ContentService {
 
     const entry = toEntry(record);
     void this.deps.hooks.emit('content.created', entry);
+    void this.deps.hooks.emit('content.revisionSaved', entry);
+    if (this.termIds(entry).length)
+      void this.deps.hooks.emit('content.termsChanged', entry);
+    if (record.status === 'scheduled')
+      void this.deps.hooks.emit('content.scheduled', entry);
     if (record.status === 'published')
       void this.deps.hooks.emit('content.published', entry);
     return entry;
@@ -154,7 +178,7 @@ export class ContentService {
     const current = await this.require(id);
     this.assertEditable(actor, current);
     const data = await this.prepare(input);
-    this.assertStatus(actor, data);
+    await this.assertStatus(actor, data);
     const authorId = await this.authorFor(
       actor,
       data.authorId,
@@ -190,6 +214,20 @@ export class ContentService {
 
     const entry = toEntry(record);
     void this.deps.hooks.emit('content.updated', entry);
+    if (record.textSavedAt.getTime() !== current.textSavedAt.getTime())
+      void this.deps.hooks.emit('content.revisionSaved', entry);
+    if (
+      JSON.stringify(this.termIds(entry)) !==
+      JSON.stringify(this.termIds(toEntry(current)))
+    )
+      void this.deps.hooks.emit('content.termsChanged', entry);
+    if (
+      record.status === 'scheduled' &&
+      (current.status !== 'scheduled' ||
+        current.publishedAt?.getTime() !== record.publishedAt?.getTime())
+    )
+      void this.deps.hooks.emit('content.scheduled', entry);
+    if (revision) void this.deps.hooks.emit('content.revisionRestored', entry);
     if (record.status === 'published' && current.status !== 'published') {
       void this.deps.hooks.emit('content.published', entry);
     }
@@ -202,7 +240,10 @@ export class ContentService {
     this.assertEditable(actor, current);
     if (current.trashedAt) return;
     await this.deps.repository.setTrashed(id, this.deps.clock.now());
-    void this.deps.hooks.emit('content.trashed', toEntry(current));
+    void this.deps.hooks.emit(
+      'content.trashed',
+      toEntry(await this.require(id)),
+    );
   }
 
   async restore(id: string, actor: Actor): Promise<void> {
@@ -210,19 +251,24 @@ export class ContentService {
     this.assertEditable(actor, current);
     if (!current.trashedAt) return;
     await this.deps.repository.setTrashed(id, null);
-    void this.deps.hooks.emit('content.restored', toEntry(current));
+    void this.deps.hooks.emit(
+      'content.restored',
+      toEntry(await this.require(id)),
+    );
   }
 
   /** Deletes the entry for good, with its paths, assignments and revisions. */
   async remove(id: string, actor: Actor): Promise<void> {
     const current = await this.require(id);
     this.assertEditable(actor, current);
+    if (!(await this.allowed('content.deleteAllowed'))) throw forbidden();
     await this.deps.repository.delete(id);
     void this.deps.hooks.emit('content.deleted', toEntry(current));
   }
 
   /** Publishes scheduled entries that are due. Run by the scheduler. */
   async publishDue(): Promise<void> {
+    if (!(await this.allowed('content.publishAllowed'))) return;
     for (const id of await this.deps.repository.publishDue(
       this.deps.clock.now(),
     )) {
@@ -239,6 +285,7 @@ export class ContentService {
     );
     for (const id of await this.deps.repository.expiredTrash(before, 100)) {
       const record = await this.deps.repository.findById(id);
+      if (!(await this.allowed('content.deleteAllowed'))) continue;
       await this.deps.repository.delete(id);
       if (record) void this.deps.hooks.emit('content.deleted', toEntry(record));
     }
@@ -314,6 +361,12 @@ export class ContentService {
     return id ? [id] : [];
   }
 
+  private termIds(entry: ContentEntry) {
+    return [...entry.categories, ...entry.tags, ...entry.extraTerms]
+      .map((term) => term.id)
+      .sort();
+  }
+
   /**
    * Status and publication time. `scheduled` needs a future time (a past one publishes at
    * once); an explicit time redates the entry; otherwise the stored time is kept, or set now
@@ -358,15 +411,16 @@ export class ContentService {
   }
 
   private async prepare(input: unknown): Promise<ContentData> {
-    const data = parseInput(contentInputSchema, input);
+    const { password, ...data } = parseInput(contentInputSchema, input);
     const filtered = await this.deps.hooks.applyFilter(
       'content.beforeSave',
       data,
-      isContentData,
+      isContentSave,
     );
-    // The concurrency check is the client's, never a filter's.
+    // The password and concurrency check are the client's, never a filter's.
     return {
-      ...contentInputSchema.parse(filtered),
+      ...contentSaveSchema.parse(filtered),
+      password,
       expectedUpdatedAt: data.expectedUpdatedAt,
       preserveAutosave: data.preserveAutosave,
     };
@@ -383,8 +437,23 @@ export class ContentService {
   }
 
   /** Only `content.publish` may publish, schedule or make private. */
-  private assertStatus(actor: Actor, data: ContentData) {
-    if (!isUnpublished(data.status)) authorize(actor, 'content.publish');
+  private async assertStatus(actor: Actor, data: ContentData) {
+    if (!isUnpublished(data.status)) {
+      authorize(actor, 'content.publish');
+      if (!(await this.allowed('content.publishAllowed'))) throw forbidden();
+    }
+  }
+
+  private async allowed(
+    name: 'content.publishAllowed' | 'content.deleteAllowed',
+  ) {
+    let allowed = true;
+    await this.deps.hooks.applyFilter(name, allowed, (value) => {
+      if (typeof value !== 'boolean') return false;
+      allowed = allowed && value;
+      return value === allowed;
+    });
+    return allowed;
   }
 
   /** The requested author when the actor may assign one, else `fallback`. */

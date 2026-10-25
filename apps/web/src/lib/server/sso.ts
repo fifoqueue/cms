@@ -1,33 +1,54 @@
-import type { Cookies } from '@sveltejs/kit';
-import { resolve } from '$app/paths';
+import { error, redirect } from '@sveltejs/kit';
+import type { RequestEvent } from '@sveltejs/kit';
 import type { SsoStart } from '@cms/sdk';
 import { createSsoClient } from '@cms/sdk/client';
 import { apiUrl } from '#lib/server/api.js';
-import {
-  consumeSsoTransaction,
-  setSsoTransaction,
-} from '#lib/server/sso-cookie.js';
-
-/** Only the callback ever reads the cookie; the path includes any configured base path. */
-const transactionPath = () => resolve('/admin/(auth)/sso/callback');
+import { Errors, failFrom } from '#lib/server/errors.js';
+import { ownerFor } from '#lib/server/sign-in.js';
+import { redirectTarget } from '#lib/server/sign-in-view.js';
+import { setPending } from '#lib/server/sso-cookie.js';
+import { clientProof } from '#lib/server/visitor.js';
 
 export const ssoApi = (fetch: typeof globalThis.fetch, token?: string | null) =>
   createSsoClient({ baseUrl: apiUrl, fetch }, token ?? undefined);
 
 /**
- * Binds the pending sign-in to this browser: the callback is accepted only with this cookie,
- * so a provider response replayed into another browser fails. `lax` survives the provider redirect.
+ * Sends the signed-in user to `provider` to link the account they choose there. The callback
+ * accepts the answer only with the pending cookie, so a response replayed into another browser
+ * fails. Signing in with single sign-on is a sign-in method (`#lib/server/sign-in.js`).
  */
-export const rememberSsoTransaction = (
-  cookies: Cookies,
-  start: SsoStart,
-  url: URL,
-  back?: string,
+export const linkSso = async (
+  event: Pick<
+    RequestEvent,
+    'fetch' | 'locals' | 'cookies' | 'url' | 'getClientAddress'
+  >,
+  provider: string,
 ) => {
-  setSsoTransaction(cookies, start, url, transactionPath(), back);
-};
-
-/** Returns the pending transaction once and forgets it. */
-export const takeSsoTransaction = (cookies: Cookies, url: URL) => {
-  return consumeSsoTransaction(cookies, url, transactionPath());
+  let start: SsoStart;
+  try {
+    start = await ssoApi(event.fetch, event.locals.token).start(
+      { provider, intent: 'link' },
+      clientProof(event.getClientAddress()),
+    );
+  } catch (caught) {
+    return failFrom(caught);
+  }
+  const target = redirectTarget({
+    url: start.authorizationUrl,
+    expiresAt: start.expiresAt,
+  });
+  if (!target) error(502, Errors.SignInRedirectInvalid);
+  setPending(
+    event.cookies,
+    event.url,
+    {
+      transaction: start.transaction,
+      flow: 'link',
+      user: ownerFor(event, 'link'),
+      back: null,
+      step: null,
+    },
+    start.expiresAt,
+  );
+  redirect(303, target, { external: true });
 };

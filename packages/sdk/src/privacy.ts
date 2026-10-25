@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { permalinkPathSchema } from '#sdk/permalinks';
+import { isJsonValue, stringifyJson } from '#sdk/common';
+import type { JsonValue } from '#sdk/common';
 export const PRIVACY_ACTIONS = ['export', 'erase'] as const;
 export const privacySettingsSchema = z.object({
   policyPageId: z.string().min(1).max(36).nullable().default(null),
@@ -32,6 +34,22 @@ export type PrivacySettings = z.output<typeof privacySettingsSchema>;
 export type PrivacyRequest = z.output<typeof privacyRequestSchema>;
 export type PublicPrivacy = z.output<typeof publicPrivacySchema>;
 export type PrivacyAction = (typeof PRIVACY_ACTIONS)[number];
+
+/** Additional personal data only; never replaces core's streamed sections. Maximum 1 MiB. */
+export const privacyExportDataSchema = z
+  .strictObject({
+    request: privacyRequestSchema,
+    data: z.record(
+      z.string().min(1).max(100),
+      z.custom<JsonValue>(isJsonValue),
+    ),
+  })
+  .refine(
+    (value) =>
+      new TextEncoder().encode(stringifyJson(value.data)).byteLength <=
+      1024 * 1024,
+  );
+export type PrivacyExportData = z.output<typeof privacyExportDataSchema>;
 
 /** Private browser proof storage, bounded to keep the cookie below browser/header limits. */
 export const privacyProofsSchema = z

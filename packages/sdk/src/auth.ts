@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { CAPABILITIES } from '#sdk/capabilities';
+import { capabilitySchema } from '#sdk/capability-contracts';
 import { ADMIN_LOCALES } from '#sdk/locales';
 import { CONTENT_SLUG, KEBAB_CASE } from '#sdk/common';
+import { Errors } from '#sdk/errors';
 
 export const roleSchema = z.string().min(1).max(32).regex(KEBAB_CASE);
 
@@ -38,7 +39,7 @@ export const adminUserSchema = z.object({
   email: z.string(),
   name: z.string(),
   role: roleSchema,
-  capabilities: z.array(z.enum(CAPABILITIES)).optional(),
+  capabilities: z.array(capabilitySchema).max(1000).optional(),
   slug: z.string(),
   bio: z.string(),
   locale: adminLocaleSchema,
@@ -61,10 +62,22 @@ export interface SetupStatus {
 export const SSO_CLIENT_ADDRESS_HEADER = 'x-cms-client-address';
 export const SSO_FRONTEND_SECRET_HEADER = 'x-cms-frontend-secret';
 
-/** `link` attaches the provider account to the signed-in user instead of signing in. */
-export const ssoStartSchema = z.object({
-  intent: z.enum(['login', 'link']).default('login'),
-});
+/**
+ * `provider` is the id of a configured provider. `link` attaches the provider account to the
+ * signed-in user instead of signing in. `claim` links it to the user of a password reset or
+ * invitation link (`token`, consumed on success) and signs them in; it is how users get in
+ * while only single sign-on signs in.
+ */
+export const ssoStartSchema = z
+  .object({
+    provider: z.string().trim().min(1).max(32),
+    intent: z.enum(['login', 'link', 'claim']).default('login'),
+    token: z.string().min(1).max(256).optional(),
+  })
+  .refine((start) => start.intent !== 'claim' || !!start.token, {
+    message: Errors.SsoClaimTokenRequired,
+    path: ['token'],
+  });
 
 /** `query` is the search string the provider appended to the redirect URI. */
 export const ssoCallbackSchema = z.object({
@@ -76,9 +89,8 @@ export type SsoStartInput = z.input<typeof ssoStartSchema>;
 export type SsoCallbackInput = z.input<typeof ssoCallbackSchema>;
 
 export interface SsoInfo {
-  enabled: boolean;
-  /** Provider label for sign-in buttons. `null` when single sign-on is off. */
-  name: string | null;
+  /** Enabled providers in display order; empty when single sign-on is off. */
+  providers: { id: string; name: string }[];
 }
 
 export interface SsoStart {
@@ -94,10 +106,33 @@ export type SsoCallbackResult =
 
 /** Single sign-on status of the signed-in user. */
 export interface SsoIdentityStatus {
-  /** The provider account the user linked, if any. */
-  identity: { issuer: string; subject: string; linkedAt: string } | null;
-  /** Whether the site operator assigned a provider account to this user. */
-  assigned: boolean;
+  /** Linked provider accounts, at most one per issuer. */
+  identities: {
+    /** Opaque; used to unlink. */
+    id: string;
+    issuer: string;
+    subject: string;
+    linkedAt: string;
+    /** Ids of configured providers with this issuer; empty when none is configured any more. */
+    providers: string[];
+  }[];
+  /** Ids of providers whose operator allowlist assigns an account to this user. */
+  assigned: string[];
+}
+
+/** Sign-in with a one-time recovery code instead of single sign-on. */
+export const recoveryLoginSchema = z.object({
+  email: z.email().max(191),
+  code: z.string().trim().min(1).max(64),
+});
+
+export type RecoveryLoginInput = z.input<typeof recoveryLoginSchema>;
+
+/** The signed-in administrator's recovery codes; the codes themselves are shown only once. */
+export interface RecoveryCodesStatus {
+  remaining: number;
+  /** When the current set was generated; `null` when there is none. */
+  createdAt: string | null;
 }
 
 /** Session grants belong to server-side authentication flows, not page data. */
@@ -120,8 +155,7 @@ export type SessionInfo = z.output<typeof sessionInfoSchema>;
 
 export const setupStatusSchema = z.object({ setupRequired: z.boolean() });
 export const ssoInfoSchema = z.object({
-  enabled: z.boolean(),
-  name: z.string().nullable(),
+  providers: z.array(z.object({ id: z.string(), name: z.string() })),
 });
 export const ssoStartResultSchema = z.object({
   authorizationUrl: z.string(),
@@ -133,12 +167,20 @@ export const ssoCallbackResultSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('linked') }),
 ]);
 export const ssoIdentityStatusSchema = z.object({
-  identity: z
-    .object({
+  identities: z.array(
+    z.object({
+      id: z.string(),
       issuer: z.string(),
       subject: z.string(),
       linkedAt: z.string(),
-    })
-    .nullable(),
-  assigned: z.boolean(),
+      providers: z.array(z.string()),
+    }),
+  ),
+  assigned: z.array(z.string()),
 });
+export const recoveryCodesStatusSchema = z.object({
+  remaining: z.number().int().min(0),
+  createdAt: z.string().nullable(),
+});
+/** Newly generated codes; replaces the previous set. */
+export const recoveryCodesSchema = z.object({ codes: z.array(z.string()) });

@@ -347,6 +347,8 @@ export const themeEditorSchema = z.strictObject({
   templates: z.array(
     z.strictObject({
       name: z.string().regex(TEMPLATE_NAME),
+      source: z.string().optional(),
+      readOnly: z.boolean().optional(),
       blocks: blockListSchema,
       /** Shipped by the theme (resetting restores it) rather than added in the editor. */
       inTheme: z.boolean(),
@@ -358,6 +360,8 @@ export const themeEditorSchema = z.strictObject({
       slug: z.string(),
       title: z.string(),
       area: z.enum(TEMPLATE_PART_AREAS),
+      source: z.string().optional(),
+      readOnly: z.boolean().optional(),
       blocks: blockListSchema,
       inTheme: z.boolean(),
       customized: z.boolean(),

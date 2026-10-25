@@ -1,5 +1,6 @@
 import {
   DEFAULT_PERMALINK_SETTINGS,
+  contentTypeKeySchema,
   permalinkPathIssue,
   permalinkPathSchema,
   permalinkPatternSchema,
@@ -42,7 +43,7 @@ export const readPermalinkSettings = (stored: unknown): PermalinkSettings => {
   for (const [type, value] of Object.entries(record)) {
     const result = permalinkPatternSchema.safeParse(value);
 
-    if (result.success && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(type))
+    if (result.success && contentTypeKeySchema.safeParse(type).success)
       settings[type] = result.data;
   }
 
@@ -59,21 +60,24 @@ export const contentPath = (
   settings: PermalinkSettings,
   subject: PermalinkSubject,
   current: string | null = null,
+  expanded?: string,
 ): string => {
   let path: string;
 
   try {
-    path = renderPermalink(permalinkPatternFor(settings, subject.type), {
-      timeZone: subject.timeZone,
-      author: subject.author,
-      category: subject.category,
-      parents: subject.parents,
-      id: subject.id,
-      slug: subject.slug,
-      title: subject.title,
-      publishedAt: subject.publishedAt?.toISOString() ?? null,
-      createdAt: subject.createdAt.toISOString(),
-    });
+    path =
+      expanded ??
+      renderPermalink(permalinkPatternFor(settings, subject.type), {
+        timeZone: subject.timeZone,
+        author: subject.author,
+        category: subject.category,
+        parents: subject.parents,
+        id: subject.id,
+        slug: subject.slug,
+        title: subject.title,
+        publishedAt: subject.publishedAt?.toISOString() ?? null,
+        createdAt: subject.createdAt.toISOString(),
+      });
   } catch {
     throw invalidInput(Errors.InvalidPermalink, [
       { path: 'path', message: Errors.PermalinkTitleUnusable(subject.title) },

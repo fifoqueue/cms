@@ -1,11 +1,9 @@
-import { IMAGE_SIZES, MEDIA_PATH, mediaKindOf } from '@cms/sdk';
+import { MEDIA_PATH, mediaKindOf } from '@cms/sdk';
 import type { AdminMedia, ImageSizeName, PublicImage } from '@cms/sdk';
 import type { MediaRecord, StoredVariant } from '#api/domain/media/ports';
 
 /** Site-relative address of a stored file. */
 export const mediaUrl = (key: string) => `${MEDIA_PATH}${key}`;
-
-const sizeNames = Object.keys(IMAGE_SIZES) as ImageSizeName[];
 
 export const toAdminMedia = (media: MediaRecord): AdminMedia => ({
   id: media.id,
@@ -20,7 +18,7 @@ export const toAdminMedia = (media: MediaRecord): AdminMedia => ({
   title: media.title ?? '',
   description: media.description ?? '',
   url: mediaUrl(media.storageKey),
-  variants: sizeNames.flatMap((name) => {
+  variants: Object.keys(media.variants).flatMap((name) => {
     const variant = media.variants[name];
     return variant
       ? [
@@ -52,7 +50,7 @@ export const toPublicImage = (image: {
   width: image.width,
   height: image.height,
   sizes: [
-    ...sizeNames.flatMap((name) => {
+    ...Object.keys(image.variants).flatMap((name) => {
       const variant = image.variants[name];
       return variant
         ? [{ url: mediaUrl(variant.key), width: variant.width }]
@@ -71,7 +69,7 @@ export const parseVariants = (
   try {
     const value = JSON.parse(raw) as Record<string, StoredVariant>;
     return Object.fromEntries(
-      sizeNames
+      Object.keys(value)
         .filter((name) => typeof value[name]?.key === 'string')
         .map((name) => [name, value[name]!]),
     );

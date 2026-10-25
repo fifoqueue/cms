@@ -115,5 +115,7 @@ export interface ImageProcessor {
   resize(
     bytes: Uint8Array,
     width: number,
+    height?: number,
+    crop?: boolean,
   ): Promise<{ bytes: Uint8Array; width: number; height: number }>;
 }

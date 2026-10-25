@@ -59,6 +59,9 @@ export const ko: Messages = {
   rolesNew: '새 역할 만들기',
   rolesKey: '역할 식별자',
   rolesPermissions: '허용할 작업',
+  rolesExtraPermissions: '역할에 남아 있는 기타 작업',
+  rolesPluginPermissions: (plugin) => `플러그인: ${plugin}`,
+  rolesFromPlugin: (name, plugin) => `${name} (플러그인: ${plugin})`,
   registerTitle: '회원 가입',
   registerHelp: '이름과 이메일을 입력하고 받은 메일에서 비밀번호를 설정하세요.',
   registrationClosed: '현재 회원 가입을 받지 않습니다.',
@@ -77,6 +80,7 @@ export const ko: Messages = {
         'fields.manage': '콘텐츠 필드 관리',
         'users.manage': '사용자 관리',
         'settings.manage': '설정 관리',
+        'egress.manage': '외부 연결 관리',
         'plugins.manage': '플러그인 관리',
         'tools.manage': '도구 관리',
       }) as Record<string, string>
@@ -111,9 +115,7 @@ export const ko: Messages = {
   forgotSent:
     '해당 주소에 계정이 있으면 링크를 보냈습니다. 받은편지함을 확인하세요.',
   backToSignIn: '로그인으로 돌아가기',
-  passwordTitle: '비밀번호 정하기',
   newPassword: '새 비밀번호',
-  passwordSaved: '비밀번호를 정했습니다. 이제 로그인하세요.',
   captchaHelp: '계속하려면 위의 확인을 완료하세요.',
 
   passwordChangeTitle: '비밀번호 변경',
@@ -185,6 +187,47 @@ export const ko: Messages = {
   emailTest: '테스트 메일 보내기',
   emailTestTo: '받는 사람',
   emailTestSent: '테스트 메일을 보냈습니다.',
+  emailSender: '보내는 사람',
+  emailTransport: '전송 방식',
+  emailTransportSmtp: 'SMTP 서버',
+  emailTransportHttp: 'HTTP 메일 API',
+  emailPluginTransportHelp: (label) =>
+    `플러그인이 제공하는 ${label}(으)로 메일을 보냅니다.`,
+  emailPluginTransportMissing:
+    '선택한 메일 플러그인을 더 이상 사용할 수 없어 메일을 보낼 수 없습니다. 다른 전송 방식을 선택하고 저장하세요.',
+  emailFieldRequired: (label) => `${label} (필수)`,
+  emailProvider: '메일 서비스',
+  emailProviderCustom: '직접 지정 (JSON 엔드포인트)',
+  emailRegion: '리전',
+  emailAwsRegion: 'AWS 리전',
+  emailRegionUs: '미국 (US)',
+  emailRegionEu: '유럽 (EU)',
+  emailRegionDefault: '서비스 기본값',
+  emailSecretReenter:
+    '서비스, 키 ID, 주소나 헤더가 바뀌었으니 비밀 값을 다시 입력하세요.',
+  emailDomain: '발송 도메인',
+  emailApiKey: 'API 키',
+  emailAccessKeyId: '액세스 키 ID',
+  emailSecretAccessKey: '비밀 액세스 키',
+  emailSecretKey: '비밀 키',
+  emailServerToken: '서버 API 토큰',
+  emailSecretValue: '비밀 값',
+  emailEndpoint: '엔드포인트 주소 (https)',
+  emailAuthHeader: '비밀 값을 보낼 헤더',
+  emailAuthHeaderHelp:
+    '비밀 값을 이 헤더에 그대로 담아 보냅니다(예: Authorization 헤더라면 "Bearer …"). 비워 두면 헤더를 보내지 않습니다.',
+  emailBodyTemplate: 'JSON 본문',
+  emailBodyTemplateHelp: (placeholders: string) =>
+    `자리표시자는 따옴표 없이 JSON 값 자리에 단독으로 쓰세요(예: "to": {{to}}). 이스케이프된 문자열로 바뀝니다. 사용할 수 있는 자리표시자: ${placeholders}.`,
+  emailServerRequired: 'SMTP로 보내려면 메일 서버를 입력하세요.',
+  emailSenderRequired: '메일을 보내려면 보내는 주소를 입력하세요.',
+  emailProviderFieldRequired: '이 메일 서비스에 필요한 항목입니다.',
+  emailRegionInvalid: '이 메일 서비스가 제공하는 리전을 지정하세요.',
+  emailUrlInvalid: 'https://로 시작하는 주소를 입력하세요.',
+  emailHeaderInvalid: 'Authorization 같은 헤더 이름을 입력하세요.',
+  emailTemplateInvalid:
+    '올바른 JSON을 입력하세요. {{to}} 같은 자리표시자는 따옴표 없이 값 자리에 씁니다.',
+  emailSecretRequired: '이 서비스로 메일을 보내려면 비밀 값을 입력하세요.',
 
   contentTitle: '콘텐츠',
   contentNew: '새로 만들기',
@@ -230,6 +273,7 @@ export const ko: Messages = {
   restored: '복원했습니다.',
   sticky: '상단 고정',
   protectedBadge: '비밀번호',
+  contentInactiveType: '비활성 유형',
   trashedOn: (date) => `${date} 휴지통으로 이동`,
   fieldTitle: '제목',
   fieldSlug: '슬러그',
@@ -434,6 +478,11 @@ export const ko: Messages = {
   menuKindCustom: '사용자 지정 링크',
   menuHome: '홈',
   menuMissing: '(발행되지 않음)',
+  menuPluginItem: (type, id) => `${type}: ${id}`,
+  menuPluginTypes: '플러그인 항목',
+  menuPluginType: (label, plugin) => `${label} (${plugin})`,
+  menuFindObject: (label) => `${label} 찾기`,
+  menuObjectsFailed: '선택 항목을 불러오지 못했습니다',
   menuLocations: '메뉴 위치',
 
   // Appearance: widgets
@@ -873,20 +922,16 @@ export const ko: Messages = {
   readingCacheHelp:
     '로그인하지 않은 방문자에게 CDN이나 프록시가 공개 페이지를 보관해 보여 줄 시간입니다. 0이면 끕니다.',
   settingsSso: '싱글 사인온',
-  ssoEnabled: 'ID 제공자(OpenID Connect)로 로그인 허용',
   ssoName: '버튼 이름',
   ssoIssuer: '제공자 주소(issuer)',
   ssoClientId: '클라이언트 ID',
   ssoClientSecret: '클라이언트 비밀',
-  ssoRemoveSecret: '저장된 비밀 삭제',
   ssoAuthMethod: '클라이언트 인증 방식',
   ssoAuthNone: '없음(공개 클라이언트)',
   ssoScopes: '스코프',
   ssoRedirectUri: '제공자에 등록할 리디렉션 URI',
   ssoRedirectMissing: '먼저 SEO 설정에서 공개 사이트 주소를 입력하세요.',
   ssoAllowedSubjects: '연결 없이 로그인할 계정 (한 줄에 “subject = 이메일”)',
-  ssoManagedByEnvironment:
-    '서버에서 싱글 사인온을 설정했으므로 이 설정은 사용되지 않습니다.',
 
   // Admin menu and color mode
   navAllContent: '모든 콘텐츠',
@@ -1118,6 +1163,10 @@ export const ko: Messages = {
   editorStyles: '스타일',
   editorCustomized: '변경됨',
   editorAdded: '추가됨',
+  editorFromPlugin: (plugin) => `플러그인: ${plugin}`,
+  editorPluginReadOnly:
+    '플러그인이 제공하는 항목이라 편집할 수 없습니다. 사용자 지정을 누르면 플러그인 버전 대신 사용할 사본이 만들어집니다.',
+  editorCustomize: '사용자 지정',
   editorAddTemplate: '템플릿 추가',
   editorTemplateKind: '템플릿',
   editorTemplateSlug: '특정 대상만(슬러그, 선택)',
@@ -1317,15 +1366,9 @@ export const ko: Messages = {
   dashboardNoActivity: '아직 활동이 없습니다.',
   ssoLinked: '연결됨',
   ssoNotLinked: '연결 안 됨',
-  ssoLinkHelp: (provider: string) =>
-    `${provider} 계정을 연결하면 그 계정으로 이 계정에 로그인할 수 있습니다. 비밀번호 로그인도 계속 사용할 수 있습니다.`,
-  ssoUnavailable: '이 사이트에서는 싱글 사인온을 사용할 수 없습니다.',
   ssoProvider: '제공자',
   ssoAccountId: '계정 ID',
   ssoLinkedOn: '연결한 날짜',
-  ssoAssigned: '사이트 운영자가 싱글 사인온 계정을 따로 지정해 두었습니다.',
-  ssoLinkOther: '다른 계정 연결',
-  ssoLinkWith: (provider: string) => `${provider} 연결`,
   ssoUnlink: '연결 해제',
   ssoUnlinkConfirm: '이 싱글 사인온 계정으로 더 이상 로그인하지 않을까요?',
   ssoBackToAccount: '계정으로 돌아가기',
@@ -1586,6 +1629,8 @@ export const ko: Messages = {
   contentSyncedPattern: (title: string) =>
     title ? `동기화 패턴: ${title}` : '동기화 패턴',
   patternsTitle: '패턴',
+  patternsFromPlugins: '플러그인 패턴',
+  patternFromPlugin: (plugin) => `플러그인: ${plugin}`,
   patternCreate: '패턴 만들기',
   patternCreateHelp:
     '선택한 블록을 다른 글에 넣을 수 있는 패턴으로 저장합니다.',
@@ -1641,7 +1686,7 @@ export const ko: Messages = {
     '이 사이트가 꼭 연결해야 하는 내부 서비스만 허용하세요. 메타데이터와 예약 주소는 계속 차단됩니다.',
   egressRules: '허용할 대상',
   egressHelp:
-    '한 줄에 하나씩 입력하세요: 서비스 호스트 포트 주소[,주소]. 서비스: oidc, search, smtp, webhook. 주소에는 CIDR을 쓸 수 있습니다.',
+    '한 줄에 하나씩 입력하세요: 서비스 호스트 포트 주소[,주소]. 서비스: oidc, search, smtp, email-api(이메일 API), webhook. 주소에는 CIDR을 쓸 수 있습니다.',
   egressEnvironment: '서버에서 지정한 대상',
   egressEnvironmentHelp: '서버 환경에서 지정한 읽기 전용 규칙입니다.',
   destinationBlocked:
@@ -1671,6 +1716,13 @@ export const ko: Messages = {
   privacyRetained:
     '발행된 콘텐츠, 업로드한 파일, 기존 주소는 유지됩니다. 개인정보가 포함되어 있다면 별도로 검토해 주세요.',
   privacyNoRequests: '개인정보 요청이 없습니다.',
+  privacyErasureReport: '삭제 결과',
+  privacyEraserCore: (key) => `사이트 데이터 (${key})`,
+  privacyEraserPlugin: (plugin, key) => `플러그인 ${plugin} (${key})`,
+  privacyEraserCounts: (erased, retained) =>
+    `${erased}건 삭제, ${retained}건 보존`,
+  privacyEraserFailed:
+    '삭제하지 못했습니다. 이 데이터를 직접 지우거나 나중에 다시 시도하세요.',
   privacyEraseConfirm:
     '이 사람의 개인정보를 삭제하고 로그인 권한을 해제하시겠습니까? 되돌릴 수 없습니다.',
   privacyOpenLink: '메일에 있는 확인 링크를 열어 주세요.',
@@ -1726,4 +1778,206 @@ export const ko: Messages = {
   mediaUploadedFile: (name) => `${name} 파일을 올렸습니다.`,
   mediaEditedCopy: '편집한 이미지를 새 파일로 저장했습니다.',
   contentCodeCopiedNotice: '코드를 클립보드에 복사했습니다.',
+  // Single sign-on providers, linking and recovery codes
+  ssoProvidersTitle: 'ID 제공자',
+  ssoProvidersHelp:
+    '켜 둔 제공자마다 로그인 버튼이 하나씩 생깁니다. 아래 리디렉션 URI를 모든 제공자에 등록하세요.',
+  ssoCopyRedirectUri: '리디렉션 URI 복사',
+  ssoProvidersEmpty: '아직 제공자가 없습니다.',
+  ssoNewProvider: '새 제공자',
+  ssoNotSaved: '저장 안 됨',
+  ssoProviderOn: '켜짐',
+  ssoProviderOff: '꺼짐',
+  ssoProviderHasIssues: '확인 필요',
+  ssoProviderEnabled: '이 제공자의 로그인 버튼 표시',
+  ssoProviderId: '제공자 ID',
+  ssoProviderIdHelp:
+    '영문 소문자, 숫자, 하이픈을 쓸 수 있습니다. 저장한 뒤에는 바꿀 수 없습니다.',
+  ssoProviderIdFixed: '저장한 제공자의 ID는 바꿀 수 없습니다.',
+  ssoAddProvider: '제공자 추가',
+  ssoRemoveProvider: '제공자 제거',
+  ssoProvidersMax: (max) => `제공자는 최대 ${max}개까지 추가할 수 있습니다.`,
+  ssoEnvironmentProvider: (name) =>
+    `${name} 로그인은 서버에서 설정되어 여기서 바꿀 수 없습니다. 그동안 아래 제공자는 저장만 되고 사용되지 않습니다.`,
+  ssoProviderIdInvalid:
+    '영문 소문자, 숫자, 하이픈으로 1~32자를 입력하세요. 처음과 끝은 문자나 숫자여야 합니다.',
+  ssoProviderIdDuplicate: '다른 제공자가 이미 이 ID를 쓰고 있습니다.',
+  ssoIssuerRequired:
+    '이 제공자를 켜려면 제공자 주소와 클라이언트 ID를 입력하세요.',
+  ssoIssuerInvalid: 'https://id.example.com 같은 제공자 주소를 입력하세요.',
+  ssoScopesOpenid: '스코프에 openid를 포함해야 합니다.',
+  ssoClaimTokenRequired: '이메일의 링크를 다시 열어 주세요.',
+  ssoPasswordLoginDisabled:
+    '비밀번호 로그인이 꺼져 있습니다. 싱글 사인온이나 복구 코드로 로그인하세요.',
+  ssoProviderRequired: '비밀번호 로그인을 끄기 전에 제공자를 하나 이상 켜세요.',
+  ssoAccessRequired:
+    '비밀번호 로그인을 끄기 전에 켜져 있는 제공자에 내 계정을 연결하거나 할당받으세요.',
+  ssoLastAccess:
+    '비밀번호 로그인이 꺼져 있는 동안에는 마지막 싱글 사인온 로그인 수단을 해제할 수 없습니다.',
+  ssoLinkHelp:
+    '제공자 계정을 연결하면 그 계정으로 이 계정에 로그인할 수 있습니다.',
+  ssoLink: '연결',
+  ssoAssignedBadge: '할당됨',
+  ssoAssigned:
+    '사이트 운영자가 이 제공자의 계정을 할당해 두었습니다. 연결하지 않아도 그 계정으로 로그인할 수 있습니다.',
+  ssoOtherAccount: '그 밖의 연결된 계정',
+  ssoProviderUnavailable: '사용하지 않는 제공자',
+  ssoAccountLinked: '싱글 사인온 계정을 연결했습니다.',
+  ssoAccountUnlinked: '싱글 사인온 계정 연결을 해제했습니다.',
+  ssoRequestExpired: '로그인 요청이 만료되었습니다. 다시 시도하세요.',
+  ssoClaimRetry:
+    '다시 시도하려면 이메일의 링크를 다시 열거나 관리자에게 새 링크를 요청하세요.',
+  copyFailed: '복사하지 못했습니다. 직접 선택해서 복사하세요.',
+  recoverySignIn: '복구 코드로 로그인',
+  recoveryCode: '복구 코드',
+  recoveryCodeHelp: '코드마다 한 번만 쓸 수 있습니다.',
+  recoveryCodesTitle: '복구 코드',
+  recoveryCodesHelp:
+    '다른 로그인 방법이나 2단계 인증을 쓸 수 없을 때 이 코드 중 하나로 로그인할 수 있습니다. 코드마다 한 번만 쓸 수 있습니다.',
+  recoveryCodesNone: '아직 복구 코드가 없습니다.',
+  recoveryCodesStatus: (remaining, created) =>
+    `남은 코드 ${remaining}개 · ${created}에 생성`,
+  recoveryCodesGenerate: '복구 코드 만들기',
+  recoveryCodesRegenerate: '새 코드 만들기',
+  recoveryCodesReplaceConfirm:
+    '새 복구 코드를 만들까요? 지금 코드는 더 이상 쓸 수 없습니다.',
+  recoveryCodesRemove: '복구 코드 삭제',
+  recoveryCodesRemoveConfirm: '복구 코드를 삭제할까요? 바로 쓸 수 없게 됩니다.',
+  recoveryCodesShownOnce:
+    '지금 이 코드를 안전한 곳에 보관하세요. 다시 보여 드리지 않습니다.',
+  recoveryCodesCopy: '코드 복사',
+  recoveryCodesDownload: '다운로드 (.txt)',
+  recoveryCodesGenerated: '새 복구 코드를 만들었습니다.',
+  recoveryCodesRemoved: '복구 코드를 삭제했습니다.',
+  // Sign-in methods, steps and second factors
+  signInNoMethods:
+    '지금은 로그인할 수 있는 방법이 없습니다. 관리자에게 문의하세요.',
+  signInContinue: '계속',
+  signInCancel: '처음부터 다시',
+  signInCopyCode: '복사',
+  signInQrCode: '인증 앱으로 스캔할 QR 코드',
+  signInFactorChoose: '본인 확인 방법을 선택하세요.',
+  signInEnrollChoose:
+    '내 역할은 2단계 인증이 필요합니다. 지금 설정할 방법을 선택하세요.',
+  signInSetupTitle: '로그인 설정',
+  signInSetupHelp: '계정에 로그인할 방법을 선택하세요.',
+  signInSetupWith: (method) => `${method} 설정`,
+  signInSetupDone: '계정 설정을 마쳤습니다. 이제 로그인할 수 있습니다.',
+  signInSetupExpired:
+    '설정 시간이 지났습니다. 이메일의 링크를 다시 열어 주세요.',
+  signInSetupUnavailable:
+    '지금은 로그인 설정을 할 수 없습니다. 잠시 뒤 다시 시도하세요.',
+  signInSetupNone:
+    '이 링크로는 로그인 방법을 설정할 수 없습니다. 관리자에게 문의하세요.',
+  passkeyUse: '패스키 사용',
+  passkeyCreate: '패스키 만들기',
+  passkeyUseHelp: '이 기기나 휴대폰에 저장한 패스키를 사용하세요.',
+  passkeyCreateHelp: '새 패스키를 어디에 저장할지 브라우저가 물어봅니다.',
+  passkeyNeedsScripts:
+    '패스키를 쓰려면 JavaScript가 필요합니다. 브라우저에서 켜거나 다른 방법으로 로그인하세요.',
+  passkeyUnsupported:
+    '이 브라우저는 패스키를 지원하지 않습니다. 다른 방법으로 로그인하세요.',
+  passkeyFailed:
+    '패스키를 사용하지 못했습니다. 다시 시도하거나 다른 방법으로 로그인하세요.',
+  forgotClosed:
+    '이 사이트는 비밀번호로 로그인하지 않습니다. 관리자에게 로그인 링크를 보내 달라고 요청하세요.',
+  usersSendSignInLink: '로그인 설정 링크 보내기',
+  factorsTitle: '2단계 인증 / 패스키',
+  factorsHelp:
+    '로그인한 뒤 한 단계를 더 거치면 비밀번호가 알려져도 계정을 안전하게 지킬 수 있습니다.',
+  factorsRequired: '내 역할은 2단계 인증이 필요합니다.',
+  factorsRequiredMissing:
+    '내 역할은 2단계 인증이 필요합니다. 아래에서 설정하지 않으면 다음 로그인 때 설정하게 됩니다.',
+  factorsNone: '사용할 수 있는 2단계 인증 방법이 없습니다.',
+  factorSetupTitle: '설정 마무리',
+  factorSetupCancel: '취소',
+  factorOn: '사용 중',
+  factorOff: '설정 안 됨',
+  factorSetUp: '설정',
+  factorSetUpAgain: '다시 설정',
+  factorAddAnother: '추가',
+  factorRemove: '삭제',
+  factorRemoveConfirm: (label) =>
+    `${label}을(를) 삭제할까요? 바로 쓸 수 없게 됩니다.`,
+  factorAddedOn: (date) => `${date}에 추가`,
+  factorRecoveryCodesLink: '복구 코드 관리',
+  factorEnrolled: '2단계 인증을 설정했습니다.',
+  factorRemoved: '삭제했습니다.',
+  settingsSignIn: '로그인',
+  signInPasswordForced:
+    '서버 설정에 따라 이 설정과 관계없이 모든 사용자가 비밀번호로 로그인할 수 있습니다.',
+  signInMethodsTitle: '로그인 방법',
+  signInMethodsHelp:
+    '허용한 방법이 이 순서대로 로그인 화면에 나타납니다. 위아래로 옮겨 순서를 바꾸세요.',
+  signInPasswordOff:
+    '비밀번호 로그인이 꺼져 있습니다. 다른 방법으로 로그인할 수 있는지 확인하고 복구 코드를 안전한 곳에 보관하세요.',
+  signInNotReady: '준비 안 됨',
+  signInNotReadyHelp: '이 방법의 설정을 마쳐야 로그인 화면에 나타납니다.',
+  signInSsoSettings: '싱글 사인온 설정',
+  signInMissingHelp:
+    '이 방법을 제공하는 플러그인이 꺼져 있습니다. 체크를 해제하고 저장하면 목록에서 빠집니다.',
+  signInSourceMissing: '사용할 수 없음',
+  signInSourcePlugin: (plugin) => `플러그인: ${plugin}`,
+  signInMoveUp: (method) => `${method} 위로 이동`,
+  signInMoveDown: (method) => `${method} 아래로 이동`,
+  signInFactorsTitle: '2단계 인증 방법',
+  signInFactorsHelp:
+    '사용자가 로그인한 뒤 본인 확인에 쓰고 계정 화면에서 설정할 수 있는 방법입니다.',
+  signInRequireTitle: '2단계 인증 필수',
+  signInRequireHelp:
+    '이 역할의 사용자는 2단계 인증을 거쳐야 합니다. 아직 설정하지 않은 사용자는 로그인하면서 설정합니다.',
+  signInDuplicate: '두 번 이상 들어 있습니다.',
+  signInMethodRequired: '로그인 방법을 하나 이상 허용하세요.',
+  signInUnknown: '등록된 로그인 방법이나 2단계 인증 방법을 선택하세요.',
+  signInAccessRequired:
+    '내 계정으로 쓸 수 있는 로그인 방법을 하나 이상 허용해 두어야 합니다.',
+  signInLastFactor:
+    '내 역할은 2단계 인증이 필요하므로 인증 방법을 하나 이상 남겨 두어야 합니다.',
+  signInExpired:
+    '로그인 요청이 더 이상 유효하지 않습니다. 처음부터 다시 시작하세요.',
+  recoveryRecentSignIn: '보안을 위해 다시 로그인한 뒤 복구 코드를 만드세요.',
+  signInInvalidCredentials: '이메일 또는 비밀번호가 올바르지 않습니다.',
+  signInSecondFactorFailed: '본인 확인에 실패했습니다. 다시 시도하세요.',
+  authRequired: '로그인이 필요합니다.',
+  authTooManyAttempts: '시도가 너무 많습니다. 잠시 후 다시 시도하세요.',
+  authCaptchaRequired: '로봇이 아님을 확인해 주세요.',
+  authCaptchaInvalid: '로봇 확인에 실패했습니다. 다시 시도하세요.',
+  authPasswordResetLimit:
+    '비밀번호 재설정 메일을 너무 많이 보냈습니다. 나중에 다시 시도하세요.',
+  authPasswordTokenInvalid:
+    '링크가 올바르지 않거나 만료되었습니다. 새 링크를 요청하세요.',
+  authCurrentPasswordWrong: '현재 비밀번호가 올바르지 않습니다.',
+  authSsoRateLimited: '로그인 시도가 너무 많습니다. 1분 뒤 다시 시도하세요.',
+  authSsoPendingLimit:
+    '진행 중인 로그인 요청이 너무 많습니다. 몇 분 뒤 다시 시도하세요.',
+  authSsoRequestExpired: '로그인 요청이 만료되었습니다. 다시 시도하세요.',
+  authSsoLinkSignInRequired:
+    '보안을 위해 다시 로그인한 뒤 싱글 사인온 계정을 연결하세요.',
+  authSsoAccountUnusable: '이 싱글 사인온 계정은 여기에서 쓸 수 없습니다.',
+  authSsoAccountAssigned: '이 계정은 서버 설정으로 지정되어 있습니다.',
+  authSsoAccountNotLinked:
+    '이 싱글 사인온 계정은 어떤 관리자에게도 연결되어 있지 않습니다.',
+  authSsoAccountUnlinked:
+    '이 싱글 사인온 계정의 연결이 해제되었습니다. 다시 시도하세요.',
+  authSsoFailed: '싱글 사인온에 실패했습니다. 다시 시도하세요.',
+  authSsoAccountLinkedElsewhere:
+    '이 싱글 사인온 계정은 이미 다른 관리자에게 연결되어 있습니다.',
+  signInFieldNewPassword: '새 비밀번호',
+  pluginFieldSource: (plugin: string) => `플러그인: ${plugin}`,
+  profileFieldsTitle: '추가 정보',
+  profileFieldsHelp:
+    '플러그인이 요청하는 비공개 정보입니다. 공개 프로필에는 나타나지 않습니다.',
+  signInMethodPassword: '비밀번호',
+  signInMethodPasskey: '패스키',
+  signInMethodSso: '싱글 사인온',
+  signInFactorTotp: '인증 앱',
+  signInFactorRecoveryCode: '복구 코드',
+  signInFieldEmail: '이메일',
+  signInFieldPassword: '비밀번호',
+  signInFieldTotpCode: '인증 코드',
+  signInFieldRecoveryCode: '복구 코드',
+  signInFactorRequired:
+    '2단계 인증을 필수로 하려면 사용자가 설정할 수 있는 2단계 인증 방법을 먼저 허용하세요.',
+  recentSignInRequired:
+    '보안을 위해 다시 로그인한 뒤 계정에 로그인 수단을 추가하세요.',
 };

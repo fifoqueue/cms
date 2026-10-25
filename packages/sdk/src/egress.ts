@@ -1,7 +1,13 @@
 import { z } from 'zod';
 import { Errors } from '#sdk/errors';
 
-export const EGRESS_SERVICES = ['oidc', 'search', 'smtp', 'webhook'] as const;
+export const EGRESS_SERVICES = [
+  'oidc',
+  'search',
+  'smtp',
+  'email-api',
+  'webhook',
+] as const;
 export type EgressService = (typeof EGRESS_SERVICES)[number];
 
 const hostSchema = z

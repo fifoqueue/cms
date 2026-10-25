@@ -8,7 +8,8 @@ import { withTemplateData } from '#lib/server/theme-queries.js';
 import type { PageServerLoad } from './$types';
 
 /** Everything an author published. Users without published entries have no archive. */
-export const load: PageServerLoad = async ({ fetch, url, params, parent }) => {
+export const load: PageServerLoad = async (event) => {
+  const { fetch, url, params, parent } = event;
   const api = contentApi(fetch);
   const slots = loadSlots(api, { path: url.pathname });
   const posts = listPosts(
@@ -23,7 +24,7 @@ export const load: PageServerLoad = async ({ fetch, url, params, parent }) => {
   const canonicalPath = listingPath({ kind: 'author', slug: author.slug });
   if (url.pathname !== canonicalPath)
     redirect(308, `${canonicalPath}${url.search}`);
-  return withTemplateData(api, parent, {
+  return withTemplateData(api, event, {
     kind: 'author' as const,
     author: { name: author.name, slug: author.slug, bio: author.bio },
     posts: listed,

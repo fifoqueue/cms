@@ -1,5 +1,6 @@
 import { pluginUpdateManifestSchema } from '@cms/sdk';
 import { serialQueue } from '#api/shared/serial-queue';
+import type { HookDispatcher } from '#api/domain/ports';
 import type { PluginInfo, PluginStatus, PluginUpdate } from '@cms/sdk';
 import {
   DomainError,
@@ -27,6 +28,7 @@ import type {
 } from '#api/plugin-runtime/ports';
 
 export interface PluginHostDeps {
+  hooks?: HookDispatcher;
   state: PluginStateRepository;
   packages: PluginPackageStore;
   loader: PluginModuleLoader;
@@ -223,6 +225,7 @@ export class PluginHost {
       };
       this.plugins.set(id, installed);
       if (enabled) await this.activate(installed);
+      this.notify(previous ? 'plugin.upgraded' : 'plugin.installed', installed);
       this.deps.logger.info(
         `Installed plugin "${id}" ${plugin.manifest.version}`,
       );
@@ -237,6 +240,8 @@ export class PluginHost {
       await this.deps.state.setEnabled(id, true);
       installed.enabled = true;
       await this.activate(installed);
+      if (installed.status === 'active')
+        this.notify('plugin.activated', installed);
       return this.describe(installed);
     });
   }
@@ -247,6 +252,7 @@ export class PluginHost {
       await this.deps.state.setEnabled(id, false);
       installed.enabled = false;
       await this.deactivate(installed);
+      this.notify('plugin.deactivated', installed);
       return this.describe(installed);
     });
   }
@@ -257,6 +263,7 @@ export class PluginHost {
       const installed = this.require(id);
       await this.deactivate(installed);
       await this.deps.state.delete(id);
+      this.notify('plugin.removed', installed);
       await this.deps.packages.remove(id);
       this.plugins.delete(id);
       this.deps.logger.info(`Removed plugin "${id}"`);
@@ -268,6 +275,22 @@ export class PluginHost {
     if (!installed.plugin) throw conflict(Errors.PluginBundleUnloadable);
     await this.deps.settings.update(installed.plugin.manifest, values);
     return this.describe(installed);
+  }
+
+  private notify(
+    event:
+      | 'plugin.installed'
+      | 'plugin.upgraded'
+      | 'plugin.activated'
+      | 'plugin.deactivated'
+      | 'plugin.removed',
+    installed: InstalledPlugin,
+  ) {
+    void this.deps.hooks?.emit(event, {
+      id: installed.id,
+      version: installed.plugin?.manifest.version ?? 'unknown',
+      status: installed.status,
+    });
   }
 
   /**

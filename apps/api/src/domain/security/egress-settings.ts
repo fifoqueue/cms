@@ -4,6 +4,7 @@ import type { SettingsRepository } from '#api/domain/site/site-service';
 import { invalidInput, Errors } from '#api/shared/errors';
 import { parseRange } from '#api/shared/ip-address';
 import { parseInput } from '#api/shared/validation';
+import type { HookDispatcher } from '#api/domain/ports';
 
 const KEY = 'egress';
 
@@ -24,6 +25,7 @@ export class EgressSettingsService {
   constructor(
     private readonly settings: SettingsRepository,
     private readonly environmentRules: readonly EgressRule[] = [],
+    private readonly hooks?: HookDispatcher,
   ) {
     validateRanges(environmentRules);
   }
@@ -39,7 +41,9 @@ export class EgressSettingsService {
     const { rules } = parseInput(egressSettingsInputSchema, input);
     validateRanges(rules);
     await this.settings.set(KEY, { rules });
-    return this.getAdmin();
+    const result = await this.getAdmin();
+    void this.hooks?.emit('egress.updated', result);
+    return result;
   }
 
   async rules(service: EgressService): Promise<EgressRule[]> {

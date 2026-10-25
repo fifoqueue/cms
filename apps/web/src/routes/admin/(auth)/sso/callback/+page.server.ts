@@ -1,45 +1,8 @@
-import { redirect } from '@sveltejs/kit';
-import { resolve } from '$app/paths';
-import { CmsApiError } from '@cms/sdk/client';
-import { contentApi } from '#lib/server/api.js';
-import { Errors } from '#lib/server/errors.js';
-import { returnPath } from '#lib/server/return-path.js';
-import { startSession } from '#lib/server/session-cookie.js';
-import { ssoApi, takeSsoTransaction } from '#lib/server/sso.js';
+import { signInCallback } from '#lib/server/sign-in-callback.js';
 import type { PageServerLoad } from './$types';
 
-/** The identity provider redirects here. Only the API sees the code; it verifies everything. */
-export const load: PageServerLoad = async ({ url, cookies, fetch, locals }) => {
-  const transaction = takeSsoTransaction(cookies, url);
-  // Linking starts from the account page, so a signed-in user goes back there.
-  const back = locals.user ? 'account' : 'login';
-
-  if (!transaction)
-    return {
-      back,
-      message: Errors.SsoRequestExpired,
-      returnTo: null,
-    };
-
-  let result;
-
-  try {
-    result = await ssoApi(fetch, locals.token).callback({
-      transaction: transaction.transaction,
-      query: url.search,
-    });
-  } catch (caught) {
-    if (caught instanceof CmsApiError && caught.status < 500)
-      return { back, message: caught.message, returnTo: transaction.back };
-    throw caught;
-  }
-
-  if (result.kind === 'linked') redirect(303, resolve('/admin/(app)/account'));
-
-  startSession(cookies, result.session, url);
-  const loginPath = await contentApi(fetch)
-    .site()
-    .then((site) => site.loginPath)
-    .catch(() => '/login');
-  redirect(303, returnPath(transaction.back, loginPath));
-};
+/**
+ * The single sign-on redirect URI registered at identity providers; the same callback as
+ * `/admin/sign-in/callback`.
+ */
+export const load: PageServerLoad = (event) => signInCallback(event);

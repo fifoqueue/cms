@@ -1,9 +1,11 @@
 import type { PrivacyService } from '#api/domain/privacy/privacy-service';
+import type { SeoFilterGateway } from '#api/http/seo-filter-gateway';
 import type { ArchivePathsService } from '#api/domain/permalinks/archive-paths';
 import type { TaxonomyTypeService } from '#api/domain/taxonomy/taxonomy-types';
 import type { RoleService } from '#api/domain/users/role-service';
 import { Elysia } from 'elysia';
 import type { AuthService } from '#api/domain/auth/auth-service';
+import type { RecoveryService } from '#api/domain/auth/recovery-service';
 import type { SsoService } from '#api/domain/auth/sso-service';
 import type { ContentService } from '#api/domain/content/content-service';
 import type { ReadingService } from '#api/domain/site/reading-service';
@@ -18,6 +20,8 @@ import type { SearchService } from '#api/domain/search/search-service';
 import type { WebhookService } from '#api/domain/webhooks/webhook-service';
 import type { SiteHealthService } from '#api/domain/tools/site-health';
 import type { SsoSettingsService } from '#api/domain/auth/sso-settings';
+import type { SignInSettingsService } from '#api/domain/auth/sign-in-settings';
+import type { SignInService } from '#api/domain/auth/sign-in-service';
 import type { ThemePreviews } from '#api/domain/theme/theme-previews';
 import type { ImportService } from '#api/domain/tools/import-service';
 import type { ExportService } from '#api/domain/tools/export-service';
@@ -59,10 +63,12 @@ import type { ClientResolver } from '#api/http/client-identity';
 export type ApiServices = {
   privacy: PrivacyService;
   auth: AuthService;
+  recovery: RecoveryService;
   sso: SsoService;
   clients: ClientResolver;
   site: SiteService;
   seo: SeoSettingsService;
+  seoFilter: SeoFilterGateway;
   seoDiscovery: SeoDiscoveryService;
   permalinks: PermalinkService;
   archivePaths: ArchivePathsService;
@@ -84,6 +90,8 @@ export type ApiServices = {
   webhooks: WebhookService;
   siteHealth: SiteHealthService;
   ssoSettings: SsoSettingsService;
+  signInSettings: SignInSettingsService;
+  signIn: SignInService;
   /** Shared with the web server so it can prove visitors' addresses. */
   frontendSecret: string;
   themePreviews: ThemePreviews;

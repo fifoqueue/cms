@@ -3,6 +3,7 @@ import type { PublicReading, ReadingSettings } from '@cms/sdk';
 import type { PublishedContentRepository } from '#api/domain/content/published-content-repository';
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import { parseInput } from '#api/shared/validation';
+import type { HookDispatcher } from '#api/domain/ports';
 
 const KEY = 'reading';
 
@@ -14,6 +15,7 @@ export class ReadingService {
       PublishedContentRepository,
       'summariesByIds'
     >,
+    private readonly hooks?: HookDispatcher,
   ) {}
 
   async get(): Promise<ReadingSettings> {
@@ -52,6 +54,7 @@ export class ReadingService {
   async update(input: unknown): Promise<ReadingSettings> {
     const settings = parseInput(readingSettingsSchema, input);
     await this.settings.set(KEY, settings);
+    void this.hooks?.emit('settings.updated', { section: KEY, settings });
     return settings;
   }
 }

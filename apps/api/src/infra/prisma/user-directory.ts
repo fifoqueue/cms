@@ -1,5 +1,5 @@
 import { ROLES, roleDefinitionSchema } from '@cms/sdk';
-import type { RoleDefinition } from '@cms/sdk';
+import type { RoleDefinition, UserQuery } from '@cms/sdk';
 import type { UserRecord } from '#api/domain/auth/ports';
 import type {
   RoleWriter,
@@ -12,10 +12,12 @@ import type { Database } from '#api/infra/prisma/client';
 import type { Prisma } from '#api/infra/prisma/generated/client';
 import {
   lockPermalinks,
-  refreshContentPaths,
+  queueContentPaths,
 } from '#api/infra/prisma/permalink-repository';
+import type { PermalinkTokenRegistry } from '#api/domain/permalinks/token-registry';
 import { PUBLIC_CONTENT } from '#api/infra/prisma/content-criteria';
 import { conflict, invalidInput, notFound, Errors } from '#api/shared/errors';
+import { profileMetaKey } from '#api/infra/prisma/profile-meta';
 
 /** Row in `settings` whose lock serializes role changes and deletions. */
 const LOCK_KEY = 'users.lock';
@@ -51,12 +53,16 @@ const assertOtherAdministrator = async (
   if (others === 0) throw conflict(Errors.LastAdministrator);
 };
 
-const hasRole = async (tx: Prisma.TransactionClient, key: string) => {
+const hasRole = async (
+  tx: Prisma.TransactionClient,
+  key: string,
+  contributed: (key: string) => boolean,
+) => {
   if ((ROLES as readonly string[]).includes(key)) return true;
   const row = await tx.setting.findUnique({
     where: { key: `${ROLE_PREFIX}${key}` },
   });
-  if (!row) return false;
+  if (!row) return contributed(key);
   try {
     const role = roleDefinitionSchema.safeParse(JSON.parse(row.value));
     return role.success && role.data.key === key;
@@ -65,15 +71,37 @@ const hasRole = async (tx: Prisma.TransactionClient, key: string) => {
   }
 };
 
-const requireRole = async (tx: Prisma.TransactionClient, key: string) => {
-  if (!(await hasRole(tx, key))) throw invalidInput(Errors.RoleUnknown);
+const requireRole = async (
+  tx: Prisma.TransactionClient,
+  key: string,
+  contributed: (key: string) => boolean,
+) => {
+  if (!(await hasRole(tx, key, contributed)))
+    throw invalidInput(Errors.RoleUnknown);
 };
 
 export class PrismaUserDirectory implements UserDirectory, RoleWriter {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly contributed: (key: string) => boolean = () => false,
+    private readonly kick: () => void = () => {},
+    private readonly tokens?: PermalinkTokenRegistry,
+  ) {}
 
-  async list() {
+  async list(query: UserQuery = {}) {
     const rows = await this.db.user.findMany({
+      where: {
+        role: query.role,
+        ...(query.search
+          ? {
+              OR: [
+                { name: { contains: query.search } },
+                { email: { contains: query.search } },
+                { slug: { contains: query.search } },
+              ],
+            }
+          : {}),
+      },
       select: columns,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
@@ -101,7 +129,7 @@ export class PrismaUserDirectory implements UserDirectory, RoleWriter {
       () =>
         this.db.$transaction(async (tx) => {
           await lockSetting(tx, LOCK_KEY);
-          await requireRole(tx, user.role);
+          await requireRole(tx, user.role, this.contributed);
           await tx.user.create({ data: user });
         }),
       Errors.EmailRegistered,
@@ -114,14 +142,15 @@ export class PrismaUserDirectory implements UserDirectory, RoleWriter {
         this.db.$transaction(async (tx) => {
           await lockPermalinks(tx);
           await lockSetting(tx, LOCK_KEY);
-          await requireRole(tx, changes.role);
+          await requireRole(tx, changes.role, this.contributed);
           if (changes.role !== 'administrator')
             await assertOtherAdministrator(tx, id);
           await tx.user.update({ where: { id }, data: changes });
-          await refreshContentPaths(tx, { authorId: id });
+          await queueContentPaths(tx, { authorId: id }, this.tokens);
         }),
       Errors.EmailRegistered,
     );
+    this.kick();
   }
 
   async updateProfile({ id, ...changes }: UserProfileChanges) {
@@ -131,16 +160,17 @@ export class PrismaUserDirectory implements UserDirectory, RoleWriter {
           await lockPermalinks(tx);
           await lockSetting(tx, LOCK_KEY);
           await tx.user.update({ where: { id }, data: changes });
-          await refreshContentPaths(tx, { authorId: id });
+          await queueContentPaths(tx, { authorId: id }, this.tokens);
         }),
       Errors.EmailRegistered,
     );
+    this.kick();
   }
 
   async setRole(id: string, role: string) {
     await this.db.$transaction(async (tx) => {
       await lockSetting(tx, LOCK_KEY);
-      await requireRole(tx, role);
+      await requireRole(tx, role, this.contributed);
       if (role !== 'administrator') await assertOtherAdministrator(tx, id);
       await tx.user.update({ where: { id }, data: { role } });
     });
@@ -163,8 +193,12 @@ export class PrismaUserDirectory implements UserDirectory, RoleWriter {
   async removeRole(key: string, reassignTo: string) {
     await this.db.$transaction(async (tx) => {
       await lockSetting(tx, LOCK_KEY);
-      if (!(await hasRole(tx, key))) throw notFound(Errors.RoleUnknown);
-      if (reassignTo === key || !(await hasRole(tx, reassignTo)))
+      if (!(await hasRole(tx, key, this.contributed)))
+        throw notFound(Errors.RoleUnknown);
+      if (
+        reassignTo === key ||
+        !(await hasRole(tx, reassignTo, this.contributed))
+      )
         throw invalidInput(Errors.RoleUnknown, [
           { path: 'reassignTo', message: Errors.RoleUnknown },
         ]);
@@ -195,8 +229,14 @@ export class PrismaUserDirectory implements UserDirectory, RoleWriter {
         await tx.content.deleteMany({ where: { authorId: id } });
         await tx.searchOutbox.create({ data: { contentId: null } });
       }
+      await tx.setting.deleteMany({ where: { key: profileMetaKey(id) } });
       await tx.user.delete({ where: { id } });
-      await refreshContentPaths(tx);
+      await queueContentPaths(
+        tx,
+        reassignTo ? { authorId: reassignTo } : { type: 'page' },
+        this.tokens,
+      );
     });
+    this.kick();
   }
 }

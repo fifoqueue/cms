@@ -229,8 +229,7 @@ export class MemoryCommentRepository implements CommentRepository {
       )
       .slice(0, limit)
       .map((row) => row.id);
-    await this.delete(ids);
-    return ids.length;
+    return this.delete(ids);
   }
 
   private recount(contentIds: readonly string[]) {

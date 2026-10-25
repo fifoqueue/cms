@@ -12,11 +12,15 @@ import {
 import { frontendSecret, pairFrontend } from '#lib/server/frontend-secret.js';
 import { RETURN_PARAM } from '#lib/server/return-path.js';
 import { endSession, sessionToken } from '#lib/server/session-cookie.js';
+import { clearPending } from '#lib/server/sso-cookie.js';
+import { withWidgetOrigins } from '#lib/server/captcha.js';
 
 const OPEN_ADMIN_PATHS = [
   '/admin/register',
   '/admin/setup',
   '/admin/sso/callback',
+  '/admin/sign-in',
+  '/admin/sign-in/callback',
   '/admin/forgot-password',
   '/admin/password',
 ];
@@ -72,14 +76,32 @@ const requestSize: Handle = async ({ event, resolve }) => {
 const responseSecurity: Handle = async ({ event, resolve }) => {
   const response = await resolve(event);
   const admin = isAdmin(event.url.pathname);
-  if (!admin && response.status < 400) return response;
+  const origins = event.locals.captchaOrigins;
+  if (
+    !admin &&
+    response.status < 400 &&
+    !(origins && response.headers.has('content-security-policy'))
+  )
+    return response;
   const headers = new Headers(response.headers);
-  headers.set('x-robots-tag', 'noindex, nofollow');
-  headers.set('cache-control', 'private, no-store');
+  if (admin || response.status >= 400) {
+    headers.set('x-robots-tag', 'noindex, nofollow');
+    headers.set('cache-control', 'private, no-store');
+  }
   if (admin) {
     headers.append('content-security-policy', "frame-ancestors 'none'");
     headers.set('x-frame-options', 'DENY');
   }
+  // Only pages that render the captcha widget admit its origins, in every policy they send.
+  const policy = headers.get('content-security-policy');
+  if (origins && policy)
+    headers.set(
+      'content-security-policy',
+      policy
+        .split(',')
+        .map((part) => withWidgetOrigins(part, origins))
+        .join(', '),
+    );
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -181,6 +203,7 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
       });
     if (!event.locals.user) {
       endSession(event.cookies);
+      clearPending(event.cookies, event.url);
       event.locals.token = null;
     } else {
       if (!frontendSecret() && can(event.locals.user, 'settings.manage'))

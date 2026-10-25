@@ -1,5 +1,5 @@
 import { ROLES } from '@cms/sdk';
-import type { RoleDefinition } from '@cms/sdk';
+import type { RoleDefinition, UserQuery } from '@cms/sdk';
 import type { UserRecord } from '#api/domain/auth/ports';
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import type {
@@ -16,15 +16,25 @@ import type { MemoryUsers } from '#test/support/sso-memory';
 /** Same contract as `PrismaUserDirectory`, over the in-memory user and content tables. */
 export class MemoryUserDirectory implements UserDirectory, RoleWriter {
   private readonly roles = new Set<string>(ROLES);
+  private readonly deletedRoles = new Set<string>();
 
   constructor(
     private readonly users: MemoryUsers,
     private readonly content: MemoryContentRepository,
     private readonly settings?: SettingsRepository,
+    private readonly contributed: (key: string) => boolean = () => false,
   ) {}
 
-  async list() {
+  async list(query: UserQuery = {}) {
     return [...this.users.rows.values()]
+      .filter((user) => !query.role || user.role === query.role)
+      .filter(
+        (user) =>
+          !query.search ||
+          [user.name, user.email, user.slug].some((value) =>
+            value.toLowerCase().includes(query.search!.toLowerCase()),
+          ),
+      )
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .map(({ passwordHash: _passwordHash, ...user }) => ({
         ...user,
@@ -90,20 +100,22 @@ export class MemoryUserDirectory implements UserDirectory, RoleWriter {
   saveRole(role: RoleDefinition) {
     return this.exclusive(async () => {
       this.roles.add(role.key);
+      this.deletedRoles.delete(role.key);
       await this.settings?.set(`role.${role.key}`, role);
     });
   }
 
   removeRole(key: string, reassignTo: string) {
     return this.exclusive(async () => {
-      if (!this.roles.has(key)) throw notFound(Errors.RoleUnknown);
-      if (key === reassignTo || !this.roles.has(reassignTo))
+      if (!this.hasRole(key)) throw notFound(Errors.RoleUnknown);
+      if (key === reassignTo || !this.hasRole(reassignTo))
         throw invalidInput(Errors.RoleUnknown, [
           { path: 'reassignTo', message: Errors.RoleUnknown },
         ]);
       for (const user of this.users.rows.values())
         if (user.role === key) user.role = reassignTo;
       this.roles.delete(key);
+      this.deletedRoles.add(key);
       await this.settings?.set(`role.${key}`, null);
     });
   }
@@ -135,6 +147,12 @@ export class MemoryUserDirectory implements UserDirectory, RoleWriter {
   }
 
   private requireRole(role: string) {
-    if (!this.roles.has(role)) throw invalidInput(Errors.RoleUnknown);
+    if (!this.hasRole(role)) throw invalidInput(Errors.RoleUnknown);
+  }
+  private hasRole(role: string) {
+    return (
+      !this.deletedRoles.has(role) &&
+      (this.roles.has(role) || this.contributed(role))
+    );
   }
 }

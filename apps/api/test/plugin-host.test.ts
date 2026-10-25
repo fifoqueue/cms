@@ -45,6 +45,61 @@ const titlePlugin = (id = 'title-suffix', suffix = '!'): PluginDefinition =>
   });
 
 describe('PluginHost lifecycle', () => {
+  test('installation refuses the reserved core id before activation', async () => {
+    const runtime = createRuntime();
+    let activated = false;
+    const bundle = runtime.bundles.register('reserved-core', {
+      manifest: { id: 'core', name: 'Reserved', version: '1.0.0' },
+      activate: () => {
+        activated = true;
+      },
+    });
+    await expect(runtime.host.install(bundle)).rejects.toMatchObject({
+      code: 'invalid_input',
+      issues: [
+        { path: 'id', message: 'The plugin id "core" is reserved for the CMS' },
+      ],
+    });
+    expect(activated).toBe(false);
+    expect(await runtime.host.list()).toEqual([]);
+  });
+  test('committed lifecycle commands emit minimal payloads', async () => {
+    const runtime = createRuntime();
+    const events: { name: string; value: unknown }[] = [];
+    const hooks = runtime.hooks.registrar('observer');
+    for (const name of [
+      'plugin.installed',
+      'plugin.activated',
+      'plugin.deactivated',
+      'plugin.upgraded',
+      'plugin.removed',
+    ] as const)
+      hooks.on(name, (value) => {
+        events.push({ name, value });
+      });
+    await runtime.host.install(
+      runtime.bundles.register('first', titlePlugin()),
+    );
+    await runtime.host.enable('title-suffix');
+    await runtime.host.disable('title-suffix');
+    await runtime.host.install(
+      runtime.bundles.register('second', titlePlugin()),
+    );
+    await runtime.host.remove('title-suffix');
+    expect(events.map(({ name }) => name)).toEqual([
+      'plugin.installed',
+      'plugin.activated',
+      'plugin.deactivated',
+      'plugin.upgraded',
+      'plugin.removed',
+    ]);
+    for (const { value } of events)
+      expect(value).toEqual({
+        id: 'title-suffix',
+        version: '1.0.0',
+        status: value === events[1]!.value ? 'active' : 'inactive',
+      });
+  });
   test('install leaves a plugin inactive until enabled, and disable releases everything', async () => {
     const runtime = createRuntime();
     const info = await runtime.host.install(

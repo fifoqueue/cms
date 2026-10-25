@@ -21,6 +21,7 @@ import {
 } from '#test/support/memory';
 import {
   MemorySsoTransactions,
+  MemorySsoAccessTransactions,
   MemoryUsers,
   createMemoryAuthStore,
   plainHasher,
@@ -29,6 +30,20 @@ import {
 const ISSUER = 'https://id.example.com';
 const TTL = 10 * 60 * 1000;
 const CLIENT = 'ip:203.0.113.5';
+
+/** Existing single-provider regression cases all select this fixture's default provider. */
+class FixtureSso extends SsoService {
+  override start(
+    input: object,
+    user: Parameters<SsoService['start']>[1],
+    client: string,
+  ) {
+    return super.start({ provider: 'default', ...input }, user, client);
+  }
+  override async unlink(userId: string, identityId = 'identity-1') {
+    return super.unlink(userId, identityId);
+  }
+}
 
 /**
  * Accepts `?code=<subject>&state=<state>` and asserts the stored checks reach the provider.
@@ -113,11 +128,28 @@ const fixture = async ({
     sessionTtlMs: 60_000,
   });
 
-  const sso = new SsoService({
+  const sso = new FixtureSso({
+    policy: async () => ({ otherMethod: true, providers: [] }),
+    access: new MemorySsoAccessTransactions({
+      settings: {
+        get: async () => undefined,
+        set: async () => {},
+        list: async () => ({}),
+      },
+      identities: wrapIdentities(identities),
+    }),
     setup: async () => ({
-      provider: enabled ? provider : null,
-      name: 'Company SSO',
-      subjects: new Map(Object.entries(subjects)),
+      providers: enabled
+        ? [
+            {
+              id: 'default',
+              issuer: ISSUER,
+              provider,
+              name: 'Company SSO',
+              subjects: new Map(Object.entries(subjects)),
+            },
+          ]
+        : [],
     }),
     users,
     identities: wrapIdentities(identities),
@@ -191,18 +223,37 @@ const tokenOf = (result: Awaited<ReturnType<SsoService['complete']>>) => {
 };
 
 describe('SsoService', () => {
+  test('root trailing-slash spelling binds to the provider while verified issuer bytes remain exact', async () => {
+    const f = await fixture();
+    f.provider.next = { issuer: `${ISSUER}/`, subject: 'slash' };
+    await f.link(f.admin, 'slash');
+    expect((await f.identities.findByUser(f.admin.id))[0]!.issuer).toBe(
+      `${ISSUER}/`,
+    );
+    expect((await f.sso.identity(f.admin)).identities[0]!.providers).toEqual([
+      'default',
+    ]);
+    f.provider.next = { issuer: `${ISSUER}/`, subject: 'slash' };
+    expect(
+      (await f.auth.authenticate(tokenOf(await f.signIn('slash'))))?.id,
+    ).toBe(f.admin.id);
+  });
   test('reports availability and rejects every flow when not configured', async () => {
     const off = await fixture({ enabled: false });
-    expect(await off.sso.info()).toEqual({ enabled: false, name: null });
+    expect(await off.sso.info()).toEqual({
+      providers: [],
+    });
     await expect(off.sso.start({}, null, CLIENT)).rejects.toMatchObject({
       code: 'not_found',
     });
     await expect(
       off.sso.complete(callback('t', 's', 'x'), null),
-    ).rejects.toMatchObject({ code: 'not_found' });
+    ).rejects.toMatchObject({ code: 'unauthorized' });
 
     const on = await fixture();
-    expect(await on.sso.info()).toEqual({ enabled: true, name: 'Company SSO' });
+    expect(await on.sso.info()).toEqual({
+      providers: [{ id: 'default', name: 'Company SSO' }],
+    });
   });
 
   test('keeps PKCE verifier, state and nonce on the server and passes them to verification', async () => {
@@ -372,8 +423,10 @@ describe('SsoService', () => {
             (await identities.find(issuer, subject)) ??
             (await identities.find(issuer, 'Alice')),
           findByUser: (userId) => identities.findByUser(userId),
+          claimUser: (...args) => identities.claimUser(...args),
+          claim: (...args) => identities.claim(...args),
           link: (identity) => identities.link(identity),
-          unlink: (userId) => identities.unlink(userId),
+          unlink: (userId, id) => identities.unlink(userId, id),
         }),
       });
       await link(admin, 'Alice');
@@ -454,8 +507,10 @@ describe('SsoService', () => {
             return found;
           },
           findByUser: (userId) => identities.findByUser(userId),
+          claimUser: (...args) => identities.claimUser(...args),
+          claim: (...args) => identities.claim(...args),
           link: (identity) => identities.link(identity),
-          unlink: (userId) => identities.unlink(userId),
+          unlink: (userId, id) => identities.unlink(userId, id),
         }),
       });
       const { sso, admin, link, signIn, sessions } = context;
@@ -476,7 +531,9 @@ describe('SsoService', () => {
       });
       const token = tokenOf(await signIn('sub-allowed'));
 
-      await sso.unlink(admin.id);
+      await expect(sso.unlink(admin.id)).rejects.toMatchObject({
+        code: 'not_found',
+      });
 
       expect(await auth.authenticate(token)).toMatchObject({ id: admin.id });
     });
@@ -617,26 +674,30 @@ describe('SsoService', () => {
     });
 
     expect(await sso.identity(admin)).toEqual({
-      identity: null,
-      assigned: false,
+      identities: [],
+      assigned: [],
     });
     expect(await sso.identity(other)).toEqual({
-      identity: null,
-      assigned: true,
+      identities: [],
+      assigned: ['default'],
     });
 
     await link(admin, 'sub-x');
     expect(await sso.identity(admin)).toEqual({
-      identity: {
-        issuer: ISSUER,
-        subject: 'sub-x',
-        linkedAt: '2026-01-01T00:00:00.000Z',
-      },
-      assigned: false,
+      identities: [
+        {
+          id: 'identity-1',
+          providers: ['default'],
+          issuer: ISSUER,
+          subject: 'sub-x',
+          linkedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      assigned: [],
     });
 
     await sso.unlink(admin.id);
-    expect((await sso.identity(admin)).identity).toBeNull();
+    expect((await sso.identity(admin)).identities).toEqual([]);
   });
 
   test('password login keeps working next to single sign-on', async () => {
@@ -698,18 +759,25 @@ describe('SSO HTTP routes', () => {
     };
   };
 
-  test('full link and sign-in round trip over HTTP', async () => {
-    const { call, bearer, admin, auth } = await setup();
+  test('account linking remains on SSO routes; sign-in must use the engine', async () => {
+    const { call, bearer, auth, signIn, sso } = await setup();
 
     expect(await (await call('GET', '')).json()).toEqual({
-      enabled: true,
-      name: 'Company SSO',
+      providers: [{ id: 'default', name: 'Company SSO' }],
     });
 
-    expect((await call('POST', '/start', { intent: 'link' })).status).toBe(401);
+    expect(
+      (await call('POST', '/start', { provider: 'default', intent: 'link' }))
+        .status,
+    ).toBe(401);
 
     const link = await (
-      await call('POST', '/start', { intent: 'link' }, bearer)
+      await call(
+        'POST',
+        '/start',
+        { provider: 'default', intent: 'link' },
+        bearer,
+      )
     ).json();
     expect(
       await (
@@ -722,28 +790,28 @@ describe('SSO HTTP routes', () => {
       ).json(),
     ).toEqual({ kind: 'linked' });
 
-    const login = await (await call('POST', '/start', {})).json();
+    expect((await call('POST', '/start', { provider: 'default' })).status).toBe(
+      409,
+    );
+    const login = await sso.start({ provider: 'default' }, null, CLIENT);
     const signedIn = await call(
       'POST',
       '/callback',
       callback(login.transaction, 'state-2', 'sub-x'),
     );
-    expect(signedIn.status).toBe(200);
-    const result = await signedIn.json();
-    expect(result).toMatchObject({
-      kind: 'session',
-      session: { user: { id: admin.id } },
-    });
+    expect(signedIn.status).toBe(409);
+    const result = await signIn('sub-x');
+    if (result.kind !== 'session') throw new Error('Expected session');
 
     expect((await call('GET', '/identity')).status).toBe(401);
     expect(
       await (await call('GET', '/identity', undefined, bearer)).json(),
-    ).toMatchObject({ identity: { subject: 'sub-x' }, assigned: false });
+    ).toMatchObject({ identities: [{ subject: 'sub-x' }], assigned: [] });
 
-    expect((await call('DELETE', '/identity')).status).toBe(401);
-    expect((await call('DELETE', '/identity', undefined, bearer)).status).toBe(
-      204,
-    );
+    expect((await call('DELETE', '/identity/identity-1')).status).toBe(401);
+    expect(
+      (await call('DELETE', '/identity/identity-1', undefined, bearer)).status,
+    ).toBe(204);
     // The session signed in through the link died with it; the password session did not.
     expect(await auth.authenticate(result.session.token)).toBeNull();
     expect((await call('GET', '/identity', undefined, bearer)).status).toBe(
@@ -765,49 +833,47 @@ describe('SSO HTTP routes', () => {
     );
   });
 
-  test('counts starts per visitor only when the frontend proves the address', async () => {
-    const { call } = await setup({ total: 20, perClient: 2 });
-    const proven = (address: string) => ({
-      'x-cms-client-address': address,
-      'x-cms-frontend-secret': FRONTEND_SECRET,
-    });
-    const start = async (headers: Record<string, string>) =>
-      (await call('POST', '/start', {}, headers)).status;
-
-    // A proven visitor hits its own quota; another proven visitor is unaffected.
-    expect(await start(proven('203.0.113.7'))).toBe(200);
-    expect(await start(proven('203.0.113.7'))).toBe(200);
-    expect(await start(proven('203.0.113.7'))).toBe(409);
-    expect(await start(proven('203.0.113.8'))).toBe(200);
-
-    // Rotating addresses inside one IPv6 /64 is still one visitor.
-    expect(await start(proven('2001:db8:1:2::1'))).toBe(200);
-    expect(await start(proven('2001:db8:1:2:ffff::9'))).toBe(200);
-    expect(await start(proven('2001:db8:1:2::abcd'))).toBe(409);
-
-    // Forged or missing proof all share one quota, whatever address they claim.
-    const forged = (address: string) => ({
-      'x-cms-client-address': address,
-      'x-cms-frontend-secret': 'wrong-secret',
-    });
-    expect(await start(forged('198.51.100.1'))).toBe(200);
-    expect(await start({ 'x-cms-client-address': '198.51.100.2' })).toBe(200);
-    expect(await start(forged('198.51.100.3'))).toBe(409);
-    expect(await start({})).toBe(409);
-    expect(await start(proven('198.51.100.4'))).toBe(200);
+  test('account linking admission is per owner regardless of claimed address', async () => {
+    const { call, bearer } = await setup({ total: 20, perClient: 2 });
+    const start = (address: string) =>
+      call(
+        'POST',
+        '/start',
+        { provider: 'default', intent: 'link' },
+        {
+          ...bearer,
+          'x-cms-client-address': address,
+          'x-cms-frontend-secret': FRONTEND_SECRET,
+        },
+      );
+    expect((await start('203.0.113.7')).status).toBe(200);
+    expect((await start('203.0.113.8')).status).toBe(200);
+    expect((await start('203.0.113.9')).status).toBe(409);
   });
 
   test('answers 429 when a client starts too often, before any other work', async () => {
-    const { call, provider } = await setup({ startsPerMinutePerClient: 1 });
+    const { call, provider, bearer } = await setup({
+      startsPerMinutePerClient: 1,
+    });
 
-    expect((await call('POST', '/start', {})).status).toBe(200);
+    expect(
+      (
+        await call(
+          'POST',
+          '/start',
+          { provider: 'default', intent: 'link' },
+          bearer,
+        )
+      ).status,
+    ).toBe(200);
 
     // Direct calls without the frontend proof share one client, whatever they claim.
     const refused = await call(
       'POST',
       '/start',
-      {},
+      { provider: 'default', intent: 'link' },
       {
+        ...bearer,
         'x-cms-client-address': '198.51.100.9',
       },
     );

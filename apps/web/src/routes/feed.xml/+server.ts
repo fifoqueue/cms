@@ -1,8 +1,10 @@
 import { redirect } from '@sveltejs/kit';
 import { CONTENT_SLUG } from '@cms/sdk';
 import { contentApi, mediaFiles } from '#lib/server/api.js';
+import { filterDiscovery } from '#lib/server/seo-filter.js';
 import {
   feedTypes,
+  feedValues,
   loadBodies,
   loadRecent,
   missingSiteUrl,
@@ -47,7 +49,8 @@ const mediaSize =
     return Number.isSafeInteger(size) && size > 0 ? size : null;
   };
 
-export const GET: RequestHandler = async ({ fetch, url }) => {
+export const GET: RequestHandler = async (event) => {
+  const { fetch, url } = event;
   const api = contentApi(fetch);
   const target = targetOf(url);
   if (target === undefined) return notFound();
@@ -82,12 +85,19 @@ export const GET: RequestHandler = async ({ fetch, url }) => {
     reading?.feedItems,
     narrowed ? { [narrowed.kind]: narrowed.slug } : {},
   );
+  const values = feedValues(site, settings, items, followed?.name);
+  const [bodies, [channel, filteredItems]] = await Promise.all([
+    reading?.feedContent === 'excerpt'
+      ? undefined
+      : loadBodies(api, items, mediaSize(fetch)),
+    filterDiscovery(event, [
+      { kind: 'feed.channel', value: values.channel },
+      { kind: 'feed.items', value: values.items },
+    ]),
+  ]);
   return rssFeed(site, settings, items, {
-    title: followed?.name,
     self: feedPath(narrowed ?? undefined),
-    bodies:
-      reading?.feedContent === 'excerpt'
-        ? undefined
-        : await loadBodies(api, items, mediaSize(fetch)),
+    bodies,
+    filtered: { channel, items: filteredItems },
   });
 };

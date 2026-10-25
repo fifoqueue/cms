@@ -3,10 +3,44 @@ import { DashboardPreferencesService } from '#api/domain/dashboard/dashboard-pre
 import { createApiApp } from '#api/http/app';
 import type { ApiServices } from '#api/http/services';
 import { ClientResolver } from '#api/http/client-identity';
-import { conflict } from '#api/shared/errors';
+import { conflict, expiredSignIn } from '#api/shared/errors';
 import { MemorySettings, profile } from '#test/support/memory';
 
 const TOKEN = 'admin-token';
+test('extension discovery routes enforce permissions and preserve source', async () => {
+  for (const path of [
+    'patterns/contributions',
+    'capabilities',
+    'menus/types',
+    'menus/objects?type=examples&search=One&pageSize=1',
+  ]) {
+    const url = `http://localhost/api/v1/admin/${path}`;
+    expect((await app.handle(new Request(url))).status).toBe(401);
+    const response = await app.handle(
+      new Request(url, { headers: { authorization: `Bearer ${TOKEN}` } }),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    if (!path.startsWith('menus/objects'))
+      expect(body[0].source).toBe('example');
+    else expect(body.items[0].id).toBe('one');
+  }
+  for (const path of [
+    'capabilities',
+    'menus/types',
+    'menus/objects?type=examples',
+  ]) {
+    expect(
+      (
+        await app.handle(
+          new Request(`http://localhost/api/v1/admin/${path}`, {
+            headers: { authorization: `Bearer ${WRITER}` },
+          }),
+        )
+      ).status,
+    ).toBe(403);
+  }
+});
 const user = profile({ id: 'u1', email: 'a@example.com', name: 'Admin' });
 
 /** Accounts with one side of the Writing settings permissions. */
@@ -27,6 +61,7 @@ const auth = {
   status: async () => ({ setupRequired: false }),
   login: async (input: unknown) => ({ token: TOKEN, input }),
   logout: async () => {},
+  requireRecent: async () => {},
 } as unknown as ApiServices['auth'];
 
 const calls: unknown[][] = [];
@@ -47,6 +82,7 @@ const app = await createApiApp({
       publicSettings: async () => ({ policy: null, commentCookies: true }),
     } as ApiServices['privacy'],
     auth,
+    recovery: {} as ApiServices['recovery'],
     sso: {
       info: () => ({ enabled: false }),
       unlink: record('sso.unlink'),
@@ -58,6 +94,7 @@ const app = await createApiApp({
       getAdmin: record('seo.admin'),
       update: record('seo.update'),
     } as unknown as ApiServices['seo'],
+    seoFilter: {} as ApiServices['seoFilter'],
     seoDiscovery: {
       list: record('seo.discovery'),
     } as unknown as ApiServices['seoDiscovery'],
@@ -113,7 +150,11 @@ const app = await createApiApp({
     users: {
       list: record('users.list', []),
     } as unknown as ApiServices['users'],
-    roles: {} as ApiServices['roles'],
+    roles: {
+      capabilityDefinitions: () => [
+        { key: 'example.read', label: 'Read', source: 'example' },
+      ],
+    } as ApiServices['roles'],
     archivePaths: {} as ApiServices['archivePaths'],
     taxonomyTypes: {} as ApiServices['taxonomyTypes'],
     passwords: {} as ApiServices['passwords'],
@@ -127,9 +168,25 @@ const app = await createApiApp({
     } as unknown as ApiServices['writing'],
     dashboardPreferences: new DashboardPreferencesService(new MemorySettings()),
     patterns: {
+      contributions: record('patterns.contributions', [
+        { key: 'examples', source: 'example', patterns: [] },
+      ]),
       update: record('patterns.update'),
     } as unknown as ApiServices['patterns'],
-    menus: {} as ApiServices['menus'],
+    menus: {
+      types: () => [
+        {
+          key: 'examples',
+          label: 'Examples',
+          source: 'example',
+          searchable: true,
+        },
+      ],
+      objects: record('menus.objects', {
+        items: [{ id: 'one', label: 'One' }],
+        total: 1,
+      }),
+    } as unknown as ApiServices['menus'],
     widgets: {} as ApiServices['widgets'],
     comments: {} as ApiServices['comments'],
     avatars: {} as ApiServices['avatars'],
@@ -140,6 +197,32 @@ const app = await createApiApp({
     webhooks: {} as ApiServices['webhooks'],
     siteHealth: {} as ApiServices['siteHealth'],
     ssoSettings: {} as ApiServices['ssoSettings'],
+    signIn: {
+      info: record('signIn.info', {
+        methods: [],
+        setup: [],
+        passwordReset: false,
+      }),
+      start: record('signIn.start'),
+      setup: record('signIn.setup'),
+      continue: async (input: unknown, ...args: unknown[]) => {
+        if ((input as { transaction?: string }).transaction === 'expired')
+          throw expiredSignIn();
+        return record('signIn.continue', { kind: 'done' })(input, ...args);
+      },
+      chooseFactor: async (input: unknown, ...args: unknown[]) => {
+        if ((input as { transaction?: string }).transaction === 'expired')
+          throw expiredSignIn();
+        return record('signIn.chooseFactor')(input, ...args);
+      },
+      factors: record('signIn.factors'),
+      enroll: record('signIn.enroll'),
+      removeFactor: record('signIn.removeFactor'),
+    } as unknown as ApiServices['signIn'],
+    signInSettings: {
+      getAdmin: record('signIn.getAdmin'),
+      update: record('signIn.update'),
+    } as unknown as ApiServices['signInSettings'],
     frontendSecret: 'test-frontend-secret',
     themePreviews: {} as ApiServices['themePreviews'],
     importer: {} as ApiServices['importer'],
@@ -340,6 +423,158 @@ describe('API route compatibility', () => {
         error: { code: 'not_found', message: 'Route not found' },
       });
     }
+  });
+
+  test('sign-in settings require settings.manage and pass the authenticated actor', async () => {
+    for (const method of ['GET', 'PUT']) {
+      expect((await call(method, '/api/v1/admin/sign-in')).status).toBe(401);
+      expect(
+        (await call(method, '/api/v1/admin/sign-in', { token: WRITER })).status,
+      ).toBe(403);
+    }
+    calls.length = 0;
+    expect(
+      (await call('GET', '/api/v1/admin/sign-in', { token: OPERATOR })).status,
+    ).toBe(200);
+    expect(calls).toEqual([['signIn.getAdmin']]);
+    calls.length = 0;
+    const policy = {
+      methods: ['password'],
+      secondFactors: [],
+      requireSecondFactor: [],
+    };
+    expect(
+      (
+        await call('PUT', '/api/v1/admin/sign-in', {
+          token: OPERATOR,
+          type: 'application/json',
+          body: JSON.stringify(policy),
+        })
+      ).status,
+    ).toBe(200);
+    expect(calls).toEqual([['signIn.update', policy, accounts[OPERATOR]]]);
+  });
+
+  test('expired sign-in handles have one restart status and SDK message', async () => {
+    for (const path of [
+      '/api/v1/auth/sign-in/continue',
+      '/api/v1/auth/sign-in/factor',
+    ]) {
+      const response = await call('POST', path, {
+        type: 'application/json',
+        body: JSON.stringify({ transaction: 'expired' }),
+      });
+      expect(response.status).toBe(410);
+      expect(response.headers.get('cache-control')).toBe('private, no-store');
+      expect(await response.json()).toMatchObject({
+        error: {
+          code: 'sign_in_expired',
+          message: 'This sign-in request is no longer valid. Start again.',
+        },
+      });
+    }
+  });
+
+  test('step-based sign-in routes dispatch bounded JSON and optional actor without caching', async () => {
+    const visitor = { client: null, address: null, captchaToken: null };
+    calls.length = 0;
+    const info = await call('GET', '/api/v1/auth/sign-in');
+    expect(info.status).toBe(200);
+    expect(info.headers.get('cache-control')).toBe('private, no-store');
+    expect(calls).toEqual([['signIn.info']]);
+    const body = { transaction: 'handle', values: { code: '123456' } };
+    for (const [path, name, prefix, suffix] of [
+      [
+        '/api/v1/auth/sign-in/plugin%3Atest%3Amethod',
+        'signIn.start',
+        ['plugin:test:method'],
+        [],
+      ],
+      [
+        '/api/v1/auth/sign-in/setup/plugin%3Atest%3Amethod',
+        'signIn.setup',
+        ['plugin:test:method'],
+        [],
+      ],
+      ['/api/v1/auth/sign-in/continue', 'signIn.continue', [], [undefined]],
+      ['/api/v1/auth/sign-in/factor', 'signIn.chooseFactor', [], []],
+    ] as const) {
+      calls.length = 0;
+      const response = await call('POST', path, {
+        body: JSON.stringify(body),
+        type: 'application/json',
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers.get('cache-control')).toBe('private, no-store');
+      expect(calls).toEqual([[name, ...prefix, body, visitor, ...suffix]]);
+      expect(
+        (await call('POST', path, { body: '{', type: 'application/json' }))
+          .status,
+      ).toBe(400);
+      expect(
+        (
+          await call('POST', path, {
+            body: JSON.stringify({ values: { code: 'a'.repeat(32 * 1024) } }),
+            type: 'application/json',
+          })
+        ).status,
+      ).toBe(413);
+    }
+    calls.length = 0;
+    await call('POST', '/api/v1/auth/sign-in/continue', {
+      token: WRITER,
+      type: 'application/json',
+      body: JSON.stringify(body),
+    });
+    expect(calls).toEqual([
+      ['signIn.continue', body, visitor, accounts[WRITER]],
+    ]);
+  });
+
+  test('account factor routes require a user, not administrator capability', async () => {
+    for (const [method, path] of [
+      ['GET', '/api/v1/auth/factors'],
+      ['POST', '/api/v1/auth/factors/plugin%3Atest%3Afactor/enroll'],
+      ['DELETE', '/api/v1/auth/factors/plugin%3Atest%3Afactor/credential'],
+    ])
+      expect((await call(method!, path!)).status).toBe(401);
+    calls.length = 0;
+    expect(
+      (await call('GET', '/api/v1/auth/factors', { token: WRITER })).status,
+    ).toBe(200);
+    expect(
+      (
+        await call(
+          'POST',
+          '/api/v1/auth/factors/plugin%3Atest%3Afactor/enroll',
+          { token: WRITER },
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await call(
+          'DELETE',
+          '/api/v1/auth/factors/plugin%3Atest%3Afactor/credential',
+          { token: WRITER },
+        )
+      ).status,
+    ).toBe(204);
+    expect(calls).toEqual([
+      ['signIn.factors', accounts[WRITER]],
+      [
+        'signIn.enroll',
+        accounts[WRITER],
+        'plugin:test:factor',
+        { client: null, address: null, captchaToken: null },
+      ],
+      [
+        'signIn.removeFactor',
+        accounts[WRITER],
+        'plugin:test:factor',
+        'credential',
+      ],
+    ]);
   });
 
   test('domain errors map to statuses and unexpected errors stay hidden', async () => {
@@ -576,12 +811,15 @@ describe('file-based routes', () => {
     expect(await (await call('GET', '/api/v1/auth/sso')).json()).toEqual({
       enabled: false,
     });
-    expect((await call('DELETE', '/api/v1/auth/sso/identity')).status).toBe(
-      401,
-    );
     expect(
-      (await call('DELETE', '/api/v1/auth/sso/identity', { token: TOKEN }))
-        .status,
+      (await call('DELETE', '/api/v1/auth/sso/identity/identity-1')).status,
+    ).toBe(401);
+    expect(
+      (
+        await call('DELETE', '/api/v1/auth/sso/identity/identity-1', {
+          token: TOKEN,
+        })
+      ).status,
     ).toBe(204);
     expect(await (await call('GET', '/api/plugins/demo')).json()).toEqual({
       gateway: 'demo',

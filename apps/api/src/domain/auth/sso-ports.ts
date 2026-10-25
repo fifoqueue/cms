@@ -1,3 +1,14 @@
+import type { SettingsRepository } from '#api/domain/site/site-service';
+
+export interface SsoAccessContext {
+  settings: SettingsRepository;
+  identities: Pick<ExternalIdentityRepository, 'findByUser' | 'unlink'>;
+}
+/** Policy writes and unlink checks share one transaction and lock across instances. */
+export interface SsoAccessTransactions {
+  run<T>(work: (context: SsoAccessContext) => Promise<T>): Promise<T>;
+}
+
 /** A fresh authorization request. `state`, `nonce` and `codeVerifier` stay on the server. */
 export interface OidcAuthorizationRequest {
   url: string;
@@ -41,14 +52,22 @@ export interface ExternalIdentityRecord extends VerifiedIdentity {
 }
 
 /**
- * Explicit links between provider identities and local users. A user has at most one.
+ * Explicit links between provider identities and local users. A user has at most one per issuer.
  * Issuer and subject are matched and kept unique byte for byte: no case folding, no
  * normalization, no padding.
  */
 export interface ExternalIdentityRepository {
   find(issuer: string, subject: string): Promise<ExternalIdentityRecord | null>;
 
-  findByUser(userId: string): Promise<ExternalIdentityRecord | null>;
+  findByUser(userId: string): Promise<ExternalIdentityRecord[]>;
+  claimUser(tokenHash: string, now: Date): Promise<string | null>;
+  /** Consumes a live token and all sibling reset/invite tokens atomically with linking.
+   * Refuses expired/consumed proofs and replacement of an existing link for that issuer. */
+  claim(
+    identity: ExternalIdentityRecord,
+    tokenHash: string,
+    now: Date,
+  ): Promise<boolean>;
 
   /**
    * Links the identity, replacing the user's previous link and, atomically with it, every
@@ -57,10 +76,12 @@ export interface ExternalIdentityRepository {
   link(identity: ExternalIdentityRecord): Promise<void>;
 
   /** Removes the user's link and, atomically with it, every session issued through it. */
-  unlink(userId: string): Promise<void>;
+  unlink(userId: string, identityId: string): Promise<void>;
 }
 
 export interface SsoTransactionRecord extends OidcChecks {
+  providerId: string;
+  claimTokenHash: string | null;
   handleHash: string;
   /** Set when the transaction links an identity to this user instead of signing in. */
   userId: string | null;

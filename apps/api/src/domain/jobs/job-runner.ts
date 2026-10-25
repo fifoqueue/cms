@@ -1,4 +1,4 @@
-import type { Clock } from '#api/domain/ports';
+import type { Clock, HookDispatcher } from '#api/domain/ports';
 import type { JobQueue } from '#api/domain/jobs/ports';
 import type { RecurringTask } from '#api/domain/jobs/scheduler';
 import type { Logger } from '#api/shared/logger';
@@ -18,6 +18,7 @@ export class RecoverableJobError extends Error {
 }
 
 export interface JobRunnerDeps {
+  hooks?: HookDispatcher;
   queue: JobQueue;
   clock: Clock;
   logger: Logger;
@@ -38,6 +39,10 @@ export class JobRunner {
   private readonly handlers = new Map<string, JobHandler>();
 
   constructor(private readonly deps: JobRunnerDeps) {}
+
+  kinds(): string[] {
+    return [...this.handlers.keys()];
+  }
 
   handle(kind: string, handler: JobHandler): () => void {
     this.handlers.set(kind, handler);
@@ -89,6 +94,12 @@ export class JobRunner {
             retry,
             recoverable,
           );
+          void this.deps.hooks?.emit('job.failed', {
+            id: job.id,
+            kind: job.kind,
+            attempts: attempt,
+            retryAt: retry?.toISOString() ?? null,
+          });
         }
       }),
     );

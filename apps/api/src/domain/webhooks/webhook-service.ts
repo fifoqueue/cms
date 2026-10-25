@@ -7,7 +7,12 @@ import { authorize } from '#api/domain/auth/authorization';
 import type { TokenIssuer } from '#api/domain/auth/ports';
 import { PermanentJobError } from '#api/domain/jobs/job-runner';
 import type { SealedJobs } from '#api/domain/jobs/sealed-jobs';
-import type { Clock, IdGenerator, SecretBox } from '#api/domain/ports';
+import type {
+  Clock,
+  HookDispatcher,
+  IdGenerator,
+  SecretBox,
+} from '#api/domain/ports';
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import { notFound, messageOf, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
@@ -61,6 +66,7 @@ export class WebhookService {
   constructor(
     private readonly deps: {
       settings: SettingsRepository;
+      hooks?: HookDispatcher;
       secrets: SecretBox;
       tokens: Pick<TokenIssuer, 'issue'>;
       sealedJobs: SealedJobs;
@@ -70,8 +76,12 @@ export class WebhookService {
     },
   ) {}
 
-  /** Queues a delivery for every enabled webhook subscribed to each core event. */
-  subscribe(hooks: HookRegistrar) {
+  /**
+   * Queues a delivery for every enabled webhook subscribed to each core event. Pass a core
+   * registration (`HookBus.core`): enqueue failures then propagate from `emit` instead of being
+   * swallowed as plugin failures. Delivery itself stays in the retried job queue.
+   */
+  subscribe(hooks: Pick<HookRegistrar, 'on'>) {
     for (const event of WEBHOOK_EVENTS)
       hooks.on(event, (data) => this.queue(event, data));
   }
@@ -93,6 +103,7 @@ export class WebhookService {
       secret: this.deps.secrets.seal(secret),
     };
     await this.save([...(await this.stored()), hook]);
+    void this.deps.hooks?.emit('webhook.created', this.toAdmin(hook));
     return { ...this.toAdmin(hook), secret };
   }
 
@@ -105,6 +116,7 @@ export class WebhookService {
     if (!hook) throw notFound(Errors.WebhookNotFound);
     Object.assign(hook, data);
     await this.save(hooks);
+    void this.deps.hooks?.emit('webhook.updated', this.toAdmin(hook));
     return this.toAdmin(hook, (await this.status())[id]);
   }
 
@@ -117,6 +129,7 @@ export class WebhookService {
     const secret = this.deps.tokens.issue();
     hook.secret = this.deps.secrets.seal(secret);
     await this.save(hooks);
+    void this.deps.hooks?.emit('webhook.updated', this.toAdmin(hook));
     return { ...this.toAdmin(hook, (await this.status())[id]), secret };
   }
 
@@ -126,6 +139,10 @@ export class WebhookService {
     if (!hooks.some((hook) => hook.id === id))
       throw notFound(Errors.WebhookNotFound);
     await this.save(hooks.filter((hook) => hook.id !== id));
+    void this.deps.hooks?.emit(
+      'webhook.deleted',
+      this.toAdmin(hooks.find((hook) => hook.id === id)!),
+    );
   }
 
   /** Queues a `ping` delivery to check the receiver. */
@@ -156,20 +173,40 @@ export class WebhookService {
     const secret = this.deps.secrets.open(hook.secret);
     if (!secret) throw new PermanentJobError(Errors.WebhookSecretUnreadable);
     const at = this.deps.clock.now().toISOString();
+    const original = data;
+    const body = (value: unknown) =>
+      JSON.stringify({ id: deliveryId, event, occurredAt, data: value });
+    const filtered = this.deps.hooks
+      ? await this.deps.hooks.applyFilter(
+          'webhook.payload',
+          original,
+          (value) =>
+            z.json().safeParse(value).success &&
+            new TextEncoder().encode(body(value)).byteLength <= 65_536,
+        )
+      : original;
     let status: number;
     try {
+      const serialized = body(filtered);
+      if (new TextEncoder().encode(serialized).byteLength > 65_536)
+        throw new PermanentJobError(Errors.WebhookInvalidJob);
       status = await this.deps.transport.send({
         url: hook.url,
         secret,
         event,
         deliveryId,
-        body: JSON.stringify({ id: deliveryId, event, occurredAt, data }),
+        body: serialized,
       });
     } catch (error) {
       await this.record(hook.id, {
         lastStatus: null,
         lastError: messageOf(error).slice(0, 300),
         lastAttemptAt: at,
+      });
+      void this.deps.hooks?.emit('webhook.failed', {
+        id: hook.id,
+        deliveryId,
+        status: null,
       });
       throw error;
     }
@@ -178,6 +215,11 @@ export class WebhookService {
       lastStatus: status,
       lastError: ok ? null : Errors.WebhookStatus(status),
       lastAttemptAt: at,
+    });
+    void this.deps.hooks?.emit(ok ? 'webhook.delivered' : 'webhook.failed', {
+      id: hook.id,
+      deliveryId,
+      status,
     });
     if (ok) return;
     if (status >= 400 && status < 500 && status !== 408 && status !== 429)

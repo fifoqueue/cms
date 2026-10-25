@@ -10,6 +10,8 @@ import type {
   PublicPrivacy,
 } from '#sdk/privacy';
 import type { Request } from '#sdk/transport';
+import { privacyErasureReportSchema } from '#sdk/user-contracts';
+import type { PrivacyErasureReport } from '#sdk/user-contracts';
 import { pageSchema } from '#sdk/transport';
 import type { Paginated } from '#sdk/common';
 import { visitorHeaders } from '#sdk/clients/security';
@@ -55,9 +57,10 @@ export const privacyAdminClient = (request: Request) => ({
         { raw: true },
       ),
     erase: (id: string) =>
-      request<void>(
+      request<PrivacyErasureReport>(
         'POST',
         `/api/v1/admin/privacy/requests/${encodeURIComponent(id)}/erase`,
+        { response: privacyErasureReportSchema },
       ),
   },
 });

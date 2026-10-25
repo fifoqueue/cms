@@ -1,0 +1,18 @@
+# 읽기·메뉴·위젯
+
+상위 문서: [AGENTS.md](../../AGENTS.md)
+
+Menu items may use `kind: 'plugin'` with `provider` and `objectId`. The registered
+resolver returns a validated public link/title; missing or failed contributed
+types are omitted without erasing the saved item. Core home/custom/content/term/
+archive types use the same registry. Menu and widget save filters are validated
+before persistence; lifecycle actions and reading/writing section notifications
+run after successful persistence.
+
+- Site identity (Settings → General): a site icon (favicon/`apple-touch-icon`; `/favicon.ico` redirects to it or the default icon without rendering a page), a custom logo for the `site-logo` block (also the JSON-LD logo when SEO has none), and the public login path/link visibility. Login paths share the permalink lock with content and archive routes; a legacy collision keeps the content route and uses the first free reserved public `/cms-login[-N]` fallback until the administrator saves another path. `<html lang dir>` follows the site locale on public pages (`locals.lang`, set by the site layout).
+- Body images are served with `srcset`/`sizes` from the library's WebP sizes, intrinsic dimensions and lazy loading after the first image (`domain/content/responsive-images.ts`). Served bodies are expanded in this order: synced patterns, embeds, plugin blocks (so blocks inside patterns render too), responsive images. Content and pattern saves both check plugin block attributes.
+- 댓글과 글쓴이 공개 DTO의 아바타는 이메일이나 이메일 다이제스트 대신 서명된 `/avatars/…` URL만 담습니다. 웹의 같은 출처 프록시가 API에 전달하고, API가 공개 댓글/글쓴이 키를 이메일로 해석해 Gravatar를 제한 시간·크기·이미지 형식으로 가져와 캐시합니다. 실패하면 선택한 기본 스타일의 로컬 이미지로 대체합니다.
+
+- Reading settings choose the front page (latest posts, or a static page plus a posts page), posts per page, feed size and content (full text or excerpt), date format and time zone. The static front page is served at `/` (its own path redirects there, and it is canonical at `/`); the posts page lists posts with sticky entries first.
+- Menus (`primary`, `footer` locations) and widgets (`sidebar`, `footer` areas) are core settings. The menu editor needs only `appearance.manage`: its pickers read the public published-only API, and `GET /api/v1/admin/menus/targets` labels the published entries saved menus link to (`{ id, title, type }`, read in chunks from the published projection). Public menu and widget DTOs resolve targets server-side and drop anything not public. Themes fall back to the pages list and categories when no menu or widget is set. Date archives live at `/date/<year>[/<month>[/<day>]]` (site time zone) and are never indexed. The Text widget supports `**bold**`, `*italic*` and `[links](…)`: the API returns runs (`paragraphs`) with checked links, never HTML. The Image widget takes a media-library image, alt text and a checked link. There is no Custom HTML widget (no unfiltered-HTML capability exists).
+- Site editor: undo/redo (buttons, Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z; text fields keep their own undo) for templates, parts and Global Styles, which preview live before saving; List View (select, move, remove), click-to-select on the live canvas (blocks are marked with `data-block-path` only there), block settings and a searchable inserter in the sidebar. The public toolbar shows "Edit" only when the viewer may edit the entry (own published entries need `content.publish`, others' `content.editOthers`) and "Edit category/tag" on term archives for `taxonomy.manage`. Public menu and widget DTOs resolve targets server-side and drop anything not public. Themes fall back to the pages list and categories when no menu or widget is set. Date archives live at `/date/<year>[/<month>[/<day>]]` (site time zone) and are never indexed.

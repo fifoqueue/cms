@@ -66,15 +66,25 @@ export class MemoryTaxonomyRepository implements TaxonomyRepository {
 
   async delete(id: string) {
     const term = this.terms.get(id);
-    if (!term) return;
+    if (!term) return [];
+    const affected: string[] = [];
     for (const child of this.terms.values())
       if (child.parentId === id) child.parentId = term.parentId;
     for (const row of this.content.rows.values()) {
+      if (
+        [
+          ...row.categoryIds,
+          ...row.tagIds,
+          ...(row.extraTermIds ?? []),
+        ].includes(id)
+      )
+        affected.push(row.id);
       row.categoryIds = row.categoryIds.filter((other) => other !== id);
       row.tagIds = row.tagIds.filter((other) => other !== id);
       row.extraTermIds = row.extraTermIds?.filter((other) => other !== id);
     }
     this.terms.delete(id);
+    return affected;
   }
 
   private async check(record: TaxonomyTermRecord) {

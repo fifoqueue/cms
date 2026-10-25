@@ -9,7 +9,14 @@ import {
 /** Categories are hierarchical, tags are flat (WordPress semantics). */
 export const TAXONOMY_TYPES = ['category', 'tag'] as const;
 
-export const taxonomyTypeSchema = z.string().min(1).max(32).regex(KEBAB_CASE);
+const customTaxonomyKeySchema = z.string().min(1).max(32).regex(KEBAB_CASE);
+export const taxonomyTypeSchema = z.union([
+  customTaxonomyKeySchema,
+  z
+    .string()
+    .max(136)
+    .regex(/^plugin:[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/),
+]);
 
 export type TaxonomyType = z.output<typeof taxonomyTypeSchema>;
 
@@ -19,7 +26,9 @@ export const taxonomyDefinitionSchema = z.object({
   hierarchical: z.boolean().default(true),
 });
 
-export const taxonomyDefinitionInputSchema = taxonomyDefinitionSchema;
+export const taxonomyDefinitionInputSchema = taxonomyDefinitionSchema.extend({
+  key: customTaxonomyKeySchema,
+});
 
 export type TaxonomyDefinition = z.output<typeof taxonomyDefinitionSchema>;
 export type TaxonomyDefinitionInput = z.input<

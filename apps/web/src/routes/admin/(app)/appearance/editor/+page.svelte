@@ -307,6 +307,18 @@
       await update({ reset: false });
     };
 
+  /**
+   * The plugin that contributed a template or part, while it is not customized: shown as the
+   * plugin's until saving here creates an override.
+   */
+  const contributor = (item: { source?: string; customized: boolean }) =>
+    item.source &&
+    item.source !== 'theme' &&
+    item.source !== 'admin' &&
+    !item.customized
+      ? item.source
+      : null;
+
   const navItem =
     'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm hover:bg-muted aria-[current=page]:bg-muted aria-[current=page]:font-medium';
 </script>
@@ -399,7 +411,10 @@
           <span class="min-w-0 flex-1 truncate"
             >{m.templateLabel(template.name)}</span
           >
-          {#if !template.inTheme}<Badge variant="secondary"
+          {#if contributor(template)}<Badge variant="secondary"
+              >{m.editorFromPlugin(contributor(template)!)}</Badge
+            >
+          {:else if !template.inTheme}<Badge variant="secondary"
               >{m.editorAdded}</Badge
             >
           {:else if template.customized}<Badge variant="outline"
@@ -465,7 +480,10 @@
         >
           <Puzzle class="size-4 shrink-0" />
           <span class="min-w-0 flex-1 truncate">{part.title}</span>
-          {#if part.customized}<Badge variant="outline"
+          {#if contributor(part)}<Badge variant="secondary"
+              >{m.editorFromPlugin(contributor(part)!)}</Badge
+            >
+          {:else if part.customized}<Badge variant="outline"
               >{m.editorCustomized}</Badge
             >{/if}
         </a>
@@ -669,9 +687,13 @@
               field: 'name',
               value: selected.template.name,
               customized: selected.template.customized,
-              resetLabel: selected.template.inTheme
-                ? m.editorReset
-                : m.editorDelete,
+              plugin: contributor(selected.template),
+              readOnly: selected.template.readOnly === true,
+              kind: 'template',
+              resetLabel:
+                selected.template.inTheme || contributor(selected.template)
+                  ? m.editorReset
+                  : m.editorDelete,
             }
           : {
               title: selected.part.title,
@@ -683,6 +705,9 @@
               field: 'slug',
               value: selected.part.slug,
               customized: selected.part.customized,
+              plugin: contributor(selected.part),
+              readOnly: selected.part.readOnly === true,
+              kind: 'part',
               resetLabel: m.editorReset,
             }}
       <!-- `overflow-clip` rounds the corners like the card's `overflow-hidden` without becoming a scroll container, so the editor's side panels can stick while the page scrolls. -->
@@ -690,6 +715,9 @@
         <CardHeader>
           <CardTitle class="flex flex-wrap items-center gap-2">
             {item.title}
+            {#if item.plugin}<Badge variant="secondary"
+                >{m.editorFromPlugin(item.plugin)}</Badge
+              >{/if}
             {#if item.customized}<Badge variant="outline"
                 >{m.editorCustomized}</Badge
               >{/if}
@@ -697,89 +725,127 @@
           <CardDescription class="font-mono text-xs"
             >{item.detail}</CardDescription
           >
+          {#if item.plugin}
+            <p class="text-sm text-muted-foreground">
+              {m.editorPluginReadOnly}
+            </p>
+          {/if}
         </CardHeader>
         <CardContent class="space-y-4">
-          {#key `${editor.id}/${item.key}/${item.customized}`}
-            <form
-              id="theme-blocks"
-              hidden
-              method="POST"
-              action={item.save}
-              use:enhance={keep}
-            >
-              <input type="hidden" name="theme" value={editor.id} />
-              <input type="hidden" name={item.field} value={item.value} />
-            </form>
-            <div class="space-y-4">
-              <BlockTreeEditor
-                form="theme-blocks"
-                blocks={item.blocks}
-                {colors}
-                {parts}
-                onchange={(changed, tree) => {
-                  dirty = changed;
-                  canvasBlocks = tree;
-                }}
-                onselect={(key) => (selectedBlock = key)}
+          {#if item.readOnly}
+            <!-- Plugin-provided: shown as is; editing starts from the administrator's own copy. -->
+            <div class="overflow-auto rounded border bg-muted p-2">
+              <div
+                class="cms-site cms-editor-canvas mx-auto min-h-64 bg-background text-foreground"
+                style={themeStyle(data.canvas.theme)}
+                inert
               >
-                {#snippet canvas(select)}
-                  <div class="mb-2 flex items-center justify-between gap-2">
-                    <span class="text-sm font-medium"
-                      >{m.editorLivePreview}</span
-                    >
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      aria-pressed={mobile}
-                      onclick={() => (mobile = !mobile)}
-                      >{m.editorMobilePreview}</Button
-                    >
-                  </div>
-                  <div class="overflow-auto rounded border bg-muted p-2">
-                    <FormMessage form={previewError} />
-                    <!-- Clicking selects the block under the pointer; List View offers the same by keyboard. -->
-                    <div
-                      class="cms-site cms-editor-canvas mx-auto min-h-64 cursor-default bg-background text-foreground"
-                      style={`${themeStyle(data.canvas.theme)}; width: ${mobile ? '375px' : '100%'}; max-width: 100%`}
-                      onclickcapture={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        const target = (event.target as Element).closest(
-                          '[data-block-path]',
-                        );
-                        const key = target?.getAttribute('data-block-path');
-                        if (key) select(key.split('.').map(Number));
-                      }}
-                      onsubmitcapture={(event) => event.preventDefault()}
-                    >
-                      {#if data.previewPage}
-                        <TemplateView
-                          data={{
-                            ...data.canvas,
-                            ...canvasData,
-                          }}
-                          page={data.previewPage}
-                          previewBlocks={canvasBlocks ?? item.blocks}
-                          editable
-                        />
-                      {:else}
-                        <p class="p-4 text-muted-foreground">{m.noPosts}</p>
-                      {/if}
-                    </div>
-                  </div>
-                {/snippet}
-              </BlockTreeEditor>
-              <div class="flex flex-wrap items-center gap-3 border-t pt-4">
-                <Button type="submit" form="theme-blocks">{m.save}</Button>
-                {#if dirty}
-                  <span class="text-sm text-muted-foreground" role="status"
-                    >{m.editorUnsaved}</span
-                  >
+                {#if data.previewPage}
+                  <TemplateView
+                    data={{ ...data.canvas, ...canvasData }}
+                    page={data.previewPage}
+                    previewBlocks={item.blocks}
+                  />
+                {:else}
+                  <p class="p-4 text-muted-foreground">{m.noPosts}</p>
                 {/if}
               </div>
             </div>
-          {/key}
+            <form
+              method="POST"
+              action="?/customize"
+              use:enhance
+              class="flex flex-wrap items-center gap-3 border-t pt-4"
+            >
+              <input type="hidden" name="theme" value={editor.id} />
+              <input type="hidden" name="kind" value={item.kind} />
+              <input type="hidden" name="key" value={item.value} />
+              <Button type="submit">{m.editorCustomize}</Button>
+              <Button type="button" disabled>{m.save}</Button>
+            </form>
+          {:else}
+            {#key `${editor.id}/${item.key}/${item.customized}`}
+              <form
+                id="theme-blocks"
+                hidden
+                method="POST"
+                action={item.save}
+                use:enhance={keep}
+              >
+                <input type="hidden" name="theme" value={editor.id} />
+                <input type="hidden" name={item.field} value={item.value} />
+              </form>
+              <div class="space-y-4">
+                <BlockTreeEditor
+                  form="theme-blocks"
+                  blocks={item.blocks}
+                  {colors}
+                  {parts}
+                  onchange={(changed, tree) => {
+                    dirty = changed;
+                    canvasBlocks = tree;
+                  }}
+                  onselect={(key) => (selectedBlock = key)}
+                >
+                  {#snippet canvas(select)}
+                    <div class="mb-2 flex items-center justify-between gap-2">
+                      <span class="text-sm font-medium"
+                        >{m.editorLivePreview}</span
+                      >
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        aria-pressed={mobile}
+                        onclick={() => (mobile = !mobile)}
+                        >{m.editorMobilePreview}</Button
+                      >
+                    </div>
+                    <div class="overflow-auto rounded border bg-muted p-2">
+                      <FormMessage form={previewError} />
+                      <!-- Clicking selects the block under the pointer; List View offers the same by keyboard. -->
+                      <div
+                        class="cms-site cms-editor-canvas mx-auto min-h-64 cursor-default bg-background text-foreground"
+                        style={`${themeStyle(data.canvas.theme)}; width: ${mobile ? '375px' : '100%'}; max-width: 100%`}
+                        onclickcapture={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          const target = (event.target as Element).closest(
+                            '[data-block-path]',
+                          );
+                          const key = target?.getAttribute('data-block-path');
+                          if (key) select(key.split('.').map(Number));
+                        }}
+                        onsubmitcapture={(event) => event.preventDefault()}
+                      >
+                        {#if data.previewPage}
+                          <TemplateView
+                            data={{
+                              ...data.canvas,
+                              ...canvasData,
+                            }}
+                            page={data.previewPage}
+                            previewBlocks={canvasBlocks ?? item.blocks}
+                            editable
+                          />
+                        {:else}
+                          <p class="p-4 text-muted-foreground">{m.noPosts}</p>
+                        {/if}
+                      </div>
+                    </div>
+                  {/snippet}
+                </BlockTreeEditor>
+                <div class="flex flex-wrap items-center gap-3 border-t pt-4">
+                  <Button type="submit" form="theme-blocks">{m.save}</Button>
+                  {#if dirty}
+                    <span class="text-sm text-muted-foreground" role="status"
+                      >{m.editorUnsaved}</span
+                    >
+                  {/if}
+                </div>
+              </div>
+            {/key}
+          {/if}
           {#if item.customized}
             <form method="POST" action={item.reset} use:enhance={confirmReset}>
               <input type="hidden" name="theme" value={editor.id} />

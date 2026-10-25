@@ -25,7 +25,7 @@
 
 {#if login.kind === 'login'}
   <LoginForm
-    sso={login.sso}
+    signIn={login.signIn}
     captcha={login.captcha}
     membership={login.membership}
     back={login.back}

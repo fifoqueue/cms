@@ -8,6 +8,8 @@ import {
   notFound,
 } from '#lib/server/seo-discovery.js';
 import { markdownPath } from '#lib/seo/paths.js';
+import { contentMarkdown } from '#lib/server/markdown.js';
+import { filterDiscovery } from '#lib/server/seo-filter.js';
 import type { RequestHandler } from './$types';
 
 /**
@@ -15,9 +17,10 @@ import type { RequestHandler } from './$types';
  * this URL survives permalink changes; the canonical link names the HTML page. Entries that
  * are noindex, canonicalised elsewhere or hidden by global indexing return 404.
  */
-export const GET: RequestHandler = async ({ fetch, params, url }) => {
+export const GET: RequestHandler = async (event) => {
+  const { params, url } = event;
   if (!CONTENT_SLUG.test(params.slug)) return notFound();
-  const api = contentApi(fetch);
+  const api = contentApi(event.fetch);
   const [settings, content] = await Promise.all([
     api.seo.settings(),
     api.getBySlug(params.slug).catch(notFoundFrom),
@@ -28,5 +31,11 @@ export const GET: RequestHandler = async ({ fetch, params, url }) => {
   const canonicalPath = markdownPath(content.slug);
   if (url.pathname !== canonicalPath)
     redirect(308, `${canonicalPath}${url.search}`);
-  return markdownResponse(content, settings);
+  const [markdown] = await filterDiscovery(event, [
+    {
+      kind: 'seo.markdown',
+      value: contentMarkdown(content, settings.siteUrl),
+    },
+  ]);
+  return markdownResponse(content, settings, markdown);
 };

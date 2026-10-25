@@ -11,6 +11,7 @@ export interface TaskLeases {
     owner: string,
     leaseMs: number,
     now: Date,
+    options?: { ignoreDue?: boolean },
   ): Promise<boolean>;
   /** Extends a lease only while `owner` still holds it. */
   extend(

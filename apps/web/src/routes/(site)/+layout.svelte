@@ -4,6 +4,7 @@
   import { page } from '$app/state';
   import type { SlotMap } from '@cms/sdk';
   import { buildHead, sitePage } from '#lib/seo/head.js';
+  import type { SeoMeta } from '#lib/seo/head.js';
   import SeoHead from '#lib/seo/SeoHead.svelte';
   import Toasts from '#lib/components/Toasts.svelte';
   import AdminBar from '#lib/theme/AdminBar.svelte';
@@ -30,6 +31,8 @@
       site: data.site,
       settings: data.seo,
       page: sitePage(page.data),
+      // Set by the page's server load when a plugin's `seo.meta` filter changed the head.
+      filtered: page.data.seoMeta as SeoMeta | null | undefined,
     }),
   );
 

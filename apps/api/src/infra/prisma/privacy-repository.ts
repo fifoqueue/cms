@@ -1,4 +1,6 @@
 import type { PrivacyAction } from '@cms/sdk';
+import { profileValuesSchema } from '@cms/sdk/plugin';
+import { profileMetaKey } from '#api/infra/prisma/profile-meta';
 import type {
   PersonalSection,
   PrivacyRecord,
@@ -11,8 +13,9 @@ import { Prisma } from '#api/infra/prisma/generated/client';
 import { openJob } from '#api/domain/jobs/payload';
 import {
   lockPermalinks,
-  refreshContentPaths,
+  queueContentPaths,
 } from '#api/infra/prisma/permalink-repository';
+import type { PermalinkTokenRegistry } from '#api/domain/permalinks/token-registry';
 import { conflict, invalidInput, Errors } from '#api/shared/errors';
 
 const dates = (row: object): Record<string, unknown> =>
@@ -27,6 +30,8 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
   constructor(
     private readonly db: Database,
     private readonly secrets: SecretBox,
+    private readonly kick: () => void = () => {},
+    private readonly tokens?: PermalinkTokenRegistry,
   ) {}
   async insert(request: PrivacyRecord) {
     await this.db.privacyRequest.create({ data: request });
@@ -74,6 +79,20 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
     });
     const page = { take: limit, orderBy: { id: 'asc' as const } };
     const id = after ? { gt: after } : undefined;
+    if (section === 'profileFields') {
+      if (!user || after) return [];
+      const row = await this.db.setting.findUnique({
+        where: { key: profileMetaKey(user.id) },
+      });
+      return row
+        ? [
+            {
+              id: user.id,
+              values: profileValuesSchema.parse(JSON.parse(row.value)),
+            },
+          ]
+        : [];
+    }
     if (section === 'profile') {
       if (!user || after) return [];
       const row = await this.db.user.findUnique({
@@ -117,6 +136,45 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
         })
       ).map(dates);
     if (!user) return [];
+    if (section === 'passkeys')
+      return (
+        await this.db.passkey.findMany({
+          ...page,
+          where: { id, userId: user.id },
+          select: { id: true, name: true, createdAt: true },
+        })
+      ).map((row) => ({
+        id: row.id,
+        factor: 'passkey',
+        label: row.name,
+        createdAt: row.createdAt.toISOString(),
+      }));
+    if (section === 'totp')
+      return (
+        await this.db.totpSecret.findMany({
+          ...page,
+          where: { id, userId: user.id },
+          select: { id: true, createdAt: true },
+        })
+      ).map((row) => ({
+        id: row.id,
+        factor: 'totp',
+        label: 'Authenticator app',
+        createdAt: row.createdAt.toISOString(),
+      }));
+    if (section === 'recoveryCodes')
+      return (
+        await this.db.recoveryCode.findMany({
+          ...page,
+          where: { id, userId: user.id },
+          select: { id: true, createdAt: true },
+        })
+      ).map((row) => ({
+        id: row.id,
+        factor: 'recovery-code',
+        label: 'Recovery code',
+        createdAt: row.createdAt.toISOString(),
+      }));
     if (section === 'apiTokens')
       return (
         await this.db.apiToken.findMany({
@@ -286,8 +344,15 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
           },
         });
         if (user) {
+          await tx.setting.deleteMany({
+            where: { key: profileMetaKey(user.id) },
+          });
           await tx.session.deleteMany({ where: { userId: user.id } });
           await tx.passwordToken.deleteMany({ where: { userId: user.id } });
+          await tx.recoveryCode.deleteMany({ where: { userId: user.id } });
+          await tx.passkey.deleteMany({ where: { userId: user.id } });
+          await tx.totpSecret.deleteMany({ where: { userId: user.id } });
+          await tx.signInTransaction.deleteMany({ where: { userId: user.id } });
           await tx.apiToken.deleteMany({ where: { userId: user.id } });
           await tx.ssoTransaction.deleteMany({ where: { userId: user.id } });
           await tx.userIdentity.deleteMany({ where: { userId: user.id } });
@@ -318,7 +383,7 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
               role: 'subscriber',
             },
           });
-          await refreshContentPaths(tx, { authorId: user.id });
+          await queueContentPaths(tx, { authorId: user.id }, this.tokens);
           await tx.searchOutbox.create({ data: { contentId: null } });
         }
         await tx.privacyRequest.updateMany({
@@ -333,5 +398,6 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
       },
       { timeout: 60000 },
     );
+    this.kick();
   }
 }

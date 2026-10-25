@@ -1,5 +1,5 @@
 import type { ProtectedAction, RateRule, RateRuleName } from '@cms/sdk';
-import type { Clock } from '#api/domain/ports';
+import type { Clock, HookDispatcher, Signer } from '#api/domain/ports';
 import type {
   CaptchaVerifier,
   RateLimitStore,
@@ -44,6 +44,8 @@ const RULES: Record<
 export class ProtectionService {
   constructor(
     private readonly deps: {
+      hooks?: HookDispatcher;
+      signer?: Signer;
       settings: SecuritySettingsService;
       store: RateLimitStore;
       captcha: CaptchaVerifier;
@@ -65,14 +67,19 @@ export class ProtectionService {
     let limited = false;
     for (const { rule, key } of this.applicable(attempt, policy.rules)) {
       if (!(await this.deps.store.hit(key, rule, now))) continue;
-      if (rule.enforcement === 'block' || !captchaOn)
+      if (rule.enforcement === 'block' || !captchaOn) {
+        this.blocked(attempt, 'rate_limited');
         throw rateLimited(Errors.TooManyAttempts);
+      }
       limited = true;
     }
 
     if (!captchaOn) return;
     if (captcha.modes[attempt.action] === 'limited' && !limited) return;
-    if (!attempt.captchaToken) throw captchaRequired();
+    if (!attempt.captchaToken) {
+      this.blocked(attempt, 'captcha_required');
+      throw captchaRequired();
+    }
     const solved = await this.deps.captcha.verify({
       provider: captcha.provider as Exclude<typeof captcha.provider, 'none'>,
       secret: captcha.secretKey!,
@@ -80,7 +87,26 @@ export class ProtectionService {
       address: attempt.address,
       minimumScore: captcha.minimumScore,
     });
-    if (!solved) throw captchaRequired(Errors.CaptchaInvalid);
+    if (!solved) {
+      this.blocked(attempt, 'captcha_invalid');
+      throw captchaRequired(Errors.CaptchaInvalid);
+    }
+  }
+
+  private blocked(
+    attempt: Attempt,
+    reason: 'rate_limited' | 'captcha_required' | 'captcha_invalid',
+  ) {
+    const digest = (kind: string, value: string | null | undefined) =>
+      value
+        ? (this.deps.signer?.sign(`protection:${kind}:${value}`) ?? null)
+        : null;
+    void this.deps.hooks?.emit('protection.blocked', {
+      action: attempt.action,
+      reason,
+      accountDigest: digest('account', attempt.account),
+      addressDigest: digest('address', attempt.address),
+    });
   }
 
   private applicable(attempt: Attempt, rules: Record<RateRuleName, RateRule>) {

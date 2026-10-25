@@ -16,10 +16,12 @@ export const httpCaptchaVerifier = (
   fetcher: typeof fetch = fetch,
 ): CaptchaVerifier => ({
   async verify({ provider, secret, token, address, minimumScore }) {
+    const endpoint = ENDPOINTS[provider];
+    if (!endpoint) return false;
     const body = new URLSearchParams({ secret, response: token });
     if (address) body.set('remoteip', address);
     try {
-      const response = await fetcher(ENDPOINTS[provider], {
+      const response = await fetcher(endpoint, {
         method: 'POST',
         body,
         signal: AbortSignal.timeout(TIMEOUT_MS),

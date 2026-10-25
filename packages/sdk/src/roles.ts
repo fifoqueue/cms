@@ -1,11 +1,12 @@
 import { z } from 'zod';
-import { CAPABILITIES } from '#sdk/capabilities';
+import { capabilitySchema } from '#sdk/capability-contracts';
 import { roleSchema } from '#sdk/auth';
 
 export const roleDefinitionSchema = z.object({
   key: roleSchema,
+  source: z.string().min(1).max(191).optional(),
   name: z.string().trim().min(1).max(100),
-  capabilities: z.array(z.enum(CAPABILITIES)).max(CAPABILITIES.length),
+  capabilities: z.array(capabilitySchema).max(1000),
 });
 export type RoleDefinition = z.output<typeof roleDefinitionSchema>;
 /** Deleting a custom role: its users get `reassignTo` first. */

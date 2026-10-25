@@ -42,7 +42,7 @@ export const CAPABILITIES = [
   'tools.manage',
 ] as const;
 
-export type Capability = (typeof CAPABILITIES)[number];
+export type Capability = string;
 
 const contributor: readonly Capability[] = ['content.create'];
 const author: readonly Capability[] = [

@@ -1,6 +1,9 @@
+import { Errors as SdkErrors } from '@cms/sdk/errors';
+
 export type ErrorCode =
   | 'invalid_input'
   | 'unauthorized'
+  | 'sign_in_expired'
   | 'forbidden'
   | 'not_found'
   | 'conflict'
@@ -41,30 +44,30 @@ export const Errors = {
   JobFailed: 'Job delivery failed',
 
   CommentEmailRequired: 'Enter an email address.',
-  AuthenticationRequired: 'Authentication required',
-  Forbidden: 'You do not have permission to do this',
+  AuthenticationRequired: SdkErrors.AuthenticationRequired,
+  Forbidden: SdkErrors.Forbidden,
   PatternNotFound: 'Pattern not found',
   PatternLimit: 'A site can keep at most 500 patterns',
-  TooManyAttempts: 'Too many attempts. Please wait a while and try again.',
-  CaptchaRequired: 'Please confirm that you are not a robot.',
-  CaptchaInvalid: 'The robot check failed. Please try again.',
+  TooManyAttempts: SdkErrors.TooManyAttempts,
+  CaptchaRequired: SdkErrors.CaptchaRequired,
+  CaptchaInvalid: SdkErrors.CaptchaInvalid,
   UserNotFound: 'User not found',
   SessionNotFound: 'Session not found',
-  PasswordResetLimit:
-    'Too many password reset emails were sent. Try again later.',
+  PasswordResetLimit: SdkErrors.PasswordResetLimit,
   PasswordRequired:
     'Enter a password, or set up email delivery to send an invitation',
   LastAdministrator: 'The site needs at least one administrator',
   UserDeleteSelf: 'You cannot delete your own account',
   ReassignTargetInvalid: 'Choose another existing user to receive the content',
   RouteNotFound: 'Route not found',
-  Internal: 'Internal server error',
+  Internal: SdkErrors.Internal,
   InstallRequired: '먼저 웹사이트에서 설치를 완료해 주세요.',
   PluginRouteFailed: 'The plugin failed to handle this request',
-  InvalidInput: 'Invalid input',
-  RequestBodyNotJson: 'Request body must be JSON',
-  RequestBodyTooLarge: 'Request body is too large',
-  InvalidCredentials: 'Invalid email or password',
+  InvalidInput: SdkErrors.InvalidInput,
+  RequestBodyNotJson: SdkErrors.RequestBodyNotJson,
+  RequestBodyTooLarge: SdkErrors.RequestBodyTooLarge,
+  InvalidCredentials: SdkErrors.InvalidCredentials,
+  SecondFactorFailed: SdkErrors.SecondFactorFailed,
   SetupCompleted: 'Setup has already been completed',
   EmailRegistered: 'Email is already registered',
   EmailChangeRestricted:
@@ -95,6 +98,8 @@ export const Errors = {
     `You can upload ${max} files per hour. Please wait and try again.`,
   MediaTypeUnsupported:
     'This file type is not supported. Upload JPEG, PNG, GIF, WebP, AVIF, PDF, MP3, WAV, Ogg, MP4 or WebM. Safe SVG files are accepted when SVG uploads are enabled.',
+  MediaUploadRefused: 'This upload was refused.',
+  MediaProcessorMissing: 'No core media processor is registered',
   MediaInUse: (count: number) =>
     `The file is used by ${count} ${count === 1 ? 'entry' : 'entries'}; delete it anyway to remove it from them`,
   ContentTypeUnknown: 'Choose an existing content type',
@@ -182,6 +187,9 @@ export const Errors = {
   PluginBundleUnloadable: 'Plugin bundle could not be loaded; install it again',
   PluginBundleImport: 'Could not import plugin bundle',
   PluginExportMissing: 'Bundle has no `plugin` export',
+  SignInStateTooLarge: 'Sign-in state exceeds 8 KB',
+  SignInExpired: SdkErrors.SignInExpired,
+  SignInRegistrationInvalid: 'Invalid or duplicate authentication registration',
   PluginActivateInvalid: '`plugin.activate` must be a function',
   PluginDeactivateInvalid: '`plugin.deactivate` must be a function',
   PluginBundleNameInvalid: (entry: string) => `Invalid bundle name "${entry}"`,
@@ -210,31 +218,35 @@ export const Errors = {
     `Widget key "${key}" must be kebab-case`,
   PluginTimedOut: (timeoutMs: number) => `Timed out after ${timeoutMs}ms`,
 
-  SsoNotFound: 'Single sign-on not found',
-  SsoRateLimited:
-    'Too many sign-in attempts. Please wait a minute and try again.',
-  SsoPendingLimit:
-    'Too many sign-in requests are in progress. Please try again in a few minutes.',
-  SsoRequestExpired: 'The sign-in request has expired. Please try again.',
-  SsoLinkSignInRequired: 'Sign in again before linking single sign-on.',
-  SsoAccountUnusable: 'This single sign-on account cannot be used here.',
-  SsoAccountAssigned: 'This account is assigned by the server configuration.',
-  SsoAccountNotLinked:
-    'This single sign-on account is not linked to an administrator.',
-  SsoAccountUnlinked:
-    'This single sign-on account is no longer linked. Please try again.',
-  SsoFailed: 'Single sign-on failed. Please try again.',
-  SsoAccountLinkedElsewhere:
-    'This single sign-on account is already linked to another administrator.',
+  SsoNotFound: SdkErrors.SsoNotFound,
+  PasswordLoginDisabled: SdkErrors.PasswordLoginDisabled,
+  SsoProviderRequired: SdkErrors.SsoProviderRequired,
+  SsoAccessRequired: SdkErrors.SsoAccessRequired,
+  SsoLastAccess: SdkErrors.SsoLastAccess,
+  SsoRateLimited: SdkErrors.SsoRateLimited,
+  SsoPendingLimit: SdkErrors.SsoPendingLimit,
+  SsoRequestExpired: SdkErrors.SsoRequestExpired,
+  SsoLinkSignInRequired: SdkErrors.SsoLinkSignInRequired,
+  SsoAccountUnusable: SdkErrors.SsoAccountUnusable,
+  SsoAccountAssigned: SdkErrors.SsoAccountAssigned,
+  SsoAccountNotLinked: SdkErrors.SsoAccountNotLinked,
+  SsoAccountUnlinked: SdkErrors.SsoAccountUnlinked,
+  SsoFailed: SdkErrors.SsoFailed,
+  SsoAccountLinkedElsewhere: SdkErrors.SsoAccountLinkedElsewhere,
 
-  EmailDisabled: 'Set up and enable email delivery first',
+  EmailDisabled: SdkErrors.EmailDisabled,
+  /** Shared with the SDK so the admin UI can recognize it as a field issue. */
+  EmailSecretRequired: SdkErrors.EmailSecretRequired,
+  EmailHttpFailed: (status: number, excerpt: string) =>
+    `Email API returned HTTP ${status}: ${excerpt}`,
+  EmailNetworkFailed: 'Email API request failed or timed out',
+  EmailTemplateInvalid: 'The custom email template is not valid JSON',
   EmailSendFailed: (detail: string) =>
     `The mail server refused the message: ${detail}`,
   EmailInvalidJob: 'The queued message is not valid',
-  SiteUrlRequired: 'Set the public site address in the SEO settings first',
-  PasswordTokenInvalid:
-    'This link is invalid or has expired. Ask for a new one.',
-  CurrentPasswordWrong: 'The current password is not correct',
+  SiteUrlRequired: SdkErrors.SiteUrlRequired,
+  PasswordTokenInvalid: SdkErrors.PasswordTokenInvalid,
+  CurrentPasswordWrong: SdkErrors.CurrentPasswordWrong,
   ApiTokenNotFound: 'Token not found',
   JobKindUnknown: (kind: string) => `No handler for job kind "${kind}"`,
   JobPayloadInvalid: 'The queued job payload is not valid',
@@ -278,6 +290,8 @@ export const invalidInput = (message: string, issues?: unknown) =>
   new DomainError('invalid_input', message, issues);
 export const unauthorized = (message: string = Errors.AuthenticationRequired) =>
   new DomainError('unauthorized', message);
+export const expiredSignIn = () =>
+  new DomainError('sign_in_expired', Errors.SignInExpired);
 export const notFound = (message: string) =>
   new DomainError('not_found', message);
 export const conflict = (message: string) =>

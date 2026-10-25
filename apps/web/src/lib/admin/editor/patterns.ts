@@ -45,6 +45,38 @@ export const patternContent = async (
     : null;
 };
 
+/** A plugin-contributed pattern: inserted as a copy of its document, never synced. */
+export interface ContributedPattern {
+  id: string;
+  title: string;
+  /** The plugin that contributed it. */
+  source: string;
+  document: { content?: JSONContent[] };
+}
+
+/** Contributed patterns; an empty list when they cannot be read. */
+export const loadContributedPatterns = async (): Promise<
+  ContributedPattern[]
+> => {
+  const response = await fetch(
+    `${resolve('/admin/(app)/patterns/api')}?contributions`,
+  ).catch(() => null);
+  if (!response?.ok || response.redirected) return [];
+  const list = (await response.json().catch(() => null)) as unknown;
+  return Array.isArray(list) ? (list as ContributedPattern[]) : [];
+};
+
+/** Contributed patterns whose title or plugin matches the inserter's search. */
+export const matchContributed = (
+  patterns: readonly ContributedPattern[],
+  search: string,
+) => {
+  const query = search.trim().toLowerCase();
+  return patterns.filter((pattern) =>
+    `${pattern.title} ${pattern.source}`.toLowerCase().includes(query),
+  );
+};
+
 const MARKERS = new Set(['more', 'pageBreak', 'patternRef']);
 
 /**

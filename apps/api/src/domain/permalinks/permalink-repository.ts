@@ -26,10 +26,11 @@ export interface PermalinkRepository extends PathLookup {
   /** Stored templates through `readPermalinkSettings`; defaults when never saved. */
   readSettings(): Promise<PermalinkSettings>;
   /**
-   * Stores `settings` and moves every content item to its `contentPath`, atomically and
-   * serialized with content writes. Old paths of ever-published content (`publishedAt` set) stay
-   * as redirects; others are released. An unchanged current path is kept even if now reserved. Throws `invalid_input`/`conflict` (`pathChanges`/`planPathChanges`) with nothing
-   * changed: the previous settings and paths remain.
+   * Moves content in collision-checked batches before publishing settings. Successful batches
+   * may survive an interrupted call; submitting the same settings resumes from durable progress.
+   * Old published paths remain redirects. Writers are refused during pending regeneration.
+   * A different settings submission restarts the scan with the new target. Each failed batch
+   * is atomic; already committed batches are not rolled back.
    */
   saveSettings(settings: PermalinkSettings): Promise<void>;
 }

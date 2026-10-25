@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import type { Cookies } from '@sveltejs/kit';
 import { privacyProofsSchema } from '@cms/sdk';
 import { contentApi } from '#lib/server/api.js';
+import { allowCaptcha } from '#lib/server/captcha.js';
 import { failFrom, text } from '#lib/server/errors.js';
 import { visitorOf } from '#lib/server/visitor.js';
 import type { Actions, PageServerLoad } from './$types';
@@ -42,6 +43,7 @@ export const load: PageServerLoad = async ({
   cookies,
   fetch,
   setHeaders,
+  locals,
 }) => {
   setHeaders({
     'cache-control': 'private, no-store',
@@ -68,7 +70,7 @@ export const load: PageServerLoad = async ({
   return {
     requestId: requestId(url.searchParams.get('request') ?? ''),
     language: site.locale,
-    captcha,
+    captcha: allowCaptcha({ locals }, captcha),
     privacyPolicy: privacy.policy,
   };
 };

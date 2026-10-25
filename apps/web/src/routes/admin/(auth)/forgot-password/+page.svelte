@@ -15,6 +15,7 @@
   title={m.forgotTitle}
   description={m.forgotHelp}
   sentTitle={m.forgotSent}
+  closed={data.passwordReset ? undefined : m.forgotClosed}
   submit={m.forgotSend}
   captcha={data.captcha}
   siteTitle={data.siteTitle}

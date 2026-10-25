@@ -4,16 +4,22 @@ import type { Capability } from '@cms/sdk';
 import { eachBounded, readSelection } from '#lib/server/bulk.js';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { adminFor, requireCapability } from '#lib/server/session.js';
+import { passwordAllowed } from '#lib/server/sign-in.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
   requireCapability(event.locals, 'users.manage');
   const admin = adminFor(event);
-  const [users, roles, membership] = await Promise.all([
-    admin.users.list(),
-    admin.roles.list(),
-    authApi(event.fetch).membership(),
-  ]);
+  const [users, roles, capabilities, membership, passwordSignIn] =
+    await Promise.all([
+      admin.users.list(),
+      admin.roles.list(),
+      // Labels and sources of registered capabilities; without them, keys are shown.
+      admin.roles.capabilities().catch(() => null),
+      authApi(event.fetch).membership(),
+      // The emailed link sets up a password only while password sign-in is allowed.
+      passwordAllowed(event.fetch),
+    ]);
   const params = event.url.searchParams;
   // Only existing roles filter; anything else lists everyone.
   const role = roles.find(({ key }) => key === params.get('role'))?.key;
@@ -34,8 +40,17 @@ export const load: PageServerLoad = async (event) => {
     filter: { role, q: search || undefined },
     // Everyone else, for reassigning the content of deleted users.
     everyone: users.map(({ id, name }) => ({ id, name })),
-    roles,
+    roles: roles.map(({ key, name, capabilities, source }) => ({
+      key,
+      name,
+      capabilities,
+      source,
+    })),
+    capabilities:
+      capabilities?.map(({ key, label, source }) => ({ key, label, source })) ??
+      null,
     membership,
+    passwordAllowed: passwordSignIn,
   };
 };
 

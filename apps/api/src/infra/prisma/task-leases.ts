@@ -5,16 +5,23 @@ export class PrismaTaskLeases implements TaskLeases {
   constructor(private readonly db: Database) {}
 
   async ensure(name: string) {
+    // Prisma reads DATETIME as UTC; NOW() would follow the server's time zone.
     await this.db
-      .$executeRaw`INSERT IGNORE INTO scheduled_tasks (name, next_run_at) VALUES (${name}, NOW(3))`;
+      .$executeRaw`INSERT IGNORE INTO scheduled_tasks (name, next_run_at) VALUES (${name}, UTC_TIMESTAMP(3))`;
   }
 
-  async claim(name: string, owner: string, leaseMs: number, now: Date) {
+  async claim(
+    name: string,
+    owner: string,
+    leaseMs: number,
+    now: Date,
+    options: { ignoreDue?: boolean } = {},
+  ) {
     // One conditional update: only one process can move an unleased, due row.
     const { count } = await this.db.scheduledTask.updateMany({
       where: {
         name,
-        nextRunAt: { lte: now },
+        ...(!options.ignoreDue && { nextRunAt: { lte: now } }),
         OR: [{ lockedUntil: null }, { lockedUntil: { lt: now } }],
       },
       data: {

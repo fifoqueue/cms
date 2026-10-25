@@ -11,6 +11,7 @@
     "./plugin": "./src/plugin.ts",
     "./code-block": "./src/code-block.ts",
     "./client": "./src/client.ts",
+    "./errors": "./src/errors.ts",
     "./format": "./src/format.ts",
     "./tree": "./src/tree.ts",
     "./capabilities": "./src/capabilities.ts",

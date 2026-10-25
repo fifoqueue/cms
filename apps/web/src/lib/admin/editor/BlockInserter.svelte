@@ -8,8 +8,16 @@
   import BlockOptions from '#lib/admin/editor/BlockOptions.svelte';
   import { mediaNode } from '#lib/admin/editor/blocks.js';
   import { loadPluginBlocks } from '#lib/admin/editor/plugin-blocks.js';
-  import { loadPatterns, patternContent } from '#lib/admin/editor/patterns.js';
-  import type { PatternChoice } from '#lib/admin/editor/patterns.js';
+  import {
+    loadContributedPatterns,
+    loadPatterns,
+    matchContributed,
+    patternContent,
+  } from '#lib/admin/editor/patterns.js';
+  import type {
+    ContributedPattern,
+    PatternChoice,
+  } from '#lib/admin/editor/patterns.js';
   import { Input } from '#lib/components/ui/input/index.js';
   import { useI18n } from '#lib/i18n/index.js';
   import '#lib/theme/site.css';
@@ -54,9 +62,13 @@
   ];
   /** Blocks of active plugins, inserted as the shared `pluginBlock` node. */
   let pluginBlocks = $state<PluginBlockInfo[]>([]);
+  /** Patterns active plugins contribute, inserted as copies. */
+  let contributed = $state<ContributedPattern[]>([]);
   onMount(() => {
     void loadPluginBlocks().then((list) => (pluginBlocks = list));
+    void loadContributedPatterns().then((list) => (contributed = list));
   });
+  const contributedMatches = $derived(matchContributed(contributed, search));
   const name = (type: string) =>
     pluginBlocks.find((entry) => entry.block === type)?.title ??
     m.contentBlockName(type);
@@ -97,12 +109,15 @@
     };
   });
 
-  const insertPattern = async (pattern: PatternChoice) => {
+  const insertPattern = async (pattern: PatternChoice | ContributedPattern) => {
     if (!editor || inserting) return;
     const current = editor;
     const state = current.state;
     inserting = true;
-    const content = await patternContent(pattern);
+    const content =
+      'source' in pattern
+        ? (pattern.document.content ?? [])
+        : await patternContent(pattern);
     inserting = false;
     if (
       !open ||
@@ -311,6 +326,25 @@
                   >{pattern.title}{pattern.synced
                     ? ` · ${m.patternSyncedShort}`
                     : ''}</button
+                >
+              </li>{/each}
+          </ul>
+        {/if}
+        {#if contributedMatches.length}
+          <h3 class="mt-3 px-1 text-xs font-medium text-muted-foreground">
+            {m.patternsFromPlugins}
+          </h3>
+          <ul class="mt-1 grid max-h-40 gap-1 overflow-y-auto">
+            {#each contributedMatches as pattern (pattern.id)}<li>
+                <button
+                  type="button"
+                  class="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+                  disabled={inserting}
+                  onclick={() => insertPattern(pattern)}
+                  >{pattern.title}
+                  <span class="text-xs text-muted-foreground"
+                    >· {m.patternFromPlugin(pattern.source)}</span
+                  ></button
                 >
               </li>{/each}
           </ul>

@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  captchaProviderIdSchema,
+  captchaWidgetSchema,
+  captchaWidgetAttributesSchema,
+  captchaOriginSchema,
+} from '#sdk/user-contracts';
 
 /** Actions protected by rate limits and, optionally, a captcha. */
 export const PROTECTED_ACTIONS = [
@@ -16,7 +22,7 @@ export const CAPTCHA_PROVIDERS = [
   'hcaptcha',
   'recaptcha',
 ] as const;
-export type CaptchaProvider = (typeof CAPTCHA_PROVIDERS)[number];
+export type CaptchaProvider = z.output<typeof captchaProviderIdSchema>;
 
 /** `always`: every attempt; `limited`: once a rate limit is reached; `never`. */
 export const CAPTCHA_MODES = ['always', 'limited', 'never'] as const;
@@ -113,7 +119,7 @@ const siteKey = z.string().trim().max(200);
 /** Security settings as administrators see them; the captcha secret is never returned. */
 export const adminSecuritySettingsSchema = z.object({
   captcha: z.object({
-    provider: z.enum(CAPTCHA_PROVIDERS),
+    provider: captchaProviderIdSchema,
     siteKey,
     /** reCAPTCHA v3 score threshold; ignored by checkbox providers. */
     minimumScore: z.number().min(0).max(1),
@@ -131,7 +137,7 @@ export type AdminSecuritySettings = z.output<
 /** Omitted `secretKey` keeps the stored secret; an empty string removes it. */
 export const securitySettingsInputSchema = z.object({
   captcha: z.object({
-    provider: z.enum(CAPTCHA_PROVIDERS),
+    provider: captchaProviderIdSchema,
     siteKey,
     minimumScore: z.number().min(0).max(1).default(0.5),
     secretKey: z.string().trim().max(500).optional(),
@@ -163,10 +169,21 @@ export const DEFAULT_SECURITY_SETTINGS: AdminSecuritySettings = {
 
 /** What a frontend needs to render the widget. `provider` is `none` until a site key and secret exist. */
 export const publicCaptchaSchema = z.object({
-  provider: z.enum(CAPTCHA_PROVIDERS),
+  provider: captchaProviderIdSchema,
   siteKey: z.string(),
   /** Actions that need a captcha on every attempt; others ask only after `captcha_required`. */
   always: z.array(z.enum(PROTECTED_ACTIONS)),
+  widget: captchaWidgetSchema
+    .extend({
+      /** Derived by the API; allow only on pages rendering this widget. */
+      scriptOrigin: captchaOriginSchema.refine((value) => !value.includes('*')),
+      /** Up to twenty declared attributes plus the auto-render site's public key. */
+      attributes: captchaWidgetAttributesSchema.refine(
+        (value) => Object.keys(value).length <= 21,
+      ),
+    })
+    .nullable()
+    .default(null),
 });
 
 export type PublicCaptcha = z.output<typeof publicCaptchaSchema>;
