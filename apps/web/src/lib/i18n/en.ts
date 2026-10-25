@@ -1,5 +1,453 @@
 // English administration and theme copy. Every other language implements the same `Messages` shape.
+import {
+  apiErrorText,
+  type ApiErrorCatalog,
+  type ApiErrorKey,
+  type ApiErrorParams,
+  megabytes,
+  type WebErrorCatalog,
+  type WebErrorKey,
+} from '#lib/i18n/api-errors.js';
 import { templateLabels } from '#lib/i18n/template-label.js';
+
+/** Comment form fields a visitor can have remembered. */
+export type CommenterField = 'name' | 'email' | 'website';
+
+/** Why a test send failed, by `EmailSendFailed`'s `reason` (SDK `EMAIL_FAILURE_REASONS`). */
+const emailFailure = (reason: unknown) => {
+  switch (reason) {
+    case 'auth':
+      return 'The mail server did not accept the user name, password or API key.';
+    case 'timeout':
+      return 'The mail server did not answer in time.';
+    case 'tls':
+      return 'The TLS certificate of the mail server could not be verified.';
+    case 'network':
+      return 'The mail server could not be reached. Check its address and port.';
+    default:
+      return 'The mail server refused the message. Check the server log for details.';
+  }
+};
+
+/** Text for every SDK error, by its `Errors` key; read through `en.apiError`. */
+export const apiErrors: ApiErrorCatalog = {
+  MediaStorageProbeCleanup: ({ bucket, key }) =>
+    bucket === undefined || key === undefined
+      ? 'The connection test file could not be removed. Delete the leftover test file from the storage yourself.'
+      : `The connection test file could not be removed. Delete ${bucket}/${key} from the storage yourself.`,
+  MediaStorageLocation:
+    'The endpoint, bucket and prefix of a saved S3 storage cannot be changed. Move the stored files first.',
+  MediaStorageSecret:
+    'Enter the secret access key for this endpoint and account.',
+  MediaDriverInvalid: 'This storage is not available. Choose another storage.',
+  MediaStorageBusy: 'The storage is busy. Wait a moment and upload again.',
+  MediaStorageProbeAuth:
+    'Could not connect to the storage. Check the access keys and their permissions.',
+  MediaStorageProbeBucket:
+    'Could not connect to the storage. Check the bucket name and access to the bucket.',
+  MediaStorageProbeNetwork:
+    'Could not reach the storage. Check the endpoint address and the network.',
+  MediaStorageProbeTls:
+    'Could not connect to the storage securely. Check the endpoint’s HTTPS certificate.',
+  MediaStorageProbeRejected:
+    'The storage service rejected the request. Check the region and the path-style setting.',
+  MediaStorageFieldRequired: 'This field is required.',
+  InvalidCredentials: 'Invalid email or password.',
+  SecondFactorFailed: 'Verification failed. Try again.',
+  InvalidInput: 'Invalid input',
+  RequestBodyNotJson: 'Request body must be JSON',
+  RequestBodyTooLarge: 'Request body is too large',
+  Internal: 'Internal server error',
+  AuthenticationRequired: 'Sign in to continue.',
+  Forbidden: 'You do not have permission to do this',
+  TooManyAttempts: 'Too many attempts. Please wait a while and try again.',
+  CaptchaRequired: 'Please confirm that you are not a robot.',
+  CaptchaInvalid: 'The robot check failed. Please try again.',
+  PasswordResetLimit:
+    'Too many password reset emails were sent. Try again later.',
+  PasswordTokenInvalid:
+    'This link is invalid or has expired. Ask for a new one.',
+  CurrentPasswordWrong: 'The current password is not correct.',
+  EmailDisabled: 'Set up and enable email delivery first',
+  SiteUrlRequired: 'Set the public site address in the SEO settings first',
+  SsoNotFound: 'Single sign-on not found',
+  SsoRateLimited:
+    'Too many sign-in attempts. Please wait a minute and try again.',
+  SsoPendingLimit:
+    'Too many sign-in requests are in progress. Please try again in a few minutes.',
+  SsoRequestExpired: 'The sign-in request has expired. Please try again.',
+  SsoLinkSignInRequired:
+    'For your security, sign in again before linking single sign-on.',
+  SsoAccountUnusable: 'This single sign-on account cannot be used here.',
+  SsoAccountAssigned: 'This account is assigned by the server configuration.',
+  SsoAccountNotLinked:
+    'This single sign-on account is not linked to an administrator.',
+  SsoAccountUnlinked:
+    'This single sign-on account is no longer linked. Please try again.',
+  SsoFailed: 'Single sign-on failed. Please try again.',
+  SsoAccountLinkedElsewhere:
+    'This single sign-on account is already linked to another administrator.',
+  PluginIdReserved: 'The plugin id "core" is reserved for the CMS',
+  CaptchaProviderUnknown: 'Choose a registered captcha provider',
+  NotJsonSerializable: 'Value is not JSON-serializable',
+  InvalidDate: 'Invalid date',
+  UnknownPermalinkToken: 'Unknown permalink token',
+  PermalinkPathTooLong: 'Path is too long',
+  PermalinkPathNotCanonical:
+    'Path must be a canonical percent-encoded path without empty, "." or ".." segments',
+  PermalinkPathReserved: 'Path is reserved',
+  InvalidResponse: 'The CMS returned an invalid response',
+  PermalinkBuiltinsRequired:
+    'Templates for posts, articles and pages are required',
+  MenuLinkInvalid: 'Use a web address (https://…) or a path on this site (/…)',
+  MenuTargetMissing: 'Choose what the menu item links to',
+  LoginPathInvalid:
+    'Use an available site path such as /login, without a query or reserved route',
+  FieldOptionsRequired: 'Add at least one choice',
+  FieldValuesInvalid: 'Field values must be plain data',
+  CommentUrlInvalid: 'Use a web address starting with https:// or http://',
+  CommentDefaultNameRequired:
+    'Enter a default commenter name when the name field is disabled.',
+  SearchHostInvalid: 'Use an address such as http://127.0.0.1:7700',
+  SearchPrefixInvalid: 'Use 1–40 lowercase letters, digits or underscores',
+  SearchHostRequired: 'Enter the Meilisearch address to turn search on',
+  SsoIssuerInvalid: 'Use the provider address, such as https://id.example.com.',
+  SsoScopesOpenid: 'Scopes must include openid.',
+  SsoIssuerRequired:
+    'Enter the provider address and client ID to turn this provider on.',
+  SsoProviderIdInvalid:
+    'Use 1–32 lowercase letters, digits or hyphens, starting and ending with a letter or digit.',
+  SsoProviderIdDuplicate: 'Another provider already uses this ID.',
+  SsoClaimTokenRequired: 'Open the link from your email again.',
+  SignInDuplicate: 'Listed more than once.',
+  SignInMethodRequired: 'Allow at least one way to sign in.',
+  SignInUnknown: 'Choose a registered sign-in method or second step.',
+  SignInLastFactor:
+    'Your role requires two-step verification, so keep at least one way to do it.',
+  SignInFactorRequired:
+    'Allow a second factor users can set up before requiring two-step verification.',
+  RecentSignInRequired:
+    'For your security, sign in again before adding a way to sign in to your account.',
+  RecoveryRecentSignIn:
+    'For your security, sign in again before generating recovery codes.',
+  SignInExpired: 'This sign-in request is no longer valid. Start again.',
+  SignInStepRequired: 'Continue signing in using the step-based sign-in flow.',
+  SignInAccessRequired:
+    'Keep at least one allowed sign-in method that your own account can use.',
+  PasswordLoginDisabled:
+    'Password sign-in is turned off. Use single sign-on or a recovery code.',
+  SsoProviderRequired:
+    'Turn on at least one provider before turning off password sign-in.',
+  SsoAccessRequired:
+    'Link your account to an enabled provider (or have one assigned) before turning off password sign-in.',
+  SsoLastAccess:
+    'This is your last way to sign in with single sign-on while password sign-in is off, so it cannot be removed.',
+  EmailServerRequired: 'Enter the mail server to send email over SMTP.',
+  EmailSenderRequired: 'Enter the sender address to turn on email.',
+  EmailSecretRequired: 'Enter the secret to send email through this service.',
+  EmailProviderFieldRequired: 'This mail service needs this field.',
+  EmailRegionInvalid: 'Choose a region this mail service offers.',
+  EmailUrlInvalid: 'Use an https:// address.',
+  EmailHeaderInvalid: 'Enter a header name such as Authorization.',
+  EmailTemplateInvalid:
+    'Enter valid JSON; placeholders such as {{to}} stand for text values.',
+  EgressHostInvalid: 'Enter one host name or IP address',
+  EgressAddressInvalid: 'Enter an IP address or CIDR range',
+  BlocksNotList: 'Must be a list of blocks',
+  BlocksTooDeep: 'Blocks are nested too deeply',
+  BlocksTooMany: 'Too many blocks',
+  BlockInvalid: 'Must be a block',
+  BlockPropertyUnknown: 'Unknown property',
+  BlockUnknown: 'Unknown block',
+  BlockParent: ({ parents }) =>
+    parents === undefined
+      ? 'Must be inside another block'
+      : `Must be inside ${parents}`,
+  BlockNotAllowedInside: ({ parent }) =>
+    parent === undefined
+      ? 'Not allowed inside this block'
+      : `Not allowed inside ${parent}`,
+  BlockAttrsInvalid: 'Must be an object',
+  BlockAttrUnknown: 'Unknown attribute',
+  BlockAttrRequired: 'Required',
+  BlockNoChildren: 'This block has no children',
+  BlockAttrText: 'Must be text',
+  BlockAttrTooLong: ({ max }) =>
+    max === undefined ? 'Too many characters' : `At most ${max} characters`,
+  BlockAttrFormat: 'Invalid format',
+  BlockAttrColor: 'Must be a palette color',
+  BlockAttrNumber: ({ min, max }) =>
+    min === undefined || max === undefined
+      ? 'Must be a whole number in the allowed range'
+      : `Must be a whole number from ${min} to ${max}`,
+  BlockAttrBoolean: 'Must be true or false',
+  BlockAttrChoice: ({ options }) =>
+    options === undefined
+      ? 'Must be one of the allowed options'
+      : `Must be one of ${options}`,
+  ThemePaletteDuplicate: 'Palette slugs must be unique',
+  ThemePaletteRole: ({ role }) =>
+    role === undefined
+      ? 'The palette needs every color role'
+      : `The palette needs "${role}"`,
+  ThemeFontUnknown: 'Not one of the theme font families',
+  FontUrlInvalid: 'Use an https:// address without spaces, quotes or brackets',
+  FontFileInvalid:
+    'Use an https:// or media library (/media/…) address of a .woff2, .woff, .ttf or .otf file',
+  FontFamilyInvalid:
+    'Use letters, numbers, spaces, dashes and underscores for the family name',
+  FontSourceRequired: 'Add either a stylesheet address or font files',
+  FontDuplicate: 'Font slugs and family names must be unique',
+  ThemeAlternatePalette:
+    'The alternate palette needs exactly the palette slugs, and color scheme options need it',
+  TaxonomyFilterPair: 'Choose both a taxonomy and a term.',
+  ThemeQueriesLimit: 'A theme can contain at most 32 independent post lists.',
+  ThemeIndexRequired: 'A theme needs templates/index.json',
+  PrivacyPolicyInvalid:
+    'Choose a published, unprotected page for the privacy policy',
+  PrivacyConfirmationInvalid:
+    'This confirmation link is invalid, expired, or already used',
+  PrivacyRequestMissing: 'Privacy request not found',
+  PrivacyNotConfirmed: 'The person must confirm this request first',
+  PrivacyJobsBusy:
+    'A message involving this person is being sent. Try again after it finishes',
+  PrivacyJobsUnscoped:
+    'Older comment notifications have no subject reference. Let them finish or expire before completing this request',
+  PrivacyJobsUnreadable:
+    'A queued message cannot be read. Repair or remove it before erasing personal data',
+  JobFailed: 'Job delivery failed',
+  CommentEmailRequired: 'Enter an email address.',
+  PatternNotFound: 'Pattern not found',
+  PatternLimit: 'A site can keep at most 500 patterns',
+  UserNotFound: 'User not found',
+  SessionNotFound: 'Session not found',
+  PasswordRequired:
+    'Enter a password, or set up email delivery to send an invitation',
+  LastAdministrator: 'The site needs at least one administrator',
+  UserDeleteSelf: 'You cannot delete your own account',
+  ReassignTargetInvalid: 'Choose another existing user to receive the content',
+  RouteNotFound: 'Route not found',
+  InstallRequired: 'Finish the installation on the website first.',
+  PluginRouteFailed: 'The plugin failed to handle this request',
+  SetupCompleted: 'Setup has already been completed',
+  EmailRegistered: 'Email is already registered',
+  EmailChangeRestricted:
+    'Contact an administrator to change your email address.',
+  ContentNotFound: 'Content not found',
+  ContentAutosavePending:
+    'You have unsaved changes to this entry in the editor. Open it to save or discard them first.',
+  ContentChanged:
+    'This entry was changed since you opened it. Reload the page and try again.',
+  SlugConflict: 'Slug is already in use',
+  SlugInUse: ({ slug }) =>
+    slug === undefined
+      ? 'This slug is already in use'
+      : `The slug “${slug}” is already in use`,
+  UnknownTerms: 'Unknown terms',
+  MediaNotFound: 'Media not found',
+  ImageCropInvalid: 'The crop must fit inside the image.',
+  RegistrationClosed: 'Registration is closed.',
+  ContentParentInvalid: 'Choose a parent page outside this page’s descendants.',
+  RoleUnknown: 'This role does not exist.',
+  RoleBuiltin: 'Built-in roles cannot be changed.',
+  MediaEmpty: 'The file is empty',
+  MediaResyncFailed:
+    'Storage resync failed or exceeded the 5000-object limit; no objects were deleted',
+  MediaTooLarge: ({ maxBytes }) =>
+    maxBytes === undefined
+      ? 'The file is too large'
+      : `The file is too large. Upload a file of at most ${megabytes(maxBytes)}.`,
+  MediaStorageLow: 'The server does not have enough free storage for this file',
+  MediaUploadRate: ({ limit }) =>
+    limit === undefined
+      ? 'Too many files were uploaded this hour. Please wait and try again.'
+      : `At most ${limit} files can be uploaded per hour. Please wait and try again.`,
+  MediaTypeUnsupported:
+    'This file type is not supported. Upload JPEG, PNG, GIF, WebP, AVIF, PDF, MP3, WAV, Ogg, MP4 or WebM. Safe SVG files are accepted when SVG uploads are enabled.',
+  MediaUploadRefused: 'This upload was refused.',
+  MediaInUse: ({ count }) =>
+    count === undefined
+      ? 'The file is used by entries; delete it anyway to remove it from them'
+      : `The file is used by ${count} ${Number(count) === 1 ? 'entry' : 'entries'}; delete it anyway to remove it from them`,
+  ContentTypeUnknown: 'Choose an existing content type',
+  ContentTypeReserved: 'This key is used by the system; choose another',
+  ContentTypeExists: 'A content type with this key exists',
+  ContentTypeNotFound: 'Content type not found',
+  ContentTypeInUse: 'Entries of this type exist; delete or change them first',
+  CommentLoginRequired: 'You must be logged in to post a comment',
+  CommentNotFound: 'Comment not found',
+  CommentsClosed: 'Comments are closed for this entry',
+  CommentReplyInvalid: 'The comment you are replying to is not available',
+  AvatarNotFound: 'Avatar not found',
+  SearchNotConfigured: 'Enter the Meilisearch address first',
+  SearchUnavailable: 'Meilisearch did not answer',
+  SearchTaskFailed: 'A Meilisearch task failed',
+  SearchRequestFailed: ({ status }) =>
+    status === undefined
+      ? 'Meilisearch answered with an error'
+      : `Meilisearch answered with an error (HTTP ${status})`,
+  SearchSyncFailed: 'Search indexing failed. Check the server log for details.',
+  OutboundTimeout: 'The server did not answer in time',
+  OutboundTlsFailed: 'The TLS certificate of the server could not be verified',
+  OutboundNetworkFailed: 'The server could not be reached',
+  OutboundUrlInvalid: 'The outbound address is invalid',
+  OutboundHostUnresolved: 'The outbound host could not be resolved',
+  OutboundAddressBlocked: 'The outbound address is not permitted',
+  OutboundRedirectBlocked: 'The outbound redirect is not permitted',
+  WebhookNotFound: 'Webhook not found',
+  WebhookInvalidJob: 'Invalid webhook delivery job',
+  WebhookStatus: 'The receiver answered with an error status',
+  WebhookDeliveryFailed:
+    'The delivery failed. Check the server log for details.',
+  HealthCheckFailed: ({ check }) =>
+    check === undefined ? 'The check failed' : `The check ${check} failed`,
+  HealthJobFailed: ({ kind }) =>
+    kind === undefined
+      ? 'A background job failed'
+      : `A background job (${kind}) failed`,
+  ImportItemUnsupported: ({ type, status }) =>
+    type === undefined
+      ? 'Not imported: this item type or status is not supported'
+      : `Not imported: ${type}${status === undefined ? '' : ` (${status})`} is not supported`,
+  ImportInvalid: 'The file is not a WordPress export (WXR)',
+  ImportContentLimit: 'This entry exceeds the import content limit',
+  ImportDownloadDeferred:
+    'Download limit reached. Re-import to download the remaining files into the media library; entries already imported are not updated.',
+  ImportAuthorsLimit:
+    'Import at most 1000 authors and create at most 100 accounts at a time',
+  SsoSecretRequired:
+    'Enter the client secret, or choose no client authentication',
+  SsoSiteUrlRequired:
+    'Set the public site address in SEO settings first; the provider sends users back there',
+  WidgetTypeUnknown: 'This widget type is not available',
+  FieldExists: 'A field with this key exists',
+  FieldNotFound: 'Field not found',
+  FieldRequired: 'This field is required',
+  ScheduleDateRequired: 'Choose when to publish the entry',
+  RevisionNotFound: 'Revision not found',
+  RevisionAutosaveDelete: 'Autosaves cannot be deleted as saved revisions',
+  PreviewInvalid: 'This preview link is invalid or has expired',
+  ContentPasswordWrong: 'The password is not correct',
+  UnknownCategory: 'Unknown category',
+  UnknownTag: 'Unknown tag',
+  InvalidDocument: ({ detail }) =>
+    detail === undefined
+      ? 'The document is not valid'
+      : `The document is not valid: ${detail}`,
+  PathConflict: 'Path is already in use',
+  PathInUse: ({ path }) =>
+    path === undefined
+      ? 'This path is already in use'
+      : `The path ${path} is already in use`,
+  InvalidPermalink: 'Invalid permalink',
+  PermalinkTitleUnusable: ({ title }) =>
+    title === undefined
+      ? 'The title cannot be used in a URL'
+      : `The title “${title}” cannot be used in a URL`,
+  PermalinkPathInvalid: ({ reason, path }) =>
+    `${path === undefined ? 'This address' : `The address ${path}`} cannot be used for the entry${reason === undefined ? '' : `: ${reason}`}`,
+  TaxonomyNotFound: 'Taxonomy not found',
+  TermNotFound: 'Term not found',
+  TermParentNotCategory: 'Only categories can have a parent',
+  TermParentCycle:
+    'A category cannot be nested under itself or its descendants',
+  TermParentNotFound: 'Parent term not found',
+  TermParentOtherTaxonomy: 'Parent term belongs to another taxonomy',
+  ThemeNotFound: 'Theme not found',
+  ThemeBuiltinReplace: 'Built-in themes cannot be replaced',
+  ThemeBuiltinRemove: 'Built-in themes cannot be removed',
+  ThemeActiveRemove: 'The active theme cannot be removed',
+  ThemeArchiveTooLarge: 'Theme archives can be at most 2 MB',
+  ThemeArchiveInvalid: 'Upload a .zip theme archive',
+  ThemeArchiveFile: ({ file }) =>
+    file === undefined
+      ? 'The archive contains a file that is not a valid theme file'
+      : `${file} in the archive is not a valid theme file`,
+  ThemeArchiveMissing: 'The archive has no theme.json',
+  ThemeTemplateNotFound: 'Template not found',
+  ThemePartNotFound: 'Template part not found',
+  ThemeColorUnknown: ({ slug }) =>
+    slug === undefined
+      ? 'Not one of the theme palette colors'
+      : `“${slug}” is not one of the theme palette colors`,
+  PluginNotFound: 'Plugin not found',
+  PluginBundleEmpty: 'Plugin bundle is empty',
+  PluginBundleInvalid: 'The plugin bundle is not valid',
+  PluginBundleUnloadable: 'Plugin bundle could not be loaded; install it again',
+  PluginBundleImport: 'Could not import plugin bundle',
+  PluginExportMissing: 'Bundle has no `plugin` export',
+  PluginActivateInvalid: '`plugin.activate` must be a function',
+  PluginDeactivateInvalid: '`plugin.deactivate` must be a function',
+  PluginIdInvalid: ({ id }) =>
+    id === undefined ? 'Invalid plugin id' : `Invalid plugin id “${id}”`,
+  PluginRequiresCms: ({ range, version }) =>
+    range === undefined
+      ? 'This plugin needs another CMS version'
+      : `This plugin needs CMS ${range}${version === undefined ? '' : `; this site runs ${version}`}`,
+  PluginRequiresPlugin: ({ id, range }) =>
+    id === undefined
+      ? 'This plugin needs another plugin to be active'
+      : `This plugin needs the plugin ${id}${range === undefined ? '' : ` ${range}`} to be active`,
+  PluginFailed: 'Plugin failed. Check server logs for details.',
+  PluginNoUpdateUrl: 'This plugin does not name an update address',
+  PluginUpdateUnavailable: 'The update address did not answer with a version',
+  PluginPageNotFound: 'This plugin page is not available',
+  PluginPageFailed:
+    'The plugin could not show this page. Check server logs for details.',
+  PluginBlockAttrsInvalid: ({ title }) =>
+    title === undefined
+      ? 'The settings of a plugin block are not valid'
+      : `The settings of the plugin block “${title}” are not valid`,
+  EmailSendFailed: ({ reason, status }) =>
+    `${emailFailure(reason)}${status === undefined ? '' : ` (HTTP ${status})`}`,
+  ApiTokenNotFound: 'Token not found',
+  InstallKeyInvalid: 'Check the installation key shown in the server console.',
+  InstallBusy: 'Installation is in progress. Please try again in a moment.',
+  InstallDatabaseConfigured: 'The database connection is already set up.',
+  InstallDatabaseRequired: 'Connect the database first.',
+  InstallCompleted: 'Installation has already been completed.',
+  InstallApplyFailed:
+    'The settings could not be applied. Check the database connection and that the server can write to its data folder.',
+  InstallDatabaseUnreachable:
+    'Cannot connect to the database. Check the address, account and database name, and the access rights.',
+  InstallMigrationFailed:
+    'Preparing the tables failed. Check that the database account may create tables, and the migration state. Existing data is not reset.',
+  SiteImageInvalid: 'Choose an image from the media library.',
+  ThemeScreenshotInvalid:
+    'The theme screenshot must be a PNG or WebP image of at most 512 KB.',
+};
+
+/** Text for every web server error, by its `Errors` key in `#lib/errors.js`. */
+export const webErrors: WebErrorCatalog = {
+  NotFound: 'Not found',
+  Forbidden: 'You do not have permission to view this page',
+  InvalidContentPath: 'Invalid content path',
+  SitemapIndexTooLarge: 'The sitemap index would exceed the sitemap limit',
+  FormInvalid: 'Please fix the fields below',
+  PermalinkPatternsInvalid: 'Please fix the permalink patterns',
+  PasswordMismatch: 'Passwords do not match.',
+  SignInRedirectInvalid: 'The sign-in method returned an invalid address.',
+  ProfileNumberInvalid: 'Enter a number.',
+  PluginBundleRequired: 'Choose a plugin bundle (.js)',
+  ImportFileRequired: 'Choose a WordPress export file (.xml)',
+  ThemeFileRequired: 'Choose a theme archive (.zip)',
+  BlocksInvalid: 'The blocks could not be read',
+  TemplateNameInvalid: 'Use lowercase letters, numbers and dashes for the slug',
+  ThemeItemReadOnly:
+    'A plugin provides this. Choose Customize before saving your changes.',
+  BulkItemFailed: 'This item could not be changed. Try again later.',
+  BulkItemInvalid: 'This selection is not valid.',
+  BulkTooMany: ({ limit }) =>
+    limit === undefined
+      ? 'Too many items are selected; nothing was changed.'
+      : `Select at most ${limit} items at a time; nothing was changed.`,
+  PluginActivationFailed: 'The plugin could not be activated.',
+  ReassignToDeleted:
+    'Choose someone who is not being deleted to receive the content.',
+  PasswordOrInvite: 'Enter a password or send an invitation.',
+  ModerationInvalid: 'This comment action is not valid.',
+  UploadNetwork: 'The file could not be sent. Check your connection.',
+};
 
 export const en = {
   // Navigation
@@ -230,15 +678,6 @@ export const en = {
   emailBodyTemplate: 'JSON body',
   emailBodyTemplateHelp: (placeholders: string) =>
     `Put each placeholder alone where a JSON value goes, without quotes, as in "to": {{to}}; it becomes an escaped text value. Available: ${placeholders}.`,
-  emailServerRequired: 'Enter the mail server to send email over SMTP.',
-  emailSenderRequired: 'Enter the sender address to turn on email.',
-  emailProviderFieldRequired: 'This mail service needs this field.',
-  emailRegionInvalid: 'Choose a region this mail service offers.',
-  emailUrlInvalid: 'Use an https:// address.',
-  emailHeaderInvalid: 'Enter a header name such as Authorization.',
-  emailTemplateInvalid:
-    'Enter valid JSON; placeholders such as {{to}} stand for text values.',
-  emailSecretRequired: 'Enter the secret to send email through this service.',
 
   // Content list and editor
   contentTitle: 'Content',
@@ -678,7 +1117,7 @@ export const en = {
   exportDownload: 'Download export file',
   importTitle: 'Import from WordPress',
   importHelp:
-    'Choose a file from WordPress Tools → Export. Entries whose address is taken are skipped; authors are matched by email, otherwise you become the author. Images stay at their original addresses.',
+    'Choose a file from WordPress Tools → Export. Entries whose address is taken are skipped; authors are matched by email, otherwise you become the author. Copying attachments is optional and checked by default. Files that cannot be copied keep their original addresses.',
   importStart: 'Import',
   importRunning: 'Importing…',
   importDone: 'Import finished',
@@ -973,6 +1412,11 @@ export const en = {
   // Public theme: blocks and toolbar
   themeReadMore: 'Continue reading',
   themeMenu: 'Menu',
+  themeMenuClose: 'Close menu',
+  themeSchemeLight: 'Switch to light mode',
+  themeSchemeDark: 'Switch to dark mode',
+  themeSearchPanel: 'What are you looking for?',
+  themeSearchClose: 'Close search',
   themeNotFoundHelp:
     'The page you are looking for does not exist or has moved. Try searching instead.',
   adminBar: 'Toolbar',
@@ -1010,6 +1454,7 @@ export const en = {
         'query-pagination': 'Pagination',
         'query-title': 'Archive title',
         'content-type-nav': 'Content type tabs',
+        'scheme-toggle': 'Light/dark toggle',
         heading: 'Heading',
         paragraph: 'Paragraph',
         separator: 'Separator',
@@ -1074,6 +1519,9 @@ export const en = {
         showComments: 'Comment count',
         showUpdated: 'Updated date',
         showSticky: 'Sticky badge',
+        commentIcon: 'Comment icon and count',
+        panel: 'Open in a panel',
+        excerptLength: 'Excerpt length in words (0 = all)',
         moreLink: '“Continue reading” link',
         aspect: 'Aspect ratio',
         rounded: 'Rounded corners',
@@ -1214,6 +1662,24 @@ export const en = {
   editorFontFamily: 'Body font',
   editorHeadingFont: 'Heading font',
   editorSameAsBody: 'Same as body',
+  editorFonts: 'Site fonts',
+  editorFontsHelp:
+    'Add font families from a stylesheet address (such as Google Fonts) or from font files. They appear in the font menus above, and a theme font list that names the family uses it automatically.',
+  editorFontsEmpty: 'No site fonts yet.',
+  editorFontFamilyName: 'Family name',
+  editorFontFallback: 'Fallback fonts',
+  editorFontSource: 'Source',
+  editorFontStylesheet: 'Stylesheet address',
+  editorFontFile: 'Font file',
+  editorFontStylesheetUrl: 'Stylesheet address (https)',
+  editorFontFileUrl: 'Font file address (https or media library)',
+  editorFontWeight: 'Weight',
+  editorFontStyle: 'Style',
+  editorFontNormal: 'Normal',
+  editorFontItalic: 'Italic',
+  editorFontDisplay: 'Display',
+  editorFontAdd: 'Add font',
+  editorFontRemove: 'Remove',
   editorFontSize: 'Font size',
   editorLineHeight: 'Line height',
   editorRadius: 'Corner radius',
@@ -1324,6 +1790,9 @@ export const en = {
   importAuthors: 'Assign authors',
   importAuthorsHelp:
     'Authors are matched to existing users by email address or login. For authors without a match:',
+  importDownloadAttachments: 'Download attachments',
+  importDownloadHelp:
+    'Up to 100 files are downloaded per import. Re-import to download the rest into the media library; entries already imported are not updated.',
   importAuthorMode: (mode: string) =>
     mode === 'author'
       ? 'Create a new user with the Author role'
@@ -1335,7 +1804,7 @@ export const en = {
   importAttachments: (count: number) =>
     count === 1 ? '1 media file to upload' : `${count} media files to upload`,
   importAttachmentsHelp:
-    'Media files were not copied. Entries still show them from the old site; upload them to the media library and replace them, including featured images.',
+    'Downloaded files show their library address. Files that could not be copied keep their old address; see skipped items for details.',
   importFeatured: (count: number) =>
     count === 1
       ? 'featured image of 1 entry'
@@ -1419,8 +1888,14 @@ export const en = {
   // core-comments
   commentLoginRequired: 'Log in to leave a comment.',
   commentSignedIn: (name: string) => `Logged in as ${name}.`,
-  commentRemember:
-    'Save my name, email, and website in this browser for the next time I comment.',
+  commentRemember: (fields: CommenterField[]) =>
+    `Save my ${new Intl.ListFormat('en', { type: 'conjunction' }).format(
+      fields,
+    )} in a cookie in this browser for one year to fill in my next comment.`,
+  commentLinkLeave: 'Open external link?',
+  commentLinkLeaveAsk: (address: string) =>
+    `This link from a comment leads to another site: ${address}`,
+  commentLinkOpen: 'Open link',
   discussionRequireLogin: 'Users must be registered and logged in to comment',
   discussionFields: 'Comment form fields',
   discussionShowName: 'Ask for a name',
@@ -1497,6 +1972,12 @@ export const en = {
   errorTooLarge: 'This is too large.',
   errorCaptchaRequired: 'Please complete the verification.',
   errorFieldInvalid: 'Please enter a valid value.',
+  /** Text for an SDK error (`apiErrors`) with the values it reported. */
+  apiError: (key: ApiErrorKey, params?: ApiErrorParams) =>
+    apiErrorText(apiErrors[key], params),
+  /** Text for a web server error (`webErrors`) with the values it reported. */
+  webError: (key: WebErrorKey, params?: ApiErrorParams) =>
+    apiErrorText(webErrors[key], params),
   entryTrashed: 'Moved to the Trash.',
   undo: 'Undo',
   viewOnSite: 'View on site',
@@ -1733,7 +2214,7 @@ export const en = {
     'Allow only the internal services this site must contact. Metadata and reserved destinations stay blocked.',
   egressRules: 'Allowed destinations',
   egressHelp:
-    'One per line: service host port address[,address]. Services: oidc, search, smtp, email-api (Email API), webhook. Addresses may use CIDR.',
+    'One per line: service host port address[,address]. Services: oidc, search, smtp, email-api (Email API), webhook, media-storage (Media storage). Addresses may use CIDR.',
   egressEnvironment: 'Server-defined destinations',
   egressEnvironmentHelp:
     'These read-only rules come from the server environment.',
@@ -1824,6 +2305,68 @@ export const en = {
       : `${count} comments deleted permanently.`,
   mediaUploadedFile: (name: string) => `Uploaded ${name}.`,
   mediaEditedCopy: 'The edited image was saved as a new file.',
+  // Media storage and resync
+  settingsMediaStorage: 'Media storage',
+  mediaStorageTitle: 'Where uploads are stored',
+  mediaStorageDriver: 'Storage',
+  mediaStorageLocal: 'This server',
+  mediaStorageS3: 'S3-compatible storage',
+  mediaStorageLocalHelp: "Files are stored on this server's disk.",
+  mediaStorageSwitchNote:
+    'Switching storage does not move files you have already uploaded. They keep working from the storage they were saved to; only new uploads go to the storage you choose.',
+  mediaStorageS3Help:
+    'Works with AWS S3, Cloudflare R2, Backblaze B2, Wasabi, MinIO and other S3-compatible services.',
+  mediaStorageEndpoint: 'Endpoint',
+  mediaStorageEndpointHelp:
+    'For example: R2 https://<account-id>.r2.cloudflarestorage.com · AWS https://s3.ap-northeast-2.amazonaws.com · B2 https://s3.us-west-004.backblazeb2.com · Wasabi https://s3.ap-northeast-1.wasabisys.com · MinIO https://minio.example.com',
+  mediaStorageRegion: 'Region',
+  mediaStorageRegionHelp:
+    'R2 uses auto and MinIO usually us-east-1. Otherwise enter the region the bucket was created in.',
+  mediaStorageBucket: 'Bucket',
+  mediaStorageAccessKeyId: 'Access key ID',
+  mediaStorageSecretAccessKey: 'Secret access key',
+  mediaStorageSecretReenter:
+    'You changed the endpoint or access key ID, so enter the secret access key again.',
+  mediaStoragePublicBaseUrl: 'Public base URL',
+  mediaStoragePublicBaseUrlHelp:
+    'Optional. The address of a CDN or custom domain that serves the bucket root publicly, such as https://cdn.example.com; the prefix is added for you. Make the bucket or CDN public in your storage service. Leave empty to serve files from this site’s address.',
+  mediaStoragePrefix: 'Prefix',
+  mediaStoragePrefixHelp:
+    'Optional. The folder in the bucket for uploads, ending with a slash, such as media/.',
+  mediaStorageForcePathStyle: 'Use path-style addresses',
+  mediaStorageForcePathStyleHelp:
+    'Turn on for MinIO and other services that put the bucket in the path (https://endpoint/bucket/file) instead of the host name (https://bucket.endpoint/file).',
+  mediaStorageLocationFixed:
+    'Once saved, the endpoint, bucket and prefix cannot be changed.',
+  mediaStoragePluginHelp: (label: string) =>
+    `Files are stored in ${label}, provided by a plugin.`,
+  mediaStoragePluginMissing:
+    'The selected storage plugin is no longer available, so files cannot be uploaded. Choose another storage and save.',
+  mediaStorageTest: 'Check connection',
+  mediaStorageTested: 'The storage is reachable.',
+  mediaStorageEgressHint:
+    'To use a storage on a private network, allow its host under Outbound access with the media-storage service.',
+  mediaStorageSaveHelp:
+    'Saving checks the connection first and saves nothing if it fails.',
+  mediaResync: 'Resync with storage',
+  mediaResyncHelp:
+    'The list is shown from the information saved in the database. Use this only when it no longer matches the actual storage. Only the current storage is checked; no files are imported or deleted.',
+  mediaResyncStarted: 'Resync started.',
+  mediaResyncQueued: 'Waiting to start…',
+  mediaResyncRunning: 'Checking the storage…',
+  mediaResyncCompleted: (date: string) => `Last resynced ${date}.`,
+  mediaResyncFailed: (date: string) =>
+    `Resync failed (${date}). No files were deleted.`,
+  mediaResyncScanned: 'Checked',
+  mediaResyncRefreshed: 'Updated',
+  mediaResyncMissing: 'Missing from storage',
+  mediaResyncUntracked: 'Not in the library',
+  mediaResyncCleanupAttention: (count: number) =>
+    `Files that could not be cleaned up and need checking: ${count}.`,
+  mediaMissing: 'Missing from storage',
+  mediaMissingHelp: 'The last resync could not find this file in the storage.',
+  mediaMissingSince: (date: string) =>
+    `Not found in the storage on ${date}. Pages that show it may display a broken file.`,
   contentCodeCopiedNotice: 'Code copied to the clipboard.',
   // Single sign-on providers, linking and recovery codes
   ssoProvidersTitle: 'Identity providers',
@@ -1846,22 +2389,6 @@ export const en = {
   ssoProvidersMax: (max: number) => `You can add up to ${max} providers.`,
   ssoEnvironmentProvider: (name: string) =>
     `Sign-in with ${name} is set up on the server and cannot be changed here. The providers below are kept but not used while it is.`,
-  ssoProviderIdInvalid:
-    'Use 1–32 lowercase letters, digits or hyphens, starting and ending with a letter or digit.',
-  ssoProviderIdDuplicate: 'Another provider already uses this ID.',
-  ssoIssuerRequired:
-    'Enter the provider address and client ID to turn this provider on.',
-  ssoIssuerInvalid: 'Use the provider address, such as https://id.example.com.',
-  ssoScopesOpenid: 'Scopes must include openid.',
-  ssoClaimTokenRequired: 'Open the link from your email again.',
-  ssoPasswordLoginDisabled:
-    'Password sign-in is turned off. Use single sign-on or a recovery code.',
-  ssoProviderRequired:
-    'Turn on at least one provider before turning off password sign-in.',
-  ssoAccessRequired:
-    'Link your account to an enabled provider (or have one assigned) before turning off password sign-in.',
-  ssoLastAccess:
-    'This is your last way to sign in with single sign-on while password sign-in is off, so it cannot be removed.',
   ssoLinkHelp:
     'Link an account at a provider to sign in to this account with it.',
   ssoLink: 'Link',
@@ -1976,44 +2503,6 @@ export const en = {
   signInRequireTitle: 'Require two-step verification',
   signInRequireHelp:
     'Members of these roles must complete a second step. Anyone without one sets it up while signing in.',
-  signInDuplicate: 'Listed more than once.',
-  signInMethodRequired: 'Allow at least one way to sign in.',
-  signInUnknown: 'Choose a registered sign-in method or second step.',
-  signInAccessRequired:
-    'Keep at least one allowed sign-in method that your own account can use.',
-  signInLastFactor:
-    'Your role requires two-step verification, so keep at least one way to do it.',
-  signInExpired: 'This sign-in request is no longer valid. Start again.',
-  recoveryRecentSignIn:
-    'For your security, sign in again before generating recovery codes.',
-  signInInvalidCredentials: 'Invalid email or password.',
-  signInSecondFactorFailed: 'Verification failed. Try again.',
-  authRequired: 'Sign in to continue.',
-  authTooManyAttempts: 'Too many attempts. Please wait a while and try again.',
-  authCaptchaRequired: 'Please confirm that you are not a robot.',
-  authCaptchaInvalid: 'The robot check failed. Please try again.',
-  authPasswordResetLimit:
-    'Too many password reset emails were sent. Try again later.',
-  authPasswordTokenInvalid:
-    'This link is invalid or has expired. Ask for a new one.',
-  authCurrentPasswordWrong: 'The current password is not correct.',
-  authSsoRateLimited:
-    'Too many sign-in attempts. Please wait a minute and try again.',
-  authSsoPendingLimit:
-    'Too many sign-in requests are in progress. Please try again in a few minutes.',
-  authSsoRequestExpired: 'The sign-in request has expired. Please try again.',
-  authSsoLinkSignInRequired:
-    'For your security, sign in again before linking single sign-on.',
-  authSsoAccountUnusable: 'This single sign-on account cannot be used here.',
-  authSsoAccountAssigned:
-    'This account is assigned by the server configuration.',
-  authSsoAccountNotLinked:
-    'This single sign-on account is not linked to an administrator.',
-  authSsoAccountUnlinked:
-    'This single sign-on account is no longer linked. Please try again.',
-  authSsoFailed: 'Single sign-on failed. Please try again.',
-  authSsoAccountLinkedElsewhere:
-    'This single sign-on account is already linked to another administrator.',
   signInFieldNewPassword: 'New password',
   pluginFieldSource: (plugin: string) => `Plugin: ${plugin}`,
   profileFieldsTitle: 'Additional information',
@@ -2028,8 +2517,4 @@ export const en = {
   signInFieldPassword: 'Password',
   signInFieldTotpCode: 'Authentication code',
   signInFieldRecoveryCode: 'Recovery code',
-  signInFactorRequired:
-    'Allow a second factor users can set up before requiring two-step verification.',
-  recentSignInRequired:
-    'For your security, sign in again before adding a way to sign in to your account.',
 } as const;

@@ -1,10 +1,13 @@
 import { expect, test } from 'bun:test';
 import type { MenusSettings } from '@cms/sdk';
-import { CONTENT_DOCUMENT_LIMITS } from '@cms/sdk';
+import { CONTENT_DOCUMENT_LIMITS, wxrImportResultSchema } from '@cms/sdk';
+import { Errors } from '#api/shared/errors';
 import { PatternService } from '#api/domain/content/pattern-service';
 import { TaxonomyService } from '#api/domain/taxonomy/taxonomy-service';
 import { ExportService } from '#api/domain/tools/export-service';
 import { ImportService } from '#api/domain/tools/import-service';
+import type { ImportMediaDeps } from '#api/domain/tools/import-media';
+import type { AdminMedia } from '@cms/sdk';
 import { classicHtml } from '#api/domain/tools/classic-content';
 import type { UserService } from '#api/domain/users/user-service';
 import { tiptapHtmlParser, tiptapRenderer } from '#api/infra/system';
@@ -27,7 +30,10 @@ import { HookBus } from '#api/plugin-runtime/hook-bus';
 import { recordingLogger } from '#test/support/memory';
 
 /** One site on in-memory adapters. */
-const site = async (accounts?: Pick<UserService, 'create'>) => {
+const site = async (
+  accounts?: Pick<UserService, 'create'>,
+  attachments?: ImportMediaDeps,
+) => {
   const hooks = new HookBus({
     timeoutMs: 50,
     logger: recordingLogger().logger,
@@ -64,6 +70,7 @@ const site = async (accounts?: Pick<UserService, 'create'>) => {
     patterns,
     clock,
     importer: new ImportService({
+      attachments,
       hooks,
       parser: fastXmlWxrParser,
       html: tiptapHtmlParser,
@@ -98,6 +105,37 @@ const site = async (accounts?: Pick<UserService, 'create'>) => {
     }),
   };
 };
+
+test('reusable pattern images are bound to imported media before saving', async () => {
+  const media = {
+    id: 'local',
+    url: '/media/local.png',
+    variants: [],
+  } as unknown as AdminMedia;
+  const target = await site(undefined, {
+    settings: new MemorySettings(),
+    fetch: async () => new Response(new Uint8Array([1])),
+    media: {
+      maxBytes: 10,
+      get: async () => media,
+      upload: async () => media,
+      update: async () => media,
+    },
+  });
+  await target.importer.importWxr(
+    `<rss xmlns:wp="http://wordpress.org/export/1.2/" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><wp:wxr_version>1.2</wp:wxr_version>
+<item><wp:post_id>1</wp:post_id><wp:post_type>attachment</wp:post_type><wp:attachment_url>https://old.test/image.png</wp:attachment_url></item>
+<item><title>Pattern</title><wp:post_id>2</wp:post_id><wp:post_type>wp_block</wp:post_type><wp:status>publish</wp:status><content:encoded><![CDATA[<img src="https://old.test/image.png?ver=1">]]></content:encoded></item>
+</channel></rss>`,
+    ADMIN,
+    { downloadAttachments: true },
+  );
+  const patterns = await target.patterns.exportable();
+  expect(patterns).toHaveLength(1);
+  expect(JSON.stringify(patterns)).toContain('/media/local.png');
+  expect(JSON.stringify(patterns)).toContain('"mediaId":"local"');
+  expect(JSON.stringify(patterns)).not.toContain('https://old.test');
+});
 
 test('WXR extension items round trip, validate filters, and emit completion', async () => {
   const source = await site();
@@ -484,12 +522,31 @@ test('WordPress-only items are reported, and files with a DTD are refused', asyn
 
 Second <script>x()</script>para]]></content:encoded><wp:post_name>classic</wp:post_name><wp:status>draft</wp:status><wp:post_type>post</wp:post_type></item>
 <item><title>Seven columns</title><content:encoded><![CDATA[<figure class="wp-block-gallery columns-7"><img src="https://example.com/a.jpg"></figure>]]></content:encoded><wp:status>draft</wp:status><wp:post_type>post</wp:post_type></item>
+<item><title>Long type</title><wp:status>draft</wp:status><wp:post_type>${'t'.repeat(600)}</wp:post_type></item>
 </channel></rss>`;
   const result = await target.importer.importWxr(xml, ADMIN);
   // An unusable body skips its entry only; out-of-range block settings fall back to defaults.
   expect(result).toMatchObject({
     content: 2,
-    skipped: [{ title: 'Logo' }, { title: 'Huge gallery' }],
+    skipped: [
+      {
+        title: 'Logo',
+        reason: Errors.ImportItemUnsupported,
+        params: { type: 'attachment', status: 'inherit' },
+      },
+      { title: 'Huge gallery' },
+      // Values from the file are bounded, so the result always parses.
+      {
+        title: 'Long type',
+        params: { type: 't'.repeat(500), status: 'draft' },
+      },
+    ],
+  });
+  expect(wxrImportResultSchema.safeParse(result).success).toBe(true);
+  // A refusal keeps the values its catalog message leaves out.
+  expect(result.skipped[1]).toMatchObject({
+    reason: Errors.InvalidDocument,
+    params: { detail: expect.any(String) },
   });
   const [entry, gallery] = [...target.content.rows.values()];
   expect(entry!.html).toBe('<p>First line</p><p>Second para</p>');

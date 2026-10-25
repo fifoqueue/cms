@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Path } from '$app/types';
   import type { PublicCaptcha } from '@cms/sdk';
-  import { MailCheck } from '@lucide/svelte';
+  import { default as MailCheck } from '@lucide/svelte/icons/mail-check';
   import type { Snippet } from 'svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';

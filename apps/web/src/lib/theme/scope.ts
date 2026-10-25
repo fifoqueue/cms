@@ -31,6 +31,7 @@ export interface SiteScope {
   recentComments: BlockData['recentComments'];
   authors: BlockData['authors'];
   calendar: BlockData['calendar'];
+  listedTypes: BlockData['listedTypes'];
   theme: ThemeView;
   site: SiteView;
   reading: ReadingView;
@@ -71,6 +72,7 @@ export type ScopeData = Pick<
       | 'recentComments'
       | 'authors'
       | 'calendar'
+      | 'listedTypes'
       | 'fieldLabels'
       | 'comments'
       | 'moderation'

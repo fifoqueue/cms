@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { statusLine } from '#lib/admin/form-errors.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import {
     Card,
@@ -72,7 +73,7 @@
           {#if check.detail.length}
             <ul class="text-sm text-muted-foreground">
               {#each check.detail as line, index (index)}
-                <li><code class="break-all">{line}</code></li>
+                <li><code class="break-all">{statusLine(m, line)}</code></li>
               {/each}
             </ul>
           {/if}

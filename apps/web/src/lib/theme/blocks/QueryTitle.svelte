@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Block } from '@cms/sdk';
+  import { catalogMessage } from '#lib/admin/form-errors.js';
   import { termLabel } from '#lib/seo/head.js';
   import { useI18n } from '#lib/i18n/index.js';
   import { formatMonth } from '#lib/theme/format.js';
@@ -71,7 +72,10 @@
               title: m.themeNotFound,
               description: m.themeNotFoundHelp,
             }
-          : { label: String(page.status), title: page.message };
+          : {
+              label: String(page.status),
+              title: catalogMessage(m, page.message) ?? page.message,
+            };
       default:
         return null;
     }

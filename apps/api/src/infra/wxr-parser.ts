@@ -37,7 +37,7 @@ const MAX_META = 200_000;
 
 /** Post meta the importer uses; everything else (plugin data, edit locks) is ignored. */
 const META_KEY =
-  /^(_thumbnail_id|_menu_item_(type|object|object_id|url|menu_item_parent|target)|wp_pattern_sync_status)$/;
+  /^(_thumbnail_id|_wp_attachment_image_alt|_menu_item_(type|object|object_id|url|menu_item_parent|target)|wp_pattern_sync_status)$/;
 
 /** Text content of a parsed value (plain text, CDATA or an element with attributes). */
 const str = (value: unknown): string => {

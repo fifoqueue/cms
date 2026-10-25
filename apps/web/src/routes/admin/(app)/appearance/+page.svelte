@@ -2,7 +2,11 @@
   import { resolve } from '$app/paths';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
-  import { ExternalLink, Info, Paintbrush, Upload, X } from '@lucide/svelte';
+  import { default as ExternalLink } from '@lucide/svelte/icons/external-link';
+  import { default as Info } from '@lucide/svelte/icons/info';
+  import { default as Paintbrush } from '@lucide/svelte/icons/paintbrush';
+  import { default as Upload } from '@lucide/svelte/icons/upload';
+  import { default as X } from '@lucide/svelte/icons/x';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import ThemePreview from '#lib/admin/ThemePreview.svelte';
   import { Badge } from '#lib/components/ui/badge/index.js';

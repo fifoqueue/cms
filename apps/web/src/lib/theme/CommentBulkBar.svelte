@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { ListChecks, LoaderCircle } from '@lucide/svelte';
+  import { default as ListChecks } from '@lucide/svelte/icons/list-checks';
+  import { default as LoaderCircle } from '@lucide/svelte/icons/loader-circle';
   import { buttonVariants } from '#lib/components/ui/button/button.svelte';
   import { notifyFailure } from '#lib/feedback.js';
   import { useI18n } from '#lib/i18n/index.js';

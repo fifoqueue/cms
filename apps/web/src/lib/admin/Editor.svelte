@@ -4,26 +4,25 @@
   import type { EditorView } from '@tiptap/pm/view';
   import { CONTENT_ALIGNMENTS, IMAGE_SIZES } from '@cms/sdk';
   import type { AdminMedia, ContentDocument, PluginBlockInfo } from '@cms/sdk';
-  import {
-    Bold,
-    Code,
-    Heading2,
-    Heading3,
-    Image,
-    Music,
-    Italic,
-    Link,
-    List,
-    ListOrdered,
-    Quote,
-    Redo,
-    SquareCode,
-    Strikethrough,
-    Table,
-    Undo,
-    SquarePlay,
-    Shapes,
-  } from '@lucide/svelte';
+  import { default as Bold } from '@lucide/svelte/icons/bold';
+  import { default as Code } from '@lucide/svelte/icons/code';
+  import { default as Heading2 } from '@lucide/svelte/icons/heading-2';
+  import { default as Heading3 } from '@lucide/svelte/icons/heading-3';
+  import { default as Image } from '@lucide/svelte/icons/image';
+  import { default as Music } from '@lucide/svelte/icons/music';
+  import { default as Italic } from '@lucide/svelte/icons/italic';
+  import { default as Link } from '@lucide/svelte/icons/link';
+  import { default as List } from '@lucide/svelte/icons/list';
+  import { default as ListOrdered } from '@lucide/svelte/icons/list-ordered';
+  import { default as Quote } from '@lucide/svelte/icons/quote';
+  import { default as Redo } from '@lucide/svelte/icons/redo';
+  import { default as SquareCode } from '@lucide/svelte/icons/square-code';
+  import { default as Strikethrough } from '@lucide/svelte/icons/strikethrough';
+  import { default as Table } from '@lucide/svelte/icons/table';
+  import { default as Undo } from '@lucide/svelte/icons/undo';
+  import { default as SquarePlay } from '@lucide/svelte/icons/square-play';
+  import { default as Shapes } from '@lucide/svelte/icons/shapes';
+  import { catalogMessage } from '#lib/admin/form-errors.js';
   import BlockInserter from '#lib/admin/editor/BlockInserter.svelte';
   import { blockLabels } from '#lib/admin/editor/block-labels.js';
   import { codeBlockView } from '#lib/admin/editor/CodeBlockView.js';
@@ -118,7 +117,11 @@
             ...uploadErrors,
             'media' in result
               ? m.mediaWrongKind(file.name)
-              : m.mediaUploadFailed(file.name, result.error),
+              : m.mediaUploadFailed(
+                  file.name,
+                  catalogMessage(m, result.error, result.params) ??
+                    result.error,
+                ),
           ];
           continue;
         }

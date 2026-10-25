@@ -141,7 +141,15 @@ export const BLOCKS = {
       overlay: flag(true),
     },
   },
-  search: { attrs: { showLabel: flag(false) } },
+  search: {
+    attrs: {
+      showLabel: flag(false),
+      /** A search button that opens a panel with the form and the categories. */
+      panel: flag(false),
+    },
+  },
+  /** Switches the visitor between the theme's color schemes (`settings.colorScheme.toggle`). */
+  'scheme-toggle': { attrs: {} },
   'widget-area': {
     attrs: {
       area: choice(['sidebar', 'footer'], 'sidebar'),
@@ -162,10 +170,18 @@ export const BLOCKS = {
       showComments: flag(true),
       showUpdated: flag(false),
       showSticky: flag(true),
+      /** The comment count as an icon and a number, zero included. */
+      commentIcon: flag(false),
     },
   },
   'post-content': { attrs: {} },
-  'post-excerpt': { attrs: { moreLink: flag(false) } },
+  'post-excerpt': {
+    attrs: {
+      moreLink: flag(false),
+      /** Words shown before an ellipsis (WordPress `excerptLength`); 0 shows the whole excerpt. */
+      excerptLength: { type: 'number', min: 0, max: 100, default: 0 },
+    },
+  },
   'post-featured-image': {
     attrs: {
       link: flag(true),
@@ -360,35 +376,47 @@ export const TEMPLATE_NAME = new RegExp(
 export interface BlockIssue {
   path: string;
   message: string;
+  /** Values the catalog `message` leaves out. */
+  params?: Record<string, string | number>;
 }
 
-const attrIssue = (spec: BlockAttr, value: unknown): string | null => {
+type AttrIssue = Omit<BlockIssue, 'path'>;
+
+const attrIssue = (spec: BlockAttr, value: unknown): AttrIssue | null => {
   switch (spec.type) {
     case 'text':
       return typeof value !== 'string'
-        ? Errors.BlockAttrText
+        ? { message: Errors.BlockAttrText }
         : value.length > spec.max
-          ? Errors.BlockAttrTooLong(spec.max)
+          ? { message: Errors.BlockAttrTooLong, params: { max: spec.max } }
           : spec.pattern && value !== '' && !spec.pattern.test(value)
-            ? Errors.BlockAttrFormat
+            ? { message: Errors.BlockAttrFormat }
             : null;
     case 'color':
       return typeof value === 'string' && (value === '' || SLUG.test(value))
         ? null
-        : Errors.BlockAttrColor;
+        : { message: Errors.BlockAttrColor };
     case 'number':
       return typeof value === 'number' &&
         Number.isInteger(value) &&
         value >= spec.min &&
         value <= spec.max
         ? null
-        : Errors.BlockAttrNumber(spec.min, spec.max);
+        : {
+            message: Errors.BlockAttrNumber,
+            params: { min: spec.min, max: spec.max },
+          };
     case 'boolean':
-      return typeof value === 'boolean' ? null : Errors.BlockAttrBoolean;
+      return typeof value === 'boolean'
+        ? null
+        : { message: Errors.BlockAttrBoolean };
     case 'enum':
       return spec.options.includes(value as string)
         ? null
-        : Errors.BlockAttrChoice(spec.options.join(', '));
+        : {
+            message: Errors.BlockAttrChoice,
+            params: { options: spec.options.join(', ') },
+          };
   }
 };
 
@@ -447,14 +475,16 @@ export const parseBlocks = (
       if (spec.parent && (!parent || !spec.parent.includes(parent)))
         issues.push({
           path: at,
-          message: Errors.BlockParent(spec.parent.join(' or ')),
+          message: Errors.BlockParent,
+          params: { parents: spec.parent.join(' or ') },
         });
       if (parent) {
         const allowed = (BLOCKS[parent as BlockName] as BlockSpec).children;
         if (Array.isArray(allowed) && !allowed.includes(name))
           issues.push({
             path: at,
-            message: Errors.BlockNotAllowedInside(parent),
+            message: Errors.BlockNotAllowedInside,
+            params: { parent },
           });
       }
       const attrs: Record<string, unknown> = {};
@@ -474,8 +504,7 @@ export const parseBlocks = (
             ? given[key]
             : attr.default;
         const problem = attrIssue(attr, value);
-        if (problem)
-          issues.push({ path: `${at}.attrs.${key}`, message: problem });
+        if (problem) issues.push({ path: `${at}.attrs.${key}`, ...problem });
         attrs[key] = value;
       }
       if (name === 'template-part' && !attrs.slug)

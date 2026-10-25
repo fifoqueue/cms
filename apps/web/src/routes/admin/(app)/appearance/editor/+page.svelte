@@ -2,6 +2,8 @@
   import '#lib/theme/site.css';
   import TemplateView from '#lib/theme/TemplateView.svelte';
   import ThemeStylesheet from '#lib/theme/ThemeStylesheet.svelte';
+  import SiteFonts from '#lib/theme/SiteFonts.svelte';
+  import SiteFontsForm from '#lib/admin/SiteFontsForm.svelte';
   import { themeStyle } from '#lib/theme/style.js';
   import { provideDateStyle } from '#lib/theme/format.js';
   import { queryKey, selectionOf } from '#lib/theme/queries.js';
@@ -17,14 +19,12 @@
     isIndependentQuery,
     walkBlocks,
   } from '@cms/sdk';
-  import {
-    Redo2,
-    Undo2,
-    ExternalLink,
-    LayoutTemplate,
-    Palette,
-    Puzzle,
-  } from '@lucide/svelte';
+  import { default as Redo2 } from '@lucide/svelte/icons/redo-2';
+  import { default as Undo2 } from '@lucide/svelte/icons/undo-2';
+  import { default as ExternalLink } from '@lucide/svelte/icons/external-link';
+  import { default as LayoutTemplate } from '@lucide/svelte/icons/layout-template';
+  import { default as Palette } from '@lucide/svelte/icons/palette';
+  import { default as Puzzle } from '@lucide/svelte/icons/puzzle';
   import BlockTreeEditor from '#lib/admin/BlockTreeEditor.svelte';
   import { History, historyKey } from '#lib/admin/history.js';
   import FormMessage from '#lib/admin/FormMessage.svelte';
@@ -58,6 +58,16 @@
   const i18n = useI18n();
   const m = $derived(i18n.m);
   const editor = $derived(data.editor);
+  const fontFailure = $derived(
+    form && 'fontForm' in form && form.fontForm
+      ? {
+          message: form.message,
+          code: form.code,
+          issues: form.issues,
+          fontForm: form.fontForm,
+        }
+      : null,
+  );
 
   const selected = $derived.by(() => {
     const [kind, key] = data.edit.split(':') as [string, string | undefined];
@@ -343,6 +353,8 @@
 </svelte:head>
 <!-- The edited theme's stylesheet, so both canvases match the public site. -->
 <ThemeStylesheet css={data.canvas.theme.css} />
+<!-- Every site font, so a font chosen in Styles shows in the canvases before it is saved. -->
+<SiteFonts fonts={editor.siteFonts} />
 
 <div class="flex flex-wrap items-center justify-between gap-4">
   <div class="space-y-1">
@@ -376,7 +388,8 @@
     >
   </div>
 </div>
-<FormMessage {form} />
+<!-- Site font refusals show inside their own section. -->
+<FormMessage form={fontFailure ? null : form} />
 
 <div class="grid gap-6 xl:grid-cols-[15rem_minmax(0,1fr)]">
   <!-- The padding inside the scroller keeps the items' focus outlines visible. -->
@@ -672,6 +685,13 @@
               <Button type="submit" variant="ghost">{m.editorReset}</Button>
             </form>
           {/if}
+          <div class="mt-8 border-t pt-6">
+            <SiteFontsForm
+              fonts={editor.siteFonts}
+              theme={editor.id}
+              failure={fontFailure}
+            />
+          </div>
         </CardContent>
       </Card>
     {:else}

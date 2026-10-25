@@ -33,6 +33,10 @@
       label: (m: Messages) => m.settingsDiscussion,
     },
     {
+      route: '/admin/(app)/settings/media-storage',
+      label: (m: Messages) => m.settingsMediaStorage,
+    },
+    {
       route: '/admin/(app)/settings/permalinks',
       label: (m: Messages) => m.permalinksTitle,
     },

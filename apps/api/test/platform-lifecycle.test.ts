@@ -6,6 +6,7 @@ import { createRuntime } from '#test/support/runtime';
 import { HealthChecks } from '#api/domain/tools/health-checks';
 import { SiteHealthService } from '#api/domain/tools/site-health';
 import { ADMIN, fixedClock } from '#test/support/memory';
+import { Errors } from '#api/shared/errors';
 
 test('PluginHost disable revokes mail, job and health registrations and late access', async () => {
   const runtime = createRuntime();
@@ -94,7 +95,15 @@ test('core health check errors propagate while plugin failures become check fail
       };
     },
     leases: { list: async () => [] },
-    jobs: { failures: async () => [] },
+    jobs: {
+      failures: async () => [
+        {
+          kind: 'webhook.deliver',
+          error: Errors.JobFailed,
+          failedAt: fixedClock().now(),
+        },
+      ],
+    },
     plugins: async () => [],
     visitorProof: () => true,
     info: { cms: '1', runtime: 'test', database: async () => 'db' },
@@ -114,8 +123,15 @@ test('core health check errors propagate while plugin failures become check fail
     expect(report.checks.find((check) => check.key === key)).toEqual({
       key,
       status: 'critical',
-      detail: ['check failed'],
+      detail: [{ message: Errors.HealthCheckFailed, params: { check: key } }],
     });
+  expect(report.checks.find((check) => check.key === 'jobs')).toEqual({
+    key: 'jobs',
+    status: 'recommended',
+    detail: [
+      { message: Errors.HealthJobFailed, params: { kind: 'webhook.deliver' } },
+    ],
+  });
   expect(report.checks.find((check) => check.key === 'email')?.status).toBe(
     'good',
   );

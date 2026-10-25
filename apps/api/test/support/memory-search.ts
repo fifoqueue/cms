@@ -55,13 +55,16 @@ export class MemorySearchSource implements SearchSource {
   }
 }
 
-/** An engine keeping one index per name; `failing` makes every call throw. */
+/** An engine keeping one index per name; `failing` makes every call throw (that error, if one). */
 export class MemorySearchEngine implements SearchEngine {
   readonly indexes = new Map<string, Map<string, SearchDocument>>();
-  failing = false;
+  failing: boolean | Error = false;
 
   private index(connection: SearchConnection) {
-    if (this.failing) throw new Error('connection refused');
+    if (this.failing)
+      throw this.failing instanceof Error
+        ? this.failing
+        : new Error('connection refused');
     let index = this.indexes.get(connection.index);
     if (!index) this.indexes.set(connection.index, (index = new Map()));
     return index;

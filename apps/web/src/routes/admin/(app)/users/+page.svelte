@@ -9,7 +9,7 @@
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
   import { resolve } from '$app/paths';
-  import { Search } from '@lucide/svelte';
+  import { default as Search } from '@lucide/svelte/icons/search';
   import BulkReport from '#lib/admin/BulkReport.svelte';
   import RoleOptions from '#lib/admin/RoleOptions.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';

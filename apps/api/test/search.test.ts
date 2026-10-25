@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { SearchDocument } from '#api/domain/search/ports';
 import { SearchService } from '#api/domain/search/search-service';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
+import { Errors } from '#api/shared/errors';
 import {
   fixedClock,
   MemorySettings,
@@ -130,7 +131,8 @@ describe('SearchService', () => {
     expect(await search.status()).toMatchObject({
       engine: 'database',
       state: 'failing',
-      lastError: 'connection refused',
+      // The engine's own words stay in the server log.
+      lastError: Errors.SearchSyncFailed,
     });
     engine.failing = false;
     // Still paused: searches keep using the database for a while.
@@ -143,6 +145,65 @@ describe('SearchService', () => {
       total: 2,
     });
     expect((await search.status()).lastError).toBeNull();
+  });
+
+  test('failures are stored as catalog text with safe values only', async () => {
+    const { search, source, engine, clock } = setup();
+    await search.update({ enabled: true, host: 'http://meili.test' });
+    source.write(doc('a', 'Apple'));
+    const fail = async (error: Error) => {
+      engine.failing = error;
+      clock.set(new Date(clock.now().getTime() + 31_000).toISOString());
+      source.write(doc('a', 'Apple'));
+      await search.sync();
+      return search.status();
+    };
+    // Meilisearch wraps the request's own error; only the status is kept.
+    const http = new Error('Request to http://key@meili.test failed', {
+      cause: new Error(Errors.SearchRequestFailed, { cause: 503 }),
+    });
+    expect(await fail(http)).toMatchObject({
+      state: 'failing',
+      lastError: Errors.SearchRequestFailed,
+      lastErrorParams: { status: 503 },
+    });
+    const refused = Object.assign(new Error('connect ECONNREFUSED secret'), {
+      code: 'ECONNREFUSED',
+    });
+    const status = await fail(refused);
+    expect(status.lastError).toBe(Errors.OutboundNetworkFailed);
+    expect(status.lastErrorParams).toBeUndefined();
+    expect(
+      (await fail(new DOMException('slow', 'TimeoutError'))).lastError,
+    ).toBe(Errors.OutboundTimeout);
+    const tls = new TypeError('fetch failed', {
+      cause: Object.assign(new Error('bad cert'), {
+        code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+      }),
+    });
+    expect((await fail(tls)).lastError).toBe(Errors.OutboundTlsFailed);
+    expect(
+      (await fail(new Error(Errors.SearchTaskFailed, { cause: 'raw' })))
+        .lastError,
+    ).toBe(Errors.SearchTaskFailed);
+  });
+
+  test('a failure stored in the engine wording reads as the generic failure', async () => {
+    const settings = new MemorySettings();
+    const search = new SearchService({
+      settings,
+      secrets: plainSecretBox,
+      engine: new MemorySearchEngine(),
+      source: new MemorySearchSource(),
+      clock: fixedClock(),
+      logger: recordingLogger().logger,
+    });
+    await search.update({ enabled: true, host: 'http://meili.test' });
+    await settings.set('search.state', {
+      ...((await settings.get('search.state')) as object),
+      lastError: 'Meilisearch said: invalid key sk_live_secret',
+    });
+    expect((await search.status()).lastError).toBe(Errors.SearchSyncFailed);
   });
 
   test('a rebuild request replaces the whole index', async () => {

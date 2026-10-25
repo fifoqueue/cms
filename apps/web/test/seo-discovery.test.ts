@@ -134,7 +134,7 @@ describe('generated documents', () => {
     // Rejected from the counts alone, before any chunk list is built.
     expect(() =>
       sitemapIndex(ORIGIN, { content: 1e15, category: 0, tag: 0 }),
-    ).toThrow('Sitemap index would exceed 50000 sitemaps');
+    ).toThrow('The sitemap index would exceed the sitemap limit');
 
     const feed = await rssFeed(site, settings(), [
       entry({ excerpt: 'bad\u0000char ]]>' }),

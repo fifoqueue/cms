@@ -41,6 +41,7 @@ export const contentRelations = {
   featuredMedia: {
     select: {
       storageKey: true,
+      publicUrl: true,
       alt: true,
       width: true,
       height: true,
@@ -161,6 +162,7 @@ export const termSummaries = (
 export const featuredImageOf = (
   media: {
     storageKey: string;
+    publicUrl?: string | null;
     alt: string;
     width: number | null;
     height: number | null;

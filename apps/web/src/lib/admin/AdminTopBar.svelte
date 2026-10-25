@@ -2,13 +2,11 @@
   import { resolve } from '$app/paths';
   import { can } from '@cms/sdk/capabilities';
   import type { Capability } from '@cms/sdk/capabilities';
-  import {
-    ChevronDown,
-    ExternalLink,
-    MessageSquare,
-    Plus,
-    UserRound,
-  } from '@lucide/svelte';
+  import { default as ChevronDown } from '@lucide/svelte/icons/chevron-down';
+  import { default as ExternalLink } from '@lucide/svelte/icons/external-link';
+  import { default as MessageSquare } from '@lucide/svelte/icons/message-square';
+  import { default as Plus } from '@lucide/svelte/icons/plus';
+  import { default as UserRound } from '@lucide/svelte/icons/user-round';
   import { onMount } from 'svelte';
   import { typeLabel, useI18n } from '#lib/i18n/index.js';
 

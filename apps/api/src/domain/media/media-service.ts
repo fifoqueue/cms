@@ -36,15 +36,27 @@ import {
   rateLimited,
   Errors,
 } from '#api/shared/errors';
+import { withParams } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 import { MediaProcessors } from '#api/domain/media/media-processors';
 import { ImageSizes } from '#api/domain/media/image-sizes';
+import type { StorageSettings } from '#api/domain/media/storage-settings';
+import type { JobQueue } from '#api/domain/jobs/ports';
+import type { MediaCleanup } from '#api/domain/media/media-cleanup';
 
 export interface MediaServiceDeps {
+  cleanup?: MediaCleanup;
+  cleanupQueue?: Pick<JobQueue, 'enqueue'>;
+  storageSettings?: StorageSettings;
   sizes?: ImageSizes;
   processors?: MediaProcessors;
   repository: MediaRepository;
   storage: MediaStorage;
+  selectStorage?: (driver?: string) => Promise<{
+    driver: string;
+    storage: MediaStorage;
+    url: (key: string) => string;
+  }>;
   images: ImageProcessor;
   ids: IdGenerator;
   clock: Clock;
@@ -83,6 +95,10 @@ const displayName = (name: string) =>
 
 /** The media library. */
 export class MediaService {
+  get storageSettings() {
+    if (!this.deps.storageSettings) throw new Error(Errors.MediaDriverInvalid);
+    return this.deps.storageSettings;
+  }
   private derivatives = 0;
   private readonly processors: MediaProcessors;
   constructor(private readonly deps: MediaServiceDeps) {
@@ -144,10 +160,13 @@ export class MediaService {
     bytes: Uint8Array,
     filename: string,
     actor: Actor,
+    options?: { rateLimit?: boolean },
   ): Promise<AdminMedia> {
     authorize(actor, 'media.upload');
+    if (options?.rateLimit === false) authorize(actor, 'tools.manage');
     const limits = await this.deps.limits();
     if (
+      options?.rateLimit !== false &&
       limits.uploadsPerHour > 0 &&
       (await this.deps.limiter.hit(
         `mediaUpload:${actor.id}`,
@@ -155,10 +174,16 @@ export class MediaService {
         this.deps.clock.now(),
       ))
     )
-      throw rateLimited(Errors.MediaUploadRate(limits.uploadsPerHour));
+      throw rateLimited(
+        Errors.MediaUploadRate,
+        withParams(Errors.MediaUploadRate, { limit: limits.uploadsPerHour }),
+      );
     if (bytes.byteLength === 0) throw invalidInput(Errors.MediaEmpty);
     if (bytes.byteLength > this.deps.maxBytes)
-      throw invalidInput(Errors.MediaTooLarge(this.deps.maxBytes));
+      throw invalidInput(
+        Errors.MediaTooLarge,
+        withParams(Errors.MediaTooLarge, { maxBytes: this.deps.maxBytes }),
+      );
     const mime = sniffMediaType(bytes);
     if (!mime) throw invalidInput(Errors.MediaTypeUnsupported);
     if (mime === 'image/svg+xml' && limits.allowSvg !== true)
@@ -201,6 +226,7 @@ export class MediaService {
     const now = this.deps.clock.now();
     const base = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}`;
     const storageKey = `${base}.${MEDIA_TYPES[mime]}`;
+    const destination = await this.storage();
     const isImage = mime.startsWith('image/');
 
     let original = bytes;
@@ -240,6 +266,11 @@ export class MediaService {
           files.push({ key, bytes: resized.bytes });
           variants[name] = {
             key,
+            storageKey: key,
+            storageDriver: destination.driver,
+            publicUrl: destination.url(key),
+            byteSize: resized.bytes.byteLength,
+            mime: 'image/webp',
             width: resized.width,
             height: resized.height,
           };
@@ -248,7 +279,7 @@ export class MediaService {
       files.push({ key: storageKey, bytes: original });
       written.push(...files.map(({ key }) => key));
       const freeBytes = limits.freeSpaceMb * 1024 * 1024;
-      const stored = await this.deps.storage.commit(files, freeBytes);
+      const stored = await destination.storage.commit(files, freeBytes);
       if (stored === 'low_space') throw conflict(Errors.MediaStorageLow);
       if (stored === 'busy') throw conflict(Errors.MediaStorageBusy);
       const record: MediaWrite = {
@@ -262,13 +293,24 @@ export class MediaService {
         alt: '',
         caption: '',
         storageKey,
+        storageDriver: destination.driver,
+        publicUrl: destination.url(storageKey),
+        byteSize: original.byteLength,
         variants,
         createdAt: now,
       };
       await this.deps.repository.insert(record);
     } catch (error) {
-      // Nothing half-stored stays behind.
-      await this.deps.storage.remove(written).catch(() => undefined);
+      if (this.deps.cleanup)
+        await this.deps.cleanup.rollback(
+          id,
+          destination.driver,
+          written,
+          destination.storage,
+        );
+      else if (written.length && destination.storage.rollback)
+        await destination.storage.rollback(written);
+      else if (written.length) await destination.storage.remove(written);
       throw error;
     }
     const media = toAdminMedia(await this.require(id));
@@ -303,7 +345,9 @@ export class MediaService {
     if (this.derivatives >= 2) throw rateLimited(Errors.MediaStorageBusy);
     this.derivatives += 1;
     try {
-      const file = await this.deps.storage.read(media.storageKey);
+      const file = await (
+        await this.storage(media.storageDriver ?? 'local')
+      ).storage.read(media.storageKey);
       if (!file) throw notFound(Errors.MediaNotFound);
       const bytes = new Uint8Array(await new Response(file.body).arrayBuffer());
       return await this.deps.images.resize(
@@ -323,7 +367,9 @@ export class MediaService {
     const changes = parseInput(imageEditSchema, input);
     if (!CLEANED.includes(media.mime))
       throw invalidInput(Errors.MediaTypeUnsupported);
-    const file = await this.deps.storage.read(media.storageKey);
+    const file = await (
+      await this.storage(media.storageDriver ?? 'local')
+    ).storage.read(media.storageKey);
     if (!file) throw notFound(Errors.MediaNotFound);
     const bytes = new Uint8Array(await new Response(file.body).arrayBuffer());
     const size = await this.deps.images.dimensions(bytes);
@@ -357,14 +403,51 @@ export class MediaService {
   async remove(id: string, force: boolean, actor: Actor): Promise<void> {
     const media = await this.editable(id, actor);
     if (media.usageCount > 0 && !force)
-      throw conflict(Errors.MediaInUse(media.usageCount));
+      throw conflict(
+        Errors.MediaInUse,
+        withParams(Errors.MediaInUse, { count: media.usageCount }),
+      );
+    // Production persists a cleanup tombstone independently of the job queue.
+    if (!this.deps.cleanup)
+      await this.deps.cleanupQueue?.enqueue('media.delete', { id });
+    await this.cleanup(id);
+  }
+
+  /** Idempotent queue handler; unavailable drivers leave the row and job retryable. */
+  async cleanup(id: string): Promise<void> {
+    const media = await this.deps.repository.get(id);
+    if (!media) return;
+    const groups = new Map<string, string[]>();
+    const add = (driver: string, key: string) => {
+      const keys = groups.get(driver) ?? [];
+      keys.push(key);
+      groups.set(driver, keys);
+    };
+    add(media.storageDriver ?? 'local', media.storageKey);
+    for (const variant of Object.values(media.variants))
+      if (variant)
+        add(
+          variant.storageDriver ?? media.storageDriver ?? 'local',
+          variant.storageKey ?? variant.key,
+        );
+    if (this.deps.cleanup) {
+      await this.deps.cleanup.deletion(
+        id,
+        [...groups].flatMap(([driver, keys]) =>
+          keys.map((key) => ({ driver, key })),
+        ),
+      );
+      return;
+    }
+    for (const [driver, keys] of groups)
+      await (await this.storage(driver)).storage.remove(keys);
+    await this.finalizeDeletion(id);
+  }
+
+  async finalizeDeletion(id: string) {
+    const media = await this.deps.repository.get(id);
+    if (!media) return;
     await this.deps.repository.delete(id);
-    await this.deps.storage.remove([
-      media.storageKey,
-      ...Object.values(media.variants).flatMap((variant) =>
-        variant ? [variant.key] : [],
-      ),
-    ]);
     void this.deps.hooks.emit('media.deleted', toAdminMedia(media));
   }
 
@@ -374,8 +457,29 @@ export class MediaService {
       /^\d{4}\/\d{2}\/([0-9a-f-]{36})(?:-[a-z][a-z0-9-]{0,63})?\.[a-z0-9]+$/.exec(
         key,
       );
-    if (!match || !(await this.deps.repository.exists(match[1]!))) return null;
-    return this.deps.storage.read(key, range);
+    if (!match) return null;
+    const media = await this.deps.repository.get(match[1]!);
+    if (!media) return null;
+    const variant = Object.values(media.variants).find(
+      (item) => item?.key === key,
+    );
+    if (media.storageKey !== key && !variant) return null;
+    return (
+      await this.storage(
+        variant?.storageDriver ?? media.storageDriver ?? 'local',
+      )
+    ).storage.read(key, range);
+  }
+
+  private storage(driver?: string) {
+    return (
+      this.deps.selectStorage?.(driver) ??
+      Promise.resolve({
+        driver: 'local',
+        storage: this.deps.storage,
+        url: (key: string) => `/media/${key}`,
+      })
+    );
   }
 
   /** Own uploads need `media.upload`; other people's need `media.manage`. */

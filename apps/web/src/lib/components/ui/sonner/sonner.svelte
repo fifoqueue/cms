@@ -1,12 +1,10 @@
 <script lang="ts">
-  import {
-    CircleCheck,
-    Info,
-    LoaderCircle,
-    OctagonX,
-    TriangleAlert,
-    X,
-  } from '@lucide/svelte';
+  import { default as CircleCheck } from '@lucide/svelte/icons/circle-check';
+  import { default as Info } from '@lucide/svelte/icons/info';
+  import { default as LoaderCircle } from '@lucide/svelte/icons/loader-circle';
+  import { default as OctagonX } from '@lucide/svelte/icons/octagon-x';
+  import { default as TriangleAlert } from '@lucide/svelte/icons/triangle-alert';
+  import { default as X } from '@lucide/svelte/icons/x';
   import { Toaster as Sonner } from 'svelte-sonner';
   import type { ToasterProps } from 'svelte-sonner';
 

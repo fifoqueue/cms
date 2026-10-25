@@ -32,9 +32,11 @@ export const signInOutcomeSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('user'), userId: z.string().min(1).max(128) }),
   z.object({
     kind: z.literal('redirect'),
+    // Zod runs this refinement even when `z.url()` already failed; unparsable URLs are refused.
     url: z.url().refine((value) => {
-      const url = new URL(value);
+      const url = URL.parse(value);
       return (
+        url !== null &&
         ['https:', 'http:'].includes(url.protocol) &&
         !url.username &&
         !url.password

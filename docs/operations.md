@@ -1,6 +1,21 @@
 # 운영·환경 설정
 
+## Media storage operations
+
+Migration `20261114000000_media_storage` backfills local URLs and original byte counts. Legacy variant byte counts remain null until resync. Back up MariaDB, local media, and the site's secret key together.
+
+Storage settings are administrator-owned `media.storage` values, not environment-only configuration. S3 secrets are sealed with `SecretBox` and never returned. The adapter uses `aws4fetch` for SigV4 signing only; probes, uploads, reads, deletes and paginated listings all use the DNS-pinned egress transport under service `media-storage`. Private MinIO endpoints require an explicit host/port/address egress rule for that service. Redirects are rejected rather than forwarding signed credentials; configure the correct regional endpoint. Set endpoint/region/bucket for AWS, R2, MinIO, B2 or Wasabi; use the provider's region and path-style requirements. The probe requires PutObject/DeleteObject; delivery needs GetObject and resync needs ListBucket under the prefix.
+
+An established S3 endpoint/bucket/prefix cannot be changed in place: old assets depend on that location. Local/S3 switching preserves it; credential rotation is supported. Moving existing objects to another bucket/provider is not automatic and remains a follow-up migration job. CDN changes affect new uploads and URLs refreshed by resync, not URLs already embedded in saved content.
+
 상위 문서: [AGENTS.md](../AGENTS.md)
+
+## Content-Security-Policy on public pages
+
+The app sends no `script-src`, `style-src` or `font-src` on public pages (only `frame-ancestors` on admin and sign-in responses). If a reverse proxy adds such a policy, allow:
+
+- the inline head script that restores a visitor's light/dark choice before the first paint, and the inline `<style>` elements for the alternate palette, theme `style.css` and site-font `@font-face` rules. They carry no nonce or hash (they change with theme settings), so a strict policy needs `'unsafe-inline'` for them, or the theme's scheme toggle and site fonts must be left unused;
+- the origins of site fonts added in Appearance → Editor → Styles: the stylesheet host in `style-src` (e.g. `https://fonts.googleapis.com`) and the font file host in `font-src` (e.g. `https://fonts.gstatic.com`). Fonts uploaded to the media library are same-origin.
 
 ## 실행과 배포
 

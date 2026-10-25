@@ -43,14 +43,12 @@
 
 <script lang="ts">
   import { DropdownMenu } from 'bits-ui';
-  import {
-    Check,
-    CircleX,
-    Ellipsis,
-    LoaderCircle,
-    Trash2,
-    Undo2,
-  } from '@lucide/svelte';
+  import { default as Check } from '@lucide/svelte/icons/check';
+  import { default as CircleX } from '@lucide/svelte/icons/circle-x';
+  import { default as Ellipsis } from '@lucide/svelte/icons/ellipsis';
+  import { default as LoaderCircle } from '@lucide/svelte/icons/loader-circle';
+  import { default as Trash2 } from '@lucide/svelte/icons/trash-2';
+  import { default as Undo2 } from '@lucide/svelte/icons/undo-2';
   import { buttonVariants } from '#lib/components/ui/button/button.svelte';
   import { useI18n } from '#lib/i18n/index.js';
   import ConfirmDialog from '#lib/theme/ConfirmDialog.svelte';

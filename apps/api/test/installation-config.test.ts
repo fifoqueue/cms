@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { Errors } from '#api/shared/errors';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -42,7 +43,7 @@ describe('Installation configuration', () => {
         expect((await stat(path)).mode & 0o777).toBe(0o600);
       await writeFile(path, '{"DATABASE_URL":');
       expect(() => readInstallationConfig(path)).toThrow(
-        '설정 파일이 손상되었습니다.',
+        Errors.InstallConfigCorrupt,
       );
     } finally {
       await rm(directory, { recursive: true });

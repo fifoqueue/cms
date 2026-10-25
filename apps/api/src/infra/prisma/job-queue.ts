@@ -182,6 +182,24 @@ export class PrismaJobQueue implements JobQueue {
     return count === 1;
   }
 
+  async pending(kind: string, id: string) {
+    return (
+      (await this.db.job.findFirst({
+        where: {
+          kind,
+          payload: JSON.stringify({ id }),
+          failedAt: null,
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: new Date() } },
+            { lockedUntil: { gt: new Date() } },
+          ],
+        },
+        select: { id: true },
+      })) !== null
+    );
+  }
+
   async fail(
     id: string,
     owner: string,

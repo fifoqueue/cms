@@ -7,6 +7,7 @@ export const EGRESS_SERVICES = [
   'smtp',
   'email-api',
   'webhook',
+  'media-storage',
 ] as const;
 export type EgressService = (typeof EGRESS_SERVICES)[number];
 

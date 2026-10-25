@@ -3,15 +3,13 @@
   import { deserialize, enhance } from '$app/forms';
   import { MENU_LOCATIONS } from '@cms/sdk';
   import type { MenuItem } from '@cms/sdk';
-  import {
-    ArrowDown,
-    ArrowLeft,
-    ArrowRight,
-    ArrowUp,
-    GripVertical,
-    Search,
-    Trash2,
-  } from '@lucide/svelte';
+  import { default as ArrowDown } from '@lucide/svelte/icons/arrow-down';
+  import { default as ArrowLeft } from '@lucide/svelte/icons/arrow-left';
+  import { default as ArrowRight } from '@lucide/svelte/icons/arrow-right';
+  import { default as ArrowUp } from '@lucide/svelte/icons/arrow-up';
+  import { default as GripVertical } from '@lucide/svelte/icons/grip-vertical';
+  import { default as Search } from '@lucide/svelte/icons/search';
+  import { default as Trash2 } from '@lucide/svelte/icons/trash-2';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { confirmLeave } from '#lib/admin/unsaved.js';
   import {

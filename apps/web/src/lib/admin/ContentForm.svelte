@@ -22,7 +22,7 @@
   } from '@cms/sdk';
   import { permalinkPatternFor } from '@cms/sdk';
   import type { AuthorOption } from '@cms/sdk/client';
-  import { X } from '@lucide/svelte';
+  import { default as X } from '@lucide/svelte/icons/x';
   import { onDestroy, onMount, untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import type { ContentFormValues } from '#lib/admin/content-form-values.js';

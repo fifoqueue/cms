@@ -29,6 +29,7 @@
   import PostTitle from '#lib/theme/blocks/PostTitle.svelte';
   import Query from '#lib/theme/blocks/Query.svelte';
   import QueryTitle from '#lib/theme/blocks/QueryTitle.svelte';
+  import SchemeToggle from '#lib/theme/blocks/SchemeToggle.svelte';
   import SearchForm from '#lib/theme/blocks/SearchForm.svelte';
   import SocialLinks from '#lib/theme/blocks/SocialLinks.svelte';
   import TemplatePart from '#lib/theme/blocks/TemplatePart.svelte';
@@ -124,7 +125,9 @@
 {:else if block.name === 'navigation'}
   <Navigation {block} />
 {:else if block.name === 'search'}
-  <SearchForm showLabel={block.attrs.showLabel} />
+  <SearchForm showLabel={block.attrs.showLabel} panel={block.attrs.panel} />
+{:else if block.name === 'scheme-toggle'}
+  <SchemeToggle />
 {:else if block.name === 'widget-area'}
   {#if scope().widgets[block.attrs.area].length}
     <div class="cms-block-widget-area">
@@ -142,7 +145,10 @@
 {:else if block.name === 'post-content'}
   <PostContent />
 {:else if block.name === 'post-excerpt'}
-  <PostExcerpt moreLink={block.attrs.moreLink} />
+  <PostExcerpt
+    moreLink={block.attrs.moreLink}
+    length={block.attrs.excerptLength}
+  />
 {:else if block.name === 'post-featured-image'}
   <PostFeaturedImage {block} />
 {:else if block.name === 'post-terms'}

@@ -4,8 +4,8 @@ export const tocAttrsSchema = z
   .strictObject({
     title: z.string().max(200),
     levels: z
-      .array(z.union([z.literal(2), z.literal(3), z.literal(4)]))
-      .max(3)
+      .array(z.number().int().min(1).max(6))
+      .max(6)
       .refine((levels) => new Set(levels).size === levels.length),
     minHeadings: z.number().int().min(0).max(100),
     excluded: z.array(z.string().max(200)).max(100),

@@ -32,6 +32,13 @@ const content = {
   message: 'Plugins get content through PluginContext.',
 };
 
+// The barrel re-exports every icon; Vite's dev server transforms all of them on first SSR.
+const iconBarrel = {
+  regex: '^@lucide/svelte(?:/icons)?$',
+  message:
+    "Import each icon from its own module, e.g. `import { default as X } from '@lucide/svelte/icons/x'`.",
+};
+
 const relative = {
   regex: '^\\.(?:\\./|/(?!\\$types$))',
   message:
@@ -141,6 +148,6 @@ export default defineConfig(
     ['apps/api/src/{domain,plugin-runtime,shared}/**'],
     [plugins, web, prisma, infra],
   ),
-  boundary(['apps/web/**'], [plugins, api, prisma]),
+  boundary(['apps/web/**'], [plugins, api, prisma, iconBarrel]),
   boundary(['plugins/**'], [api, web, prisma, content]),
 );

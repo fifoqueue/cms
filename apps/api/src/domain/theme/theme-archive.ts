@@ -1,4 +1,4 @@
-import { invalidInput, Errors } from '#api/shared/errors';
+import { invalidInput, Errors, withParams } from '#api/shared/errors';
 
 /** What an archive holds: text files by path and an optional `screenshot.png`/`.webp`. */
 export interface ThemeArchiveContents {
@@ -32,7 +32,10 @@ const parseJson = (path: string, text: string): unknown => {
   try {
     return JSON.parse(text);
   } catch {
-    throw invalidInput(Errors.ThemeArchiveFile(path));
+    throw invalidInput(
+      Errors.ThemeArchiveFile,
+      withParams(Errors.ThemeArchiveFile, { file: path }),
+    );
   }
 };
 

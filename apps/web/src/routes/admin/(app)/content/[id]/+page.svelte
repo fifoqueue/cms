@@ -4,7 +4,9 @@
   import { resolve } from '$app/paths';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
-  import { ExternalLink, RotateCcw, Trash2 } from '@lucide/svelte';
+  import { default as ExternalLink } from '@lucide/svelte/icons/external-link';
+  import { default as RotateCcw } from '@lucide/svelte/icons/rotate-ccw';
+  import { default as Trash2 } from '@lucide/svelte/icons/trash-2';
   import ContentForm from '#lib/admin/ContentForm.svelte';
   import { onMount } from 'svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';

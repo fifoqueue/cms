@@ -1,6 +1,7 @@
-import { MEDIA_KINDS } from '@cms/sdk';
-import type { MediaKind } from '@cms/sdk';
+import { can } from '@cms/sdk/capabilities';
 import { CmsApiError } from '@cms/sdk/client';
+import { readMediaFilter } from '#lib/admin/media-filter.js';
+import { submitAction } from '#lib/server/form-action.js';
 import { clampPage } from '#lib/server/page-range.js';
 import { readScreenOptions } from '#lib/server/screen-options.js';
 import { adminFor, requireCapability } from '#lib/server/session.js';
@@ -9,38 +10,36 @@ import type { Actions, PageServerLoad } from './$types';
 export const load: PageServerLoad = async (event) => {
   requireCapability(event.locals, 'media.upload');
   const params = event.url.searchParams;
-  const kind = MEDIA_KINDS.find((option) => option === params.get('kind')) as
-    MediaKind | undefined;
-  const search = (params.get('q') ?? '').trim().slice(0, 200) || undefined;
-  // `YYYY-MM` from the month input; anything else means "every month".
-  const month = /^\d{4}-(0[1-9]|1[0-2])$/.exec(params.get('month') ?? '')?.[0];
-  const unattached = params.get('unattached') === '1' || undefined;
-  const view = params.get('view') === 'list' ? 'list' : undefined;
+  const { filter, query } = readMediaFilter(params);
   const page = Math.max(1, Math.trunc(Number(params.get('page'))) || 1);
   const screen = readScreenOptions(event.cookies, 'media', [], 48);
-  const media = await adminFor(event).media.list({
-    kind,
-    search,
-    month,
-    unattached: unattached && 'true',
-    page,
-    pageSize: screen.perPage,
-  });
+  // Polled while a resync runs. The list comes from the database only, never the storage.
+  event.depends('media:resync');
+  const admin = adminFor(event);
+  const [media, resync] = await Promise.all([
+    admin.media.list({ ...query, page, pageSize: screen.perPage }),
+    event.locals.user && can(event.locals.user, 'media.manage')
+      ? admin.media.storage.resyncStatus()
+      : null,
+  ]);
   clampPage(event.url, media);
   return {
-    filter: {
-      kind,
-      q: search,
-      month,
-      unattached: unattached && ('1' as const),
-      view,
-    },
+    filter,
     screen,
     media,
+    resync,
   };
 };
 
 export const actions: Actions = {
+  /** Queues a pass over the current storage (or joins the one already running). */
+  resync: async (event) => {
+    requireCapability(event.locals, 'media.manage');
+    return submitAction(
+      () => adminFor(event).media.storage.resync(),
+      'mediaResyncStarted',
+    );
+  },
   /** Deletes the selected files; files that entries still show are kept and counted. */
   delete: async (event) => {
     const form = await event.request.formData();

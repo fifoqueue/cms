@@ -4,6 +4,8 @@ import {
   MEDIA_FILENAME_HEADER,
   adminMediaSchema,
   mediaContextSchema,
+  mediaStorageSettingsSchema,
+  mediaResyncSchema,
 } from '#sdk/media';
 import type {
   AdminMedia,
@@ -11,6 +13,9 @@ import type {
   MediaContext,
   MediaListQuery,
   MediaUpdateInput,
+  MediaStorageInput,
+  MediaStorageSettings,
+  MediaResync,
 } from '#sdk/media';
 import type { Paginated } from '#sdk/common';
 
@@ -18,6 +23,33 @@ import type { Paginated } from '#sdk/common';
 export const mediaAdminClient = (request: Request) => {
   const path = (id: string) => `/api/v1/admin/media/${encodeURIComponent(id)}`;
   return {
+    storage: {
+      resync: () =>
+        request<MediaResync>('POST', '/api/v1/admin/media/storage/resync', {
+          response: mediaResyncSchema,
+        }),
+      resyncStatus: () =>
+        request<MediaResync | null>(
+          'GET',
+          '/api/v1/admin/media/storage/resync',
+          {
+            response: mediaResyncSchema.nullable(),
+          },
+        ),
+      get: () =>
+        request<MediaStorageSettings>('GET', '/api/v1/admin/media/storage', {
+          response: mediaStorageSettingsSchema,
+        }),
+      update: (input: MediaStorageInput) =>
+        request<MediaStorageSettings>('PUT', '/api/v1/admin/media/storage', {
+          json: input,
+          response: mediaStorageSettingsSchema,
+        }),
+      test: (input: MediaStorageInput) =>
+        request<void>('POST', '/api/v1/admin/media/storage/test', {
+          json: input,
+        }),
+    },
     list: (query: MediaListQuery = {}) =>
       request<Paginated<AdminMedia>>('GET', '/api/v1/admin/media', {
         query: query as Query,

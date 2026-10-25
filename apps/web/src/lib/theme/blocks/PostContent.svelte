@@ -3,6 +3,7 @@
   import { resolve } from '$app/paths';
   import { enhance } from '$app/forms';
   import { page } from '$app/state';
+  import { catalogMessage } from '#lib/admin/form-errors.js';
   import { useI18n } from '#lib/i18n/index.js';
   import SlotOutlet from '#lib/theme/SlotOutlet.svelte';
   import { codeCopy } from '#lib/theme/content/code-copy.js';
@@ -19,9 +20,11 @@
   const post = $derived(current().post);
   const slots = $derived(scope().slots);
   let prose = $state<HTMLElement>();
-  const failure = $derived(
-    page.form && 'message' in page.form ? String(page.form.message) : '',
-  );
+  const failure = $derived.by(() => {
+    if (!page.form || !('message' in page.form)) return '';
+    const message = String(page.form.message);
+    return catalogMessage(m, message) ?? message;
+  });
 </script>
 
 {#if entry}

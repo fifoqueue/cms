@@ -12,7 +12,8 @@ export type ListingTarget =
     };
 
 /** Content types the home page lists, one at a time; `post` is the default (no parameter). */
-export type HomeListType = 'post' | 'article';
+export const HOME_LIST_TYPES = ['post', 'article'] as const;
+export type HomeListType = (typeof HOME_LIST_TYPES)[number];
 
 /** Query string (without `?`) for one page of a listing, keeping its filters. */
 export const pageQuery = (target: ListingTarget, page: number) => {

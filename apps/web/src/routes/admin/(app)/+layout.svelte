@@ -1,14 +1,12 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import { afterNavigate } from '$app/navigation';
-  import {
-    ExternalLink,
-    LogOut,
-    Menu,
-    PanelLeftClose,
-    PanelLeftOpen,
-    X,
-  } from '@lucide/svelte';
+  import { default as ExternalLink } from '@lucide/svelte/icons/external-link';
+  import { default as LogOut } from '@lucide/svelte/icons/log-out';
+  import { default as Menu } from '@lucide/svelte/icons/menu';
+  import { default as PanelLeftClose } from '@lucide/svelte/icons/panel-left-close';
+  import { default as PanelLeftOpen } from '@lucide/svelte/icons/panel-left-open';
+  import { default as X } from '@lucide/svelte/icons/x';
   import { onMount } from 'svelte';
   import AdminMenu from '#lib/admin/AdminMenu.svelte';
   import AdminTopBar from '#lib/admin/AdminTopBar.svelte';

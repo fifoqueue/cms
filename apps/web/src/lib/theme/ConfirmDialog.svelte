@@ -1,6 +1,7 @@
 <script lang="ts">
   import { AlertDialog } from 'bits-ui';
-  import { CircleAlert, TriangleAlert } from '@lucide/svelte';
+  import { default as CircleAlert } from '@lucide/svelte/icons/circle-alert';
+  import { default as TriangleAlert } from '@lucide/svelte/icons/triangle-alert';
   import { buttonVariants } from '#lib/components/ui/button/button.svelte';
   import { useI18n } from '#lib/i18n/index.js';
   import { cn } from '#lib/utils.js';

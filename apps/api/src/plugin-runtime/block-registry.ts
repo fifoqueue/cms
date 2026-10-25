@@ -11,7 +11,7 @@ import type {
 } from '@cms/sdk/plugin';
 import { isolate } from '#api/shared/isolate';
 import type { Logger } from '#api/shared/logger';
-import { invalidInput, Errors } from '#api/shared/errors';
+import { invalidInput, Errors, withParams } from '#api/shared/errors';
 
 interface Registration {
   block: string;
@@ -116,7 +116,12 @@ export class BlockRegistry {
         ).success
       )
         throw invalidInput(
-          Errors.PluginBlockAttrsInvalid(registration.info.title),
+          Errors.PluginBlockAttrsInvalid,
+          withParams(
+            Errors.PluginBlockAttrsInvalid,
+            { title: registration.info.title },
+            'document',
+          ),
         );
     }
   }

@@ -1,3 +1,4 @@
+import type { PublicFont } from '@cms/sdk';
 import type { ThemeView } from '#lib/server/public-view.js';
 
 const SIZE = { small: '15px', medium: '16px', large: '17.5px' } as const;
@@ -26,19 +27,14 @@ export const siteScheme = ({ settings }: Pick<ThemeView, 'settings'>) => {
   return base ? schemeOf(base) : null;
 };
 
-/**
- * Inline custom properties for the site root: the palette as `--cms-color-<slug>`, its roles
- * mapped onto the interface variables, fonts and layout sizes. Every value was validated by
- * the theme schema (hex colors, font stacks, CSS lengths), so nothing else can be written.
- */
-export const themeStyle = ({ settings, styles }: ThemeView): string => {
+type Palette = ThemeView['settings']['palette'];
+
+/** A palette as `--cms-color-<slug>` with its roles mapped onto the interface variables. */
+const paletteVars = (palette: Palette): [string, string][] => {
   const color = (slug: string) =>
-    settings.palette.find((entry) => entry.slug === slug)?.color ?? '';
-  const font = (slug: string) =>
-    settings.fontFamilies.find((entry) => entry.slug === slug)?.fontFamily;
-  const body = font(styles.fontFamily) ?? 'system-ui, sans-serif';
-  const vars: [string, string][] = [
-    ...settings.palette.map((entry): [string, string] => [
+    palette.find((entry) => entry.slug === slug)?.color ?? '';
+  return [
+    ...palette.map((entry): [string, string] => [
       `--cms-color-${entry.slug}`,
       entry.color,
     ]),
@@ -59,6 +55,28 @@ export const themeStyle = ({ settings, styles }: ThemeView): string => {
     ['--border', color('border')],
     ['--input', color('border')],
     ['--ring', color('accent')],
+    // Native controls, scrollbars and `light-dark()` follow the palette's base color.
+    ['color-scheme', schemeOf(color('base') || '#ffffff')],
+  ];
+};
+
+const declarations = (vars: [string, string][], suffix = '') =>
+  vars
+    .filter(([, value]) => value)
+    .map(([name, value]) => `${name}: ${value}${suffix}`)
+    .join('; ');
+
+/**
+ * Inline custom properties for the site root: the palette (`paletteVars`), fonts and layout
+ * sizes. Every value was validated by the theme schema (hex colors, font stacks, CSS lengths),
+ * so nothing else can be written.
+ */
+export const themeStyle = ({ settings, styles }: ThemeView): string => {
+  const font = (slug: string) =>
+    settings.fontFamilies.find((entry) => entry.slug === slug)?.fontFamily;
+  const body = font(styles.fontFamily) ?? 'system-ui, sans-serif';
+  const vars: [string, string][] = [
+    ...paletteVars(settings.palette),
     ['--radius', RADIUS[styles.radius]],
     ['--cms-font', body],
     [
@@ -69,14 +87,91 @@ export const themeStyle = ({ settings, styles }: ThemeView): string => {
     ['--cms-wide-size', settings.layout.wideSize],
     ['--cms-font-size', SIZE[styles.fontSize]],
     ['--cms-line-height', LEADING[styles.lineHeight]],
-    // Native controls, scrollbars and `light-dark()` follow the palette's base color.
-    ['color-scheme', siteScheme({ settings }) ?? ''],
   ];
-  return vars
-    .filter(([, value]) => value)
-    .map(([name, value]) => `${name}: ${value}`)
-    .join('; ');
+  return declarations(vars);
 };
+
+/** Where the visitor's light/dark choice is remembered. */
+export const SCHEME_KEY = 'cms-color-scheme';
+
+/**
+ * The root attribute that selects a palette: `alternate` shows `alternatePalette`, `default`
+ * the palette; without it the theme's `auto` option follows `prefers-color-scheme`.
+ */
+export const SCHEME_ATTRIBUTE = 'data-cms-scheme';
+
+/** The color scheme of the alternate palette, or null when the theme has a single scheme. */
+export const alternateScheme = ({ settings }: Pick<ThemeView, 'settings'>) => {
+  const base = settings.alternatePalette.find(
+    (entry) => entry.slug === 'base',
+  )?.color;
+  return base ? schemeOf(base) : null;
+};
+
+/**
+ * Head CSS that swaps in the alternate palette: when the visitor chose it, or (with `auto`)
+ * while their system prefers its scheme and they have not chosen. `!important` overrides the
+ * inline palette on `.cms-site`; the values are schema-checked hex colors.
+ */
+export const schemeCss = (theme: Pick<ThemeView, 'settings'>) => {
+  const scheme = alternateScheme(theme);
+  const { colorScheme, alternatePalette } = theme.settings;
+  if (!scheme || !(colorScheme.auto || colorScheme.toggle)) return '';
+  const vars = declarations(paletteVars(alternatePalette), ' !important');
+  const chosen = colorScheme.toggle
+    ? `:root[${SCHEME_ATTRIBUTE}='alternate'] .cms-site { ${vars} }`
+    : '';
+  const system = colorScheme.auto
+    ? `@media (prefers-color-scheme: ${scheme}) { :root:not([${SCHEME_ATTRIBUTE}]) .cms-site { ${vars} } }`
+    : '';
+  return [chosen, system].filter(Boolean).join('\n');
+};
+
+/**
+ * The `SCHEME_ATTRIBUTE` value for a stored choice (`light`/`dark`), or null when the theme
+ * offers no toggle or nothing valid is stored — the same rule as `schemeScript`, for client
+ * navigation into the site and theme changes, where the head script does not run.
+ */
+export const rememberedScheme = (
+  theme: Pick<ThemeView, 'settings'>,
+  stored: string | null,
+): 'alternate' | 'default' | null => {
+  const scheme = alternateScheme(theme);
+  if (!scheme || !theme.settings.colorScheme.toggle) return null;
+  if (stored !== 'light' && stored !== 'dark') return null;
+  return stored === scheme ? 'alternate' : 'default';
+};
+
+/**
+ * A blocking head `<script>` element that applies a remembered choice before the first paint, so the page
+ * never flashes the other scheme. It only reads `localStorage` and sets `SCHEME_ATTRIBUTE`.
+ */
+export const schemeScript = (theme: Pick<ThemeView, 'settings'>) => {
+  const scheme = alternateScheme(theme);
+  if (!scheme || !theme.settings.colorScheme.toggle) return '';
+  return `<script>try{var s=localStorage.getItem(${JSON.stringify(SCHEME_KEY)});if(s==='light'||s==='dark')document.documentElement.setAttribute(${JSON.stringify(SCHEME_ATTRIBUTE)},s===${JSON.stringify(scheme)}?'alternate':'default')}catch(e){}</script>`;
+};
+
+/**
+ * `@font-face` rules for site fonts loaded from font files. Family names and addresses were
+ * checked by the font schema (no quotes, brackets, backslashes or spaces), so they are written
+ * as they are.
+ */
+export const fontFaceCss = (fonts: readonly PublicFont[]) =>
+  fonts
+    .flatMap((font) =>
+      font.faces.map((face) => {
+        const format = /\.woff2$/i.test(face.src)
+          ? 'woff2'
+          : /\.woff$/i.test(face.src)
+            ? 'woff'
+            : /\.otf$/i.test(face.src)
+              ? 'opentype'
+              : 'truetype';
+        return `@font-face { font-family: "${font.family}"; src: url("${face.src}") format("${format}"); font-weight: ${face.weight}; font-style: ${face.style}; font-display: ${face.display}; }`;
+      }),
+    )
+    .join('\n');
 
 /** Theme CSS cannot reach outside the site or into its theme-independent auth screens. */
 export const scopedCss = (css: string) =>

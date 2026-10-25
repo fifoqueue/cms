@@ -1,7 +1,7 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import type { Path } from '$app/types';
-  import { CircleCheck } from '@lucide/svelte';
+  import { default as CircleCheck } from '@lucide/svelte/icons/circle-check';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';
   import { Button } from '#lib/components/ui/button/index.js';

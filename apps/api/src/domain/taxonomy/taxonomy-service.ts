@@ -23,6 +23,7 @@ import type {
 } from '#api/domain/taxonomy/taxonomy-repository';
 import type { TaxonomyTypeService } from '#api/domain/taxonomy/taxonomy-types';
 import { conflict, invalidInput, notFound, Errors } from '#api/shared/errors';
+import { withParams } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 
 /** The taxonomy named in a URL. Unknown taxonomies do not exist (`not_found`). */
@@ -172,7 +173,10 @@ export class TaxonomyService {
     slug: string,
   ): Promise<void> {
     if ((await this.deps.repository.takenSlugs(taxonomy, [slug])).size)
-      throw conflict(Errors.SlugInUse(slug));
+      throw conflict(
+        Errors.SlugInUse,
+        withParams(Errors.SlugInUse, { slug }, 'slug'),
+      );
   }
 }
 

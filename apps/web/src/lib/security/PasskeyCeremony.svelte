@@ -8,7 +8,7 @@
     PublicKeyCredentialCreationOptionsJSON,
     PublicKeyCredentialRequestOptionsJSON,
   } from '@simplewebauthn/browser';
-  import { LoaderCircle } from '@lucide/svelte';
+  import { default as LoaderCircle } from '@lucide/svelte/icons/loader-circle';
   import { onMount, tick } from 'svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import { useI18n } from '#lib/i18n/index.js';

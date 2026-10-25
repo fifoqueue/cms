@@ -3,7 +3,6 @@ import { generate } from 'lean-qr';
 import { signInSettingsSchema } from '@cms/sdk';
 import { Errors as SdkErrors } from '@cms/sdk/errors';
 import { errorMessage, issueText } from '#lib/admin/form-errors.js';
-import { SIGN_IN_MESSAGES, VISITOR_MESSAGES } from '#lib/admin/sso-messages.js';
 import {
   factorRows,
   methodRows,
@@ -14,8 +13,7 @@ import {
   signInIssueTarget,
   signInValues,
 } from '#lib/admin/settings/sign-in-form.js';
-import { en } from '#lib/i18n/en.js';
-import { ko } from '#lib/i18n/ko.js';
+import { apiErrors as koErrors, ko } from '#lib/i18n/ko.js';
 import {
   displayView,
   echoValues,
@@ -283,33 +281,26 @@ test('sign-in refusals show catalog text in both languages', () => {
       message: SdkErrors.SsoAccountLinkedElsewhere,
       code: 'conflict',
     }),
-  ).toBe(ko.authSsoAccountLinkedElsewhere);
-  for (const key of [
-    ...Object.values(SIGN_IN_MESSAGES),
-    ...Object.values(VISITOR_MESSAGES),
-  ]) {
-    expect(typeof en[key]).toBe('string');
-    expect(typeof ko[key]).toBe('string');
-  }
+  ).toBe(koErrors.SsoAccountLinkedElsewhere as string);
   expect(
     errorMessage(ko, 'ko', {
       message: SdkErrors.SignInMethodRequired,
       code: 'invalid_input',
     }),
-  ).toBe(ko.signInMethodRequired);
+  ).toBe(koErrors.SignInMethodRequired as string);
   expect(
     errorMessage(ko, 'ko', {
       message: SdkErrors.RecoveryRecentSignIn,
       code: 'forbidden',
     }),
-  ).toBe(ko.recoveryRecentSignIn);
+  ).toBe(koErrors.RecoveryRecentSignIn as string);
   expect(
     errorMessage(ko, 'ko', {
       message: SdkErrors.RecentSignInRequired,
       code: 'unauthorized',
     }),
-  ).toBe(ko.recentSignInRequired);
+  ).toBe(koErrors.RecentSignInRequired as string);
   expect(issueText(ko, 'ko', SdkErrors.SignInFactorRequired)).toBe(
-    ko.signInFactorRequired,
+    koErrors.SignInFactorRequired as string,
   );
 });

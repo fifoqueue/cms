@@ -13,7 +13,14 @@
 {#if entry && comments && !entry.protected}
   <div class="cms-block-comments">
     <SlotOutlet fragments={slots?.['comments.before'] ?? []} />
-    <Comments contentId={entry.id} {comments} moderation={scope().moderation} />
+    <!-- Drafts belong to one entry. -->
+    {#key entry.id}
+      <Comments
+        contentId={entry.id}
+        {comments}
+        moderation={scope().moderation}
+      />
+    {/key}
     <SlotOutlet fragments={slots?.['comments.after'] ?? []} />
   </div>
 {/if}

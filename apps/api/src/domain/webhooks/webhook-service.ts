@@ -15,6 +15,8 @@ import type {
 } from '#api/domain/ports';
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import { notFound, messageOf, Errors } from '#api/shared/errors';
+import { catalogOr, outboundFailure } from '#api/shared/failures';
+import type { Logger } from '#api/shared/logger';
 import { parseInput } from '#api/shared/validation';
 
 const KEY = 'webhooks';
@@ -73,6 +75,7 @@ export class WebhookService {
       transport: WebhookTransport;
       ids: IdGenerator;
       clock: Clock;
+      logger?: Pick<Logger, 'warn'>;
     },
   ) {}
 
@@ -198,9 +201,17 @@ export class WebhookService {
         body: serialized,
       });
     } catch (error) {
+      // The receiver's or the network's own wording stays in the server log.
+      this.deps.logger?.warn(
+        `Webhook ${hook.id} delivery failed: ${messageOf(error)}`,
+        error,
+      );
       await this.record(hook.id, {
         lastStatus: null,
-        lastError: messageOf(error).slice(0, 300),
+        lastError: outboundFailure(error, {
+          status: Errors.WebhookStatus,
+          other: Errors.WebhookDeliveryFailed,
+        }).message,
         lastAttemptAt: at,
       });
       void this.deps.hooks?.emit('webhook.failed', {
@@ -213,7 +224,7 @@ export class WebhookService {
     const ok = status >= 200 && status < 300;
     await this.record(hook.id, {
       lastStatus: status,
-      lastError: ok ? null : Errors.WebhookStatus(status),
+      lastError: ok ? null : Errors.WebhookStatus,
       lastAttemptAt: at,
     });
     void this.deps.hooks?.emit(ok ? 'webhook.delivered' : 'webhook.failed', {
@@ -223,8 +234,8 @@ export class WebhookService {
     });
     if (ok) return;
     if (status >= 400 && status < 500 && status !== 408 && status !== 429)
-      throw new PermanentJobError(Errors.WebhookStatus(status));
-    throw new Error(Errors.WebhookStatus(status));
+      throw new PermanentJobError(Errors.WebhookStatus, { cause: status });
+    throw new Error(Errors.WebhookStatus, { cause: status });
   }
 
   private async queue(event: WebhookEvent, data: unknown) {
@@ -266,6 +277,10 @@ export class WebhookService {
       events: [...hook.events],
       enabled: hook.enabled,
       ...status,
+      // Older statuses stored the network's own words; those read as the generic failure.
+      lastError:
+        status.lastError &&
+        catalogOr(status.lastError, Errors.WebhookDeliveryFailed),
     };
   }
 

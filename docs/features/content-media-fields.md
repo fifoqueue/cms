@@ -1,5 +1,23 @@
 # 콘텐츠 워크플로·미디어·필드
 
+## Configurable storage
+
+Deletion persists a `media.cleanup.delete.<id>` settings tombstone before queueing `media.cleanup` work. Each original/variant is removed through its recorded driver, and the database row is finalized only after every removal succeeds. Tombstones survive terminal job failure, payload scrubbing and job expiry; driver registration/reactivation and the resync action regenerate cleanup jobs. Upload rollback records retain the driver and exact keys independently of media rows. Unknown completion of a timed-out writer retains its tombstone even after deletion, until settlement is observed; after a process restart such uncertain records remain available for repeated recovery rather than risking lost ownership.
+
+Cleanup recovery scans at most 50 tombstones per invocation, using a persisted cursor. A per-tombstone transaction checks for outstanding queued/leased work before enqueueing. Each dispatch records `attempts` and `nextAttemptAt`, with exponential backoff starting at one minute; after five dispatches automatic regeneration stops (the normal queue retry budget still applies within a dispatch). The tombstone remains, and resync's `cleanupNeedsAttention` reports exhausted records. Repeated recovery does not multiply outstanding jobs.
+
+Plugin connect, commit, read (including stream pulls/cancellation) and remove calls use the configured plugin timeout. Errors are logged server-side and exposed only as catalogued errors. Disposal forbids new operations; an admitted write retains an exact-key rollback capability for at most twice the plugin timeout from admission, with each rollback bounded by the remaining interval. Expired/failed rollback goes through durable cleanup, never a different driver. As with other in-process plugin isolation, synchronous infinite loops cannot be preempted.
+
+Resync uses conditional storage-field writes so a stale inventory cannot replace concurrently changed variants. Its lease renews during processing; cancellation reaches S3 listing and bounds database transactions, with an abort check before commit.
+
+Uploads select local (default) or S3 at upload time; originals and variants retain driver, key, public URL and byte metadata in MariaDB. Lists and public image projections read only DB rows, never HEAD/list the bucket. The immutable original and generated variants share the upload's driver. Switching local/S3 does not copy assets. Stored S3 configuration is retained when switching to local.
+
+S3 public base URLs point to the bucket root (the configured prefix is appended). Without a public base URL, stored `/media/...` URLs use the existing API streaming proxy, which performs storage reads only on delivery. Public buckets/CDNs must be configured by the operator; the CMS does not change bucket policies.
+
+Pull/resync inventories the currently selected driver and refreshes tracked originals/variants, clears or marks missing files, and counts untracked objects without importing or deleting them. It runs through the durable queue with a cross-process lease and one-minute launch cooldown. Status advances queued → running → completed/failed; final counts are object counts. Inventory is bounded to 5,000 objects/50 S3 pages, 5,000 media rows and a 60-second processing budget. Incomplete inventory never marks missing objects. Larger libraries need a future checkpointed reconciliation job.
+
+Importer uploads use `upload(bytes, filename, actor, { rateLimit: false })`; bypass requires `tools.manage` as well as `media.upload`, and all non-hourly admission checks remain active.
+
 상위 문서: [AGENTS.md](../../AGENTS.md)
 
 ## Plugin field definitions

@@ -17,8 +17,15 @@ import { templates } from '#api/domain/email/templates';
 import { PermanentJobError } from '#api/domain/jobs/job-runner';
 import type { HookDispatcher, SecretBox } from '#api/domain/ports';
 import type { SettingsRepository } from '#api/domain/site/site-service';
-import { DomainError, invalidInput, Errors } from '#api/shared/errors';
+import {
+  DomainError,
+  invalidInput,
+  withParams,
+  Errors,
+} from '#api/shared/errors';
+import { failureOf } from '#api/shared/failures';
 import { parseInput } from '#api/shared/validation';
+import type { Logger } from '#api/shared/logger';
 import type { MailTransportRegistry } from '#api/domain/email/transport-registry';
 
 const KEY = 'email';
@@ -60,6 +67,7 @@ export class EmailService {
       sealedJobs: SealedJobs;
       hooks?: HookDispatcher;
       checkDestination?: (settings: Settings) => Promise<void>;
+      logger?: Pick<Logger, 'warn'>;
     },
   ) {}
 
@@ -205,7 +213,13 @@ export class EmailService {
       ...templates(site.locale).test(site.title),
     }).catch((error: unknown) => {
       if (error instanceof DomainError) throw error;
-      throw invalidInput(Errors.EmailSendFailed(String(error)));
+      // The server's answer may quote credentials or provider bodies; only the log keeps it.
+      this.deps.logger?.warn(Errors.EmailSendFailed, error);
+      const failure = failureOf(error);
+      throw invalidInput(
+        Errors.EmailSendFailed,
+        failure && withParams(Errors.EmailSendFailed, { ...failure }),
+      );
     });
   }
 

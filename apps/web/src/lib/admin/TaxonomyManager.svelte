@@ -4,7 +4,8 @@
   import type { SubmitFunction } from '$app/forms';
   import { DEFAULT_ENTRY_SEO } from '@cms/sdk';
   import type { TaxonomyType } from '@cms/sdk';
-  import { Pencil, Trash2 } from '@lucide/svelte';
+  import { default as Pencil } from '@lucide/svelte/icons/pencil';
+  import { default as Trash2 } from '@lucide/svelte/icons/trash-2';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import SeoEditor from '#lib/admin/SeoEditor.svelte';
   import type { SeoPreviewContext } from '#lib/admin/seo.js';

@@ -1,7 +1,7 @@
 import { unzipSync } from 'fflate';
 import type { ThemeArchive } from '#api/domain/theme/theme-archive';
 import { isScreenshot, isThemeFile } from '#api/domain/theme/theme-archive';
-import { invalidInput, Errors } from '#api/shared/errors';
+import { invalidInput, Errors, withParams } from '#api/shared/errors';
 
 /** Upload limits: the archive itself, each unpacked file and all unpacked files together. */
 export const THEME_ARCHIVE_MAX_BYTES = 2 * 1024 * 1024;
@@ -67,7 +67,10 @@ export const zipThemeArchive: ThemeArchive = {
       try {
         files.set(path, decoder.decode(data));
       } catch {
-        throw invalidInput(Errors.ThemeArchiveFile(path));
+        throw invalidInput(
+          Errors.ThemeArchiveFile,
+          withParams(Errors.ThemeArchiveFile, { file: path }),
+        );
       }
     }
     return { files, screenshot };

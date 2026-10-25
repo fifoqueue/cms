@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { X } from '@lucide/svelte';
+  import { default as X } from '@lucide/svelte/icons/x';
   import { errorMessage, issueLines } from '#lib/admin/form-errors.js';
   import {
     Alert,
@@ -13,6 +13,7 @@
   interface Issue {
     path: string;
     message: string;
+    params?: Record<string, string | number>;
   }
 
   let {
@@ -45,7 +46,7 @@
             code: form.code,
             issues,
           }),
-          lines: issueLines(i18n.m, i18n.language, issues),
+          lines: issueLines(i18n.m, i18n.language, issues, form.message),
         }
       : null,
   );

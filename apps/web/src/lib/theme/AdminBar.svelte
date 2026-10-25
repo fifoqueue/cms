@@ -2,15 +2,13 @@
   import { resolve } from '$app/paths';
   import { routeLink } from '#lib/route-link.js';
   import { page } from '$app/state';
-  import {
-    Eye,
-    LayoutDashboard,
-    LogOut,
-    Paintbrush,
-    Pencil,
-    Plus,
-    UserRound,
-  } from '@lucide/svelte';
+  import { default as Eye } from '@lucide/svelte/icons/eye';
+  import { default as LayoutDashboard } from '@lucide/svelte/icons/layout-dashboard';
+  import { default as LogOut } from '@lucide/svelte/icons/log-out';
+  import { default as Paintbrush } from '@lucide/svelte/icons/paintbrush';
+  import { default as Pencil } from '@lucide/svelte/icons/pencil';
+  import { default as Plus } from '@lucide/svelte/icons/plus';
+  import { default as UserRound } from '@lucide/svelte/icons/user-round';
   import type { Capability, Role } from '@cms/sdk';
   import { can } from '@cms/sdk/capabilities';
   import { useI18n } from '#lib/i18n/index.js';
@@ -78,19 +76,19 @@
         : resolve('/admin/(app)/account')}
       class={item}
     >
-      <LayoutDashboard class="size-4" />
-      <span class="hidden max-w-48 truncate sm:inline">{siteTitle}</span>
+      <LayoutDashboard class="size-4" aria-hidden="true" />
+      <span class="sr-only max-w-48 truncate sm:not-sr-only">{siteTitle}</span>
     </a>
     {#if can(user, 'appearance.manage')}
       <a href={resolve('/admin/(app)/appearance/editor')} class={item}>
-        <Paintbrush class="size-4" />
-        <span class="hidden md:inline">{m.adminBarCustomize}</span>
+        <Paintbrush class="size-4" aria-hidden="true" />
+        <span class="sr-only md:not-sr-only">{m.adminBarCustomize}</span>
       </a>
     {/if}
     {#if can(user, 'content.create')}
       <a href={resolve('/admin/(app)/content/new')} class={item}>
-        <Plus class="size-4" />
-        <span class="hidden sm:inline">{m.adminBarNew}</span>
+        <Plus class="size-4" aria-hidden="true" />
+        <span class="sr-only sm:not-sr-only">{m.adminBarNew}</span>
       </a>
     {/if}
     {#if entry}
@@ -98,8 +96,8 @@
         href={resolve('/admin/(app)/content/[id]', { id: entry.id })}
         class={item}
       >
-        <Pencil class="size-4" />
-        <span class="hidden sm:inline">{m.adminBarEdit}</span>
+        <Pencil class="size-4" aria-hidden="true" />
+        <span class="sr-only sm:not-sr-only">{m.adminBarEdit}</span>
       </a>
     {:else if term}
       <!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the term to edit -->
@@ -115,8 +113,8 @@
         }?edit=${encodeURIComponent(term.id)}`}
         class={item}
       >
-        <Pencil class="size-4" />
-        <span class="hidden sm:inline"
+        <Pencil class="size-4" aria-hidden="true" />
+        <span class="sr-only sm:not-sr-only"
           >{term.taxonomy === 'category'
             ? m.adminBarEditCategory
             : term.taxonomy === 'tag'
@@ -128,8 +126,8 @@
     {/if}
     {#if previewing}
       <span class="flex items-center gap-1.5 px-2.5 text-amber-300">
-        <Eye class="size-4" />
-        <span class="hidden truncate md:inline"
+        <Eye class="size-4" aria-hidden="true" />
+        <span class="sr-only truncate md:not-sr-only"
           >{m.themePreviewing(previewing)}</span
         >
       </span>
@@ -141,8 +139,10 @@
   </div>
   <div class="group/account relative flex items-stretch">
     <button type="button" class={item} aria-haspopup="true">
-      <span class="hidden sm:inline">{m.adminBarHowdy(user.name ?? '')}</span>
-      <UserRound class="size-4" />
+      <span class="sr-only sm:not-sr-only"
+        >{m.adminBarHowdy(user.name ?? '')}</span
+      >
+      <UserRound class="size-4" aria-hidden="true" />
     </button>
     <div
       class="invisible absolute top-full right-0 min-w-48 bg-[#2c3338] py-1.5 opacity-0 shadow-lg transition group-focus-within/account:visible group-focus-within/account:opacity-100 group-hover/account:visible group-hover/account:opacity-100"
@@ -151,14 +151,14 @@
         href={resolve('/admin/(app)/account')}
         class="flex items-center gap-2 px-3 py-2 hover:bg-white/10 hover:text-white"
       >
-        <UserRound class="size-4" />{m.navAccount}</a
+        <UserRound class="size-4" aria-hidden="true" />{m.navAccount}</a
       >
       <form method="POST" action={resolve('/admin/logout')}>
         <button
           type="submit"
           class="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-white/10 hover:text-white"
         >
-          <LogOut class="size-4" />{m.signOut}
+          <LogOut class="size-4" aria-hidden="true" />{m.signOut}
         </button>
       </form>
     </div>

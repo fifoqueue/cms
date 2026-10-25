@@ -4,6 +4,7 @@ import { DashboardWidgetRegistry } from '#api/plugin-runtime/dashboard-widget-re
 import { HookBus } from '#api/plugin-runtime/hook-bus';
 import { ADMIN, MemorySettings, recordingLogger } from '#test/support/memory';
 import { HealthChecks } from '#api/domain/tools/health-checks';
+import { Errors } from '#api/shared/errors';
 
 test('health detail counts and lengths are bounded', async () => {
   const checks = new HealthChecks();
@@ -16,8 +17,18 @@ test('health detail counts and lengths are bounded', async () => {
     detail: Array(101).fill('x'),
   }));
   expect((await checks.run()).map((check) => check.detail)).toEqual([
-    ['check failed'],
-    ['check failed'],
+    [
+      {
+        message: Errors.HealthCheckFailed,
+        params: { check: 'plugin:test:length' },
+      },
+    ],
+    [
+      {
+        message: Errors.HealthCheckFailed,
+        params: { check: 'plugin:test:count' },
+      },
+    ],
   ]);
 });
 

@@ -47,6 +47,7 @@ import {
   notFound,
   Errors,
 } from '#api/shared/errors';
+import { withParams } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 
 export interface UserServiceDeps {
@@ -419,7 +420,10 @@ export class UserService {
   private async assertSlugFree(slug: string, current?: string) {
     if (slug === current) return;
     if ((await this.deps.users.takenSlugs([slug])).size)
-      throw conflict(Errors.SlugInUse(slug));
+      throw conflict(
+        Errors.SlugInUse,
+        withParams(Errors.SlugInUse, { slug }, 'slug'),
+      );
   }
 
   private newSlug(name: string, id: string) {

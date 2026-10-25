@@ -1,43 +1,20 @@
 import { error, fail } from '@sveltejs/kit';
 import { CAPTCHA_REQUIRED, formIssuesSchema } from '@cms/sdk';
+import type { IssueParams } from '@cms/sdk';
 import { CmsApiError } from '@cms/sdk/client';
+import { Errors } from '#lib/errors.js';
 
-/** Every error message the web server throws; see `Errors` in the API for the rule. */
-export const Errors = {
-  ThemeQueriesLimit: 'A theme can contain at most 32 independent post lists.',
-  NotFound: 'Not found',
-  Forbidden: 'You do not have permission to view this page',
-  InvalidContentPath: 'Invalid content path',
-  SitemapIndexTooLarge: (limit: number) =>
-    `Sitemap index would exceed ${limit} sitemaps`,
-  FormInvalid: 'Please fix the fields below',
-  PermalinkPatternsInvalid: 'Please fix the permalink patterns',
-  PasswordMismatch: 'Passwords do not match.',
-  SignInRedirectInvalid: 'The sign-in method returned an invalid address.',
-  ProfileNumberInvalid: 'Enter a number.',
-  PluginBundleRequired: 'Choose a plugin bundle (.js)',
-  ImportFileRequired: 'Choose a WordPress export file (.xml)',
-  PluginNotFound: 'Plugin not found',
-  ThemeFileRequired: 'Choose a theme archive (.zip)',
-  BlocksInvalid: 'The blocks could not be read',
-  TemplateNameInvalid: 'Use lowercase letters, numbers and dashes for the slug',
-  ThemeItemReadOnly:
-    'A plugin provides this. Choose Customize before saving your changes.',
-  ThemeFileTooLarge: 'Theme archives can be at most 2 MB',
-  BulkItemFailed: 'This item could not be changed. Try again later.',
-  BulkItemInvalid: 'This selection is not valid.',
-  BulkTooMany: (limit: number) =>
-    `Select at most ${limit} items at a time; nothing was changed.`,
-  PluginActivationFailed: 'The plugin could not be activated.',
-  ReassignToDeleted:
-    'Choose someone who is not being deleted to receive the content.',
-  PasswordOrInvite: 'Enter a password or send an invitation.',
-  ModerationInvalid: 'This comment action is not valid.',
-} as const;
+/** Every error message the web server throws; shared with the screens that word them. */
+export { Errors };
 
 export interface FormIssue {
   path: string;
   message: string;
+  /**
+   * Values the catalog message leaves out (SDK `issueParamsSchema`); a `probe` issue names
+   * where a failed storage connection check left its test file (`bucket`, `key`).
+   */
+  params?: IssueParams;
 }
 
 export interface FormFailure {
@@ -50,13 +27,16 @@ export interface FormFailure {
 }
 
 /**
- * Field issues reduced to `{ path, message }` strings. Anything else an error body carries
- * (received values, codes, nested data) never reaches page data.
+ * Field issues reduced to `{ path, message }` strings, plus bounded `params` (at most 8 keys of
+ * 40 characters, string values of 500; a `probe` issue keeps only its bucket and key). Anything
+ * else an error body carries (received values, codes, nested data) never reaches page data.
  */
 export const safeIssues = (issues: unknown): FormIssue[] | undefined => {
   const parsed = formIssuesSchema.safeParse(issues);
   return parsed.success
-    ? parsed.data.map(({ path, message }) => ({ path, message }))
+    ? parsed.data.map(({ path, message, params }) =>
+        params ? { path, message, params: { ...params } } : { path, message },
+      )
     : undefined;
 };
 

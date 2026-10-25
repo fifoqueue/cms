@@ -7,11 +7,10 @@ import {
 import type {
   AdminEmailSettings,
   EmailSettingsInput,
-  MailField,
   MailValues,
 } from '@cms/sdk';
 import { secretInput } from '#lib/admin/settings/input.server.js';
-import { pluginFieldName } from '#lib/admin/settings/mail-transports.js';
+import { readPluginFields } from '#lib/admin/settings/plugin-fields.server.js';
 import { text } from '#lib/server/errors.js';
 
 /** What the form echoes back after a refusal: everything but the secrets. */
@@ -25,15 +24,6 @@ export type EmailFormValues = Omit<
 };
 
 type Transports = NonNullable<AdminEmailSettings['availableTransports']>;
-
-/** A declared non-secret field; empty numbers are left out, malformed ones go to the API as typed. */
-const fieldValue = (form: FormData, name: string, field: MailField) => {
-  if (field.type === 'boolean') return form.has(name);
-  const value = text(form, name);
-  if (field.type !== 'number' || !value) return value;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : value;
-};
 
 const choice = <T extends string>(
   options: readonly T[],
@@ -64,18 +54,9 @@ export const readEmailForm = (form: FormData, transports: Transports = []) => {
     text(form, 'legacyTransport'),
     'smtp',
   );
-  const settings: MailValues = {};
-  const secrets: Record<string, string> = {};
-  for (const field of plugin?.fields ?? []) {
-    const name = pluginFieldName(plugin!.id, field.key);
-    if (field.type === 'secret') {
-      const secret = secretInput(form, name, `${name}.remove`);
-      if (secret !== undefined) secrets[field.key] = secret;
-      continue;
-    }
-    const value = fieldValue(form, name, field);
-    if (value !== '' || field.type === 'text') settings[field.key] = value;
-  }
+  const { values: settings, secrets } = plugin
+    ? readPluginFields(form, plugin.id, plugin.fields)
+    : { values: {}, secrets: {} };
   const values: EmailFormValues = {
     pluginTransport: plugin ? { id: plugin.id, values: settings } : null,
     enabled: form.has('enabled'),

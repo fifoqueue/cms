@@ -171,7 +171,9 @@ export const sitemapIndex = (
   const counts = kinds.map((kind) => sitemapChunkCount(kind, totals[kind]!));
   // Checked before any list is allocated; a non-numeric count fails the same way.
   if (!(counts.reduce((sum, count) => sum + count, 0) <= SITEMAP_INDEX_LIMIT))
-    throw new Error(Errors.SitemapIndexTooLarge(SITEMAP_INDEX_LIMIT));
+    throw new Error(Errors.SitemapIndexTooLarge, {
+      cause: { limit: SITEMAP_INDEX_LIMIT },
+    });
   const chunks = kinds.flatMap((kind, index) =>
     Array.from(
       { length: counts[index] ?? 0 },

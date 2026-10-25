@@ -49,6 +49,140 @@ const fontStack = z
   .max(200)
   .regex(/^[A-Za-z0-9 ,'"-]+$/, 'Use font names separated by commas');
 
+/** Characters a font file or stylesheet address may never contain (it is written into CSS and HTML). */
+const UNSAFE_URL = /[\s"'<>\\()`]/;
+const FONT_FILE = /\.(woff2|woff|ttf|otf)$/i;
+
+/** An `https:` address without credentials that can be written into CSS/HTML as is. */
+const httpsUrl = z
+  .string()
+  .trim()
+  .max(2048)
+  .refine((value) => {
+    if (UNSAFE_URL.test(value)) return false;
+    try {
+      const url = new URL(value);
+      return (
+        url.protocol === 'https:' &&
+        !!url.hostname &&
+        !url.username &&
+        !url.password
+      );
+    } catch {
+      return false;
+    }
+  }, Errors.FontUrlInvalid);
+
+/** A font file: an `https:` address or a media-library path, ending in a font extension. */
+const fontFileUrl = z
+  .string()
+  .trim()
+  .max(2048)
+  .refine(
+    (value) =>
+      /^\/media\/(?!.*\.\.)[\w./-]+$/.test(value)
+        ? FONT_FILE.test(value)
+        : httpsUrl.safeParse(value).success &&
+          FONT_FILE.test(new URL(value).pathname),
+    Errors.FontFileInvalid,
+  );
+
+export const FONT_DISPLAYS = [
+  'swap',
+  'auto',
+  'block',
+  'fallback',
+  'optional',
+] as const;
+
+/** One `@font-face` of a site font. */
+export const fontFaceSchema = z.strictObject({
+  src: fontFileUrl,
+  weight: z.number().int().min(1).max(1000).default(400),
+  style: z.enum(['normal', 'italic']).default('normal'),
+  display: z.enum(FONT_DISPLAYS).default('swap'),
+});
+export type SiteFontFace = z.output<typeof fontFaceSchema>;
+
+/**
+ * A font family an administrator adds for the whole site, loaded from an external stylesheet
+ * (such as a Google Fonts CSS2 address) or from font files (external or in the media library).
+ */
+export const siteFontSchema = z
+  .strictObject({
+    slug: z
+      .string()
+      .max(32)
+      .regex(SLUG, 'Use lowercase letters, numbers and dashes'),
+    /** The CSS family name, as stylesheets and font stacks name it. */
+    family: z
+      .string()
+      .trim()
+      .min(1)
+      .max(64)
+      .regex(/^[A-Za-z0-9][A-Za-z0-9 _-]*$/, Errors.FontFamilyInvalid),
+    /** Fonts used while the family loads or for characters it lacks. */
+    fallback: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .regex(/^[A-Za-z0-9 ,'"-]+$/, 'Use font names separated by commas')
+      .default('sans-serif'),
+    stylesheet: httpsUrl.or(z.literal('')).default(''),
+    faces: z.array(fontFaceSchema).max(16).default([]),
+  })
+  .superRefine((font, ctx) => {
+    if (!font.stylesheet === !font.faces.length)
+      ctx.addIssue({ code: 'custom', message: Errors.FontSourceRequired });
+  });
+export type SiteFont = z.output<typeof siteFontSchema>;
+
+/** The site's fonts: unique slugs and family names. */
+export const siteFontsSchema = z
+  .array(siteFontSchema)
+  .max(16)
+  .superRefine((fonts, ctx) => {
+    const slugs = new Set(fonts.map((font) => font.slug));
+    const families = new Set(fonts.map((font) => font.family.toLowerCase()));
+    if (slugs.size !== fonts.length || families.size !== fonts.length)
+      ctx.addIssue({ code: 'custom', message: Errors.FontDuplicate });
+  });
+
+export const siteFontsInputSchema = z.strictObject({ fonts: siteFontsSchema });
+export type SiteFontsInput = z.input<typeof siteFontsInputSchema>;
+
+/** The font stack a site font contributes to the theme's font families. */
+export const siteFontStack = (font: Pick<SiteFont, 'family' | 'fallback'>) =>
+  `"${font.family}", ${font.fallback}`;
+
+/** Family names a font stack lists, lowercased and unquoted. */
+export const stackFamilies = (stack: string) =>
+  stack
+    .split(',')
+    .map((name) =>
+      name
+        .trim()
+        .replace(/^["']|["']$/g, '')
+        .toLowerCase(),
+    )
+    .filter(Boolean);
+
+/** A font the public site loads: only families its styles use are sent. */
+const publicFontSchema = z.strictObject({
+  family: z.string(),
+  stylesheet: z.string(),
+  faces: z.array(
+    z.strictObject({
+      src: z.string(),
+      weight: z.number(),
+      style: z.string(),
+      display: z.enum(FONT_DISPLAYS),
+    }),
+  ),
+});
+export type PublicFont = z.output<typeof publicFontSchema>;
+
 /** Palette slugs every theme defines; the site's interface colors come from these. */
 export const THEME_COLOR_ROLES = [
   'base',
@@ -80,9 +214,20 @@ const paletteSchema = z
       if (!slugs.includes(role))
         ctx.addIssue({
           code: 'custom',
-          message: Errors.ThemePaletteRole(role),
+          message: Errors.ThemePaletteRole,
+          params: { role },
         });
   });
+
+/** How the site picks between the palette and `alternatePalette`. */
+const colorSchemeSchema = z
+  .strictObject({
+    /** Follow the visitor's `prefers-color-scheme` until they choose . */
+    auto: z.boolean().default(false),
+    /** Themes may place a `scheme-toggle` block; the visitor's choice is remembered. */
+    toggle: z.boolean().default(false),
+  })
+  .default({ auto: false, toggle: false });
 
 const fontFamiliesSchema = z
   .array(
@@ -119,7 +264,12 @@ export const themeManifestSchema = z
     description: plainText(0, 500).default(''),
     author: plainText(0, 100).default(''),
     settings: z.strictObject({
-      color: z.strictObject({ palette: paletteSchema }),
+      color: z.strictObject({
+        palette: paletteSchema,
+        /** The same slugs in the opposite color scheme (dark for a light palette), for `colorScheme`. */
+        alternatePalette: paletteSchema.optional(),
+      }),
+      colorScheme: colorSchemeSchema,
       typography: z.strictObject({ fontFamilies: fontFamiliesSchema }),
       layout: z
         .strictObject({
@@ -127,13 +277,34 @@ export const themeManifestSchema = z
           wideSize: length.default('72rem'),
         })
         .default({ contentSize: '42rem', wideSize: '72rem' }),
-      /** Entry pages show a back-to-top button with reading progress (Swyft's `misc_scroll_to_top`). */
+      /** Entry pages show a back-to-top button with reading progress. */
       scrollToTop: z.boolean().default(true),
     }),
     styles: themeStylesSchema,
     templateParts: z.array(templatePartSchema).max(32).default([]),
   })
   .superRefine((manifest, ctx) => {
+    const { color, colorScheme } = manifest.settings;
+    const slugs = (palette: { slug: string }[]) =>
+      palette
+        .map((entry) => entry.slug)
+        .sort()
+        .join();
+    if (
+      color.alternatePalette &&
+      slugs(color.alternatePalette) !== slugs(color.palette)
+    )
+      ctx.addIssue({
+        code: 'custom',
+        path: ['settings', 'color', 'alternatePalette'],
+        message: Errors.ThemeAlternatePalette,
+      });
+    if ((colorScheme.auto || colorScheme.toggle) && !color.alternatePalette)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['settings', 'colorScheme'],
+        message: Errors.ThemeAlternatePalette,
+      });
     const fonts = manifest.settings.typography.fontFamilies.map((f) => f.slug);
     for (const key of ['fontFamily', 'headingFontFamily'] as const) {
       const value = manifest.styles[key];
@@ -153,10 +324,12 @@ export type ThemePaletteColor =
 /** A block list, validated by `parseBlocks` with every problem reported. */
 export const blockListSchema = z.unknown().transform((value, ctx): Block[] => {
   const { blocks, issues } = parseBlocks(value);
+  // The block's place in the tree travels as `params.block`, beside the message's own values.
   for (const issue of issues.slice(0, 20))
     ctx.addIssue({
       code: 'custom',
-      message: Errors.BlockIssue(issue.path, issue.message),
+      message: issue.message,
+      params: { block: issue.path, ...issue.params },
     });
   return issues.length ? z.NEVER : blocks;
 });
@@ -272,6 +445,11 @@ export const themeBlocksInputSchema = z.strictObject({
 
 const settingsShape = z.strictObject({
   palette: z.array(z.strictObject({ slug, name: z.string(), color })),
+  /** Empty when the theme has a single color scheme. */
+  alternatePalette: z
+    .array(z.strictObject({ slug, name: z.string(), color }))
+    .default([]),
+  colorScheme: colorSchemeSchema,
   fontFamilies: z.array(
     z.strictObject({ slug, name: z.string(), fontFamily: fontStack }),
   ),
@@ -296,6 +474,8 @@ export const publicThemeSchema = z
     templates: z.record(z.string().regex(TEMPLATE_NAME), blockListSchema),
     parts: z.array(publicPartSchema),
     css: themeCssSchema,
+    /** Site fonts the styles use (by slug or by a family name in their font stacks). */
+    fonts: z.array(publicFontSchema).default([]),
     /** Shown because an administrator is previewing it, not because it is active. */
     preview: z.boolean(),
   })
@@ -338,6 +518,8 @@ export const themeEditorSchema = z.strictObject({
   id: z.string(),
   name: z.string(),
   settings: settingsShape,
+  /** Every site font (Appearance → Editor → Styles); `settings.fontFamilies` lists them too. */
+  siteFonts: siteFontsSchema.default([]),
   styles: z.strictObject({
     theme: themeStylesSchema,
     current: themeStylesSchema,

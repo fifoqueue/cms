@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { CmsApiError } from '@cms/sdk/client';
 import { MEDIA_FILENAME_HEADER } from '@cms/sdk';
+import { safeIssues } from '#lib/server/errors.js';
 import { adminFor, requireCapability } from '#lib/server/session.js';
 import type { RequestHandler } from './$types';
 
@@ -25,7 +26,10 @@ export const POST: RequestHandler = async (event) => {
     );
   } catch (caught) {
     if (caught instanceof CmsApiError && caught.status < 500)
-      return json({ message: caught.message }, { status: caught.status });
+      return json(
+        { message: caught.message, issues: safeIssues(caught.issues) },
+        { status: caught.status },
+      );
     throw caught;
   }
 };

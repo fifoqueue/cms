@@ -1,5 +1,6 @@
 <script lang="ts">
   import { applyColorMode, colorModeScript } from '#lib/admin/color-mode.js';
+  import NavigationProgress from '#lib/components/NavigationProgress.svelte';
   import type { LayoutProps } from './$types';
 
   let { data, children }: LayoutProps = $props();
@@ -14,5 +15,6 @@
 </svelte:head>
 
 <div class="cms-admin contents">
+  <NavigationProgress />
   {@render children()}
 </div>

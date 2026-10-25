@@ -5,8 +5,12 @@ import { renderToHTMLString } from '@tiptap/static-renderer/pm/html-string';
 import { PAGE_BREAK_HTML } from '#content/breaks';
 
 export const headingAnchorPattern = /^[\p{L}][\p{L}\p{N}\p{M}_:.-]{0,99}$/u;
+/** Every heading level a document may use; the editor schema and TOC options share it. */
+export const HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
+const isHeadingLevel = (value: unknown): value is number =>
+  (HEADING_LEVELS as readonly unknown[]).includes(value);
 export const headingLevel = (value: unknown) =>
-  [2, 3, 4].includes(Number(value)) ? Number(value) : 2;
+  isHeadingLevel(Number(value)) ? Number(value) : 2;
 export const HeadingAnchor = Extension.create({
   name: 'headingAnchor',
   addGlobalAttributes: () => [
@@ -204,10 +208,10 @@ export function parseTocAttrs(element: HTMLElement): TocAttrs {
       typeof raw.title === 'string' && raw.title.length <= 200 ? raw.title : '',
     levels:
       Array.isArray(raw.levels) &&
-      raw.levels.length <= 3 &&
-      raw.levels.every((level) => [2, 3, 4].includes(level))
+      raw.levels.length <= HEADING_LEVELS.length &&
+      raw.levels.every(isHeadingLevel)
         ? [...new Set(raw.levels)]
-        : [2, 3, 4],
+        : [...tocDefaults.levels],
     minHeadings:
       Number.isInteger(raw.minHeadings) &&
       raw.minHeadings! >= 0 &&

@@ -9,7 +9,10 @@ export const block = (
 
 export const part = (slug: string) => block('template-part', { slug });
 
-export const SANS =
-  '"Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", sans-serif';
+/**
+ * The app's bundled Inter Variable face is for the admin only: public stacks name `Inter`, which
+ * applies once an administrator adds it as a site font, and fall back to system faces.
+ */
+export const SANS = 'Inter, system-ui, -apple-system, "Segoe UI", sans-serif';
 export const SERIF =
   '"Iowan Old Style", "Palatino Linotype", Palatino, "Noto Serif KR", Georgia, serif';

@@ -22,9 +22,41 @@ export interface ApiErrorBody {
   };
 }
 
-/** Only display-safe validation details may cross the API-to-page-data boundary. */
+/** Bounds of `issues[].params`, so values stay display-sized. */
+export const ISSUE_PARAMS_LIMITS = { keys: 8, key: 40, value: 500 } as const;
+
+/**
+ * The values a fixed catalog message leaves out (`MediaTooLarge` → `{ maxBytes }`), so a reader's
+ * catalog can word them. Never secrets or a provider's answer.
+ */
+export const issueParamsSchema = z
+  .record(
+    z.string().max(ISSUE_PARAMS_LIMITS.key),
+    z.union([z.string().max(ISSUE_PARAMS_LIMITS.value), z.number()]),
+  )
+  .refine((params) => Object.keys(params).length <= ISSUE_PARAMS_LIMITS.keys);
+export type IssueParams = z.output<typeof issueParamsSchema>;
+
+/**
+ * Only display-safe validation details may cross the API-to-page-data boundary. An issue with
+ * an empty `path` belongs to the refusal itself and carries its message's `params`.
+ */
 export const formIssuesSchema = z.array(
-  z.object({ path: z.string(), message: z.string() }),
+  z.union([
+    z.object({
+      path: z.literal('probe'),
+      message: z.string(),
+      params: z.object({
+        bucket: z.string().max(255),
+        key: z.string().max(1024),
+      }),
+    }),
+    z.object({
+      path: z.string(),
+      message: z.string(),
+      params: issueParamsSchema.optional(),
+    }),
+  ]),
 );
 
 export const apiErrorBodySchema = z.object({

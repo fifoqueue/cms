@@ -104,7 +104,9 @@ export const actions: Actions = {
           // The host isolates a failing activation and answers with status `failed`.
           const plugin = await plugins.enable(id);
           if (plugin.status !== 'active')
-            return plugin.error ?? Errors.PluginActivationFailed;
+            return plugin.error
+              ? { message: plugin.error, params: plugin.errorParams }
+              : Errors.PluginActivationFailed;
         },
         selection.invalid,
       ),

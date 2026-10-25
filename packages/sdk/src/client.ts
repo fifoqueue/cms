@@ -144,12 +144,15 @@ import type { BlockInput } from '#sdk/blocks';
 import type {
   AdminTheme,
   PublicTheme,
+  SiteFont,
+  SiteFontsInput,
   ThemeEditor,
   ThemeStylesInput,
 } from '#sdk/themes';
 import {
   adminThemeSchema,
   publicThemeSchema,
+  siteFontsSchema,
   themeEditorSchema,
   themePreviewSchema,
 } from '#sdk/themes';
@@ -655,6 +658,16 @@ export const createAdminClient = (options: ClientOptions, token: string) => {
         request<void>('PUT', `${themePath(id)}/styles`, { json: input }),
       resetStyles: (id: string) =>
         request<void>('DELETE', `${themePath(id)}/styles`),
+      /** Site fonts every theme's styles may use. */
+      fonts: () =>
+        request<SiteFont[]>('GET', '/api/v1/admin/fonts', {
+          response: siteFontsSchema,
+        }),
+      saveFonts: (input: SiteFontsInput) =>
+        request<SiteFont[]>('PUT', '/api/v1/admin/fonts', {
+          json: input,
+          response: siteFontsSchema,
+        }),
     },
     /** Blocks of active plugins the editor can insert. */
     pluginBlocks: () =>

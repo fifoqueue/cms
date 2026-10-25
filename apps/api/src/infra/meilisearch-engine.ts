@@ -27,7 +27,9 @@ const requestWith =
     const response = await fetcher(...args);
     const text = await response.text();
     if (!response.ok)
-      throw new Error(Errors.SearchRequestFailed(response.status));
+      throw new Error(Errors.SearchRequestFailed, {
+        cause: response.status,
+      });
     return text ? (JSON.parse(text) as unknown) : undefined;
   };
 
@@ -52,9 +54,9 @@ const done = async (
     result.status !== 'succeeded' &&
     !allow.includes(result.error?.code ?? '')
   )
-    throw new Error(
-      Errors.SearchTaskFailed(result.error?.message ?? result.status),
-    );
+    throw new Error(Errors.SearchTaskFailed, {
+      cause: result.error?.message ?? result.status,
+    });
 };
 
 /** A Meilisearch filter string value, quoted. */

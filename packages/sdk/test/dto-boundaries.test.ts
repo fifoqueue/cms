@@ -35,6 +35,49 @@ const options = (payload: unknown) => ({
 });
 
 describe('DTO trust boundaries', () => {
+  test('probe error locations retain only the documented non-secret params', async () => {
+    const client = createAuthClient({
+      baseUrl: 'http://localhost:4000',
+      fetch: (async () =>
+        Response.json(
+          {
+            error: {
+              code: 'invalid_input',
+              message: 'The connection test file could not be removed.',
+              issues: [
+                {
+                  path: 'probe',
+                  message: 'The connection test file could not be removed.',
+                  params: {
+                    bucket: 'media',
+                    key: 'uploads/.cms-probe',
+                    secret: 'secret-token',
+                  },
+                  rawBody: 'secret-body',
+                },
+              ],
+            },
+          },
+          { status: 400 },
+        )) as typeof fetch,
+    });
+    try {
+      await client.login({ email: 'wrong', password: 'password' });
+      throw new Error('Expected failure');
+    } catch (error) {
+      expect(error).toBeInstanceOf(CmsApiError);
+      expect(error).toMatchObject({
+        issues: [
+          {
+            path: 'probe',
+            message: 'The connection test file could not be removed.',
+            params: { bucket: 'media', key: 'uploads/.cms-probe' },
+          },
+        ],
+      });
+      expect(JSON.stringify(error)).not.toContain('secret-');
+    }
+  });
   test('API errors project field issues instead of forwarding arbitrary data', async () => {
     const client = createAuthClient({
       baseUrl: 'http://localhost:4000',

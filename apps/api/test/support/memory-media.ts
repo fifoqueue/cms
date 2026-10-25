@@ -33,6 +33,7 @@ export class MemoryMediaRepository implements MediaRepository {
   >();
 
   async list({
+    missing,
     kind,
     search,
     uploaded,
@@ -47,6 +48,7 @@ export class MemoryMediaRepository implements MediaRepository {
       document: 'application/',
     };
     const items = [...this.rows.values()]
+      .filter((row) => !missing || row.missingAt != null)
       .filter((row) => !kind || row.mime.startsWith(prefix[kind]))
       .filter((row) => !search || row.filename.includes(search))
       .filter(

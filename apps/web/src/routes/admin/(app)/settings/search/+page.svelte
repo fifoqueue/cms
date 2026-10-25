@@ -2,6 +2,7 @@
   import SettingsForm from '#lib/admin/settings/SettingsForm.svelte';
   import MaskedSecretField from '#lib/admin/settings/MaskedSecretField.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import { catalogMessage } from '#lib/admin/form-errors.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
@@ -58,7 +59,10 @@
       </dd>
     </dl>
     {#if status.lastError}
-      <p class="text-destructive" role="alert">{status.lastError}</p>
+      <p class="text-destructive" role="alert">
+        {catalogMessage(m, status.lastError, status.lastErrorParams) ??
+          status.lastError}
+      </p>
     {/if}
     <div class="flex flex-wrap gap-2">
       <SettingsForm action="?/test" reset>

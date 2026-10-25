@@ -9,7 +9,7 @@ import type { HtmlParser } from '#api/domain/tools/import-service';
 import type { Clock, IdGenerator } from '#api/domain/ports';
 import { publicFetch } from '#api/infra/egress-policy';
 import type { UpdateFeed, VersionPolicy } from '#api/plugin-runtime/ports';
-import { invalidInput, Errors } from '#api/shared/errors';
+import { invalidInput, Errors, withParams } from '#api/shared/errors';
 
 export const systemClock: Clock = { now: () => new Date() };
 
@@ -34,7 +34,14 @@ export const tiptapRenderer: DocumentRenderer = {
       return renderDocument(document);
     } catch (error) {
       if (error instanceof InvalidDocumentError)
-        throw invalidInput(Errors.InvalidDocument(error.message));
+        throw invalidInput(
+          Errors.InvalidDocument,
+          withParams(
+            Errors.InvalidDocument,
+            { detail: error.message },
+            'document',
+          ),
+        );
       throw error;
     }
   },
@@ -72,7 +79,14 @@ export const tiptapHtmlParser: HtmlParser = {
       return parseHtml(html);
     } catch (error) {
       if (error instanceof InvalidDocumentError)
-        throw invalidInput(Errors.InvalidDocument(error.message));
+        throw invalidInput(
+          Errors.InvalidDocument,
+          withParams(
+            Errors.InvalidDocument,
+            { detail: error.message },
+            'document',
+          ),
+        );
       throw error;
     }
   },

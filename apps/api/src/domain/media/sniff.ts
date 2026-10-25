@@ -69,6 +69,15 @@ export const sniffMediaType = (bytes: Uint8Array): MediaType | null => {
     return 'audio/wav';
   if (ascii(bytes, 0, 4) === 'OggS') return 'audio/ogg';
   if (ascii(bytes, 0, 5) === '%PDF-') return 'application/pdf';
+  // Font signatures: WOFF 2, WOFF, OpenType with CFF outlines, TrueType (version 1.0 or 'true').
+  if (ascii(bytes, 0, 4) === 'wOF2') return 'font/woff2';
+  if (ascii(bytes, 0, 4) === 'wOFF') return 'font/woff';
+  if (ascii(bytes, 0, 4) === 'OTTO') return 'font/otf';
+  if (
+    (bytes[0] === 0 && bytes[1] === 1 && bytes[2] === 0 && bytes[3] === 0) ||
+    ascii(bytes, 0, 4) === 'true'
+  )
+    return 'font/ttf';
   if (
     bytes[0] === 0x1a &&
     bytes[1] === 0x45 &&

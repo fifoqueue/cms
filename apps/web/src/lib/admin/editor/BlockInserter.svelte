@@ -2,7 +2,7 @@
   import type { Editor, JSONContent } from '@tiptap/core';
   import type { AdminMedia, MediaKind, PluginBlockInfo } from '@cms/sdk';
   import { Popover } from 'bits-ui';
-  import { Plus } from '@lucide/svelte';
+  import { default as Plus } from '@lucide/svelte/icons/plus';
   import { onMount, tick } from 'svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import BlockOptions from '#lib/admin/editor/BlockOptions.svelte';

@@ -28,6 +28,7 @@ import { Errors } from '#content/errors';
 import { DocumentNode, More, PageBreak, PatternRef } from '#content/breaks';
 import { EnhancedCodeBlock } from '#content/code';
 import { Callout } from '#content/callout';
+import { HEADING_LEVELS } from '#content/toc';
 import { HeadingAnchor, TableOfContents, validTocCount } from '#content/toc';
 
 /**
@@ -68,7 +69,7 @@ export const contentExtensions = [
   StarterKit.configure({
     document: false,
     codeBlock: false,
-    heading: { levels: [2, 3, 4] },
+    heading: { levels: [...HEADING_LEVELS] },
     link: {
       openOnClick: false,
       defaultProtocol: 'https',

@@ -71,6 +71,12 @@ export type {
   PrivacyEraserRegistrar,
 } from '#sdk/user-contracts';
 import type { MailTransportRegistrar } from '#sdk/email';
+import type { StorageDriverRegistrar } from '#sdk/plugin-media';
+export type {
+  MediaStorageDriver,
+  PluginStorageDriver,
+  StorageDriverRegistrar,
+} from '#sdk/plugin-media';
 import type {
   ContentTypeRegistrar,
   TaxonomyRegistrar,
@@ -588,6 +594,7 @@ export interface PluginContext {
   readonly fields: FieldRegistrar;
   readonly capabilities: CapabilityRegistrar;
   readonly mailTransports: MailTransportRegistrar;
+  readonly storageDrivers: StorageDriverRegistrar;
   readonly menuItemTypes: MenuItemRegistrar;
   readonly themeContributions: ThemeContributionRegistrar;
   readonly patterns: PatternRegistrar;

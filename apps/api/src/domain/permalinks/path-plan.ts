@@ -7,7 +7,7 @@ import {
 import { PermalinkTokenRegistry } from '#api/domain/permalinks/token-registry';
 import { contentPath } from '#api/domain/permalinks/content-path';
 import type { PermalinkSubject } from '#api/domain/permalinks/content-path';
-import { conflict, Errors } from '#api/shared/errors';
+import { conflict, Errors, withParams } from '#api/shared/errors';
 
 /** A stored path: the content's current path or one of its permanent redirects. */
 export interface StoredPath {
@@ -140,7 +140,11 @@ export const planPathChanges = (
   for (const path of plan.release) released.add(path);
 
   for (const { contentId, to } of changes) {
-    if (targets.has(to)) throw conflict(Errors.PathInUse(to));
+    if (targets.has(to))
+      throw conflict(
+        Errors.PathInUse,
+        withParams(Errors.PathInUse, { path: to }, 'path'),
+      );
     targets.add(to);
 
     const owner = owners.get(to);
@@ -149,7 +153,11 @@ export const planPathChanges = (
       plan.promote.push({ path: to, contentId });
     else if (!owner || (owner.current && released.has(to)))
       plan.insert.push({ path: to, contentId });
-    else throw conflict(Errors.PathInUse(to));
+    else
+      throw conflict(
+        Errors.PathInUse,
+        withParams(Errors.PathInUse, { path: to }, 'path'),
+      );
   }
 
   return plan;

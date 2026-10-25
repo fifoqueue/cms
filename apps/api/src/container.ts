@@ -58,6 +58,19 @@ import {
 import { ContentTypeRegistry } from '#api/domain/content/content-type-registry';
 import { FieldService } from '#api/domain/content/fields';
 import { FsMediaStorage } from '#api/infra/fs-media-storage';
+import { S3MediaStorage } from '#api/infra/s3-media-storage';
+import { StorageSettings } from '#api/domain/media/storage-settings';
+import { StorageDrivers } from '#api/domain/media/storage-drivers';
+import { PrismaCleanupCatalog } from '#api/infra/prisma/cleanup-catalog';
+import {
+  MediaCleanup,
+  MEDIA_CLEANUP_JOB,
+} from '#api/domain/media/media-cleanup';
+import {
+  StorageResync,
+  MEDIA_RESYNC_JOB,
+} from '#api/domain/media/storage-resync';
+import { MediaReconciler } from '#api/infra/media-reconciler';
 import { PrismaMediaRepository } from '#api/infra/prisma/media-repository';
 import { sharpImages } from '#api/infra/sharp-images';
 import { zipThemeArchive } from '#api/infra/zip-theme-archive';
@@ -598,6 +611,7 @@ export const createContainer = async (
     secrets,
     ...delivery,
     sealedJobs,
+    logger,
   });
   await egress.initialize(async () => {
     const [searchSettings, emailSettings] = await Promise.all([
@@ -647,6 +661,7 @@ export const createContainer = async (
     ),
     ids: uuidV7,
     clock: systemClock,
+    logger,
   });
   webhooks.subscribe(hooks.core('core:webhooks'));
   jobs.handle(WEBHOOK_JOB, (payload) => webhooks.deliver(payload));
@@ -732,11 +747,118 @@ export const createContainer = async (
     process: ({ bytes, mime }) => sharpImages.clean(bytes, mime),
   });
   const imageSizes = new ImageSizes(logger);
+  const localMediaStorage = new FsMediaStorage(config.MEDIA_DIR);
+  const storageDrivers = new StorageDrivers(logger, timeoutMs);
+  const mediaStorageSettings = new StorageSettings({
+    drivers: storageDrivers,
+    settings: settingsRepository,
+    transactions: new PrismaSettingsTransactions(db),
+    secrets,
+    test: async ({ driver, s3, pluginSettings }) => {
+      if (driver === 's3' && s3)
+        await new S3MediaStorage(s3, egressFetch('media-storage')).test();
+      else if (driver.startsWith('plugin:')) {
+        const storage = storageDrivers.get(driver, pluginSettings);
+        if (!storage) throw new Error(Errors.MediaDriverInvalid);
+        const key = '.cms-probe';
+        if (
+          (await storage.commit([{ key, bytes: new Uint8Array([0]) }], 0)) !==
+          'stored'
+        )
+          throw invalidInput(Errors.MediaStorageBusy);
+        try {
+          await storage.remove([key]);
+        } catch {
+          throw invalidInput(Errors.MediaStorageProbeCleanup, [
+            {
+              path: 'probe',
+              message: Errors.MediaStorageProbeCleanup,
+              params: { bucket: driver, key },
+            },
+          ]);
+        }
+      }
+    },
+  });
+  const remoteStorage = async () => {
+    const { s3 } = await mediaStorageSettings.configuration();
+    if (!s3) throw new Error(Errors.MediaStorageSecret);
+    return new S3MediaStorage(s3, egressFetch('media-storage'));
+  };
+  const reconciler = new MediaReconciler(
+    db,
+    mediaStorageSettings,
+    config.MEDIA_DIR,
+    egressFetch('media-storage'),
+  );
+  const mediaCleanup = new MediaCleanup({
+    catalog: new PrismaCleanupCatalog(db),
+    settings: settingsRepository,
+    transactions: new PrismaSettingsTransactions(db),
+    queue: jobQueue,
+    logger,
+    storage: async (driver) => {
+      const storage = storageDrivers.get(
+        driver,
+        driver.startsWith('plugin:')
+          ? (await mediaStorageSettings.configuration(driver)).pluginSettings
+          : undefined,
+      );
+      if (!storage) throw new Error(Errors.MediaDriverInvalid);
+      return storage;
+    },
+    finalize: async (id) => {
+      await media.finalizeDeletion(id);
+    },
+  });
+  storageDrivers.onRegistered = (driver) => mediaCleanup.recover(driver);
+  const storageResync = new StorageResync({
+    settings: settingsRepository,
+    transactions: new PrismaSettingsTransactions(db),
+    queue: jobQueue,
+    leases: taskLeases,
+    clock: systemClock,
+    ids: uuidV7,
+    driver: async () => (await mediaStorageSettings.get()).driver,
+    recoverCleanup: () => mediaCleanup.recover(),
+    cleanupAttention: () => mediaCleanup.attention(),
+    reconcile: (driver, startedAt, signal) =>
+      reconciler.run(driver, startedAt, signal),
+  });
+  mediaStorageSettings.resync = storageResync;
+  jobs.handle(MEDIA_RESYNC_JOB, (payload) => storageResync.run(payload));
+  storageDrivers.registerCore('local', localMediaStorage);
+  storageDrivers.registerCore('s3', {
+    commit: async (files) => (await remoteStorage()).commit(files),
+    read: async (key, range) => (await remoteStorage()).read(key, range),
+    remove: async (keys) => (await remoteStorage()).remove(keys),
+  });
   const media = new MediaService({
+    cleanup: mediaCleanup,
+    storageSettings: mediaStorageSettings,
     sizes: imageSizes,
     processors: mediaProcessors,
     repository: mediaRepository,
-    storage: new FsMediaStorage(config.MEDIA_DIR),
+    storage: localMediaStorage,
+    selectStorage: async (recordedDriver) => {
+      const settings = await mediaStorageSettings.get();
+      const driver = recordedDriver ?? settings.driver;
+      const storage = storageDrivers.get(
+        driver,
+        driver.startsWith('plugin:')
+          ? (await mediaStorageSettings.configuration(driver)).pluginSettings
+          : undefined,
+      );
+      if (!storage) throw new Error(Errors.MediaDriverInvalid);
+      return {
+        driver,
+        storage,
+        url: (key: string) =>
+          driver === 's3' && settings.s3?.publicBaseUrl
+            ? `${settings.s3.publicBaseUrl.replace(/\/$/, '')}/${settings.s3.prefix}${key}`
+            : `/media/${key}`,
+      };
+    },
     images: sharpImages,
     ids: uuidV7,
     clock: systemClock,
@@ -744,6 +866,27 @@ export const createContainer = async (
     limiter: rateLimits,
     limits: async () => (await security.policy()).media,
     maxBytes: config.MEDIA_MAX_MB * 1024 * 1024,
+  });
+
+  jobs.handle('media.delete', async (payload) => {
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      !('id' in payload) ||
+      typeof payload.id !== 'string'
+    )
+      throw new Error(Errors.InvalidInput);
+    await media.cleanup(payload.id);
+  });
+  jobs.handle(MEDIA_CLEANUP_JOB, async (payload) => {
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      !('id' in payload) ||
+      typeof payload.id !== 'string'
+    )
+      throw new Error(Errors.InvalidInput);
+    await mediaCleanup.run(payload.id);
   });
 
   const content = new ContentService({
@@ -1026,6 +1169,7 @@ export const createContainer = async (
       patterns: patternContributions,
       patternRenderer: tiptapRenderer,
       mailTransports: delivery.mailer,
+      storageDrivers,
       jobs: new PluginJobs(jobs, sealedJobs, systemClock),
       healthChecks,
       sitemaps,
@@ -1057,6 +1201,11 @@ export const createContainer = async (
   });
 
   const importer = new ImportService({
+    attachments: {
+      media,
+      fetch: (url, init) => outbound.fetch(url, init),
+      settings: settingsRepository,
+    },
     hooks,
     parser: fastXmlWxrParser,
     html: tiptapHtmlParser,

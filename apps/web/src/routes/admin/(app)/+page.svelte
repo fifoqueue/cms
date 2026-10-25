@@ -4,7 +4,8 @@
   import AdminBlocks from '#lib/admin/AdminBlocks.svelte';
   import DashboardOptions from '#lib/admin/DashboardOptions.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
-  import { CircleAlert, CircleCheck } from '@lucide/svelte';
+  import { default as CircleAlert } from '@lucide/svelte/icons/circle-alert';
+  import { default as CircleCheck } from '@lucide/svelte/icons/circle-check';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
     Card,

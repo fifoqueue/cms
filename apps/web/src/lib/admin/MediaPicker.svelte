@@ -16,7 +16,8 @@
   import type { AdminMedia, MediaKind, Paginated } from '@cms/sdk';
   import { can } from '@cms/sdk/capabilities';
   import type { Capability } from '@cms/sdk/capabilities';
-  import { Upload } from '@lucide/svelte';
+  import { default as Upload } from '@lucide/svelte/icons/upload';
+  import { catalogMessage } from '#lib/admin/form-errors.js';
   import { uploadFile } from '#lib/admin/upload.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import { Input } from '#lib/components/ui/input/index.js';
@@ -157,7 +158,13 @@
       });
       // The server decides the kind from the file's bytes, not its name.
       if (!('media' in result))
-        errors = [...errors, m.mediaUploadFailed(file.name, result.error)];
+        errors = [
+          ...errors,
+          m.mediaUploadFailed(
+            file.name,
+            catalogMessage(m, result.error, result.params) ?? result.error,
+          ),
+        ];
       else if (result.media.kind !== kind)
         errors = [...errors, m.mediaWrongKind(file.name)];
       else last = result.media;

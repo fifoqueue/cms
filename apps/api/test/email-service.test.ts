@@ -7,6 +7,7 @@ import { aesSecretBox } from '#api/infra/secret-box';
 import { MemorySettings } from '#test/support/memory';
 import { MemoryJobQueue } from '#test/support/memory-jobs';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
+import { Errors } from '#api/shared/errors';
 
 function fixture() {
   const settings = new MemorySettings();
@@ -14,6 +15,7 @@ function fixture() {
   const sent: MailTransport[] = [];
   const messages: EmailMessage[] = [];
   const destinations: string[] = [];
+  const failure: { error: unknown } = { error: null };
   const hooks = new HookBus({
     timeoutMs: 100,
     logger: { info() {}, warn() {}, error() {} },
@@ -25,6 +27,7 @@ function fixture() {
     sealedJobs: new SealedJobs(new MemoryJobQueue(), secrets),
     mailer: {
       send: async (transport, message) => {
+        if (failure.error) throw failure.error;
         sent.push(transport);
         messages.push(message);
       },
@@ -33,7 +36,16 @@ function fixture() {
       destinations.push(settings.transport);
     },
   });
-  return { settings, secrets, sent, destinations, email, hooks, messages };
+  return {
+    settings,
+    secrets,
+    sent,
+    destinations,
+    email,
+    hooks,
+    messages,
+    failure,
+  };
 }
 const configured = () => ({
   ...DEFAULT_EMAIL_SETTINGS,
@@ -235,4 +247,56 @@ test('enabled HTTP requires a stored or new secret and rejects removal atomicall
     http: { ...admin.http, secret: '' },
   });
   expect(disabled.http.secretConfigured).toBe(false);
+});
+
+test('a failed test send names a safe category, never the server answer', async () => {
+  const { email, failure } = fixture();
+  await email.update(configured());
+  const site = { title: 'Site', locale: 'en' };
+  const refusal = async (error: unknown) => {
+    failure.error = error;
+    const thrown = (await email
+      .test({ to: 'reader@example.com' }, site)
+      .catch((caught: unknown) => caught)) as {
+      message: string;
+      issues?: unknown;
+    };
+    expect(JSON.stringify(thrown.issues ?? null)).not.toContain('secret');
+    return thrown;
+  };
+  const smtpAuth = Object.assign(new Error('535 secret rejected'), {
+    code: 'EAUTH',
+  });
+  expect(await refusal(smtpAuth)).toMatchObject({
+    code: 'invalid_input',
+    message: Errors.EmailSendFailed,
+    issues: [
+      { path: '', message: Errors.EmailSendFailed, params: { reason: 'auth' } },
+    ],
+  });
+  // HTTP providers report the status as the cause; the excerpt stays in the message.
+  const http = new Error('Email API returned HTTP 422: secret body', {
+    cause: 422,
+  });
+  expect((await refusal(http)).issues).toEqual([
+    {
+      path: '',
+      message: Errors.EmailSendFailed,
+      params: { reason: 'rejected', status: 422 },
+    },
+  ]);
+  const tls = Object.assign(new Error('secret cert'), {
+    code: 'CERT_HAS_EXPIRED',
+  });
+  expect((await refusal(tls)).issues).toMatchObject([
+    { params: { reason: 'tls' } },
+  ]);
+  expect(
+    (await refusal(new Error(Errors.EmailNetworkFailed, { cause: 'timeout' })))
+      .issues,
+  ).toMatchObject([{ params: { reason: 'timeout' } }]);
+  expect(await refusal(new Error('secret plugin failure'))).toMatchObject({
+    message: Errors.EmailSendFailed,
+    issues: undefined,
+  });
 });

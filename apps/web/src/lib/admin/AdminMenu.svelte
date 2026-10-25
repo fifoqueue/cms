@@ -2,20 +2,18 @@
   import { resolve } from '$app/paths';
   import { afterNavigate } from '$app/navigation';
   import { page } from '$app/state';
-  import {
-    FileText,
-    Files,
-    Image as ImageIcon,
-    LayoutDashboard,
-    MessageSquare,
-    Palette,
-    Pin,
-    Plug,
-    SearchCheck,
-    Settings,
-    Users,
-    Wrench,
-  } from '@lucide/svelte';
+  import { default as FileText } from '@lucide/svelte/icons/file-text';
+  import { default as Files } from '@lucide/svelte/icons/files';
+  import { default as ImageIcon } from '@lucide/svelte/icons/image';
+  import { default as LayoutDashboard } from '@lucide/svelte/icons/layout-dashboard';
+  import { default as MessageSquare } from '@lucide/svelte/icons/message-square';
+  import { default as Palette } from '@lucide/svelte/icons/palette';
+  import { default as Pin } from '@lucide/svelte/icons/pin';
+  import { default as Plug } from '@lucide/svelte/icons/plug';
+  import { default as SearchCheck } from '@lucide/svelte/icons/search-check';
+  import { default as Settings } from '@lucide/svelte/icons/settings';
+  import { default as Users } from '@lucide/svelte/icons/users';
+  import { default as Wrench } from '@lucide/svelte/icons/wrench';
   import type { Component } from 'svelte';
   import { can } from '@cms/sdk/capabilities';
   import type { Capability } from '@cms/sdk/capabilities';
@@ -309,6 +307,11 @@
           {
             href: resolve('/admin/(app)/settings/discussion'),
             label: (m) => m.settingsDiscussion,
+            capability: 'settings.manage',
+          },
+          {
+            href: resolve('/admin/(app)/settings/media-storage'),
+            label: (m) => m.settingsMediaStorage,
             capability: 'settings.manage',
           },
           {

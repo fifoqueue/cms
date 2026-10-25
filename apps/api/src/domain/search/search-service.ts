@@ -5,6 +5,7 @@ import {
 } from '@cms/sdk';
 import type {
   AdminSearchSettings,
+  IssueParams,
   SearchSettings,
   SearchStatus,
 } from '@cms/sdk';
@@ -24,6 +25,7 @@ import {
   messageOf,
   Errors,
 } from '#api/shared/errors';
+import { catalogOr, outboundFailure } from '#api/shared/failures';
 import { parseInput } from '#api/shared/validation';
 import type { HookDispatcher } from '#api/domain/ports';
 import { searchHookDocumentSchema } from '@cms/sdk/plugin';
@@ -47,7 +49,9 @@ interface IndexState {
   /** Host and index the ready index belongs to; other values need a rebuild. */
   fingerprint: string;
   failedAt: string | null;
+  /** Catalog text only (`outboundFailure`), with the values it leaves out. */
   lastError: string | null;
+  lastErrorParams?: IssueParams;
   syncedAt: string | null;
 }
 
@@ -117,7 +121,9 @@ export class SearchService {
       return { version: await this.deps.engine.version(connection) };
     } catch (error) {
       if (error instanceof DomainError) throw error;
-      throw invalidInput(Errors.SearchUnavailable(messageOf(error)));
+      // The engine's own wording may quote its answer, so it stays in the server log.
+      this.deps.logger.warn(Errors.SearchUnavailable, error);
+      throw invalidInput(Errors.SearchUnavailable);
     }
   }
 
@@ -155,7 +161,11 @@ export class SearchService {
               : 'ready',
       pending,
       documents,
-      lastError: state.lastError,
+      // Older states stored the engine's own words; those read as the generic failure.
+      lastError:
+        state.lastError && catalogOr(state.lastError, Errors.SearchSyncFailed),
+      ...(state.lastError &&
+        state.lastErrorParams && { lastErrorParams: state.lastErrorParams }),
       lastSyncAt: state.syncedAt,
     };
   }
@@ -283,10 +293,16 @@ export class SearchService {
   }
 
   private async fail(error: unknown) {
-    this.deps.logger.warn(`Search index failed: ${messageOf(error)}`);
+    // The engine's wording may quote its answer or the address, so only the log keeps it.
+    this.deps.logger.warn(`Search index failed: ${messageOf(error)}`, error);
+    const { message, params } = outboundFailure(error, {
+      status: Errors.SearchRequestFailed,
+      other: Errors.SearchSyncFailed,
+    });
     await this.saveState({
       failedAt: this.deps.clock.now().toISOString(),
-      lastError: messageOf(error).slice(0, 300),
+      lastError: message,
+      lastErrorParams: params,
     });
   }
 

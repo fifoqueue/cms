@@ -43,6 +43,7 @@ import {
   notFound,
   Errors,
 } from '#api/shared/errors';
+import { withParams } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 
 export interface ContentServiceDeps {
@@ -479,6 +480,9 @@ export class ContentService {
 
   private async assertSlugFree(slug: string): Promise<void> {
     if ((await this.deps.repository.takenSlugs([slug])).size)
-      throw conflict(Errors.SlugInUse(slug));
+      throw conflict(
+        Errors.SlugInUse,
+        withParams(Errors.SlugInUse, { slug }, 'slug'),
+      );
   }
 }

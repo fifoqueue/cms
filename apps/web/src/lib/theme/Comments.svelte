@@ -3,14 +3,23 @@
   import { resolve } from '$app/paths';
   import type { Path } from '$app/types';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
-  import { enhance } from '$app/forms';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { ListChecks, Reply, Rss } from '@lucide/svelte';
+  import { default as ListChecks } from '@lucide/svelte/icons/list-checks';
+  import { default as Reply } from '@lucide/svelte/icons/reply';
+  import { default as Rss } from '@lucide/svelte/icons/rss';
   import { buttonVariants } from '#lib/components/ui/button/button.svelte';
   import CommentBulkBar from '#lib/theme/CommentBulkBar.svelte';
-  import PrivacyPolicyLink from '#lib/theme/PrivacyPolicyLink.svelte';
-  import type { SubmitFunction } from '$app/forms';
+  import CommentForm from '#lib/theme/CommentForm.svelte';
+  import type { CommentAuthor } from '#lib/theme/CommentForm.svelte';
+  import ConfirmDialog from '#lib/theme/ConfirmDialog.svelte';
+  import {
+    placeReply,
+    REPLY_PARAM,
+    revealReply,
+  } from '#lib/theme/comment-reply.js';
+  import type { ReplyTarget } from '#lib/theme/comment-reply.js';
+  import { leaveFor, linkify } from '#lib/theme/comment-text.js';
   import type {
     CommentActionResult,
     CommentManagement,
@@ -24,12 +33,11 @@
     ModerationStatus,
   } from '#lib/theme/CommentModeration.svelte';
   import { errorMessage } from '#lib/admin/form-errors.js';
-  import Captcha from '#lib/security/Captcha.svelte';
   import { useI18n } from '#lib/i18n/index.js';
   import { useDateFormat } from '#lib/theme/format.js';
   import { useScope } from '#lib/theme/scope.js';
   import { forgetParams, notifyFailure, notifySuccess } from '#lib/feedback.js';
-  import { onMount } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
 
   interface Props {
     contentId: string;
@@ -129,8 +137,8 @@
     selected = [];
     if (
       result.operation !== 'approve' &&
-      replyTo &&
-      result.commentIds.includes(replyTo.id)
+      reply &&
+      result.commentIds.includes(reply.target.id)
     )
       selectedReply = null;
   };
@@ -138,6 +146,7 @@
     const search = new SvelteURLSearchParams(page.url.search);
     search.delete('moderation');
     search.delete('commentNotice');
+    search.delete(REPLY_PARAM);
     search.set('cpage', String(visible.page));
     return `?/moderateComment&${search}`;
   });
@@ -148,13 +157,13 @@
   };
   const badgeLabel = (status: ModerationStatus) =>
     status === 'spam' ? m.commentSpam : m.commentStatusPending;
+  /** A comment form submission is in flight. */
   let submitting = $state(false);
-  let captchaReady = $state(false);
-  let captchaWidget = $state<ReturnType<typeof Captcha>>();
   const action = $derived.by(() => {
     const search = new SvelteURLSearchParams(page.url.search);
     search.set('cpage', String(visible.page));
     search.delete('commentNotice');
+    search.delete(REPLY_PARAM);
     return `?/comment&${search}`;
   });
   const scope = useScope();
@@ -173,16 +182,8 @@
         failure?.captcha === true),
   );
 
-  let selectedReply = $state<{ id: string; name: string } | null | undefined>(
-    undefined,
-  );
-  const replyTo = $derived(
-    selectedReply === undefined
-      ? typed('parentId')
-        ? { id: typed('parentId'), name: typed('parentName') }
-        : null
-      : selectedReply,
-  );
+  /** The reply chosen on this page; `null` once cancelled or sent. */
+  let selectedReply = $state<ReplyTarget | null | undefined>(undefined);
   const pages = $derived(Math.ceil(visible.total / visible.pageSize));
   /**
    * The public page, with moderators' held (pending and spam) comments placed after their
@@ -225,80 +226,138 @@
     visible.open &&
     (!visible.requireLogin || !!visible.viewer) &&
     comment.depth + 1 < visible.threadDepth;
+  /** Where the one reply form sits: under the comment it answers. */
+  const reply = $derived(
+    placeReply(
+      shown,
+      canReply,
+      selectedReply,
+      typed('parentId')
+        ? { id: typed('parentId'), name: typed('parentName') }
+        : null,
+      page.url.searchParams.get(REPLY_PARAM),
+    ),
+  );
   const remembered = (key: 'authorName' | 'authorEmail' | 'authorUrl') =>
     failure ? typed(key) : (comments.remembered?.[key] ?? '');
-  const commentLink = (number: number) => {
+  /** The visitor's details, shared by both forms; each form keeps its own draft. */
+  let author = $state<CommentAuthor>(
+    untrack(() => ({
+      authorName: remembered('authorName'),
+      authorEmail: remembered('authorEmail'),
+      authorUrl: remembered('authorUrl'),
+      remember: failure ? failure.remember === true : !!comments.remembered,
+    })),
+  );
+  const drafts = $state(
+    untrack(() => ({
+      main: typed('parentId') ? '' : typed('body'),
+      reply: typed('parentId') ? typed('body') : '',
+    })),
+  );
+  /** A refused submission shows in the form that sent it until scripts run. */
+  const refusal = (replying: boolean) =>
+    failure && !mounted && !!typed('parentId') === replying ? failure : null;
+  /** This page's address with `change` applied, without one-off notices. */
+  const pageLink = (
+    change: (search: SvelteURLSearchParams) => void,
+    hash: string,
+  ) => {
     const search = new SvelteURLSearchParams(page.url.search);
-    search.set('cpage', String(number));
     search.delete('moderation');
     search.delete('commentNotice');
-    return `?${search}#comments`;
+    change(search);
+    return `?${search}#${hash}`;
   };
-  const submit: SubmitFunction<CommentActionResult> = ({
-    cancel,
-    formElement,
-    formData,
-  }) => {
-    if (submitting || moderating || (showCaptcha && !captchaReady)) {
-      cancel();
+  const commentLink = (number: number) =>
+    pageLink((search) => {
+      search.set('cpage', String(number));
+      search.delete(REPLY_PARAM);
+    }, 'comments');
+  const REPLY_FORM = 'comment-reply-form';
+  const onreply = async (
+    event: MouseEvent,
+    comment: { id: string; authorName: string },
+  ) => {
+    // Modified clicks open the reply link elsewhere, as links do.
+    if (
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    )
       return;
-    }
-    submitting = true;
-    return async ({ result, update }) => {
-      try {
-        if (result.type === 'success' && result.data?.commented) {
-          // Held comments wait for review; the visitor still sees their own below.
-          notifySuccess(
-            result.data.moderation
-              ? m.commentAwaitingModeration
-              : m.commentPosted,
-            {
-              description: result.data.comments
-                ? undefined
-                : m.commentRefreshFailed,
-            },
-          );
-          if (result.data.comments)
-            latest = { source: comments, value: result.data.comments };
-          formElement.querySelector<HTMLTextAreaElement>(
-            '[name="body"]',
-          )!.value = '';
-          selectedReply = null;
-          await goto(resolve(result.data.location as Path), {
-            state: page.state,
-            shallow: true,
-            replace: true,
-          });
-        }
-        if (result.type === 'failure' && result.data)
-          notifyFailure(errorMessage(m, i18n.language, result.data));
-        if (result.type === 'error') notifyFailure(m.commentSubmitFailed);
-        else
-          await update({
-            reset: false,
-            refreshAll: false,
-            navigate: false,
-          });
-        if (result.type === 'success') {
-          // Keep the visitor's fields and consent when clearing an earlier action failure.
-          for (const name of ['authorName', 'authorEmail', 'authorUrl']) {
-            const field = formElement.querySelector<HTMLInputElement>(
-              `[name="${name}"]`,
-            );
-            const value = formData.get(name);
-            if (field && typeof value === 'string') field.value = value;
-          }
-          const remember =
-            formElement.querySelector<HTMLInputElement>('[name="remember"]');
-          if (remember) remember.checked = formData.has('remember');
-        }
-      } finally {
-        captchaWidget?.reset();
-        submitting = false;
-      }
-    };
+    event.preventDefault();
+    selectedReply = { id: comment.id, name: comment.authorName };
+    await tick();
+    const form = document.getElementById(REPLY_FORM);
+    if (form) revealReply(form);
+  };
+  const onreplycancel = async (id: string) => {
+    selectedReply = null;
+    await tick();
+    document
+      .getElementById(`comment-${id}`)
+      ?.querySelector<HTMLElement>('[data-reply]')
+      ?.focus();
+  };
+  const onposted = async (result: CommentActionResult) => {
+    // Held comments wait for review; the visitor still sees their own below.
+    notifySuccess(
+      result.moderation ? m.commentAwaitingModeration : m.commentPosted,
+      { description: result.comments ? undefined : m.commentRefreshFailed },
+    );
+    if (result.comments) latest = { source: comments, value: result.comments };
+    selectedReply = null;
+    await goto(resolve(result.location as Path), {
+      state: page.state,
+      shallow: true,
+      replace: true,
+    });
+  };
+  /** A commenter's link to another site, waiting for the visitor to confirm. */
+  let leaving = $state<{ href: string; newTab: boolean } | null>(null);
+  let leaveAsked = $state(false);
+  const confirmLeave = (
+    event: MouseEvent & { currentTarget: HTMLAnchorElement },
+  ) => {
+    const target = leaveFor(event, event.currentTarget.href, page.url.origin);
+    if (!target) return;
+    event.preventDefault();
+    leaving = target;
+    leaveAsked = true;
+  };
+  const leave = () => {
+    if (!leaving) return;
+    if (leaving.newTab) window.open(leaving.href, '_blank', 'noopener');
+    else window.location.assign(leaving.href);
   };
 </script>
+
+{#snippet replyForm(target: ReplyTarget)}
+  <CommentForm
+    id={REPLY_FORM}
+    {contentId}
+    section={visible}
+    {action}
+    replyTo={target}
+    bind:author
+    bind:body={drafts.reply}
+    refusal={refusal(true)}
+    {showCaptcha}
+    locked={submitting || moderating}
+    onbusy={(busy) => (submitting = busy)}
+    {onposted}
+    cancel={{
+      href: pageLink(
+        (search) => search.delete(REPLY_PARAM),
+        `comment-${target.id}`,
+      ),
+      onclick: () => onreplycancel(target.id),
+    }}
+  />
+{/snippet}
 
 <section
   id="comments"
@@ -454,21 +513,37 @@
             >
               {m.commentAwaitingModeration}
             </p>{/if}
-          <p class="whitespace-pre-line">{comment.body}</p>
+          <p class="whitespace-pre-line">
+            {#each linkify(comment.body) as segment, index (index)}{#if segment.href}<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- an address a commenter wrote --><a
+                  href={segment.href}
+                  rel="nofollow ugc noopener"
+                  class="text-primary underline underline-offset-4 wrap-anywhere"
+                  onclick={confirmLeave}
+                  onauxclick={confirmLeave}>{segment.text}</a
+                >{:else}{segment.text}{/if}{/each}
+          </p>
           {#if canReply(comment) && !selecting}
-            <button
-              type="button"
+            <!-- eslint-disable svelte/no-navigation-without-resolve -- this page with the reply form under the comment -->
+            <a
+              href={pageLink(
+                (search) => search.set(REPLY_PARAM, comment.id),
+                REPLY_FORM,
+              )}
+              data-reply
+              aria-controls={REPLY_FORM}
+              aria-expanded={reply?.host === comment.id}
               class={buttonVariants({
                 variant: 'ghost',
                 size: 'xs',
                 class: '-ml-2 justify-self-start text-muted-foreground',
               })}
-              onclick={() =>
-                (selectedReply = {
-                  id: comment.id,
-                  name: comment.authorName,
-                })}><Reply aria-hidden="true" />{m.commentReply}</button
+              onclick={(event) => onreply(event, comment)}
+              ><Reply aria-hidden="true" />{m.commentReply}</a
             >
+            <!-- eslint-enable svelte/no-navigation-without-resolve -->
+          {/if}
+          {#if reply?.host === comment.id && !selecting}
+            {@render replyForm(reply.target)}
           {/if}
         </li>
       {/each}
@@ -503,132 +578,34 @@
       >
     </p>
   {:else if visible.open}
-    <form
-      method="POST"
+    {#if reply && reply.host === null && !selecting}
+      {@render replyForm(reply.target)}
+    {/if}
+    <CommentForm
+      {contentId}
+      section={visible}
       {action}
-      aria-busy={submitting}
-      use:enhance={submit}
-      class="rounded-lg border bg-card p-4 @min-[40rem]:p-6"
-    >
-      <fieldset disabled={submitting} class="grid min-w-0 gap-4">
-        <h3 class="font-semibold">
-          {replyTo ? m.commentReplyTo(replyTo.name) : m.commentLeave}
-        </h3>
-        {#if replyTo}
-          <button
-            type="button"
-            class="justify-self-start text-sm text-muted-foreground hover:underline"
-            onclick={() => (selectedReply = null)}>{m.cancel}</button
-          >
-        {/if}
-        <input type="hidden" name="contentId" value={contentId} />
-        <input type="hidden" name="parentId" value={replyTo?.id ?? ''} />
-        <input type="hidden" name="parentName" value={replyTo?.name ?? ''} />
-        <!-- People never see this field; automated senders fill it in. -->
-        <div class="absolute -left-[9999px]" aria-hidden="true">
-          <label
-            >{m.commentWebsite}
-            <input name="website" tabindex="-1" autocomplete="off" /></label
-          >
-        </div>
-        {#if failure && typeof failure.message === 'string' && !mounted}
-          <p class="text-sm text-destructive" role="alert">
-            {errorMessage(m, i18n.language, failure)}
-          </p>
-        {/if}
-        {#if visible.viewer}
-          <p class="text-sm">{m.commentSignedIn(visible.viewer.name)}</p>
-        {:else}
-          <div class="grid gap-4 @min-[40rem]:grid-cols-2">
-            {#if visible.fields.name}
-              <label class="grid gap-1 text-sm"
-                >{m.commentName}
-                <input
-                  name="authorName"
-                  required
-                  maxlength={100}
-                  autocomplete="name"
-                  value={remembered('authorName')}
-                  class="h-9 rounded-md border bg-background px-3"
-                />
-              </label>
-            {/if}
-            {#if visible.fields.email}
-              <label class="grid gap-1 text-sm"
-                >{m.commentEmail}
-                <input
-                  name="authorEmail"
-                  type="email"
-                  required
-                  maxlength={191}
-                  autocomplete="email"
-                  value={remembered('authorEmail')}
-                  class="h-9 rounded-md border bg-background px-3"
-                />
-              </label>
-            {/if}
-            {#if visible.fields.website}
-              <label class="grid gap-1 text-sm @min-[40rem]:col-span-2"
-                >{m.commentWebsite}
-                <input
-                  name="authorUrl"
-                  type="url"
-                  maxlength={255}
-                  autocomplete="url"
-                  value={remembered('authorUrl')}
-                  class="h-9 rounded-md border bg-background px-3"
-                />
-              </label>
-            {/if}
-          </div>
-          {#if comments.commentCookies && (visible.fields.name || visible.fields.email || visible.fields.website)}
-            <label class="flex items-center gap-2 text-sm"
-              ><input
-                type="checkbox"
-                name="remember"
-                checked={failure
-                  ? failure.remember === true
-                  : !!comments.remembered}
-              />{m.commentRemember}</label
-            >
-          {/if}
-        {/if}
-        <label class="grid gap-1 text-sm"
-          >{m.commentBody}
-          <textarea
-            name="body"
-            required
-            maxlength={5000}
-            rows={5}
-            class="rounded-md border bg-background p-3"
-            >{typed('body')}</textarea
-          >
-        </label>
-        {#if visible.fields.email && !visible.viewer}<p
-            class="text-xs text-muted-foreground"
-          >
-            {m.commentEmailPrivate}
-          </p>{/if}
-        <PrivacyPolicyLink policy={comments.privacyPolicy} />
-        {#if showCaptcha && comments.captcha}
-          <Captcha
-            bind:this={captchaWidget}
-            captcha={comments.captcha}
-            onchange={(ready) => (captchaReady = ready)}
-          />
-        {/if}
-        <button
-          type="submit"
-          disabled={submitting || moderating || (showCaptcha && !captchaReady)}
-          class="h-9 justify-self-start rounded-md bg-primary px-4 text-sm text-primary-foreground"
-          >{submitting ? m.commentSubmitting : m.commentSubmit}</button
-        >
-      </fieldset>
-    </form>
+      replyTo={null}
+      bind:author
+      bind:body={drafts.main}
+      refusal={refusal(false)}
+      {showCaptcha}
+      locked={submitting || moderating}
+      onbusy={(busy) => (submitting = busy)}
+      {onposted}
+    />
   {:else}
     <p class="text-sm text-muted-foreground">{m.commentsClosed}</p>
   {/if}
 </section>
+
+<ConfirmDialog
+  bind:open={leaveAsked}
+  title={m.commentLinkLeave}
+  description={m.commentLinkLeaveAsk(leaving?.href ?? '')}
+  confirmLabel={m.commentLinkOpen}
+  onconfirm={leave}
+/>
 
 {#if selecting && management}
   <CommentBulkBar

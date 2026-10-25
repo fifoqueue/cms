@@ -1,6 +1,6 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import { ArrowRight } from '@lucide/svelte';
+  import { default as ArrowRight } from '@lucide/svelte/icons/arrow-right';
   import type { Block } from '@cms/sdk';
   import { useI18n } from '#lib/i18n/index.js';
   import { useCurrentPost, useScope } from '#lib/theme/scope.js';

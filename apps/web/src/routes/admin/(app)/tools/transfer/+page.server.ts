@@ -14,6 +14,7 @@ export const actions: Actions = {
       return fail(400, { message: Errors.ImportFileRequired });
     try {
       const result = await adminFor(event).importWxr(await file.text(), {
+        downloadAttachments: form.get('downloadAttachments') === 'on',
         authors: (IMPORT_AUTHOR_MODES as readonly string[]).includes(authors)
           ? (authors as ImportAuthorMode)
           : 'me',
@@ -33,9 +34,10 @@ export const actions: Actions = {
             title,
             featured,
           })),
-          skipped: result.skipped.map(({ title, reason }) => ({
+          skipped: result.skipped.map(({ title, reason, params }) => ({
             title,
             reason,
+            ...(params && { params: { ...params } }),
           })),
         },
       };

@@ -4,6 +4,7 @@ import { authorize } from '#api/domain/auth/authorization';
 import type { JobQueue, TaskLeases } from '#api/domain/jobs/ports';
 import type { Clock } from '#api/domain/ports';
 import { HealthChecks } from '#api/domain/tools/health-checks';
+import { Errors } from '#api/shared/errors';
 
 const OVERDUE_MS = 15 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -47,7 +48,19 @@ export class SiteHealthService {
             : search.state === 'building' || search.state === 'syncing'
               ? 'recommended'
               : 'good',
-        detail: [search.state, ...(search.lastError ? [search.lastError] : [])],
+        detail: [
+          search.state,
+          ...(search.lastError
+            ? [
+                {
+                  message: search.lastError,
+                  ...(search.lastErrorParams && {
+                    params: search.lastErrorParams,
+                  }),
+                },
+              ]
+            : []),
+        ],
       };
     });
     this.checks.registerCore('scheduler', async () => {
@@ -73,9 +86,11 @@ export class SiteHealthService {
       );
       return {
         status: failures.length ? 'recommended' : 'good',
-        detail: failures
-          .slice(0, 5)
-          .map((failure) => `${failure.kind}: ${failure.error}`),
+        // Job errors are catalog text (`JobFailed`); the kind travels as a param.
+        detail: failures.slice(0, 5).map((failure) => ({
+          message: Errors.HealthJobFailed,
+          params: { kind: failure.kind },
+        })),
       };
     });
     this.checks.registerCore('plugins', async () => {

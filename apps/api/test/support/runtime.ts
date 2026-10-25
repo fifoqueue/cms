@@ -55,6 +55,7 @@ export const createRuntime = ({
   timeoutMs = 100,
   patternRenderer = tiptapRenderer,
   patterns,
+  storageDrivers,
   storage = createStorage(),
   content = new PublishedContentReader(
     new MemoryPublishedContentRepository(new MemoryContentRepository()),
@@ -63,6 +64,7 @@ export const createRuntime = ({
   timeoutMs?: number;
   patternRenderer?: PluginContextServices['patternRenderer'];
   patterns?: PluginContextServices['patterns'];
+  storageDrivers?: PluginContextServices['storageDrivers'];
   storage?: RuntimeStorage;
   content?: ContentReader;
 } = {}) => {
@@ -106,6 +108,7 @@ export const createRuntime = ({
     patterns,
     healthChecks,
     mailTransports,
+    storageDrivers,
     jobs,
     contentTypes,
     authentication: new SignInRegistry({ timeoutMs, logger }),

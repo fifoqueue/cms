@@ -12,7 +12,7 @@ import type {
 } from '@cms/sdk';
 import { childrenOf } from '@cms/sdk/tree';
 import type { contentApi } from '#lib/server/api.js';
-import { Errors } from '#lib/server/errors.js';
+import { Errors } from '@cms/sdk/errors';
 import { listView } from '#lib/server/public-view.js';
 import { mapLimit } from '#lib/server/bounded.js';
 import type { PostList, ThemeView } from '#lib/server/public-view.js';
@@ -24,6 +24,8 @@ import {
   templateCandidates,
 } from '#lib/theme/template.js';
 import type { ThemePage } from '#lib/theme/template.js';
+import { HOME_LIST_TYPES } from '#lib/theme/pagination.js';
+import type { HomeListType } from '#lib/theme/pagination.js';
 import { withSeoMeta } from '#lib/server/page-meta.js';
 import type { HeadLayout } from '#lib/server/page-meta.js';
 import type { FilterEvent } from '#lib/server/seo-filter.js';
@@ -64,6 +66,8 @@ export interface BlockData {
     string,
     { name: string; slug: string; bio: string; avatarUrl: string | null }
   > | null;
+  /** Home list types with published entries (`content-type-nav`), in tab order. */
+  listedTypes: HomeListType[] | null;
   /** Posts per day of one month (`calendar`), in the site time zone. */
   calendar: {
     year: number;
@@ -233,7 +237,10 @@ export const blockNeeds = (blocks: Block[]) => {
   const has = (name: Block['name']) => all.some((block) => block.name === name);
   return {
     queries,
-    category: has('categories'),
+    // The search panel lists the categories, like the categories block.
+    category:
+      has('categories') ||
+      all.some((block) => block.name === 'search' && block.attrs.panel),
     tag: has('tag-cloud'),
     months: Math.max(
       0,
@@ -251,8 +258,20 @@ export const blockNeeds = (blocks: Block[]) => {
     ),
     author: has('post-author'),
     calendar: has('calendar'),
+    types: has('content-type-nav'),
   };
 };
+
+/** The home list types that have published entries; null when that cannot be read. */
+const listedTypes = (api: Api) =>
+  Promise.all(
+    HOME_LIST_TYPES.map((type) =>
+      api.list({ type, pageSize: 1 }).then((list) => list.total),
+    ),
+  ).then(
+    (totals) => HOME_LIST_TYPES.filter((_, index) => totals[index]! > 0),
+    () => null,
+  );
 
 /**
  * Loads, in parallel, what the data blocks among `blocks` show, reusing what `known` already
@@ -290,6 +309,7 @@ export const loadBlockData = async (
     pageTree,
     recentComments,
     calendar,
+    types,
   ] = await Promise.all([
     Promise.all(
       missing.map(
@@ -370,6 +390,7 @@ export const loadBlockData = async (
           })
           .catch(() => null)
       : null,
+    needs.types ? listedTypes(api) : null,
   ]);
   const queries = { ...known.queries, ...Object.fromEntries(lists) };
   // Post-author blocks show the entry's author or, in loops, each listed post's author.
@@ -422,6 +443,7 @@ export const loadBlockData = async (
     recentComments,
     authors,
     calendar,
+    listedTypes: types,
   };
 };
 

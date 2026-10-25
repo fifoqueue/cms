@@ -3,7 +3,10 @@
   import { enhance } from '$app/forms';
   import { WIDGET_AREAS } from '@cms/sdk';
   import type { Widget, WidgetArea } from '@cms/sdk';
-  import { ArrowDown, ArrowUp, GripVertical, Trash2 } from '@lucide/svelte';
+  import { default as ArrowDown } from '@lucide/svelte/icons/arrow-down';
+  import { default as ArrowUp } from '@lucide/svelte/icons/arrow-up';
+  import { default as GripVertical } from '@lucide/svelte/icons/grip-vertical';
+  import { default as Trash2 } from '@lucide/svelte/icons/trash-2';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import { confirmLeave } from '#lib/admin/unsaved.js';

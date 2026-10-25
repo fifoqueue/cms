@@ -17,6 +17,8 @@ import type { LayoutBlockData } from '#lib/server/theme-queries.js';
 import { withSeoMeta } from '#lib/server/page-meta.js';
 import type { HeadLayout } from '#lib/server/page-meta.js';
 import type { FilterEvent } from '#lib/server/seo-filter.js';
+import { HOME_LIST_TYPES } from '#lib/theme/pagination.js';
+import type { HomeListType } from '#lib/theme/pagination.js';
 
 /** A category or tag archive: the term (404 when unknown) and all assigned published content. */
 export const loadTermArchive = async (
@@ -89,6 +91,28 @@ export const listPosts = async (
 };
 
 /** Latest entries of `type`; sticky ones lead the first page and are left out of the rest (WordPress). */
+/**
+ * The home list: the requested type, or, without an explicit `?type=`, the first home type
+ * with published entries when the default one has none (a site with only articles lists them
+ * at `/`). Explicit choices are kept even when empty.
+ */
+export const homePosts = async (
+  api: ContentClient,
+  requested: HomeListType,
+  explicit: boolean,
+  page: number,
+  pageSize: number,
+) => {
+  const posts = await latestPosts(api, requested, page, pageSize);
+  if (explicit || posts.items.length) return { type: requested, posts };
+  for (const type of HOME_LIST_TYPES) {
+    if (type === requested) continue;
+    const other = await latestPosts(api, type, page, pageSize);
+    if (other.items.length) return { type, posts: other };
+  }
+  return { type: requested, posts };
+};
+
 export const latestPosts = async (
   api: ContentClient,
   type: string,

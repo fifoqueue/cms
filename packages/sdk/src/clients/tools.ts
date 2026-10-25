@@ -23,7 +23,13 @@ export const toolsAdminClient = (request: Request) => {
       request<Response>('GET', '/api/v1/admin/export', { raw: true }),
     importWxr: (xml: string, options: WxrImportOptions = {}) =>
       request<WxrImportResult>('POST', '/api/v1/admin/import', {
-        query: { authors: options.authors },
+        query: {
+          authors: options.authors,
+          downloadAttachments:
+            options.downloadAttachments === undefined
+              ? undefined
+              : String(options.downloadAttachments),
+        },
         body: xml,
         contentType: 'application/xml',
         response: wxrImportResultSchema,

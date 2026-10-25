@@ -13,8 +13,41 @@
   font-family: var(--cms-heading-font);
 }
 
+/*
+ * The admin's bundled Inter Variable never applies on public pages: chrome outside the theme
+ * (skip link, toolbar) uses system faces and toasts follow the theme's body font. Only theme
+ * stacks and site fonts decide what the public site loads.
+ */
+body:has(.cms-site[data-theme]),
+body:has(.cms-site[data-theme]) .cms-admin-bar {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'Apple SD Gothic Neo',
+    'Malgun Gothic',
+    sans-serif;
+}
+.cms-site [data-sonner-toast] {
+  font-family: var(--cms-font);
+}
+
 .cms-site .cms-prose {
   font-size: 1.0625em;
+}
+
+/*
+ * Lines break between words, never inside a Korean word ("대안" stays whole). Languages written
+ * without spaces keep breaking between characters. Long unbroken text (URLs, hashes) still wraps
+ * instead of overflowing; code blocks keep `pre`.
+ */
+:is(.cms-site, .tiptap) {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+:is(.cms-site, .tiptap) :is(:lang(ja), :lang(zh)),
+:is(.cms-site, .tiptap):is(:lang(ja), :lang(zh)) {
+  word-break: normal;
 }
 
 .cms-site .cms-prose img {

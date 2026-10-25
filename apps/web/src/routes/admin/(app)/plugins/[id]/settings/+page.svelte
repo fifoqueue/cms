@@ -1,6 +1,6 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import { ArrowLeft } from '@lucide/svelte';
+  import { default as ArrowLeft } from '@lucide/svelte/icons/arrow-left';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import PluginSettingsForm from '#lib/admin/PluginSettingsForm.svelte';
   import { Button } from '#lib/components/ui/button/index.js';

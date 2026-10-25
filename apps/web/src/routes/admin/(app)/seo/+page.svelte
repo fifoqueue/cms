@@ -3,12 +3,10 @@
   import type { SubmitFunction } from '$app/forms';
   import { resolve } from '$app/paths';
   import { formatSeoTitle } from '@cms/sdk';
-  import {
-    CircleAlert,
-    CircleCheck,
-    CircleMinus,
-    ExternalLink,
-  } from '@lucide/svelte';
+  import { default as CircleAlert } from '@lucide/svelte/icons/circle-alert';
+  import { default as CircleCheck } from '@lucide/svelte/icons/circle-check';
+  import { default as CircleMinus } from '@lucide/svelte/icons/circle-minus';
+  import { default as ExternalLink } from '@lucide/svelte/icons/external-link';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import type { SeoSettingsFormValues } from '#lib/admin/seo.js';
   import { Button } from '#lib/components/ui/button/index.js';

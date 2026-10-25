@@ -15,6 +15,13 @@ describe('sign-in outcome boundary', () => {
     ).toEqual({ kind: 'user', userId: 'user-1' });
   });
 
+  test('refuses unparsable redirect URLs instead of throwing', () => {
+    for (const url of ['', 'not a url', 'https://', 'javascript:alert(1)'])
+      expect(
+        signInOutcomeSchema.safeParse({ kind: 'redirect', url }).success,
+      ).toBe(false);
+  });
+
   test('preserves JSON state and bounds UTF-8 bytes', () => {
     const outcome = {
       kind: 'redirect' as const,

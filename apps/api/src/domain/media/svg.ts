@@ -1,5 +1,5 @@
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
-import { Errors, invalidInput } from '#api/shared/errors';
+import { Errors, invalidInput, withParams } from '#api/shared/errors';
 
 /** A separate ceiling keeps XML parsing and serialization bounded. */
 export const SVG_MAX_BYTES = 1024 * 1024;
@@ -94,7 +94,10 @@ const raster = (value: string) => {
  */
 export const sanitizeSvg = (bytes: Uint8Array) => {
   if (bytes.byteLength > SVG_MAX_BYTES)
-    throw invalidInput(Errors.MediaTooLarge(SVG_MAX_BYTES));
+    throw invalidInput(
+      Errors.MediaTooLarge,
+      withParams(Errors.MediaTooLarge, { maxBytes: SVG_MAX_BYTES }),
+    );
   let xml: string;
   try {
     xml = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
@@ -177,7 +180,10 @@ export const sanitizeSvg = (bytes: Uint8Array) => {
   };
   const sanitized = new TextEncoder().encode(render(nodes[0]!, 0));
   if (sanitized.byteLength > SVG_MAX_BYTES)
-    throw invalidInput(Errors.MediaTooLarge(SVG_MAX_BYTES));
+    throw invalidInput(
+      Errors.MediaTooLarge,
+      withParams(Errors.MediaTooLarge, { maxBytes: SVG_MAX_BYTES }),
+    );
   const root = (nodes[0]![':@'] ?? {}) as Record<string, string>;
   const viewBox = root.viewBox
     ?.trim()

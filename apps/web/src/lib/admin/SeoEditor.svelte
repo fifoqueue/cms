@@ -1,11 +1,9 @@
 <script lang="ts">
   import { formatSeoTitle } from '@cms/sdk';
-  import {
-    ChevronDown,
-    CircleAlert,
-    CircleCheck,
-    CircleDashed,
-  } from '@lucide/svelte';
+  import { default as ChevronDown } from '@lucide/svelte/icons/chevron-down';
+  import { default as CircleAlert } from '@lucide/svelte/icons/circle-alert';
+  import { default as CircleCheck } from '@lucide/svelte/icons/circle-check';
+  import { default as CircleDashed } from '@lucide/svelte/icons/circle-dashed';
   import { Input } from '#lib/components/ui/input/index.js';
   import { Label } from '#lib/components/ui/label/index.js';
   import {

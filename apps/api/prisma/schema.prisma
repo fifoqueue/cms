@@ -442,6 +442,11 @@ model Media {
   caption    String         @default("") @db.Text
   /// Path of the original in media storage, unique per upload.
   storageKey String         @unique @map("storage_key") @db.VarChar(255)
+  storageDriver String      @default("local") @map("storage_driver") @db.VarChar(128)
+  publicUrl String?         @map("public_url") @db.Text
+  byteSize Int?             @map("byte_size")
+  etag String?              @db.VarChar(255)
+  missingAt DateTime?       @map("missing_at") @db.DateTime(3)
   variants   String         @default("{}") @db.Text
   createdAt  DateTime       @map("created_at") @db.DateTime(3)
   uploader   User?          @relation(fields: [uploaderId], references: [id], onDelete: SetNull)

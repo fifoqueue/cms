@@ -1,3 +1,5 @@
+import { ISSUE_PARAMS_LIMITS } from '@cms/sdk';
+import type { IssueParams } from '@cms/sdk';
 import { Errors as SdkErrors } from '@cms/sdk/errors';
 
 export type ErrorCode =
@@ -25,175 +27,30 @@ export class DomainError extends Error {
 }
 
 /**
- * Every error message the API throws. Code throws `Errors.<Name>` (or calls it with details)
- * instead of writing message text at the throw site; ESLint rejects literal messages.
+ * Server-only messages: boot configuration, job internals, storage invariants and errors thrown
+ * into plugin code. They reach logs only (a response says `Internal`, a plugin's `PluginFailed`,
+ * a job's `JobFailed`), so they may carry details and need no reader translation.
  */
-export const Errors = {
-  PrivacyPolicyInvalid:
-    'Choose a published, unprotected page for the privacy policy',
-  PrivacyConfirmationInvalid:
-    'This confirmation link is invalid, expired, or already used',
-  PrivacyRequestMissing: 'Privacy request not found',
-  PrivacyNotConfirmed: 'The person must confirm this request first',
-  PrivacyJobsBusy:
-    'A message involving this person is being sent. Try again after it finishes',
-  PrivacyJobsUnscoped:
-    'Older comment notifications have no subject reference. Let them finish or expire before completing this request',
-  PrivacyJobsUnreadable:
-    'A queued message cannot be read. Repair or remove it before erasing personal data',
-  JobFailed: 'Job delivery failed',
-
-  CommentEmailRequired: 'Enter an email address.',
-  AuthenticationRequired: SdkErrors.AuthenticationRequired,
-  Forbidden: SdkErrors.Forbidden,
-  PatternNotFound: 'Pattern not found',
-  PatternLimit: 'A site can keep at most 500 patterns',
-  TooManyAttempts: SdkErrors.TooManyAttempts,
-  CaptchaRequired: SdkErrors.CaptchaRequired,
-  CaptchaInvalid: SdkErrors.CaptchaInvalid,
-  UserNotFound: 'User not found',
-  SessionNotFound: 'Session not found',
-  PasswordResetLimit: SdkErrors.PasswordResetLimit,
-  PasswordRequired:
-    'Enter a password, or set up email delivery to send an invitation',
-  LastAdministrator: 'The site needs at least one administrator',
-  UserDeleteSelf: 'You cannot delete your own account',
-  ReassignTargetInvalid: 'Choose another existing user to receive the content',
-  RouteNotFound: 'Route not found',
-  Internal: SdkErrors.Internal,
-  InstallRequired: '먼저 웹사이트에서 설치를 완료해 주세요.',
-  PluginRouteFailed: 'The plugin failed to handle this request',
-  InvalidInput: SdkErrors.InvalidInput,
-  RequestBodyNotJson: SdkErrors.RequestBodyNotJson,
-  RequestBodyTooLarge: SdkErrors.RequestBodyTooLarge,
-  InvalidCredentials: SdkErrors.InvalidCredentials,
-  SecondFactorFailed: SdkErrors.SecondFactorFailed,
-  SetupCompleted: 'Setup has already been completed',
-  EmailRegistered: 'Email is already registered',
-  EmailChangeRestricted:
-    'Contact an administrator to change your email address.',
-
-  ContentNotFound: 'Content not found',
-  ContentAutosavePending:
-    'You have unsaved changes to this entry in the editor. Open it to save or discard them first.',
-  ContentChanged:
-    'This entry was changed since you opened it. Reload the page and try again.',
-  ContentPathMissing: 'Content has no current path',
-  SlugConflict: 'Slug is already in use',
-  SlugInUse: (slug: string) => `Slug "${slug}" is already in use`,
-  UnknownTerms: 'Unknown terms',
-  MediaNotFound: 'Media not found',
-  ImageCropInvalid: 'The crop must fit inside the image.',
-  RegistrationClosed: 'Registration is closed.',
-  ContentParentInvalid: 'Choose a parent page outside this page’s descendants.',
-  RoleUnknown: 'This role does not exist.',
-  RoleBuiltin: 'Built-in roles cannot be changed.',
-  MediaEmpty: 'The file is empty',
-  MediaKeyInvalid: 'Invalid media key',
-  MediaTooLarge: (bytes: number) =>
-    `The file is too large (at most ${Math.floor(bytes / 1024 / 1024)} MB)`,
-  MediaStorageLow: 'The server does not have enough free storage for this file',
-  MediaStorageBusy: 'The media storage is busy; try the upload again',
-  MediaUploadRate: (max: number) =>
-    `You can upload ${max} files per hour. Please wait and try again.`,
-  MediaTypeUnsupported:
-    'This file type is not supported. Upload JPEG, PNG, GIF, WebP, AVIF, PDF, MP3, WAV, Ogg, MP4 or WebM. Safe SVG files are accepted when SVG uploads are enabled.',
-  MediaUploadRefused: 'This upload was refused.',
-  MediaProcessorMissing: 'No core media processor is registered',
-  MediaInUse: (count: number) =>
-    `The file is used by ${count} ${count === 1 ? 'entry' : 'entries'}; delete it anyway to remove it from them`,
-  ContentTypeUnknown: 'Choose an existing content type',
-  ContentTypeReserved: 'This key is used by the system; choose another',
-  ContentTypeExists: 'A content type with this key exists',
-  ContentTypeNotFound: 'Content type not found',
-  ContentTypeInUse: 'Entries of this type exist; delete or change them first',
-  CommentLoginRequired: 'You must be logged in to post a comment',
-  CommentNotFound: 'Comment not found',
-  CommentsClosed: 'Comments are closed for this entry',
-  CommentReplyInvalid: 'The comment you are replying to is not available',
-  AvatarNotFound: 'Avatar not found',
-  SearchNotConfigured: 'Enter the Meilisearch address first',
-  SearchUnavailable: (detail: string) =>
-    `Meilisearch did not answer: ${detail}`,
-  SearchTaskFailed: (detail: string) => `Meilisearch task failed: ${detail}`,
-  SearchRequestFailed: (status: number) =>
-    `Meilisearch answered HTTP ${status}`,
-  OutboundUrlInvalid: 'The outbound address is invalid',
-  OutboundHostUnresolved: 'The outbound host could not be resolved',
-  OutboundAddressBlocked: 'The outbound address is not permitted',
-  OutboundRedirectBlocked: 'The outbound redirect is not permitted',
-  EgressAddressInvalid: 'Enter a valid IP address or CIDR range',
-  WebhookNotFound: 'Webhook not found',
-  WebhookInvalidJob: 'Invalid webhook delivery job',
+export const ServerErrors = {
+  JobKindUnknown: (kind: string) => `No handler for job kind "${kind}"`,
+  JobPayloadInvalid: 'The queued job payload is not valid',
+  JobPayloadUnreadable:
+    'The queued job is encrypted with a different site secret key',
   WebhookSecretUnreadable:
     'The webhook secret cannot be read; replace it in the admin area',
-  WebhookStatus: (status: number) => `The receiver answered HTTP ${status}`,
-  ImportItemUnsupported: (type: string, status: string) =>
-    `Not imported: ${type} (${status})`,
-  ImportInvalid: 'The file is not a WordPress export (WXR)',
-  ImportContentLimit: 'This entry exceeds the import content limit',
-  ImportAuthorsLimit:
-    'Import at most 1000 authors and create at most 100 accounts at a time',
-  SsoSecretRequired:
-    'Enter the client secret, or choose no client authentication',
-  SsoSiteUrlRequired:
-    'Set the public site address in SEO settings first; the provider sends users back there',
-  WidgetTypeUnknown: 'This widget type is not available',
-  FieldExists: 'A field with this key exists',
-  FieldNotFound: 'Field not found',
-  FieldRequired: 'This field is required',
-  ScheduleDateRequired: 'Choose when to publish the entry',
-  RevisionNotFound: 'Revision not found',
-  RevisionAutosaveDelete: 'Autosaves cannot be deleted as saved revisions',
-  PreviewInvalid: 'This preview link is invalid or has expired',
-  ContentPasswordWrong: 'The password is not correct',
-  UnknownCategory: 'Unknown category',
-  UnknownTag: 'Unknown tag',
-  InvalidDocument: (detail: string) => `Invalid document: ${detail}`,
-  PathConflict: 'Path is already in use',
-  PathInUse: (path: string) => `Path ${path} is already in use`,
-  InvalidPermalink: 'Invalid permalink',
-  PermalinkTitleUnusable: (title: string) =>
-    `"${title}" cannot be used in a URL`,
-  PermalinkPathInvalid: (issue: string, path: string, title: string) =>
-    `${issue}: ${path} ("${title}")`,
-
-  TaxonomyNotFound: 'Taxonomy not found',
-  TermNotFound: 'Term not found',
-  TermParentNotCategory: 'Only categories can have a parent',
-  TermParentCycle:
-    'A category cannot be nested under itself or its descendants',
-  TermParentNotFound: 'Parent term not found',
-  TermParentOtherTaxonomy: 'Parent term belongs to another taxonomy',
-
-  ThemeNotFound: 'Theme not found',
-  ThemeBuiltinReplace: 'Built-in themes cannot be replaced',
-  ThemeBuiltinRemove: 'Built-in themes cannot be removed',
-  ThemeActiveRemove: 'The active theme cannot be removed',
-  ThemeArchiveTooLarge: 'Theme archives can be at most 2 MB',
-  ThemeArchiveInvalid: 'Upload a .zip theme archive',
-  ThemeArchiveFile: (path: string) => `${path} is not a valid theme file`,
-  ThemeArchiveMissing: 'The archive has no theme.json',
-  ThemeTemplateNotFound: 'Template not found',
-  ThemePartNotFound: 'Template part not found',
-  ThemeFontUnknown: 'Not one of the theme font families',
-  ThemeColorUnknown: (slug: string) => `${slug} is not a palette color`,
-
-  PluginNotFound: 'Plugin not found',
+  EmailHttpFailed: (status: number, excerpt: string) =>
+    `Email API returned HTTP ${status}: ${excerpt}`,
+  EmailNetworkFailed: 'Email API request failed or timed out',
+  EmailTemplateInvalid: 'The custom email template is not valid JSON',
+  EmailInvalidJob: 'The queued message is not valid',
+  ContentPathMissing: 'Content has no current path',
+  MediaKeyInvalid: 'Invalid media key',
+  MediaDriverDuplicate: 'The core media storage driver is already registered',
+  MediaStorageOperation:
+    'The media storage operation failed; cleanup will be retried',
+  MediaProcessorMissing: 'No core media processor is registered',
   PluginInactive: 'Plugin is not active',
-  PluginBundleEmpty: 'Plugin bundle is empty',
-  PluginBundleTooLarge: 'Plugin bundle is too large',
-  PluginBundleInvalid: (detail: string) => `Invalid plugin bundle: ${detail}`,
-  PluginBundleUnloadable: 'Plugin bundle could not be loaded; install it again',
-  PluginBundleImport: 'Could not import plugin bundle',
-  PluginExportMissing: 'Bundle has no `plugin` export',
-  SignInStateTooLarge: 'Sign-in state exceeds 8 KB',
-  SignInExpired: SdkErrors.SignInExpired,
-  SignInRegistrationInvalid: 'Invalid or duplicate authentication registration',
-  PluginActivateInvalid: '`plugin.activate` must be a function',
-  PluginDeactivateInvalid: '`plugin.deactivate` must be a function',
   PluginBundleNameInvalid: (entry: string) => `Invalid bundle name "${entry}"`,
-  PluginIdInvalid: (id: string) => `Invalid plugin id "${id}"`,
   PluginStorageKeyInvalid: (key: string) => `Invalid storage key "${key}"`,
   PluginRouteMethodUnsupported: (method: string) =>
     `Unsupported method "${method}"`,
@@ -201,23 +58,193 @@ export const Errors = {
   PluginRoutePathInvalid: (path: string) =>
     `Route path "${path}" must start with "/"`,
   PluginSlotUnknown: (slot: string) => `Unknown slot "${slot}"`,
-  PluginRequiresCms: (range: string, version: string) =>
-    `Needs CMS ${range}; this site runs ${version}`,
-  PluginRequiresPlugin: (id: string, range: string) =>
-    `Needs the plugin "${id}" ${range}, active`,
-  PluginNoUpdateUrl: 'This plugin does not name an update address',
-  PluginUpdateUnavailable: 'The update address did not answer with a version',
   PluginPageKeyInvalid: (key: string) =>
     `Admin page key "${key}" must be kebab-case, at most 64 characters`,
-  PluginPageNotFound: 'This plugin page is not available',
-  PluginPageFailed:
-    'The plugin could not show this page. Check server logs for details.',
   PluginTaskNameInvalid: (name: string) =>
     `Task name "${name}" must be kebab-case, at most 64 characters`,
   PluginWidgetKeyInvalid: (key: string) =>
     `Widget key "${key}" must be kebab-case`,
   PluginTimedOut: (timeoutMs: number) => `Timed out after ${timeoutMs}ms`,
+  PluginBlockInvalid: (key: string) =>
+    `Invalid plugin block "${key}": use a kebab-case key, a title and valid attributes`,
+  SignInStateTooLarge: 'Sign-in state exceeds 8 KB',
+  SignInRegistrationInvalid: 'Invalid or duplicate authentication registration',
+  ConfigNotJsonObject: 'must be a JSON object',
+  ConfigNotJsonArray: 'must be a JSON array',
+  ConfigSetTogether: (keys: readonly string[]) =>
+    `${keys.join(', ')} must be set together`,
+  ConfigPendingLimitTooHigh: 'must not exceed OIDC_MAX_PENDING_REQUESTS',
+  ConfigStartLimitTooHigh: 'must not exceed OIDC_STARTS_PER_MINUTE',
+  ConfigClientSecretRequired: (method: string) => `required for ${method}`,
+  ConfigInvalid: (problems: readonly string[]) =>
+    `Invalid configuration:\n  ${problems.join('\n  ')}`,
+  InstallConfigUnreadable:
+    'The settings file cannot be read. Check its file permissions.',
+  InstallConfigCorrupt:
+    'The settings file is corrupt. Restore the previous settings.',
+} as const;
 
+/**
+ * Every error message the API throws. Code throws `Errors.<Name>` (or calls a server-only one
+ * with details) instead of writing message text at the throw site; ESLint rejects literal
+ * messages. A message that can reach a response body (error, field issue, status field) is the
+ * SDK's fixed text, so readers' catalogs can key on it; its values travel as `issues[].params`.
+ */
+export const Errors = {
+  PrivacyPolicyInvalid: SdkErrors.PrivacyPolicyInvalid,
+  PrivacyConfirmationInvalid: SdkErrors.PrivacyConfirmationInvalid,
+  PrivacyRequestMissing: SdkErrors.PrivacyRequestMissing,
+  PrivacyNotConfirmed: SdkErrors.PrivacyNotConfirmed,
+  PrivacyJobsBusy: SdkErrors.PrivacyJobsBusy,
+  PrivacyJobsUnscoped: SdkErrors.PrivacyJobsUnscoped,
+  PrivacyJobsUnreadable: SdkErrors.PrivacyJobsUnreadable,
+  JobFailed: SdkErrors.JobFailed,
+  CommentEmailRequired: SdkErrors.CommentEmailRequired,
+  AuthenticationRequired: SdkErrors.AuthenticationRequired,
+  Forbidden: SdkErrors.Forbidden,
+  PatternNotFound: SdkErrors.PatternNotFound,
+  PatternLimit: SdkErrors.PatternLimit,
+  TooManyAttempts: SdkErrors.TooManyAttempts,
+  CaptchaRequired: SdkErrors.CaptchaRequired,
+  CaptchaInvalid: SdkErrors.CaptchaInvalid,
+  UserNotFound: SdkErrors.UserNotFound,
+  SessionNotFound: SdkErrors.SessionNotFound,
+  PasswordResetLimit: SdkErrors.PasswordResetLimit,
+  PasswordRequired: SdkErrors.PasswordRequired,
+  LastAdministrator: SdkErrors.LastAdministrator,
+  UserDeleteSelf: SdkErrors.UserDeleteSelf,
+  ReassignTargetInvalid: SdkErrors.ReassignTargetInvalid,
+  RouteNotFound: SdkErrors.RouteNotFound,
+  Internal: SdkErrors.Internal,
+  InstallRequired: SdkErrors.InstallRequired,
+  PluginRouteFailed: SdkErrors.PluginRouteFailed,
+  InvalidInput: SdkErrors.InvalidInput,
+  RequestBodyNotJson: SdkErrors.RequestBodyNotJson,
+  RequestBodyTooLarge: SdkErrors.RequestBodyTooLarge,
+  InvalidCredentials: SdkErrors.InvalidCredentials,
+  SecondFactorFailed: SdkErrors.SecondFactorFailed,
+  SetupCompleted: SdkErrors.SetupCompleted,
+  EmailRegistered: SdkErrors.EmailRegistered,
+  EmailChangeRestricted: SdkErrors.EmailChangeRestricted,
+  ContentNotFound: SdkErrors.ContentNotFound,
+  ContentAutosavePending: SdkErrors.ContentAutosavePending,
+  ContentChanged: SdkErrors.ContentChanged,
+  SlugConflict: SdkErrors.SlugConflict,
+  SlugInUse: SdkErrors.SlugInUse,
+  UnknownTerms: SdkErrors.UnknownTerms,
+  MediaNotFound: SdkErrors.MediaNotFound,
+  ImageCropInvalid: SdkErrors.ImageCropInvalid,
+  RegistrationClosed: SdkErrors.RegistrationClosed,
+  ContentParentInvalid: SdkErrors.ContentParentInvalid,
+  RoleUnknown: SdkErrors.RoleUnknown,
+  RoleBuiltin: SdkErrors.RoleBuiltin,
+  MediaEmpty: SdkErrors.MediaEmpty,
+  MediaDriverInvalid: SdkErrors.MediaDriverInvalid,
+  MediaStorageProbeAuth: SdkErrors.MediaStorageProbeAuth,
+  MediaStorageProbeBucket: SdkErrors.MediaStorageProbeBucket,
+  MediaStorageProbeNetwork: SdkErrors.MediaStorageProbeNetwork,
+  MediaStorageProbeTls: SdkErrors.MediaStorageProbeTls,
+  MediaStorageProbeRejected: SdkErrors.MediaStorageProbeRejected,
+  MediaStorageProbeCleanup: SdkErrors.MediaStorageProbeCleanup,
+  MediaStorageFieldRequired: SdkErrors.MediaStorageFieldRequired,
+  MediaResyncFailed: SdkErrors.MediaResyncFailed,
+  MediaStorageLocation: SdkErrors.MediaStorageLocation,
+  MediaStorageSecret: SdkErrors.MediaStorageSecret,
+  MediaTooLarge: SdkErrors.MediaTooLarge,
+  MediaStorageLow: SdkErrors.MediaStorageLow,
+  MediaStorageBusy: SdkErrors.MediaStorageBusy,
+  MediaUploadRate: SdkErrors.MediaUploadRate,
+  MediaTypeUnsupported: SdkErrors.MediaTypeUnsupported,
+  MediaUploadRefused: SdkErrors.MediaUploadRefused,
+  MediaInUse: SdkErrors.MediaInUse,
+  ContentTypeUnknown: SdkErrors.ContentTypeUnknown,
+  ContentTypeReserved: SdkErrors.ContentTypeReserved,
+  ContentTypeExists: SdkErrors.ContentTypeExists,
+  ContentTypeNotFound: SdkErrors.ContentTypeNotFound,
+  ContentTypeInUse: SdkErrors.ContentTypeInUse,
+  CommentLoginRequired: SdkErrors.CommentLoginRequired,
+  CommentNotFound: SdkErrors.CommentNotFound,
+  CommentsClosed: SdkErrors.CommentsClosed,
+  CommentReplyInvalid: SdkErrors.CommentReplyInvalid,
+  AvatarNotFound: SdkErrors.AvatarNotFound,
+  SearchNotConfigured: SdkErrors.SearchNotConfigured,
+  SearchUnavailable: SdkErrors.SearchUnavailable,
+  SearchTaskFailed: SdkErrors.SearchTaskFailed,
+  SearchRequestFailed: SdkErrors.SearchRequestFailed,
+  SearchSyncFailed: SdkErrors.SearchSyncFailed,
+  OutboundTimeout: SdkErrors.OutboundTimeout,
+  OutboundTlsFailed: SdkErrors.OutboundTlsFailed,
+  OutboundNetworkFailed: SdkErrors.OutboundNetworkFailed,
+  OutboundUrlInvalid: SdkErrors.OutboundUrlInvalid,
+  OutboundHostUnresolved: SdkErrors.OutboundHostUnresolved,
+  OutboundAddressBlocked: SdkErrors.OutboundAddressBlocked,
+  OutboundRedirectBlocked: SdkErrors.OutboundRedirectBlocked,
+  EgressAddressInvalid: SdkErrors.EgressAddressInvalid,
+  WebhookNotFound: SdkErrors.WebhookNotFound,
+  WebhookInvalidJob: SdkErrors.WebhookInvalidJob,
+  WebhookStatus: SdkErrors.WebhookStatus,
+  WebhookDeliveryFailed: SdkErrors.WebhookDeliveryFailed,
+  HealthCheckFailed: SdkErrors.HealthCheckFailed,
+  HealthJobFailed: SdkErrors.HealthJobFailed,
+  ImportItemUnsupported: SdkErrors.ImportItemUnsupported,
+  ImportInvalid: SdkErrors.ImportInvalid,
+  ImportContentLimit: SdkErrors.ImportContentLimit,
+  ImportDownloadDeferred: SdkErrors.ImportDownloadDeferred,
+  ImportAuthorsLimit: SdkErrors.ImportAuthorsLimit,
+  SsoSecretRequired: SdkErrors.SsoSecretRequired,
+  SsoSiteUrlRequired: SdkErrors.SsoSiteUrlRequired,
+  WidgetTypeUnknown: SdkErrors.WidgetTypeUnknown,
+  FieldExists: SdkErrors.FieldExists,
+  FieldNotFound: SdkErrors.FieldNotFound,
+  FieldRequired: SdkErrors.FieldRequired,
+  ScheduleDateRequired: SdkErrors.ScheduleDateRequired,
+  RevisionNotFound: SdkErrors.RevisionNotFound,
+  RevisionAutosaveDelete: SdkErrors.RevisionAutosaveDelete,
+  PreviewInvalid: SdkErrors.PreviewInvalid,
+  ContentPasswordWrong: SdkErrors.ContentPasswordWrong,
+  UnknownCategory: SdkErrors.UnknownCategory,
+  UnknownTag: SdkErrors.UnknownTag,
+  InvalidDocument: SdkErrors.InvalidDocument,
+  PathConflict: SdkErrors.PathConflict,
+  PathInUse: SdkErrors.PathInUse,
+  InvalidPermalink: SdkErrors.InvalidPermalink,
+  PermalinkTitleUnusable: SdkErrors.PermalinkTitleUnusable,
+  PermalinkPathInvalid: SdkErrors.PermalinkPathInvalid,
+  TaxonomyNotFound: SdkErrors.TaxonomyNotFound,
+  TermNotFound: SdkErrors.TermNotFound,
+  TermParentNotCategory: SdkErrors.TermParentNotCategory,
+  TermParentCycle: SdkErrors.TermParentCycle,
+  TermParentNotFound: SdkErrors.TermParentNotFound,
+  TermParentOtherTaxonomy: SdkErrors.TermParentOtherTaxonomy,
+  ThemeNotFound: SdkErrors.ThemeNotFound,
+  ThemeBuiltinReplace: SdkErrors.ThemeBuiltinReplace,
+  ThemeBuiltinRemove: SdkErrors.ThemeBuiltinRemove,
+  ThemeActiveRemove: SdkErrors.ThemeActiveRemove,
+  ThemeArchiveTooLarge: SdkErrors.ThemeArchiveTooLarge,
+  ThemeArchiveInvalid: SdkErrors.ThemeArchiveInvalid,
+  ThemeArchiveFile: SdkErrors.ThemeArchiveFile,
+  ThemeArchiveMissing: SdkErrors.ThemeArchiveMissing,
+  ThemeTemplateNotFound: SdkErrors.ThemeTemplateNotFound,
+  ThemePartNotFound: SdkErrors.ThemePartNotFound,
+  ThemeFontUnknown: SdkErrors.ThemeFontUnknown,
+  ThemeColorUnknown: SdkErrors.ThemeColorUnknown,
+  PluginNotFound: SdkErrors.PluginNotFound,
+  PluginBundleEmpty: SdkErrors.PluginBundleEmpty,
+  PluginBundleInvalid: SdkErrors.PluginBundleInvalid,
+  PluginBundleUnloadable: SdkErrors.PluginBundleUnloadable,
+  PluginFailed: SdkErrors.PluginFailed,
+  PluginBundleImport: SdkErrors.PluginBundleImport,
+  PluginExportMissing: SdkErrors.PluginExportMissing,
+  SignInExpired: SdkErrors.SignInExpired,
+  PluginActivateInvalid: SdkErrors.PluginActivateInvalid,
+  PluginDeactivateInvalid: SdkErrors.PluginDeactivateInvalid,
+  PluginIdInvalid: SdkErrors.PluginIdInvalid,
+  PluginRequiresCms: SdkErrors.PluginRequiresCms,
+  PluginRequiresPlugin: SdkErrors.PluginRequiresPlugin,
+  PluginNoUpdateUrl: SdkErrors.PluginNoUpdateUrl,
+  PluginUpdateUnavailable: SdkErrors.PluginUpdateUnavailable,
+  PluginPageNotFound: SdkErrors.PluginPageNotFound,
+  PluginPageFailed: SdkErrors.PluginPageFailed,
   SsoNotFound: SdkErrors.SsoNotFound,
   PasswordLoginDisabled: SdkErrors.PasswordLoginDisabled,
   SsoProviderRequired: SdkErrors.SsoProviderRequired,
@@ -233,57 +260,25 @@ export const Errors = {
   SsoAccountUnlinked: SdkErrors.SsoAccountUnlinked,
   SsoFailed: SdkErrors.SsoFailed,
   SsoAccountLinkedElsewhere: SdkErrors.SsoAccountLinkedElsewhere,
-
   EmailDisabled: SdkErrors.EmailDisabled,
-  /** Shared with the SDK so the admin UI can recognize it as a field issue. */
   EmailSecretRequired: SdkErrors.EmailSecretRequired,
-  EmailHttpFailed: (status: number, excerpt: string) =>
-    `Email API returned HTTP ${status}: ${excerpt}`,
-  EmailNetworkFailed: 'Email API request failed or timed out',
-  EmailTemplateInvalid: 'The custom email template is not valid JSON',
-  EmailSendFailed: (detail: string) =>
-    `The mail server refused the message: ${detail}`,
-  EmailInvalidJob: 'The queued message is not valid',
+  EmailSendFailed: SdkErrors.EmailSendFailed,
   SiteUrlRequired: SdkErrors.SiteUrlRequired,
   PasswordTokenInvalid: SdkErrors.PasswordTokenInvalid,
   CurrentPasswordWrong: SdkErrors.CurrentPasswordWrong,
-  ApiTokenNotFound: 'Token not found',
-  JobKindUnknown: (kind: string) => `No handler for job kind "${kind}"`,
-  JobPayloadInvalid: 'The queued job payload is not valid',
-  JobPayloadUnreadable:
-    'The queued job is encrypted with a different site secret key',
-  ConfigNotJsonObject: 'must be a JSON object',
-  ConfigNotJsonArray: 'must be a JSON array',
-  ConfigSetTogether: (keys: readonly string[]) =>
-    `${keys.join(', ')} must be set together`,
-  ConfigPendingLimitTooHigh: 'must not exceed OIDC_MAX_PENDING_REQUESTS',
-  ConfigStartLimitTooHigh: 'must not exceed OIDC_STARTS_PER_MINUTE',
-  ConfigClientSecretRequired: (method: string) => `required for ${method}`,
-  ConfigInvalid: (problems: readonly string[]) =>
-    `Invalid configuration:\n  ${problems.join('\n  ')}`,
-  InstallKeyInvalid: '서버 콘솔의 설치 키를 확인해 주세요.',
-  InstallBusy: '설치가 진행 중입니다. 잠시 후 다시 시도해 주세요.',
-  InstallDatabaseConfigured: '데이터베이스 연결은 이미 설정되었습니다.',
-  InstallDatabaseRequired: '먼저 데이터베이스를 연결해 주세요.',
-  InstallCompleted: '설치가 이미 완료되었습니다.',
-  InstallApplyFailed:
-    '설정을 적용하지 못했습니다. DB 연결과 서버의 data 폴더 쓰기 권한을 확인해 주세요.',
-  InstallDatabaseUnreachable:
-    '데이터베이스에 연결할 수 없습니다. 주소·계정·데이터베이스 이름과 접근 권한을 확인해 주세요.',
-  InstallMigrationFailed:
-    '테이블 준비에 실패했습니다. DB 계정의 테이블 생성 권한과 마이그레이션 상태를 확인해 주세요. 기존 데이터는 초기화하지 않습니다.',
-  InstallConfigUnreadable:
-    '설정 파일을 읽을 수 없습니다. 파일 접근 권한을 확인해 주세요.',
-  InstallConfigCorrupt:
-    '설정 파일이 손상되었습니다. 기존 설정을 복구해 주세요.',
-  // site-theme
-  PluginBlockInvalid: (key: string) =>
-    `Invalid plugin block "${key}": use a kebab-case key, a title and valid attributes`,
-  PluginBlockAttrsInvalid: (title: string) =>
-    `The settings of the "${title}" block are not valid`,
-  SiteImageInvalid: 'Choose an image from the media library.',
-  ThemeScreenshotInvalid:
-    'The theme screenshot must be a PNG or WebP image of at most 512 KB.',
+  ApiTokenNotFound: SdkErrors.ApiTokenNotFound,
+  InstallKeyInvalid: SdkErrors.InstallKeyInvalid,
+  InstallBusy: SdkErrors.InstallBusy,
+  InstallDatabaseConfigured: SdkErrors.InstallDatabaseConfigured,
+  InstallDatabaseRequired: SdkErrors.InstallDatabaseRequired,
+  InstallCompleted: SdkErrors.InstallCompleted,
+  InstallApplyFailed: SdkErrors.InstallApplyFailed,
+  InstallDatabaseUnreachable: SdkErrors.InstallDatabaseUnreachable,
+  InstallMigrationFailed: SdkErrors.InstallMigrationFailed,
+  PluginBlockAttrsInvalid: SdkErrors.PluginBlockAttrsInvalid,
+  SiteImageInvalid: SdkErrors.SiteImageInvalid,
+  ThemeScreenshotInvalid: SdkErrors.ThemeScreenshotInvalid,
+  ...ServerErrors,
 } as const;
 
 export const invalidInput = (message: string, issues?: unknown) =>
@@ -294,13 +289,13 @@ export const expiredSignIn = () =>
   new DomainError('sign_in_expired', Errors.SignInExpired);
 export const notFound = (message: string) =>
   new DomainError('not_found', message);
-export const conflict = (message: string) =>
-  new DomainError('conflict', message);
+export const conflict = (message: string, issues?: unknown) =>
+  new DomainError('conflict', message, issues);
 export const forbidden = (message: string = Errors.Forbidden) =>
   new DomainError('forbidden', message);
 /** Too many attempts; the client may retry later. */
-export const rateLimited = (message: string) =>
-  new DomainError('rate_limited', message);
+export const rateLimited = (message: string, issues?: unknown) =>
+  new DomainError('rate_limited', message, issues);
 export const payloadTooLarge = (message: string) =>
   new DomainError('payload_too_large', message);
 export const destinationBlocked = (
@@ -309,6 +304,58 @@ export const destinationBlocked = (
 /** The attempt needs a solved captcha first (or the one sent was not valid). */
 export const captchaRequired = (message: string = Errors.CaptchaRequired) =>
   new DomainError('captcha_required', message);
+
+/**
+ * `params` within `ISSUE_PARAMS_LIMITS`, for every place that sends them (issues, import skips,
+ * plugin errors): the first 8 string or finite-number values under keys of at most 40
+ * characters, strings cut to 500. `undefined` when none remain.
+ */
+export const issueParams = (
+  params: Readonly<Record<string, unknown>>,
+): IssueParams | undefined => {
+  const kept = Object.entries(params)
+    .filter(
+      (entry): entry is [string, string | number] =>
+        entry[0].length <= ISSUE_PARAMS_LIMITS.key &&
+        (typeof entry[1] === 'string' ||
+          (typeof entry[1] === 'number' && Number.isFinite(entry[1]))),
+    )
+    .slice(0, ISSUE_PARAMS_LIMITS.keys)
+    .map(([key, value]) => [
+      key,
+      typeof value === 'string'
+        ? value.slice(0, ISSUE_PARAMS_LIMITS.value)
+        : value,
+    ]);
+  return kept.length ? Object.fromEntries(kept) : undefined;
+};
+
+/**
+ * A one-issue list carrying the values a catalog `message` leaves out. `path` names the field;
+ * `''` means the refusal itself. Params are bounded by `issueParams`.
+ */
+export const withParams = (
+  message: string,
+  params: Readonly<Record<string, string | number | undefined>>,
+  path = '',
+) => {
+  const bounded = issueParams(params);
+  return [{ path, message, ...(bounded && { params: bounded }) }];
+};
+
+/** The bounded params of a refusal's first issue: the values its catalog message leaves out. */
+export const paramsOf = (error: DomainError): IssueParams | undefined => {
+  const first: unknown = Array.isArray(error.issues)
+    ? error.issues[0]
+    : undefined;
+  const params =
+    first && typeof first === 'object' && 'params' in first
+      ? first.params
+      : undefined;
+  return params && typeof params === 'object'
+    ? issueParams(params as Record<string, unknown>)
+    : undefined;
+};
 
 export const messageOf = (error: unknown) =>
   error instanceof Error ? error.message : String(error);

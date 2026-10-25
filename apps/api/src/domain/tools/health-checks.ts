@@ -11,7 +11,7 @@ export type PluginHealthChecks = Pick<HealthChecks, 'plugin'>;
 /**
  * Site health registry. Core checks (`registerCore`, composition root and `SiteHealthService`
  * only) run directly and their errors propagate. Plugin checks run isolated and time-limited;
- * throwing, invalid or timed-out ones become a critical `check failed` result.
+ * throwing, invalid or timed-out ones become a critical `HealthCheckFailed` note.
  */
 export class HealthChecks {
   private readonly core = new Map<HealthCheck['key'], Check>();
@@ -44,7 +44,13 @@ export class HealthChecks {
           if (this.plugins.get(key) !== check) return null;
           return result.ok
             ? structuredClone(result.value)
-            : { key, status: 'critical' as const, detail: ['check failed'] };
+            : {
+                key,
+                status: 'critical' as const,
+                detail: [
+                  { message: Errors.HealthCheckFailed, params: { check: key } },
+                ],
+              };
         }),
       ),
     ]);

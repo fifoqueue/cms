@@ -1,5 +1,455 @@
+import {
+  apiErrorText,
+  megabytes,
+  type ApiErrorCatalog,
+  type WebErrorCatalog,
+} from '#lib/i18n/api-errors.js';
 import type { Messages } from '#lib/i18n/messages.js';
 import { templateLabels } from '#lib/i18n/template-label.js';
+
+/** Why a test send failed, by `EmailSendFailed`'s `reason` (SDK `EMAIL_FAILURE_REASONS`). */
+const emailFailure = (reason: unknown) => {
+  switch (reason) {
+    case 'auth':
+      return '메일 서버가 사용자 이름, 비밀번호 또는 API 키를 받아들이지 않았습니다.';
+    case 'timeout':
+      return '메일 서버가 제시간에 응답하지 않았습니다.';
+    case 'tls':
+      return '메일 서버의 TLS 인증서를 확인할 수 없습니다.';
+    case 'network':
+      return '메일 서버에 연결할 수 없습니다. 주소와 포트를 확인하세요.';
+    default:
+      return '메일 서버가 메시지를 거부했습니다. 자세한 내용은 서버 로그를 확인하세요.';
+  }
+};
+
+/** Text for every SDK error, by its `Errors` key; read through `ko.apiError`. */
+export const apiErrors: ApiErrorCatalog = {
+  MediaStorageProbeCleanup: ({ bucket, key }) =>
+    bucket === undefined || key === undefined
+      ? '연결 확인용 파일을 지우지 못했습니다. 저장소에 남은 확인용 파일을 직접 삭제하세요.'
+      : `연결 확인용 파일을 지우지 못했습니다. 저장소에서 직접 삭제하세요: ${bucket}/${key}`,
+  MediaStorageLocation:
+    '이미 저장한 S3 저장소의 엔드포인트, 버킷, 접두사는 바꿀 수 없습니다. 저장된 파일을 먼저 옮겨야 합니다.',
+  MediaStorageSecret:
+    '이 엔드포인트와 계정에 맞는 비밀 액세스 키를 입력하세요.',
+  MediaDriverInvalid: '사용할 수 없는 저장소입니다. 다른 저장소를 선택하세요.',
+  MediaStorageBusy: '저장소가 바쁩니다. 잠시 뒤 다시 올려 주세요.',
+  MediaStorageProbeAuth:
+    '저장소에 연결하지 못했습니다. 액세스 키와 권한 등 인증 정보를 확인하세요.',
+  MediaStorageProbeBucket:
+    '저장소에 연결하지 못했습니다. 버킷 이름과 버킷 접근 권한을 확인하세요.',
+  MediaStorageProbeNetwork:
+    '저장소에 접속하지 못했습니다. 엔드포인트 주소와 네트워크 상태를 확인하세요.',
+  MediaStorageProbeTls:
+    '저장소와 안전하게 연결하지 못했습니다. 엔드포인트의 HTTPS 인증서를 확인하세요.',
+  MediaStorageProbeRejected:
+    '저장소 서비스가 요청을 거부했습니다. 리전과 경로 방식 주소 설정을 확인하세요.',
+  MediaStorageFieldRequired: '필수 항목입니다.',
+  InvalidCredentials: '이메일 또는 비밀번호가 올바르지 않습니다.',
+  SecondFactorFailed: '본인 확인에 실패했습니다. 다시 시도하세요.',
+  InvalidInput: '입력한 값이 올바르지 않습니다.',
+  RequestBodyNotJson: '요청 형식이 올바르지 않습니다.',
+  RequestBodyTooLarge: '요청이 너무 큽니다.',
+  Internal: '서버 오류가 발생했습니다. 잠시 뒤 다시 시도하세요.',
+  AuthenticationRequired: '로그인이 필요합니다.',
+  Forbidden: '이 작업을 할 권한이 없습니다.',
+  TooManyAttempts: '시도가 너무 많습니다. 잠시 후 다시 시도하세요.',
+  CaptchaRequired: '로봇이 아님을 확인해 주세요.',
+  CaptchaInvalid: '로봇 확인에 실패했습니다. 다시 시도하세요.',
+  PasswordResetLimit:
+    '비밀번호 재설정 메일을 너무 많이 보냈습니다. 나중에 다시 시도하세요.',
+  PasswordTokenInvalid:
+    '링크가 올바르지 않거나 만료되었습니다. 새 링크를 요청하세요.',
+  CurrentPasswordWrong: '현재 비밀번호가 올바르지 않습니다.',
+  EmailDisabled: '먼저 메일 발송을 설정하고 활성화하세요.',
+  SiteUrlRequired: '먼저 SEO 설정에서 공개 사이트 주소를 입력하세요.',
+  SsoNotFound: '싱글 사인온을 찾을 수 없습니다.',
+  SsoRateLimited: '로그인 시도가 너무 많습니다. 1분 뒤 다시 시도하세요.',
+  SsoPendingLimit:
+    '진행 중인 로그인 요청이 너무 많습니다. 몇 분 뒤 다시 시도하세요.',
+  SsoRequestExpired: '로그인 요청이 만료되었습니다. 다시 시도하세요.',
+  SsoLinkSignInRequired:
+    '보안을 위해 다시 로그인한 뒤 싱글 사인온 계정을 연결하세요.',
+  SsoAccountUnusable: '이 싱글 사인온 계정은 여기에서 쓸 수 없습니다.',
+  SsoAccountAssigned: '이 계정은 서버 설정으로 지정되어 있습니다.',
+  SsoAccountNotLinked:
+    '이 싱글 사인온 계정은 어떤 관리자에게도 연결되어 있지 않습니다.',
+  SsoAccountUnlinked:
+    '이 싱글 사인온 계정의 연결이 해제되었습니다. 다시 시도하세요.',
+  SsoFailed: '싱글 사인온에 실패했습니다. 다시 시도하세요.',
+  SsoAccountLinkedElsewhere:
+    '이 싱글 사인온 계정은 이미 다른 관리자에게 연결되어 있습니다.',
+  PluginIdReserved: '플러그인 ID "core"는 CMS가 예약해 두어 쓸 수 없습니다.',
+  CaptchaProviderUnknown: '등록된 로봇 확인 제공자를 선택하세요.',
+  NotJsonSerializable: '저장할 수 없는 형식의 값입니다.',
+  InvalidDate: '올바른 날짜를 입력하세요.',
+  UnknownPermalinkToken: '알 수 없는 고유주소 토큰입니다.',
+  PermalinkPathTooLong: '경로가 너무 깁니다.',
+  PermalinkPathNotCanonical:
+    '빈 구간이나 ".", ".." 구간이 없는, 올바르게 인코딩된 경로를 입력하세요.',
+  PermalinkPathReserved: '예약된 경로입니다.',
+  InvalidResponse: 'CMS가 올바르지 않은 응답을 보냈습니다.',
+  PermalinkBuiltinsRequired: '글, 아티클, 페이지의 고유주소 형식이 필요합니다.',
+  MenuLinkInvalid: '웹 주소(https://…)나 이 사이트의 경로(/…)를 입력하세요.',
+  MenuTargetMissing: '메뉴 항목이 연결할 대상을 선택하세요.',
+  LoginPathInvalid:
+    '/login처럼 쿼리가 없고 예약되지 않은, 사용할 수 있는 사이트 경로를 입력하세요.',
+  FieldOptionsRequired: '선택지를 하나 이상 추가하세요.',
+  FieldValuesInvalid: '필드 값이 올바르지 않습니다.',
+  CommentUrlInvalid: 'https:// 또는 http://로 시작하는 웹 주소를 입력하세요.',
+  CommentDefaultNameRequired:
+    '이름 입력란을 끄려면 기본 작성자 이름을 입력하세요.',
+  SearchHostInvalid: 'http://127.0.0.1:7700 같은 주소를 입력하세요.',
+  SearchPrefixInvalid: '영문 소문자, 숫자, 밑줄로 1~40자를 입력하세요.',
+  SearchHostRequired: '검색을 켜려면 Meilisearch 주소를 입력하세요.',
+  SsoIssuerInvalid: 'https://id.example.com 같은 제공자 주소를 입력하세요.',
+  SsoScopesOpenid: '스코프에 openid를 포함해야 합니다.',
+  SsoIssuerRequired:
+    '이 제공자를 켜려면 제공자 주소와 클라이언트 ID를 입력하세요.',
+  SsoProviderIdInvalid:
+    '영문 소문자, 숫자, 하이픈으로 1~32자를 입력하세요. 처음과 끝은 문자나 숫자여야 합니다.',
+  SsoProviderIdDuplicate: '다른 제공자가 이미 이 ID를 쓰고 있습니다.',
+  SsoClaimTokenRequired: '이메일의 링크를 다시 열어 주세요.',
+  SignInDuplicate: '두 번 이상 들어 있습니다.',
+  SignInMethodRequired: '로그인 방법을 하나 이상 허용하세요.',
+  SignInUnknown: '등록된 로그인 방법이나 2단계 인증 방법을 선택하세요.',
+  SignInLastFactor:
+    '내 역할은 2단계 인증이 필요하므로 인증 방법을 하나 이상 남겨 두어야 합니다.',
+  SignInFactorRequired:
+    '2단계 인증을 필수로 하려면 사용자가 설정할 수 있는 2단계 인증 방법을 먼저 허용하세요.',
+  RecentSignInRequired:
+    '보안을 위해 다시 로그인한 뒤 계정에 로그인 수단을 추가하세요.',
+  RecoveryRecentSignIn: '보안을 위해 다시 로그인한 뒤 복구 코드를 만드세요.',
+  SignInExpired:
+    '로그인 요청이 더 이상 유효하지 않습니다. 처음부터 다시 시작하세요.',
+  SignInStepRequired: '단계별 로그인 화면에서 로그인을 계속하세요.',
+  SignInAccessRequired:
+    '내 계정으로 쓸 수 있는 로그인 방법을 하나 이상 허용해 두어야 합니다.',
+  PasswordLoginDisabled:
+    '비밀번호 로그인이 꺼져 있습니다. 싱글 사인온이나 복구 코드로 로그인하세요.',
+  SsoProviderRequired: '비밀번호 로그인을 끄기 전에 제공자를 하나 이상 켜세요.',
+  SsoAccessRequired:
+    '비밀번호 로그인을 끄기 전에 켜져 있는 제공자에 내 계정을 연결하거나 할당받으세요.',
+  SsoLastAccess:
+    '비밀번호 로그인이 꺼져 있는 동안에는 마지막 싱글 사인온 로그인 수단을 해제할 수 없습니다.',
+  EmailServerRequired: 'SMTP로 보내려면 메일 서버를 입력하세요.',
+  EmailSenderRequired: '메일을 보내려면 보내는 주소를 입력하세요.',
+  EmailSecretRequired: '이 서비스로 메일을 보내려면 비밀 값을 입력하세요.',
+  EmailProviderFieldRequired: '이 메일 서비스에 필요한 항목입니다.',
+  EmailRegionInvalid: '이 메일 서비스가 제공하는 리전을 지정하세요.',
+  EmailUrlInvalid: 'https://로 시작하는 주소를 입력하세요.',
+  EmailHeaderInvalid: 'Authorization 같은 헤더 이름을 입력하세요.',
+  EmailTemplateInvalid:
+    '올바른 JSON을 입력하세요. {{to}} 같은 자리표시자는 따옴표 없이 값 자리에 씁니다.',
+  EgressHostInvalid: '호스트 이름이나 IP 주소를 하나만 입력하세요.',
+  EgressAddressInvalid: 'IP 주소나 CIDR 범위를 입력하세요.',
+  BlocksNotList: '블록 목록이어야 합니다.',
+  BlocksTooDeep: '블록이 너무 깊게 중첩되어 있습니다.',
+  BlocksTooMany: '블록이 너무 많습니다.',
+  BlockInvalid: '블록이어야 합니다.',
+  BlockPropertyUnknown: '알 수 없는 항목입니다.',
+  BlockUnknown: '알 수 없는 블록입니다.',
+  BlockParent: ({ parents }) =>
+    parents === undefined
+      ? '다른 블록 안에 있어야 합니다.'
+      : `${parents} 안에 있어야 합니다.`,
+  BlockNotAllowedInside: ({ parent }) =>
+    parent === undefined
+      ? '이 블록 안에는 넣을 수 없습니다.'
+      : `${parent} 안에는 넣을 수 없습니다.`,
+  BlockAttrsInvalid: '속성은 객체여야 합니다.',
+  BlockAttrUnknown: '알 수 없는 속성입니다.',
+  BlockAttrRequired: '필수 항목입니다.',
+  BlockNoChildren: '이 블록에는 하위 블록을 넣을 수 없습니다.',
+  BlockAttrText: '텍스트여야 합니다.',
+  BlockAttrTooLong: ({ max }) =>
+    max === undefined
+      ? '글자 수가 너무 많습니다.'
+      : `최대 ${max}자까지 입력할 수 있습니다.`,
+  BlockAttrFormat: '형식이 올바르지 않습니다.',
+  BlockAttrColor: '팔레트 색상이어야 합니다.',
+  BlockAttrNumber: ({ min, max }) =>
+    min === undefined || max === undefined
+      ? '허용 범위 안의 정수여야 합니다.'
+      : `${min}~${max} 사이의 정수여야 합니다.`,
+  BlockAttrBoolean: 'true 또는 false여야 합니다.',
+  BlockAttrChoice: ({ options }) =>
+    options === undefined
+      ? '허용된 값 중 하나여야 합니다.'
+      : `${options} 중 하나여야 합니다.`,
+  ThemePaletteDuplicate: '팔레트 슬러그는 서로 달라야 합니다.',
+  ThemePaletteRole: ({ role }) =>
+    role === undefined
+      ? '팔레트에 모든 색상 역할이 있어야 합니다.'
+      : `팔레트에 "${role}" 색상이 있어야 합니다.`,
+  ThemeFontUnknown: '테마에 없는 글꼴 모음입니다.',
+  FontUrlInvalid: '공백·따옴표·괄호가 없는 https:// 주소를 입력하세요.',
+  FontFileInvalid:
+    '.woff2, .woff, .ttf, .otf 파일의 https:// 주소나 미디어 라이브러리(/media/…) 주소를 입력하세요.',
+  FontFamilyInvalid:
+    '글꼴 이름에는 영문자, 숫자, 공백, 하이픈, 밑줄만 쓸 수 있습니다.',
+  FontSourceRequired: '스타일시트 주소나 글꼴 파일 중 하나를 추가하세요.',
+  FontDuplicate: '글꼴 슬러그와 이름은 서로 달라야 합니다.',
+  ThemeAlternatePalette:
+    '대체 팔레트에는 팔레트와 같은 슬러그가 모두 있어야 하며, 색 구성 옵션에는 대체 팔레트가 필요합니다.',
+  TaxonomyFilterPair: '분류와 항목을 모두 선택하세요.',
+  ThemeQueriesLimit:
+    '테마에는 독립된 글 목록을 최대 32개까지 넣을 수 있습니다.',
+  ThemeIndexRequired: '테마에 templates/index.json이 있어야 합니다.',
+  PrivacyPolicyInvalid:
+    '개인정보 처리방침으로 쓸, 발행되었고 보호되지 않은 페이지를 선택하세요.',
+  PrivacyConfirmationInvalid:
+    '확인 링크가 올바르지 않거나 만료되었거나 이미 사용되었습니다.',
+  PrivacyRequestMissing: '개인정보 요청을 찾을 수 없습니다.',
+  PrivacyNotConfirmed: '먼저 당사자가 이 요청을 확인해야 합니다.',
+  PrivacyJobsBusy:
+    '이 사람과 관련된 메일을 보내는 중입니다. 발송이 끝난 뒤 다시 시도하세요.',
+  PrivacyJobsUnscoped:
+    '이전 댓글 알림에는 대상 정보가 없습니다. 알림 발송이 끝나거나 만료된 뒤 이 요청을 완료하세요.',
+  PrivacyJobsUnreadable:
+    '대기 중인 메시지를 읽을 수 없습니다. 개인정보를 지우기 전에 메시지를 고치거나 삭제하세요.',
+  JobFailed: '작업을 전달하지 못했습니다.',
+  CommentEmailRequired: '이메일 주소를 입력하세요.',
+  PatternNotFound: '패턴을 찾을 수 없습니다.',
+  PatternLimit: '패턴은 사이트마다 최대 500개까지 둘 수 있습니다.',
+  UserNotFound: '사용자를 찾을 수 없습니다.',
+  SessionNotFound: '세션을 찾을 수 없습니다.',
+  PasswordRequired:
+    '비밀번호를 입력하거나, 초대 메일을 보내려면 메일 발송을 설정하세요.',
+  LastAdministrator: '사이트에는 관리자가 한 명 이상 있어야 합니다.',
+  UserDeleteSelf: '내 계정은 삭제할 수 없습니다.',
+  ReassignTargetInvalid: '콘텐츠를 넘겨받을 다른 기존 사용자를 선택하세요.',
+  RouteNotFound: '요청한 경로를 찾을 수 없습니다.',
+  InstallRequired: '먼저 웹사이트에서 설치를 완료해 주세요.',
+  PluginRouteFailed: '플러그인이 이 요청을 처리하지 못했습니다.',
+  SetupCompleted: '설정이 이미 완료되었습니다.',
+  EmailRegistered: '이미 등록된 이메일입니다.',
+  EmailChangeRestricted: '이메일 주소를 바꾸려면 관리자에게 문의하세요.',
+  ContentNotFound: '콘텐츠를 찾을 수 없습니다.',
+  ContentAutosavePending:
+    '편집기에 이 항목의 저장하지 않은 변경이 있습니다. 먼저 열어서 저장하거나 버리세요.',
+  ContentChanged:
+    '연 뒤에 다른 곳에서 이 항목이 바뀌었습니다. 페이지를 새로 고친 뒤 다시 시도하세요.',
+  SlugConflict: '이미 사용 중인 슬러그입니다.',
+  SlugInUse: ({ slug }) =>
+    slug === undefined
+      ? '이미 사용 중인 슬러그입니다.'
+      : `“${slug}” 슬러그는 이미 사용 중입니다.`,
+  UnknownTerms: '알 수 없는 분류 항목이 있습니다.',
+  MediaNotFound: '미디어를 찾을 수 없습니다.',
+  ImageCropInvalid: '자를 영역은 이미지 안에 있어야 합니다.',
+  RegistrationClosed: '지금은 가입할 수 없습니다.',
+  ContentParentInvalid:
+    '이 페이지의 하위 페이지가 아닌 상위 페이지를 선택하세요.',
+  RoleUnknown: '없는 역할입니다.',
+  RoleBuiltin: '기본 역할은 바꿀 수 없습니다.',
+  MediaEmpty: '빈 파일입니다.',
+  MediaResyncFailed:
+    '저장소와 맞추지 못했거나 5000개 한도를 넘었습니다. 지워진 파일은 없습니다.',
+  MediaTooLarge: ({ maxBytes }) =>
+    maxBytes === undefined
+      ? '파일이 너무 큽니다.'
+      : `파일이 너무 큽니다. ${megabytes(maxBytes)} 이하 파일을 올리세요.`,
+  MediaStorageLow: '서버에 이 파일을 저장할 공간이 부족합니다.',
+  MediaUploadRate: ({ limit }) =>
+    limit === undefined
+      ? '이번 시간에 올린 파일이 너무 많습니다. 잠시 뒤 다시 시도하세요.'
+      : `파일은 한 시간에 ${limit}개까지 올릴 수 있습니다. 잠시 뒤 다시 시도하세요.`,
+  MediaTypeUnsupported:
+    '지원하지 않는 파일 형식입니다. JPEG, PNG, GIF, WebP, AVIF, PDF, MP3, WAV, Ogg, MP4, WebM 파일을 올리세요. SVG 업로드를 켜면 안전한 SVG 파일도 올릴 수 있습니다.',
+  MediaUploadRefused: '업로드가 거부되었습니다.',
+  MediaInUse: ({ count }) =>
+    count === undefined
+      ? '이 파일을 쓰는 항목이 있습니다. 그래도 삭제하면 해당 항목에서 빠집니다.'
+      : `이 파일을 쓰는 항목이 ${count}개 있습니다. 그래도 삭제하면 해당 항목에서 빠집니다.`,
+  ContentTypeUnknown: '기존 콘텐츠 유형을 선택하세요.',
+  ContentTypeReserved: '시스템에서 쓰는 키입니다. 다른 키를 입력하세요.',
+  ContentTypeExists: '같은 키의 콘텐츠 유형이 이미 있습니다.',
+  ContentTypeNotFound: '콘텐츠 유형을 찾을 수 없습니다.',
+  ContentTypeInUse:
+    '이 유형의 항목이 있습니다. 먼저 항목을 삭제하거나 유형을 바꾸세요.',
+  CommentLoginRequired: '댓글을 쓰려면 로그인하세요.',
+  CommentNotFound: '댓글을 찾을 수 없습니다.',
+  CommentsClosed: '이 항목은 댓글을 받지 않습니다.',
+  CommentReplyInvalid: '답글을 달려는 댓글을 볼 수 없습니다.',
+  AvatarNotFound: '프로필 사진을 찾을 수 없습니다.',
+  SearchNotConfigured: '먼저 Meilisearch 주소를 입력하세요.',
+  SearchUnavailable: 'Meilisearch가 응답하지 않습니다.',
+  SearchTaskFailed: 'Meilisearch 작업이 실패했습니다.',
+  SearchRequestFailed: ({ status }) =>
+    status === undefined
+      ? 'Meilisearch가 오류로 응답했습니다.'
+      : `Meilisearch가 오류(HTTP ${status})로 응답했습니다.`,
+  SearchSyncFailed:
+    '검색 색인을 만들지 못했습니다. 자세한 내용은 서버 로그를 확인하세요.',
+  OutboundTimeout: '서버가 제시간에 응답하지 않았습니다.',
+  OutboundTlsFailed: '서버의 TLS 인증서를 확인할 수 없습니다.',
+  OutboundNetworkFailed: '서버에 연결할 수 없습니다.',
+  OutboundUrlInvalid: '외부 연결 주소가 올바르지 않습니다.',
+  OutboundHostUnresolved: '외부 연결 호스트를 찾을 수 없습니다.',
+  OutboundAddressBlocked: '허용되지 않은 외부 연결 주소입니다.',
+  OutboundRedirectBlocked: '허용되지 않은 주소로 리디렉션되었습니다.',
+  WebhookNotFound: '웹훅을 찾을 수 없습니다.',
+  WebhookInvalidJob: '웹훅 전송 작업이 올바르지 않습니다.',
+  WebhookStatus: '수신 서버가 오류 상태로 응답했습니다.',
+  WebhookDeliveryFailed:
+    '전송하지 못했습니다. 자세한 내용은 서버 로그를 확인하세요.',
+  HealthCheckFailed: ({ check }) =>
+    check === undefined
+      ? '점검에 실패했습니다.'
+      : `${check} 점검에 실패했습니다.`,
+  HealthJobFailed: ({ kind }) =>
+    kind === undefined
+      ? '백그라운드 작업이 실패했습니다.'
+      : `백그라운드 작업(${kind})이 실패했습니다.`,
+  ImportItemUnsupported: ({ type, status }) =>
+    type === undefined
+      ? '가져오지 않음: 지원하지 않는 항목 유형이나 상태입니다.'
+      : `가져오지 않음: 지원하지 않는 항목 유형이나 상태입니다. (${type}${status === undefined ? '' : `, ${status}`})`,
+  ImportInvalid: 'WordPress 내보내기(WXR) 파일이 아닙니다.',
+  ImportContentLimit: '이 항목은 가져올 수 있는 콘텐츠 크기를 넘습니다.',
+  ImportDownloadDeferred:
+    '다운로드 한도에 도달했습니다. 다시 가져오면 나머지 파일을 미디어 라이브러리에 추가할 수 있습니다. 이미 가져온 글은 업데이트되지 않습니다.',
+  ImportAuthorsLimit:
+    '한 번에 작성자는 최대 1000명까지 가져오고, 계정은 최대 100개까지 만들 수 있습니다.',
+  SsoSecretRequired:
+    '클라이언트 비밀을 입력하거나 클라이언트 인증 없음을 선택하세요.',
+  SsoSiteUrlRequired:
+    '먼저 SEO 설정에서 공개 사이트 주소를 입력하세요. 제공자가 이 주소로 사용자를 돌려보냅니다.',
+  WidgetTypeUnknown: '사용할 수 없는 위젯 유형입니다.',
+  FieldExists: '같은 키의 필드가 이미 있습니다.',
+  FieldNotFound: '필드를 찾을 수 없습니다.',
+  FieldRequired: '필수 항목입니다.',
+  ScheduleDateRequired: '발행할 시각을 선택하세요.',
+  RevisionNotFound: '리비전을 찾을 수 없습니다.',
+  RevisionAutosaveDelete: '자동 저장본은 저장된 리비전처럼 삭제할 수 없습니다.',
+  PreviewInvalid: '미리 보기 링크가 올바르지 않거나 만료되었습니다.',
+  ContentPasswordWrong: '비밀번호가 올바르지 않습니다.',
+  UnknownCategory: '알 수 없는 카테고리입니다.',
+  UnknownTag: '알 수 없는 태그입니다.',
+  InvalidDocument: ({ detail }) =>
+    detail === undefined
+      ? '문서가 올바르지 않습니다.'
+      : `문서가 올바르지 않습니다: ${detail}`,
+  PathConflict: '이미 사용 중인 경로입니다.',
+  PathInUse: ({ path }) =>
+    path === undefined
+      ? '이미 사용 중인 경로입니다.'
+      : `${path} 경로는 이미 사용 중입니다.`,
+  InvalidPermalink: '고유주소가 올바르지 않습니다.',
+  PermalinkTitleUnusable: ({ title }) =>
+    title === undefined
+      ? '제목을 주소에 쓸 수 없습니다.'
+      : `주소에 쓸 수 없는 제목입니다: “${title}”`,
+  PermalinkPathInvalid: ({ reason, path }) =>
+    `이 주소${path === undefined ? '' : `(${path})`}는 이 항목에 쓸 수 없습니다.${reason === undefined ? '' : ` ${reason}`}`,
+  TaxonomyNotFound: '분류를 찾을 수 없습니다.',
+  TermNotFound: '분류 항목을 찾을 수 없습니다.',
+  TermParentNotCategory: '상위 항목은 카테고리에만 지정할 수 있습니다.',
+  TermParentCycle:
+    '카테고리를 자기 자신이나 하위 카테고리 아래에 둘 수 없습니다.',
+  TermParentNotFound: '상위 항목을 찾을 수 없습니다.',
+  TermParentOtherTaxonomy: '상위 항목이 다른 분류에 속해 있습니다.',
+  ThemeNotFound: '테마를 찾을 수 없습니다.',
+  ThemeBuiltinReplace: '기본 테마는 바꿀 수 없습니다.',
+  ThemeBuiltinRemove: '기본 테마는 삭제할 수 없습니다.',
+  ThemeActiveRemove: '사용 중인 테마는 삭제할 수 없습니다.',
+  ThemeArchiveTooLarge: '테마 압축 파일은 최대 2MB까지 올릴 수 있습니다.',
+  ThemeArchiveInvalid: '.zip 테마 압축 파일을 올리세요.',
+  ThemeArchiveFile: ({ file }) =>
+    file === undefined
+      ? '압축 파일에 올바른 테마 파일이 아닌 파일이 있습니다.'
+      : `압축 파일에 올바른 테마 파일이 아닌 파일이 있습니다: ${file}`,
+  ThemeArchiveMissing: '압축 파일에 theme.json이 없습니다.',
+  ThemeTemplateNotFound: '템플릿을 찾을 수 없습니다.',
+  ThemePartNotFound: '템플릿 파트를 찾을 수 없습니다.',
+  ThemeColorUnknown: ({ slug }) =>
+    slug === undefined
+      ? '테마 팔레트에 없는 색상입니다.'
+      : `테마 팔레트에 없는 색상입니다: “${slug}”`,
+  PluginNotFound: '플러그인을 찾을 수 없습니다.',
+  PluginBundleEmpty: '플러그인 번들이 비어 있습니다.',
+  PluginBundleInvalid: '올바른 플러그인 번들이 아닙니다.',
+  PluginBundleUnloadable:
+    '플러그인 번들을 불러오지 못했습니다. 다시 설치하세요.',
+  PluginBundleImport: '플러그인 번들을 가져오지 못했습니다.',
+  PluginExportMissing: '번들에 `plugin` 내보내기가 없습니다.',
+  PluginActivateInvalid: '`plugin.activate`는 함수여야 합니다.',
+  PluginDeactivateInvalid: '`plugin.deactivate`는 함수여야 합니다.',
+  PluginIdInvalid: ({ id }) =>
+    id === undefined
+      ? '플러그인 ID가 올바르지 않습니다.'
+      : `올바른 플러그인 ID가 아닙니다: “${id}”`,
+  PluginRequiresCms: ({ range, version }) =>
+    range === undefined
+      ? '이 플러그인은 다른 CMS 버전이 필요합니다.'
+      : `이 플러그인은 CMS ${range} 버전이 필요합니다.${version === undefined ? '' : ` 이 사이트는 ${version} 버전입니다.`}`,
+  PluginRequiresPlugin: ({ id, range }) =>
+    id === undefined
+      ? '이 플러그인을 쓰려면 다른 플러그인을 켜야 합니다.'
+      : `이 플러그인을 쓰려면 ${id}${range === undefined ? '' : ` ${range}`} 플러그인을 켜야 합니다.`,
+  PluginFailed:
+    '플러그인이 실패했습니다. 자세한 내용은 서버 로그를 확인하세요.',
+  PluginNoUpdateUrl: '이 플러그인에는 업데이트 주소가 없습니다.',
+  PluginUpdateUnavailable: '업데이트 주소가 버전 정보를 알려 주지 않았습니다.',
+  PluginPageNotFound: '사용할 수 없는 플러그인 페이지입니다.',
+  PluginPageFailed:
+    '플러그인이 이 페이지를 보여 주지 못했습니다. 자세한 내용은 서버 로그를 확인하세요.',
+  PluginBlockAttrsInvalid: ({ title }) =>
+    title === undefined
+      ? '플러그인 블록의 설정이 올바르지 않습니다.'
+      : `플러그인 블록 “${title}”의 설정이 올바르지 않습니다.`,
+  EmailSendFailed: ({ reason, status }) =>
+    `${emailFailure(reason)}${status === undefined ? '' : ` (HTTP ${status})`}`,
+  ApiTokenNotFound: '토큰을 찾을 수 없습니다.',
+  InstallKeyInvalid: '서버 콘솔의 설치 키를 확인해 주세요.',
+  InstallBusy: '설치가 진행 중입니다. 잠시 후 다시 시도해 주세요.',
+  InstallDatabaseConfigured: '데이터베이스 연결은 이미 설정되었습니다.',
+  InstallDatabaseRequired: '먼저 데이터베이스를 연결해 주세요.',
+  InstallCompleted: '설치가 이미 완료되었습니다.',
+  InstallApplyFailed:
+    '설정을 적용하지 못했습니다. DB 연결과 서버의 data 폴더 쓰기 권한을 확인해 주세요.',
+  InstallDatabaseUnreachable:
+    '데이터베이스에 연결할 수 없습니다. 주소·계정·데이터베이스 이름과 접근 권한을 확인해 주세요.',
+  InstallMigrationFailed:
+    '테이블 준비에 실패했습니다. DB 계정의 테이블 생성 권한과 마이그레이션 상태를 확인해 주세요. 기존 데이터는 초기화하지 않습니다.',
+  SiteImageInvalid: '미디어 라이브러리에서 이미지를 선택하세요.',
+  ThemeScreenshotInvalid:
+    '테마 스크린샷은 512KB 이하의 PNG 또는 WebP 이미지여야 합니다.',
+};
+
+/** Text for every web server error, by its `Errors` key in `#lib/errors.js`. */
+export const webErrors: WebErrorCatalog = {
+  NotFound: '페이지를 찾을 수 없습니다.',
+  Forbidden: '이 페이지를 볼 권한이 없습니다.',
+  InvalidContentPath: '콘텐츠 주소가 올바르지 않습니다.',
+  SitemapIndexTooLarge: '사이트맵 색인이 사이트맵 개수 한도를 넘습니다.',
+  FormInvalid: '아래 항목을 고쳐 주세요.',
+  PermalinkPatternsInvalid: '고유주소 형식을 고쳐 주세요.',
+  PasswordMismatch: '비밀번호가 일치하지 않습니다.',
+  SignInRedirectInvalid: '로그인 방법이 올바르지 않은 주소를 돌려주었습니다.',
+  ProfileNumberInvalid: '숫자를 입력하세요.',
+  PluginBundleRequired: '플러그인 번들(.js)을 선택하세요.',
+  ImportFileRequired: 'WordPress 내보내기 파일(.xml)을 선택하세요.',
+  ThemeFileRequired: '테마 압축 파일(.zip)을 선택하세요.',
+  BlocksInvalid: '블록을 읽을 수 없습니다.',
+  TemplateNameInvalid: '슬러그에는 영문 소문자, 숫자, 대시만 쓰세요.',
+  ThemeItemReadOnly:
+    '플러그인이 제공하는 항목입니다. 변경을 저장하려면 먼저 사용자 지정을 선택하세요.',
+  BulkItemFailed: '이 항목을 바꾸지 못했습니다. 나중에 다시 시도하세요.',
+  BulkItemInvalid: '올바르지 않은 선택입니다.',
+  BulkTooMany: ({ limit }) =>
+    limit === undefined
+      ? '선택한 항목이 너무 많습니다. 아무것도 바뀌지 않았습니다.'
+      : `한 번에 최대 ${limit}개까지 선택할 수 있습니다. 아무것도 바뀌지 않았습니다.`,
+  PluginActivationFailed: '플러그인을 켜지 못했습니다.',
+  ReassignToDeleted:
+    '삭제되지 않는 사람을 콘텐츠를 넘겨받을 사람으로 선택하세요.',
+  PasswordOrInvite: '비밀번호를 입력하거나 초대 메일을 보내세요.',
+  ModerationInvalid: '올바르지 않은 댓글 작업입니다.',
+  UploadNetwork: '파일을 보내지 못했습니다. 네트워크 연결을 확인하세요.',
+};
 
 export const ko: Messages = {
   navDashboard: '대시보드',
@@ -105,7 +555,7 @@ export const ko: Messages = {
 
   signInTitle: '로그인',
   signIn: '로그인',
-  signInWith: (provider) => `${provider}(으)로 로그인`,
+  signInWith: (provider) => `${provider} 계정으로 로그인`,
   or: '또는',
   forgotPassword: '비밀번호를 잊으셨나요?',
   forgotTitle: '비밀번호 재설정',
@@ -192,7 +642,7 @@ export const ko: Messages = {
   emailTransportSmtp: 'SMTP 서버',
   emailTransportHttp: 'HTTP 메일 API',
   emailPluginTransportHelp: (label) =>
-    `플러그인이 제공하는 ${label}(으)로 메일을 보냅니다.`,
+    `플러그인이 제공하는 ${label} 전송 방식으로 메일을 보냅니다.`,
   emailPluginTransportMissing:
     '선택한 메일 플러그인을 더 이상 사용할 수 없어 메일을 보낼 수 없습니다. 다른 전송 방식을 선택하고 저장하세요.',
   emailFieldRequired: (label) => `${label} (필수)`,
@@ -219,15 +669,6 @@ export const ko: Messages = {
   emailBodyTemplate: 'JSON 본문',
   emailBodyTemplateHelp: (placeholders: string) =>
     `자리표시자는 따옴표 없이 JSON 값 자리에 단독으로 쓰세요(예: "to": {{to}}). 이스케이프된 문자열로 바뀝니다. 사용할 수 있는 자리표시자: ${placeholders}.`,
-  emailServerRequired: 'SMTP로 보내려면 메일 서버를 입력하세요.',
-  emailSenderRequired: '메일을 보내려면 보내는 주소를 입력하세요.',
-  emailProviderFieldRequired: '이 메일 서비스에 필요한 항목입니다.',
-  emailRegionInvalid: '이 메일 서비스가 제공하는 리전을 지정하세요.',
-  emailUrlInvalid: 'https://로 시작하는 주소를 입력하세요.',
-  emailHeaderInvalid: 'Authorization 같은 헤더 이름을 입력하세요.',
-  emailTemplateInvalid:
-    '올바른 JSON을 입력하세요. {{to}} 같은 자리표시자는 따옴표 없이 값 자리에 씁니다.',
-  emailSecretRequired: '이 서비스로 메일을 보내려면 비밀 값을 입력하세요.',
 
   contentTitle: '콘텐츠',
   contentNew: '새로 만들기',
@@ -654,7 +1095,7 @@ export const ko: Messages = {
   exportDownload: '내보내기 파일 내려받기',
   importTitle: '워드프레스에서 가져오기',
   importHelp:
-    '워드프레스 도구 → 내보내기에서 받은 파일을 선택하세요. 주소가 이미 있는 글은 건너뛰고, 작성자는 이메일로 연결하며 없으면 내가 작성자가 됩니다. 이미지는 원래 주소를 그대로 사용합니다.',
+    '워드프레스 도구 → 내보내기에서 받은 파일을 선택하세요. 주소가 이미 있는 글은 건너뛰고, 작성자는 이메일로 연결하며 없으면 내가 작성자가 됩니다. 첨부 파일 복사는 기본으로 선택되어 있으며 해제할 수 있습니다. 복사하지 못한 파일은 원래 주소를 유지합니다.',
   importStart: '가져오기',
   importRunning: '가져오는 중…',
   importDone: '가져오기를 마쳤습니다',
@@ -723,7 +1164,7 @@ export const ko: Messages = {
   seoTitleTemplateHelp: (example: string) =>
     `{title}(필수)과 {site}를 사용하세요. 예: “${example}”`,
   seoHomeTitle: '홈페이지 제목',
-  seoShownAs: (title: string) => `“${title}”(으)로 표시됩니다.`,
+  seoShownAs: (title: string) => `표시되는 제목: “${title}”`,
   seoHomeDescription: '홈페이지 설명',
   seoEntityType: '사이트의 주체',
   seoOrganization: '조직',
@@ -851,7 +1292,7 @@ export const ko: Messages = {
   termCountLabel: (count: number, name: string) =>
     `${name}의 콘텐츠 ${count}개`,
   termDeleteConfirm: (name: string) =>
-    `“${name}”을(를) 삭제할까요? 모든 콘텐츠에서 제거됩니다.`,
+    `“${name}” 항목을 삭제할까요? 모든 콘텐츠에서 제거됩니다.`,
   editItem: (name: string) => `${name} 편집`,
   deleteItem: (name: string) => `${name} 삭제`,
 
@@ -947,6 +1388,11 @@ export const ko: Messages = {
   // Public theme: blocks and toolbar
   themeReadMore: '계속 읽기',
   themeMenu: '메뉴',
+  themeMenuClose: '메뉴 닫기',
+  themeSchemeLight: '라이트 모드로 전환',
+  themeSchemeDark: '다크 모드로 전환',
+  themeSearchPanel: '무엇을 찾고 계신가요?',
+  themeSearchClose: '검색 닫기',
   themeNotFoundHelp: '찾으시는 페이지가 없거나 옮겨졌습니다. 검색해 보세요.',
   adminBar: '도구 모음',
   adminBarCustomize: '사이트 편집',
@@ -983,6 +1429,7 @@ export const ko: Messages = {
         'query-pagination': '페이지 이동',
         'query-title': '보관함 제목',
         'content-type-nav': '콘텐츠 유형 탭',
+        'scheme-toggle': '라이트/다크 전환',
         heading: '제목 블록',
         paragraph: '문단',
         separator: '구분선',
@@ -1047,6 +1494,9 @@ export const ko: Messages = {
         showComments: '댓글 수',
         showUpdated: '수정일',
         showSticky: '고정 글 표시',
+        commentIcon: '댓글 아이콘과 개수',
+        panel: '패널로 열기',
+        excerptLength: '요약 길이(단어 수, 0은 전체)',
         moreLink: '‘계속 읽기’ 링크',
         aspect: '비율',
         rounded: '둥근 모서리',
@@ -1187,6 +1637,24 @@ export const ko: Messages = {
   editorFontFamily: '본문 글꼴',
   editorHeadingFont: '제목 글꼴',
   editorSameAsBody: '본문과 같게',
+  editorFonts: '사이트 글꼴',
+  editorFontsHelp:
+    '스타일시트 주소(예: Google Fonts)나 글꼴 파일로 글꼴을 추가하세요. 위 글꼴 메뉴에 나타나며, 테마 글꼴 목록에 같은 이름이 있으면 자동으로 쓰입니다.',
+  editorFontsEmpty: '아직 사이트 글꼴이 없습니다.',
+  editorFontFamilyName: '글꼴 이름',
+  editorFontFallback: '대체 글꼴',
+  editorFontSource: '가져올 곳',
+  editorFontStylesheet: '스타일시트 주소',
+  editorFontFile: '글꼴 파일',
+  editorFontStylesheetUrl: '스타일시트 주소(https)',
+  editorFontFileUrl: '글꼴 파일 주소(https 또는 미디어 라이브러리)',
+  editorFontWeight: '굵기',
+  editorFontStyle: '스타일',
+  editorFontNormal: '보통',
+  editorFontItalic: '기울임',
+  editorFontDisplay: '표시 방식',
+  editorFontAdd: '글꼴 추가',
+  editorFontRemove: '삭제',
   editorFontSize: '글자 크기',
   editorLineHeight: '줄 간격',
   editorRadius: '모서리 둥글기',
@@ -1294,6 +1762,9 @@ export const ko: Messages = {
   importAuthors: '글쓴이 지정',
   importAuthorsHelp:
     '글쓴이는 이메일 주소나 로그인 이름으로 기존 사용자와 연결합니다. 일치하는 사용자가 없으면:',
+  importDownloadAttachments: '첨부 파일 다운로드',
+  importDownloadHelp:
+    '한 번에 최대 100개의 파일을 다운로드합니다. 다시 가져오면 나머지 파일을 미디어 라이브러리에 추가할 수 있지만, 이미 가져온 글은 업데이트되지 않습니다.',
   importAuthorMode: (mode: string) =>
     mode === 'author'
       ? '글쓴이 역할의 새 사용자 만들기'
@@ -1304,7 +1775,7 @@ export const ko: Messages = {
     `사용자 ${users}명과 메뉴 ${menus}개를 만들었고, 이전 주소 ${redirects}개를 새 주소로 연결했습니다.`,
   importAttachments: (count: number) => `업로드할 미디어 파일 ${count}개`,
   importAttachmentsHelp:
-    '미디어 파일은 복사하지 않았습니다. 글에는 이전 사이트의 파일이 그대로 표시되니 미디어 라이브러리에 올린 뒤 대표 이미지와 함께 바꿔 주세요.',
+    '다운로드한 파일은 라이브러리 주소로 표시됩니다. 복사하지 못한 파일은 이전 주소를 유지합니다. 자세한 내용은 건너뛴 항목을 확인하세요.',
   importFeatured: (count: number) => `글 ${count}개의 대표 이미지`,
   adminBarEditCategory: '카테고리 편집',
   adminBarEditTag: '태그 편집',
@@ -1383,8 +1854,16 @@ export const ko: Messages = {
   // core-comments
   commentLoginRequired: '로그인하고 댓글을 남겨 주세요.',
   commentSignedIn: (name: string) => `${name}님으로 로그인했습니다.`,
-  commentRemember:
-    '다음에 댓글을 작성할 때 사용할 이름, 이메일, 웹사이트를 이 브라우저에 저장합니다.',
+  commentRemember: (fields) => {
+    const names = { name: '이름', email: '이메일', website: '웹사이트' };
+    // 웹사이트 ends in a vowel; 이름 and 이메일 take 을.
+    const object = fields.at(-1) === 'website' ? '를' : '을';
+    return `다음 댓글에 자동으로 채워지도록 ${fields.map((field) => names[field]).join(', ')}${object} 이 브라우저의 쿠키에 1년 동안 저장합니다.`;
+  },
+  commentLinkLeave: '외부 링크를 열까요?',
+  commentLinkLeaveAsk: (address) =>
+    `댓글에 포함된 이 링크는 다른 사이트로 연결됩니다: ${address}`,
+  commentLinkOpen: '링크 열기',
   discussionFields: '댓글 입력 항목',
   discussionShowName: '이름 입력받기',
   discussionShowEmail: '이메일 주소 입력받기',
@@ -1457,6 +1936,8 @@ export const ko: Messages = {
   errorTooLarge: '크기가 너무 큽니다.',
   errorCaptchaRequired: '확인 절차를 완료하세요.',
   errorFieldInvalid: '올바른 값을 입력하세요.',
+  apiError: (key, params) => apiErrorText(apiErrors[key], params),
+  webError: (key, params) => apiErrorText(webErrors[key], params),
   entryTrashed: '휴지통으로 옮겼습니다.',
   undo: '실행 취소',
   viewOnSite: '사이트에서 보기',
@@ -1674,7 +2155,7 @@ export const ko: Messages = {
   pluginSettingsOf: (name: string) => `${name} 설정`,
   pluginNoSettings: '이 플러그인에는 설정이 없습니다.',
   menuDeleteConfirm: (name: string) => `“${name}” 메뉴를 삭제할까요?`,
-  widgetMoveTo: (area: string) => `${area}(으)로 이동`,
+  widgetMoveTo: (area: string) => `${area} 영역으로 이동`,
   widgetDropHere: '여기에 놓으면 위젯이 맨 끝에 배치됩니다',
   commentNoticePartlyEmptied:
     '많은 댓글을 삭제했지만 아직 남아 있습니다. 계속하려면 다시 비우기를 누르세요.',
@@ -1686,7 +2167,7 @@ export const ko: Messages = {
     '이 사이트가 꼭 연결해야 하는 내부 서비스만 허용하세요. 메타데이터와 예약 주소는 계속 차단됩니다.',
   egressRules: '허용할 대상',
   egressHelp:
-    '한 줄에 하나씩 입력하세요: 서비스 호스트 포트 주소[,주소]. 서비스: oidc, search, smtp, email-api(이메일 API), webhook. 주소에는 CIDR을 쓸 수 있습니다.',
+    '한 줄에 하나씩 입력하세요: 서비스 호스트 포트 주소[,주소]. 서비스: oidc, search, smtp, email-api(이메일 API), webhook, media-storage(미디어 저장소). 주소에는 CIDR을 쓸 수 있습니다.',
   egressEnvironment: '서버에서 지정한 대상',
   egressEnvironmentHelp: '서버 환경에서 지정한 읽기 전용 규칙입니다.',
   destinationBlocked:
@@ -1777,6 +2258,67 @@ export const ko: Messages = {
       : `댓글 ${count}개를 영구 삭제했습니다.`,
   mediaUploadedFile: (name) => `${name} 파일을 올렸습니다.`,
   mediaEditedCopy: '편집한 이미지를 새 파일로 저장했습니다.',
+  settingsMediaStorage: '미디어 저장소',
+  mediaStorageTitle: '업로드 파일 저장 위치',
+  mediaStorageDriver: '저장소',
+  mediaStorageLocal: '이 서버',
+  mediaStorageS3: 'S3 호환 저장소',
+  mediaStorageLocalHelp: '파일을 이 서버의 디스크에 저장합니다.',
+  mediaStorageSwitchNote:
+    '저장소를 바꿔도 이미 올린 파일은 옮겨지지 않습니다. 기존 파일은 원래 저장소에서 계속 제공되고, 새로 올리는 파일부터 선택한 저장소에 저장됩니다.',
+  mediaStorageS3Help:
+    'AWS S3, Cloudflare R2, Backblaze B2, Wasabi, MinIO 등 S3 호환 서비스를 쓸 수 있습니다.',
+  mediaStorageEndpoint: '엔드포인트',
+  mediaStorageEndpointHelp:
+    '예: R2 https://<계정 ID>.r2.cloudflarestorage.com · AWS https://s3.ap-northeast-2.amazonaws.com · B2 https://s3.us-west-004.backblazeb2.com · Wasabi https://s3.ap-northeast-1.wasabisys.com · MinIO https://minio.example.com',
+  mediaStorageRegion: '리전',
+  mediaStorageRegionHelp:
+    'R2는 auto, MinIO는 보통 us-east-1을 씁니다. 그 밖에는 버킷을 만든 리전을 입력하세요.',
+  mediaStorageBucket: '버킷',
+  mediaStorageAccessKeyId: '액세스 키 ID',
+  mediaStorageSecretAccessKey: '비밀 액세스 키',
+  mediaStorageSecretReenter:
+    '엔드포인트나 액세스 키 ID를 바꿨으니 비밀 액세스 키를 다시 입력하세요.',
+  mediaStoragePublicBaseUrl: '공개 기본 주소',
+  mediaStoragePublicBaseUrlHelp:
+    '선택 사항입니다. 버킷 루트를 공개로 제공하는 CDN이나 사용자 지정 도메인 주소를 입력하세요(예: https://cdn.example.com). 접두사는 자동으로 붙습니다. 버킷이나 CDN의 공개 설정은 저장소 서비스에서 직접 해야 합니다. 비워 두면 이 사이트 주소로 파일을 제공합니다.',
+  mediaStoragePrefix: '접두사',
+  mediaStoragePrefixHelp:
+    '선택 사항입니다. 버킷 안에서 업로드 파일을 둘 폴더이며 슬래시로 끝나야 합니다(예: media/).',
+  mediaStorageForcePathStyle: '경로 방식 주소 사용',
+  mediaStorageForcePathStyleHelp:
+    'MinIO처럼 버킷 이름을 호스트 이름(https://버킷.엔드포인트/파일)이 아니라 경로(https://엔드포인트/버킷/파일)에 넣는 서비스에서 켜세요.',
+  mediaStorageLocationFixed:
+    '저장한 뒤에는 엔드포인트, 버킷, 접두사를 바꿀 수 없습니다.',
+  mediaStoragePluginHelp: (label) =>
+    `플러그인이 제공하는 ${label}에 파일을 저장합니다.`,
+  mediaStoragePluginMissing:
+    '선택한 저장소 플러그인을 더 이상 사용할 수 없어 파일을 올릴 수 없습니다. 다른 저장소를 선택하고 저장하세요.',
+  mediaStorageTest: '연결 확인',
+  mediaStorageTested: '저장소에 연결할 수 있습니다.',
+  mediaStorageEgressHint:
+    '사설망에 있는 저장소를 쓰려면 외부 연결 설정에서 media-storage 서비스로 해당 호스트를 허용하세요.',
+  mediaStorageSaveHelp:
+    '저장하기 전에 연결을 확인하며, 연결에 실패하면 저장하지 않습니다.',
+  mediaResync: '저장소와 다시 맞추기',
+  mediaResyncHelp:
+    '목록은 DB에 저장된 정보로 보여 줍니다. 실제 저장소와 어긋났을 때만 사용하세요. 현재 저장소만 확인하며, 파일을 가져오거나 지우지는 않습니다.',
+  mediaResyncStarted: '저장소와 맞추기를 시작했습니다.',
+  mediaResyncQueued: '시작을 기다리는 중…',
+  mediaResyncRunning: '저장소를 확인하는 중…',
+  mediaResyncCompleted: (date) => `${date}에 마지막으로 맞췄습니다.`,
+  mediaResyncFailed: (date) =>
+    `${date}에 저장소와 맞추지 못했습니다. 지워진 파일은 없습니다.`,
+  mediaResyncScanned: '확인',
+  mediaResyncRefreshed: '갱신',
+  mediaResyncMissing: '저장소에 없음',
+  mediaResyncUntracked: '목록에 없는 파일',
+  mediaResyncCleanupAttention: (count) =>
+    `정리하지 못한 파일 ${count}개는 확인이 필요합니다.`,
+  mediaMissing: '저장소에 없음',
+  mediaMissingHelp: '마지막으로 저장소와 맞출 때 이 파일을 찾지 못했습니다.',
+  mediaMissingSince: (date) =>
+    `${date}에 저장소에서 이 파일을 찾지 못했습니다. 이 파일을 보여 주는 페이지에서는 파일이 깨져 보일 수 있습니다.`,
   contentCodeCopiedNotice: '코드를 클립보드에 복사했습니다.',
   // Single sign-on providers, linking and recovery codes
   ssoProvidersTitle: 'ID 제공자',
@@ -1799,21 +2341,6 @@ export const ko: Messages = {
   ssoProvidersMax: (max) => `제공자는 최대 ${max}개까지 추가할 수 있습니다.`,
   ssoEnvironmentProvider: (name) =>
     `${name} 로그인은 서버에서 설정되어 여기서 바꿀 수 없습니다. 그동안 아래 제공자는 저장만 되고 사용되지 않습니다.`,
-  ssoProviderIdInvalid:
-    '영문 소문자, 숫자, 하이픈으로 1~32자를 입력하세요. 처음과 끝은 문자나 숫자여야 합니다.',
-  ssoProviderIdDuplicate: '다른 제공자가 이미 이 ID를 쓰고 있습니다.',
-  ssoIssuerRequired:
-    '이 제공자를 켜려면 제공자 주소와 클라이언트 ID를 입력하세요.',
-  ssoIssuerInvalid: 'https://id.example.com 같은 제공자 주소를 입력하세요.',
-  ssoScopesOpenid: '스코프에 openid를 포함해야 합니다.',
-  ssoClaimTokenRequired: '이메일의 링크를 다시 열어 주세요.',
-  ssoPasswordLoginDisabled:
-    '비밀번호 로그인이 꺼져 있습니다. 싱글 사인온이나 복구 코드로 로그인하세요.',
-  ssoProviderRequired: '비밀번호 로그인을 끄기 전에 제공자를 하나 이상 켜세요.',
-  ssoAccessRequired:
-    '비밀번호 로그인을 끄기 전에 켜져 있는 제공자에 내 계정을 연결하거나 할당받으세요.',
-  ssoLastAccess:
-    '비밀번호 로그인이 꺼져 있는 동안에는 마지막 싱글 사인온 로그인 수단을 해제할 수 없습니다.',
   ssoLinkHelp:
     '제공자 계정을 연결하면 그 계정으로 이 계정에 로그인할 수 있습니다.',
   ssoLink: '연결',
@@ -1898,7 +2425,7 @@ export const ko: Messages = {
   factorAddAnother: '추가',
   factorRemove: '삭제',
   factorRemoveConfirm: (label) =>
-    `${label}을(를) 삭제할까요? 바로 쓸 수 없게 됩니다.`,
+    `이 인증 수단을 삭제할까요? (${label}) 바로 쓸 수 없게 됩니다.`,
   factorAddedOn: (date) => `${date}에 추가`,
   factorRecoveryCodesLink: '복구 코드 관리',
   factorEnrolled: '2단계 인증을 설정했습니다.',
@@ -1926,42 +2453,6 @@ export const ko: Messages = {
   signInRequireTitle: '2단계 인증 필수',
   signInRequireHelp:
     '이 역할의 사용자는 2단계 인증을 거쳐야 합니다. 아직 설정하지 않은 사용자는 로그인하면서 설정합니다.',
-  signInDuplicate: '두 번 이상 들어 있습니다.',
-  signInMethodRequired: '로그인 방법을 하나 이상 허용하세요.',
-  signInUnknown: '등록된 로그인 방법이나 2단계 인증 방법을 선택하세요.',
-  signInAccessRequired:
-    '내 계정으로 쓸 수 있는 로그인 방법을 하나 이상 허용해 두어야 합니다.',
-  signInLastFactor:
-    '내 역할은 2단계 인증이 필요하므로 인증 방법을 하나 이상 남겨 두어야 합니다.',
-  signInExpired:
-    '로그인 요청이 더 이상 유효하지 않습니다. 처음부터 다시 시작하세요.',
-  recoveryRecentSignIn: '보안을 위해 다시 로그인한 뒤 복구 코드를 만드세요.',
-  signInInvalidCredentials: '이메일 또는 비밀번호가 올바르지 않습니다.',
-  signInSecondFactorFailed: '본인 확인에 실패했습니다. 다시 시도하세요.',
-  authRequired: '로그인이 필요합니다.',
-  authTooManyAttempts: '시도가 너무 많습니다. 잠시 후 다시 시도하세요.',
-  authCaptchaRequired: '로봇이 아님을 확인해 주세요.',
-  authCaptchaInvalid: '로봇 확인에 실패했습니다. 다시 시도하세요.',
-  authPasswordResetLimit:
-    '비밀번호 재설정 메일을 너무 많이 보냈습니다. 나중에 다시 시도하세요.',
-  authPasswordTokenInvalid:
-    '링크가 올바르지 않거나 만료되었습니다. 새 링크를 요청하세요.',
-  authCurrentPasswordWrong: '현재 비밀번호가 올바르지 않습니다.',
-  authSsoRateLimited: '로그인 시도가 너무 많습니다. 1분 뒤 다시 시도하세요.',
-  authSsoPendingLimit:
-    '진행 중인 로그인 요청이 너무 많습니다. 몇 분 뒤 다시 시도하세요.',
-  authSsoRequestExpired: '로그인 요청이 만료되었습니다. 다시 시도하세요.',
-  authSsoLinkSignInRequired:
-    '보안을 위해 다시 로그인한 뒤 싱글 사인온 계정을 연결하세요.',
-  authSsoAccountUnusable: '이 싱글 사인온 계정은 여기에서 쓸 수 없습니다.',
-  authSsoAccountAssigned: '이 계정은 서버 설정으로 지정되어 있습니다.',
-  authSsoAccountNotLinked:
-    '이 싱글 사인온 계정은 어떤 관리자에게도 연결되어 있지 않습니다.',
-  authSsoAccountUnlinked:
-    '이 싱글 사인온 계정의 연결이 해제되었습니다. 다시 시도하세요.',
-  authSsoFailed: '싱글 사인온에 실패했습니다. 다시 시도하세요.',
-  authSsoAccountLinkedElsewhere:
-    '이 싱글 사인온 계정은 이미 다른 관리자에게 연결되어 있습니다.',
   signInFieldNewPassword: '새 비밀번호',
   pluginFieldSource: (plugin: string) => `플러그인: ${plugin}`,
   profileFieldsTitle: '추가 정보',
@@ -1976,8 +2467,4 @@ export const ko: Messages = {
   signInFieldPassword: '비밀번호',
   signInFieldTotpCode: '인증 코드',
   signInFieldRecoveryCode: '복구 코드',
-  signInFactorRequired:
-    '2단계 인증을 필수로 하려면 사용자가 설정할 수 있는 2단계 인증 방법을 먼저 허용하세요.',
-  recentSignInRequired:
-    '보안을 위해 다시 로그인한 뒤 계정에 로그인 수단을 추가하세요.',
 };

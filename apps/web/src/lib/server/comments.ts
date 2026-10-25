@@ -10,6 +10,7 @@ import { pageParam } from '#lib/server/public-view.js';
 import { unlockProofs } from '#lib/server/unlock.js';
 import { sessionToken } from '#lib/server/session-cookie.js';
 import { visitorOf } from '#lib/server/visitor.js';
+import { REPLY_PARAM } from '#lib/theme/comment-reply.js';
 
 const COMMENTER_COOKIE = 'cms_commenter';
 const COMMENTER_PROOF_COOKIE = 'cms_commenter_proof';
@@ -227,6 +228,7 @@ export const commentAction = async (event: RequestEvent) => {
   }
   const search = new URLSearchParams(event.url.search);
   search.delete('/comment');
+  search.delete(REPLY_PARAM);
   search.set('cpage', String(result.page));
   if (!result.comment) search.set('moderation', '1');
   else search.delete('moderation');

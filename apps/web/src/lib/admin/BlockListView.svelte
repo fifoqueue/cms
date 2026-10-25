@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { Block } from '@cms/sdk';
-  import { ArrowDown, ArrowUp, Trash2 } from '@lucide/svelte';
+  import { default as ArrowDown } from '@lucide/svelte/icons/arrow-down';
+  import { default as ArrowUp } from '@lucide/svelte/icons/arrow-up';
+  import { default as Trash2 } from '@lucide/svelte/icons/trash-2';
   import BlockListView from '#lib/admin/BlockListView.svelte';
   import { blockSummary, pathKey } from '#lib/admin/blocks.js';
   import type { BlockPath } from '#lib/admin/blocks.js';

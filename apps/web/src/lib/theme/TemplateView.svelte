@@ -38,6 +38,7 @@
     recentComments: data.recentComments ?? null,
     authors: data.authors ?? null,
     calendar: data.calendar ?? null,
+    listedTypes: data.listedTypes ?? null,
     theme: data.theme,
     site: data.site,
     reading: data.reading,

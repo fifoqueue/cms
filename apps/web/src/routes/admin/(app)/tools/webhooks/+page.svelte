@@ -2,6 +2,7 @@
   import { enhance } from '$app/forms';
   import { WEBHOOK_EVENTS } from '@cms/sdk';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import { catalogMessage } from '#lib/admin/form-errors.js';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
@@ -85,7 +86,9 @@
         {/if}
       </CardTitle>
       {#if hook.lastError}
-        <p class="text-sm text-destructive">{hook.lastError}</p>
+        <p class="text-sm text-destructive">
+          {catalogMessage(m, hook.lastError) ?? hook.lastError}
+        </p>
       {/if}
     </CardHeader>
     <CardContent class="grid gap-4">

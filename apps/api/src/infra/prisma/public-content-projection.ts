@@ -37,6 +37,7 @@ type Row = Pick<
     authorName: string | null;
     authorSlug: string | null;
     storageKey: string | null;
+    publicUrl: string | null;
     alt: string | null;
     width: number | null;
     height: number | null;
@@ -71,6 +72,7 @@ const summary = (row: Row, terms: { term: Term }[]): PublishedSummaryRecord => {
         ? null
         : {
             storageKey: row.storageKey,
+            publicUrl: row.publicUrl,
             alt: row.alt!,
             width: row.width,
             height: row.height,
@@ -127,7 +129,7 @@ export async function projectContent(
       p.path, u.name AS authorName, u.slug AS authorSlug,
       CASE WHEN parent.status = 'published' AND parent.trashed_at IS NULL
         AND parent.password_hash IS NULL THEN c.parent_id ELSE NULL END AS parentId,
-      m.storage_key AS storageKey, m.alt, m.width, m.height, m.variants,
+      m.storage_key AS storageKey, m.public_url AS publicUrl, m.alt, m.width, m.height, m.variants,
       c.seo_title AS seoTitle, c.seo_description AS seoDescription,
       c.seo_canonical_url AS seoCanonicalUrl, c.seo_no_index AS seoNoIndex,
       c.seo_no_follow AS seoNoFollow, c.seo_image_url AS seoImageUrl,

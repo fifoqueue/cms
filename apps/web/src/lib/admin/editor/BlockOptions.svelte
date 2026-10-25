@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
+  import { HEADING_LEVELS } from '@cms/content/toc';
   import type { AdminMedia, MediaKind, PluginBlockInfo } from '@cms/sdk';
   import { loadPluginBlocks } from '#lib/admin/editor/plugin-blocks.js';
   import { Popover } from 'bits-ui';
@@ -318,7 +319,7 @@
               onchange={(event) =>
                 update(target, { level: Number(event.currentTarget.value) })}
             >
-              {#each [2, 3, 4] as level (level)}<NativeSelectOption
+              {#each HEADING_LEVELS as level (level)}<NativeSelectOption
                   value={String(level)}>H{level}</NativeSelectOption
                 >{/each}
             </NativeSelect></label

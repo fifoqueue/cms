@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invalidateAll } from '$app/navigation';
-  import { Settings2 } from '@lucide/svelte';
+  import { default as Settings2 } from '@lucide/svelte/icons/settings-2';
   import { SCREEN_COOKIE } from '#lib/admin/screen-options.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import { Input } from '#lib/components/ui/input/index.js';

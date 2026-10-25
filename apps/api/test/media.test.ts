@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { FsMediaStorage } from '#api/infra/fs-media-storage';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
 import { MediaService } from '#api/domain/media/media-service';
+import type { MediaServiceDeps } from '#api/domain/media/media-service';
 import { ImageSizes } from '#api/domain/media/image-sizes';
 import { MediaProcessors } from '#api/domain/media/media-processors';
 import type { DomainError } from '#api/shared/errors';
@@ -48,7 +49,7 @@ test('filesystem uploads release the space lock after each successful commit', a
   }
 });
 
-const setup = (allowSvg = false) => {
+const setup = (allowSvg = false, overrides: Partial<MediaServiceDeps> = {}) => {
   const repository = new MemoryMediaRepository();
   const storage = new MemoryMediaStorage();
   const sizes = new ImageSizes();
@@ -72,6 +73,7 @@ const setup = (allowSvg = false) => {
     limiter: new MemoryRateLimitStore(),
     limits: async () => ({ uploadsPerHour: 60, freeSpaceMb: 256, allowSvg }),
     maxBytes: 1024,
+    ...overrides,
   });
   return { media, repository, storage, hooks, sizes, processors };
 };
@@ -81,6 +83,64 @@ const other = { id: 'b', role: 'author' };
 const editor = { id: 'e', role: 'editor' };
 
 describe('media library', () => {
+  test('switching drivers preserves ownership and failed deletion stays retryable per variant driver', async () => {
+    const local = new MemoryMediaStorage();
+    const remote = new MemoryMediaStorage();
+    let driver = 'local';
+    let fail = true;
+    const jobs: unknown[] = [];
+    const { media, repository } = setup(false, {
+      cleanupQueue: {
+        enqueue: async (_kind, payload) => {
+          jobs.push(payload);
+        },
+      },
+      selectStorage: async (recorded) => {
+        const selected = recorded ?? driver;
+        return {
+          driver: selected,
+          url: (key) => `https://${selected}.example/${key}`,
+          storage:
+            selected === 'local'
+              ? local
+              : {
+                  commit: (files, free) => remote.commit(files, free),
+                  read: (key, range) => remote.read(key, range),
+                  remove: async (keys) => {
+                    if (fail) throw new Error('offline');
+                    await remote.remove(keys);
+                  },
+                },
+        };
+      },
+    });
+    const first = await media.upload(PNG, 'local.png', author);
+    driver = 's3';
+    const second = await media.upload(PNG, 'remote.png', author);
+    expect((await media.get(first.id, author)).url).toStartWith(
+      'https://local.example/',
+    );
+    expect((await media.get(second.id, author)).url).toStartWith(
+      'https://s3.example/',
+    );
+    const row = repository.rows.get(second.id)!;
+    const variant = Object.values(row.variants)[0]!;
+    const bytes = remote.files.get(variant.key)!;
+    remote.files.delete(variant.key);
+    local.files.set(variant.key, bytes);
+    variant.storageDriver = 'local';
+    await expect(media.remove(second.id, false, author)).rejects.toThrow(
+      'offline',
+    );
+    expect(repository.rows.has(second.id)).toBe(true);
+    expect(jobs).toEqual([{ id: second.id }]);
+    fail = false;
+    await media.cleanup(second.id);
+    expect(repository.rows.has(second.id)).toBe(false);
+    expect(local.files.has(variant.key)).toBe(false);
+    expect(repository.rows.has(first.id)).toBe(true);
+    await media.cleanup(second.id);
+  });
   test('oversized processor results fall back and bounded sizes fit the TEXT column', async () => {
     const { media, repository, processors, sizes } = setup();
     processors.register({ process: () => new Uint8Array(2048) });
@@ -329,6 +389,37 @@ describe('media library', () => {
     expect(await media.file('../config.json')).toBeNull();
   });
 
+  test('web fonts are typed by their signature and stored as uploaded, without image work', async () => {
+    const { media, storage } = setup();
+    const font = (signature: readonly number[] | string) => {
+      const bytes = new Uint8Array(64);
+      bytes.set(
+        typeof signature === 'string'
+          ? [...signature].map((char) => char.charCodeAt(0))
+          : signature,
+      );
+      return bytes;
+    };
+    for (const [signature, mime, extension] of [
+      ['wOF2', 'font/woff2', 'woff2'],
+      ['wOFF', 'font/woff', 'woff'],
+      ['OTTO', 'font/otf', 'otf'],
+      [[0, 1, 0, 0], 'font/ttf', 'ttf'],
+    ] as const) {
+      const bytes = font(signature);
+      // The declared name never decides the type.
+      const uploaded = await media.upload(bytes, 'font.png', author);
+      expect(uploaded).toMatchObject({ mime, width: null, variants: [] });
+      expect(uploaded.url.endsWith(`.${extension}`)).toBe(true);
+      expect(storage.files.get(uploaded.url.slice('/media/'.length))).toEqual(
+        bytes,
+      );
+    }
+    expect(await codeOf(media.upload(font('wOF3'), 'fake.woff2', author))).toBe(
+      'invalid_input',
+    );
+  });
+
   test('uploads stop before exhausting storage or one user floods the site', async () => {
     const low = setup();
     low.storage.freeBytes = 256 * 1024 * 1024 + 17;
@@ -343,6 +434,44 @@ describe('media library', () => {
     expect(await codeOf(flood.media.upload(PNG, 'last.png', author))).toBe(
       'rate_limited',
     );
+    expect(
+      await codeOf(
+        flood.media.upload(PNG, 'denied.png', author, { rateLimit: false }),
+      ),
+    ).toBe('forbidden');
+    const admin = {
+      ...author,
+      capabilities: ['media.upload', 'tools.manage'] as const,
+    };
+    for (let index = 0; index < 75; index += 1)
+      await flood.media.upload(PNG, `import-${index}.png`, admin, {
+        rateLimit: false,
+      });
+    expect(
+      await codeOf(flood.media.upload(PNG, 'still-limited.png', admin)),
+    ).toBe('rate_limited');
+    expect(
+      await codeOf(
+        flood.media.upload(new Uint8Array(2048), 'big.png', admin, {
+          rateLimit: false,
+        }),
+      ),
+    ).toBe('invalid_input');
+    expect(
+      await codeOf(
+        low.media.upload(PNG, 'low.png', admin, { rateLimit: false }),
+      ),
+    ).toBe('conflict');
+    expect(
+      await codeOf(
+        flood.media.upload(
+          new TextEncoder().encode('<html>bad</html>'),
+          'fake.png',
+          admin,
+          { rateLimit: false },
+        ),
+      ),
+    ).toBe('invalid_input');
   });
 
   test('the library filters by month and attachment and lists where a file is used', async () => {
@@ -354,6 +483,16 @@ describe('media library', () => {
       { id: 'c1', title: 'Post', type: 'post' },
     ]);
     const month = first.createdAt.slice(0, 7);
+    expect(first.missingAt).toBeNull();
+    const missingAt = new Date('2026-01-20T00:00:00Z');
+    repository.rows.get(first.id)!.missingAt = missingAt;
+    const missing = await media.list({ missing: 'true' }, author);
+    expect(missing.total).toBe(1);
+    expect(missing.items[0]).toMatchObject({
+      id: first.id,
+      missingAt: missingAt.toISOString(),
+    });
+    expect((await media.list({ missing: 'false' }, author)).total).toBe(2);
 
     const unattached = await media.list({ unattached: 'true' }, author);
     expect(unattached.items.map(({ id }) => id)).toEqual([second.id]);

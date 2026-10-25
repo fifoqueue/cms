@@ -2,7 +2,9 @@
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
   import type { DashboardPreferences } from '@cms/sdk';
-  import { ArrowDown, ArrowUp, Settings2 } from '@lucide/svelte';
+  import { default as ArrowDown } from '@lucide/svelte/icons/arrow-down';
+  import { default as ArrowUp } from '@lucide/svelte/icons/arrow-up';
+  import { default as Settings2 } from '@lucide/svelte/icons/settings-2';
   import { untrack } from 'svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Button } from '#lib/components/ui/button/index.js';

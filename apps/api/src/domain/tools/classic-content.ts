@@ -3,6 +3,7 @@
 // schema still decides what survives, and unknown shortcodes stay as text.
 
 import { Errors, invalidInput } from '#api/shared/errors';
+import { gutenbergHtml } from '#api/domain/tools/gutenberg-content';
 
 const MAX_INPUT = 1024 * 1024;
 const MAX_OUTPUT = 2 * MAX_INPUT;
@@ -153,6 +154,7 @@ export const classicHtml = (
 ): string => {
   if (encoder.encode(html).length > MAX_INPUT)
     throw invalidInput(Errors.ImportContentLimit);
+  html = gutenbergHtml(html);
   const endings = { caption: /\[\/caption\]/gi, embed: /\[\/embed\]/gi };
   const opening = /\[(caption|gallery|embed|audio|video)\b/gi;
   const tagEnd = htmlTags(html);

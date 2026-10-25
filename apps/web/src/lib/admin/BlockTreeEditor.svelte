@@ -16,7 +16,8 @@
   } from '#lib/admin/blocks.js';
   import type { BlockPath } from '#lib/admin/blocks.js';
   import { History, historyKey } from '#lib/admin/history.js';
-  import { Redo2, Undo2 } from '@lucide/svelte';
+  import { default as Redo2 } from '@lucide/svelte/icons/redo-2';
+  import { default as Undo2 } from '@lucide/svelte/icons/undo-2';
   import { useI18n } from '#lib/i18n/index.js';
 
   /**

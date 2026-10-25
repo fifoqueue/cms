@@ -337,7 +337,9 @@ test('all credential representations are redacted before the excerpt is clipped'
       { ...transport('mailjet'), secret },
       message,
     ),
-  ).rejects.toEqual(new Error(`Email API returned HTTP 503: ${expected}`));
+  ).rejects.toEqual(
+    new Error(`Email API returned HTTP 503: ${expected}`, { cause: 503 }),
+  );
   expect(expected).toHaveLength(500);
 });
 
@@ -349,6 +351,8 @@ test('a credential crossing the excerpt boundary is redacted in full before trun
       async () => new Response(`${prefix}${secret} trailing`, { status: 503 }),
     ).send({ ...transport('resend'), secret }, message),
   ).rejects.toEqual(
-    new Error(`Email API returned HTTP 503: ${prefix}[redacted]`),
+    new Error(`Email API returned HTTP 503: ${prefix}[redacted]`, {
+      cause: 503,
+    }),
   );
 });

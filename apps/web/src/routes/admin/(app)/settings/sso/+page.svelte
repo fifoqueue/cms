@@ -1,6 +1,7 @@
 <script lang="ts">
   import { OIDC_AUTH_METHODS, SSO_PROVIDERS_MAX } from '@cms/sdk';
-  import { Plus, Trash2 } from '@lucide/svelte';
+  import { default as Plus } from '@lucide/svelte/icons/plus';
+  import { default as Trash2 } from '@lucide/svelte/icons/trash-2';
   import CopyButton from '#lib/admin/CopyButton.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { issueText } from '#lib/admin/form-errors.js';

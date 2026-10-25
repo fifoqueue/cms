@@ -1,6 +1,8 @@
 <script lang="ts">
   import { invalidate } from '$app/navigation';
-  import { Monitor, Moon, Sun } from '@lucide/svelte';
+  import { default as Monitor } from '@lucide/svelte/icons/monitor';
+  import { default as Moon } from '@lucide/svelte/icons/moon';
+  import { default as Sun } from '@lucide/svelte/icons/sun';
   import {
     COLOR_MODE_DEPENDENCY,
     saveColorMode,

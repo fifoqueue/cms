@@ -6,7 +6,7 @@ import { PublishedContentReader } from '#api/domain/content/public-content';
 import { SiteService } from '#api/domain/site/site-service';
 import { WidgetService } from '#api/domain/appearance/widget-service';
 import { SlotService } from '#api/plugin-runtime/slot-service';
-import { DomainError } from '#api/shared/errors';
+import { DomainError, Errors } from '#api/shared/errors';
 import {
   ADMIN,
   MemoryContentRepository,
@@ -377,11 +377,13 @@ describe('PluginHost lifecycle', () => {
     );
     expect(await runtime.host.enable('addon')).toMatchObject({
       status: 'failed',
-      error: 'Needs the plugin "base" ^1, active',
+      error: Errors.PluginRequiresPlugin,
+      errorParams: { id: 'base', range: '^1' },
     });
     expect(await runtime.host.enable('future')).toMatchObject({
       status: 'failed',
-      error: 'Needs CMS >=9; this site runs 1.0.0',
+      error: Errors.PluginRequiresCms,
+      errorParams: { range: '>=9', version: '1.0.0' },
     });
     await runtime.host.enable('base');
     await runtime.host.stop();
@@ -902,7 +904,7 @@ describe('PluginHost bundle checks', () => {
       },
     ]);
     expect(restarted.lines).toContain(
-      'error Plugin "swapped" failed: Invalid plugin id "impostor"',
+      'error Plugin "swapped" failed: Invalid plugin id',
     );
     expect((await publicView(restarted)).title).toBe('Hello!');
   });
@@ -936,7 +938,7 @@ describe('PluginHost bundle checks', () => {
       },
     ]);
     expect(second.lines).toContain(
-      'error Plugin "shared" failed: Invalid plugin id "impostor"',
+      'error Plugin "shared" failed: Invalid plugin id',
     );
     expect((await publicView(second)).title).toBe('Hello');
 

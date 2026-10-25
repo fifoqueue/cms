@@ -2,6 +2,7 @@
   import { routeLink } from '#lib/route-link.js';
   import { enhance } from '$app/forms';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import { catalogMessage } from '#lib/admin/form-errors.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
     Card,
@@ -63,6 +64,11 @@
         class="w-auto max-w-sm"
       />
       <fieldset class="grid gap-1.5">
+        <label class="flex items-center gap-2">
+          <input type="checkbox" name="downloadAttachments" checked />
+          {m.importDownloadAttachments}
+        </label>
+        <p class="text-muted-foreground">{m.importDownloadHelp}</p>
         <legend class="font-medium">{m.importAuthors}</legend>
         <p class="text-muted-foreground">{m.importAuthorsHelp}</p>
         {#each IMPORT_AUTHOR_MODES as mode (mode)}
@@ -115,7 +121,13 @@
           </summary>
           <ul class="mt-2 list-disc pl-5">
             {#each result.skipped as item, index (index)}
-              <li>{item.title} — {item.reason}</li>
+              <li>
+                {item.title} — {catalogMessage(
+                  m,
+                  item.reason,
+                  'params' in item ? item.params : undefined,
+                ) ?? item.reason}
+              </li>
             {/each}
           </ul>
         </details>

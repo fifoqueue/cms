@@ -4,8 +4,10 @@
   import type { SubmitFunction } from '$app/forms';
   import { resolve } from '$app/paths';
   import type { PluginStatus } from '@cms/sdk';
-  import { Search, Upload } from '@lucide/svelte';
+  import { default as Search } from '@lucide/svelte/icons/search';
+  import { default as Upload } from '@lucide/svelte/icons/upload';
   import BulkReport from '#lib/admin/BulkReport.svelte';
+  import { catalogMessage } from '#lib/admin/form-errors.js';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Badge } from '#lib/components/ui/badge/index.js';
   import type { BadgeVariant } from '#lib/components/ui/badge/index.js';
@@ -284,7 +286,9 @@
     {/if}
     {#if plugin.error}
       <CardContent>
-        <p class="text-sm text-destructive">{plugin.error}</p>
+        <p class="text-sm text-destructive">
+          {catalogMessage(m, plugin.error, plugin.errorParams) ?? plugin.error}
+        </p>
       </CardContent>
     {/if}
   </Card>

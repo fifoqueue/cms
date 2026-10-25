@@ -323,3 +323,17 @@ export const DEFAULT_EMAIL_SETTINGS: AdminEmailSettings = {
 };
 
 export const emailTestSchema = z.object({ to: z.email().max(191) });
+
+/**
+ * Why a test send failed (`EmailSendFailed`'s `reason`): the credentials were refused, the
+ * connection timed out, its TLS certificate failed, the server was unreachable, or the server
+ * answered but refused the message.
+ */
+export const EMAIL_FAILURE_REASONS = [
+  'auth',
+  'timeout',
+  'tls',
+  'network',
+  'rejected',
+] as const;
+export type EmailFailureReason = (typeof EMAIL_FAILURE_REASONS)[number];

@@ -1,13 +1,20 @@
 import { pluginUpdateManifestSchema } from '@cms/sdk';
 import { serialQueue } from '#api/shared/serial-queue';
 import type { HookDispatcher } from '#api/domain/ports';
-import type { PluginInfo, PluginStatus, PluginUpdate } from '@cms/sdk';
+import type {
+  IssueParams,
+  PluginInfo,
+  PluginStatus,
+  PluginUpdate,
+} from '@cms/sdk';
 import {
   DomainError,
   conflict,
   invalidInput,
   messageOf,
+  issueParams,
   notFound,
+  withParams,
   Errors,
 } from '#api/shared/errors';
 import { isolate } from '#api/shared/isolate';
@@ -50,7 +57,8 @@ interface InstalledPlugin {
   /** Present exactly while the plugin is active. */
   scope: PluginScope | null;
   status: PluginStatus;
-  error: string | null;
+  /** Catalog text for administrators, with the values it leaves out. */
+  error: { message: string; params?: IssueParams } | null;
 }
 
 /**
@@ -196,9 +204,9 @@ export class PluginHost {
         plugin = await this.load(staged.path);
       } catch (error) {
         await staged.discard();
-        throw error instanceof DomainError
-          ? error
-          : invalidInput(Errors.PluginBundleInvalid(messageOf(error)));
+        if (error instanceof DomainError) throw error;
+        this.deps.logger.error(`Invalid plugin bundle: ${messageOf(error)}`);
+        throw invalidInput(Errors.PluginBundleInvalid);
       }
 
       const { id } = plugin.manifest;
@@ -346,7 +354,10 @@ export class PluginHost {
     const validated = await isolate(() => {
       const plugin = validatePlugin(result.value);
       if (expectedId !== undefined && plugin.manifest.id !== expectedId)
-        throw invalidInput(Errors.PluginIdInvalid(plugin.manifest.id));
+        throw invalidInput(
+          Errors.PluginIdInvalid,
+          withParams(Errors.PluginIdInvalid, { id: plugin.manifest.id }),
+        );
       return plugin;
     }, this.deps.timeoutMs);
     if (!validated.ok) {
@@ -366,7 +377,10 @@ export class PluginHost {
     if (unmet) {
       // The reason is the CMS's own wording, so administrators see it as is.
       Object.assign(installed, { status: 'failed', error: unmet });
-      this.deps.logger.warn(`Plugin "${installed.id}" not activated: ${unmet}`);
+      this.deps.logger.warn(
+        `Plugin "${installed.id}" not activated: ${unmet.message}`,
+        unmet.params,
+      );
       return;
     }
     const scope = new PluginScope();
@@ -407,15 +421,19 @@ export class PluginHost {
   private fail(installed: InstalledPlugin, error: unknown): void {
     Object.assign(installed, {
       status: 'failed',
-      error: 'Plugin failed. Check server logs for details.',
+      error: { message: Errors.PluginFailed },
     });
+    // A refusal's values (such as the declared plugin id) travel in its issues.
     this.deps.logger.error(
       `Plugin "${installed.id}" failed: ${messageOf(error)}`,
+      ...(error instanceof DomainError && error.issues ? [error.issues] : []),
     );
   }
 
   /** Why the plugin cannot run here, or `null` when its requirements are met. */
-  private unmet({ requires }: ValidPlugin['manifest']): string | null {
+  private unmet({
+    requires,
+  }: ValidPlugin['manifest']): InstalledPlugin['error'] {
     const { versions } = this.deps;
     const fits = (version: string, range: string) => {
       try {
@@ -425,11 +443,17 @@ export class PluginHost {
       }
     };
     if (requires.cms && !fits(versions.core, requires.cms))
-      return Errors.PluginRequiresCms(requires.cms, versions.core);
+      return {
+        message: Errors.PluginRequiresCms,
+        params: { range: requires.cms, version: versions.core },
+      };
     for (const [id, range] of Object.entries(requires.plugins)) {
       const required = this.plugins.get(id);
       if (!required?.scope || !fits(required.plugin!.manifest.version, range))
-        return Errors.PluginRequiresPlugin(id, range);
+        return {
+          message: Errors.PluginRequiresPlugin,
+          params: { id, range },
+        };
     }
     return null;
   }
@@ -449,7 +473,11 @@ export class PluginHost {
       description: manifest?.description ?? '',
       enabled: installed.enabled,
       status: installed.status,
-      error: installed.error,
+      error: installed.error?.message ?? null,
+      // Manifest ranges and ids are the plugin's own text: bounded like every other params.
+      ...(installed.error?.params && {
+        errorParams: issueParams(installed.error.params),
+      }),
       updatable: !!manifest?.updateUrl,
       settings: manifest?.settings ?? [],
       values: manifest ? await this.deps.settings.values(manifest) : {},

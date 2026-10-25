@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { Errors } from '#api/shared/errors';
 import {
   PermanentJobError,
   RecoverableJobError,
@@ -25,6 +26,8 @@ const setup = (secrets: SecretBox = plainSecretBox) => {
   const sent: { url: string; secret: string; event: string; body: string }[] =
     [];
   let answer = 200;
+  let failure: unknown = null;
+  const { logger, lines } = recordingLogger();
   const hooks = new HookBus({
     timeoutMs: 50,
     logger: recordingLogger().logger,
@@ -38,12 +41,14 @@ const setup = (secrets: SecretBox = plainSecretBox) => {
     transport: {
       check: async () => {},
       send: async (delivery) => {
+        if (failure) throw failure;
         sent.push(delivery);
         return answer;
       },
     },
     ids: sequentialIds(),
     clock,
+    logger,
   });
   webhooks.subscribe(hooks.core('core:webhooks'));
   return {
@@ -54,6 +59,8 @@ const setup = (secrets: SecretBox = plainSecretBox) => {
     settings,
     clock,
     answer: (status: number) => void (answer = status),
+    fail: (error: unknown) => void (failure = error),
+    lines,
     payloads: () => [...jobs.rows.values()].map((row) => row.payload),
   };
 };
@@ -180,8 +187,35 @@ describe('WebhookService', () => {
     expect(retry).not.toBeInstanceOf(PermanentJobError);
     expect((await webhooks.list(ADMIN))[0]).toMatchObject({
       lastStatus: 503,
-      lastError: 'The receiver answered HTTP 503',
+      lastError: Errors.WebhookStatus,
     });
+  });
+
+  test('a failed request records a safe category; its own words reach the log only', async () => {
+    const { webhooks, payloads, fail, lines } = setup();
+    const hook = await webhooks.create(
+      { url: 'https://hooks.example/a', events: ['site.updated'] },
+      ADMIN,
+    );
+    await webhooks.ping(hook.id, ADMIN);
+    const [delivery] = payloads();
+    fail(
+      new TypeError('fetch failed for https://user:pw@hooks.example', {
+        cause: Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }),
+      }),
+    );
+    await expect(webhooks.deliver(delivery)).rejects.toThrow();
+    const [listed] = await webhooks.list(ADMIN);
+    expect(listed).toMatchObject({
+      lastStatus: null,
+      lastError: Errors.OutboundNetworkFailed,
+    });
+    expect(lines.join('\n')).toContain('user:pw');
+    fail(new Error('socket hang up: pw'));
+    await expect(webhooks.deliver(delivery)).rejects.toThrow();
+    expect((await webhooks.list(ADMIN))[0]!.lastError).toBe(
+      Errors.WebhookDeliveryFailed,
+    );
   });
 
   test('an unreadable encrypted delivery remains recoverable', async () => {

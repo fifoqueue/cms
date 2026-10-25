@@ -85,6 +85,7 @@ export class PrismaMediaRepository implements MediaRepository {
   }
 
   async list({
+    missing,
     kind,
     search,
     uploaded,
@@ -93,6 +94,7 @@ export class PrismaMediaRepository implements MediaRepository {
     pageSize,
   }: MediaCriteria) {
     const filters: Prisma.Sql[] = [];
+    if (missing) filters.push(Prisma.sql`m.missing_at IS NOT NULL`);
     if (kind) filters.push(Prisma.sql`m.mime LIKE ${MIME_PREFIX[kind] + '%'}`);
     if (uploaded)
       filters.push(
@@ -197,6 +199,7 @@ export class PrismaMediaRepository implements MediaRepository {
       select: {
         id: true,
         storageKey: true,
+        publicUrl: true,
         alt: true,
         width: true,
         height: true,

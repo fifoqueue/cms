@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { ChevronDown } from '@lucide/svelte';
+  import { default as ChevronDown } from '@lucide/svelte/icons/chevron-down';
   import type { MenuItemView } from '#lib/server/public-view.js';
   import { hrefOptions } from '#lib/route-link.js';
   import NavigationItems from '#lib/theme/blocks/NavigationItems.svelte';

@@ -215,14 +215,6 @@
       <CardDescription>{m.mediaAdmissionHelp}</CardDescription>
     </CardHeader>
     <CardContent class="grid gap-4 sm:grid-cols-2">
-      <label class="flex items-center gap-2">
-        <input
-          type="checkbox"
-          name="media.allowSvg"
-          checked={settings.media.allowSvg === true}
-        />
-        {m.mediaAllowSvg}
-      </label>
       <div class="grid gap-2">
         <Label for="media-uploads">{m.mediaUploadsPerHour}</Label>
         <Input
@@ -245,6 +237,15 @@
           value={settings.media.freeSpaceMb}
         />
       </div>
+      <!-- A full row of its own, so the two number fields above share one baseline. -->
+      <label class="flex items-center gap-2 sm:col-span-2">
+        <input
+          type="checkbox"
+          name="media.allowSvg"
+          checked={settings.media.allowSvg === true}
+        />
+        {m.mediaAllowSvg}
+      </label>
     </CardContent>
   </Card>
 

@@ -35,6 +35,11 @@ import type { Database } from '#api/infra/prisma/client';
 import { PrismaCommentRepository } from '#api/infra/prisma/comment-repository';
 import { PrismaContentRepository } from '#api/infra/prisma/content-repository';
 import { PrismaJobQueue } from '#api/infra/prisma/job-queue';
+import { PrismaCleanupCatalog } from '#api/infra/prisma/cleanup-catalog';
+import {
+  MediaCleanup,
+  MEDIA_CLEANUP_JOB,
+} from '#api/domain/media/media-cleanup';
 import { PrismaMediaRepository } from '#api/infra/prisma/media-repository';
 import {
   lockPermalinks,
@@ -64,6 +69,11 @@ import { plainSecretBox } from '#test/support/memory-security';
 import { MemoryMediaStorage } from '#test/support/memory-media';
 import { scratchDatabase } from '#test/support/scratch-database';
 import { textDocument } from '#test/support/content';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { StorageSettings } from '#api/domain/media/storage-settings';
+import { MediaReconciler } from '#api/infra/media-reconciler';
 
 /**
  * Core Prisma adapters on a real MariaDB (opt in with `CMS_TEST_DATABASE_URL`, see
@@ -94,6 +104,204 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
   }, SLOW);
 
   afterAll(() => drop(), SLOW);
+
+  test(
+    'cleanup recovery atomically deduplicates concurrent dispatches and pages persistent intents',
+    async () => {
+      const settings = new PrismaSettingsRepository(db);
+      const catalog = new PrismaCleanupCatalog(db);
+      const queue = new PrismaJobQueue(db, uuidV7);
+      const id = `delete.${uuidV7.next()}`;
+      const key = `media.cleanup.${id}`;
+      const cleanup = new MediaCleanup({
+        settings,
+        catalog,
+        queue,
+        transactions: new PrismaSettingsTransactions(db),
+        storage: async () => {
+          throw new Error('not executed by recovery');
+        },
+        finalize: async () => undefined,
+        logger: recordingLogger().logger,
+      });
+      try {
+        await settings.set(key, {
+          mediaId: null,
+          objects: [{ driver: 'local', key: 'object' }],
+          uncertain: false,
+        });
+        await Promise.all([
+          cleanup.recover(),
+          cleanup.recover(),
+          cleanup.recover(),
+        ]);
+        const jobs = await db.job.findMany({
+          where: { kind: MEDIA_CLEANUP_JOB },
+        });
+        expect(jobs).toHaveLength(1);
+        expect(await queue.pending(MEDIA_CLEANUP_JOB, id)).toBe(true);
+        expect(await settings.get(key)).toMatchObject({ attempts: 1 });
+        expect(await catalog.page('', 1)).toHaveLength(1);
+        expect(await catalog.page(key, 1)).toEqual([]);
+        await settings.set(key, {
+          mediaId: null,
+          objects: [],
+          uncertain: false,
+          attempts: 5,
+          nextAttemptAt: 0,
+        });
+        expect(await catalog.attention()).toBe(1);
+      } finally {
+        await db.job.deleteMany({ where: { kind: MEDIA_CLEANUP_JOB } });
+        await db.setting.deleteMany({
+          where: { key: { startsWith: 'media.cleanup.' } },
+        });
+      }
+    },
+    SLOW,
+  );
+
+  test(
+    'media backfill and real filesystem reconciliation preserve populated rows and restore missing variants',
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), 'media-reconcile-'));
+      const id = uuidV7.next();
+      try {
+        await db.media.create({
+          data: {
+            id,
+            filename: 'original.webp',
+            mime: 'image/webp',
+            size: 3,
+            storageKey: 'original.webp',
+            createdAt: new Date('2026-01-01'),
+            variants: JSON.stringify({
+              thumbnail: { key: 'small.webp', width: 10, height: 10 },
+            }),
+          },
+        });
+        await db.$executeRawUnsafe(
+          'ALTER TABLE media DROP COLUMN storage_driver, DROP COLUMN public_url, DROP COLUMN byte_size, DROP COLUMN etag, DROP COLUMN missing_at',
+        );
+        const sql = await Bun.file(
+          new URL(
+            '../prisma/migrations/20261114000000_media_storage/migration.sql',
+            import.meta.url,
+          ),
+        ).text();
+        for (const statement of sql
+          .split(';')
+          .map((part) => part.trim())
+          .filter(Boolean))
+          await db.$executeRawUnsafe(statement);
+        const backfilled = await db.media.findUniqueOrThrow({ where: { id } });
+        expect(backfilled).toMatchObject({
+          storageDriver: 'local',
+          publicUrl: '/media/original.webp',
+          byteSize: 3,
+        });
+        expect(JSON.parse(backfilled.variants).thumbnail).toMatchObject({
+          publicUrl: '/media/small.webp',
+          storageDriver: 'local',
+          byteSize: null,
+        });
+        await writeFile(join(root, 'original.webp'), '12345');
+        await writeFile(join(root, 'untracked.webp'), 'x');
+        const settings = new StorageSettings({
+          settings: new PrismaSettingsRepository(db),
+          transactions: new PrismaSettingsTransactions(db),
+          secrets: plainSecretBox,
+          test: async () => undefined,
+        });
+        const reconcile = new MediaReconciler(db, settings, root, async () => {
+          throw new Error('local storage must not use the network');
+        });
+        expect(await reconcile.run('local', new Date())).toEqual({
+          scanned: 2,
+          refreshed: 1,
+          missing: 1,
+          untracked: 1,
+        });
+        const missing = await db.media.findUniqueOrThrow({ where: { id } });
+        expect(missing.byteSize).toBe(5);
+        expect(JSON.parse(missing.variants).thumbnail.missingAt).not.toBeNull();
+        await db.media.update({
+          where: { id },
+          data: { missingAt: new Date('2026-01-20') },
+        });
+        const missingRows = await new PrismaMediaRepository(db).list({
+          missing: true,
+          page: 1,
+          pageSize: 30,
+        });
+        expect(missingRows.items.map((row) => row.id)).toEqual([id]);
+        await writeFile(join(root, 'small.webp'), '123');
+        await reconcile.run('local', new Date());
+        const restored = await db.media.findUniqueOrThrow({ where: { id } });
+        expect(restored.missingAt).toBeNull();
+        expect(
+          (
+            await new PrismaMediaRepository(db).list({
+              missing: true,
+              page: 1,
+              pageSize: 30,
+            })
+          ).total,
+        ).toBe(0);
+        expect(JSON.parse(restored.variants).thumbnail).toMatchObject({
+          missingAt: null,
+          byteSize: 3,
+        });
+        await reconcile.run('local', new Date());
+        expect(
+          (await db.media.findUniqueOrThrow({ where: { id } })).variants,
+        ).toBe(restored.variants);
+        const concurrentVariants = JSON.stringify({
+          thumbnail: {
+            key: 'concurrent.webp',
+            width: 20,
+            height: 20,
+            storageDriver: 's3',
+          },
+        });
+        const concurrent = db.$extends({
+          query: {
+            media: {
+              async findMany({ args, query }) {
+                const snapshot = await query(args);
+                await db.media.update({
+                  where: { id },
+                  data: { variants: concurrentVariants },
+                });
+                return snapshot;
+              },
+            },
+          },
+        });
+        await new MediaReconciler(
+          concurrent as unknown as Database,
+          settings,
+          root,
+          async () => {
+            throw new Error('unexpected network');
+          },
+        ).run('local', new Date());
+        expect(
+          (await db.media.findUniqueOrThrow({ where: { id } })).variants,
+        ).toBe(concurrentVariants);
+        await expect(
+          reconcile.run('local', new Date(), AbortSignal.abort()),
+        ).rejects.toThrow();
+        expect(
+          (await db.media.findUniqueOrThrow({ where: { id } })).variants,
+        ).toBe(concurrentVariants);
+      } finally {
+        await db.media.deleteMany({ where: { id } });
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+    SLOW,
+  );
 
   const services = (repository = new PrismaContentRepository(db)) => {
     const settings = new PrismaSettingsRepository(db);

@@ -8,7 +8,7 @@ import {
 } from '@cms/sdk';
 import type { PermalinkSettings } from '@cms/sdk';
 import { permalinkPatternFor } from '@cms/sdk';
-import { invalidInput, Errors } from '#api/shared/errors';
+import { invalidInput, Errors, withParams } from '#api/shared/errors';
 
 /** The content fields a permalink is built from. */
 export interface PermalinkSubject {
@@ -79,9 +79,14 @@ export const contentPath = (
         createdAt: subject.createdAt.toISOString(),
       });
   } catch {
-    throw invalidInput(Errors.InvalidPermalink, [
-      { path: 'path', message: Errors.PermalinkTitleUnusable(subject.title) },
-    ]);
+    throw invalidInput(
+      Errors.InvalidPermalink,
+      withParams(
+        Errors.PermalinkTitleUnusable,
+        { title: subject.title },
+        'path',
+      ),
+    );
   }
 
   const issue =
@@ -90,12 +95,14 @@ export const contentPath = (
       : permalinkPathIssue(path);
 
   if (issue)
-    throw invalidInput(Errors.InvalidPermalink, [
-      {
-        path: 'path',
-        message: Errors.PermalinkPathInvalid(issue, path, subject.title),
-      },
-    ]);
+    throw invalidInput(
+      Errors.InvalidPermalink,
+      withParams(
+        Errors.PermalinkPathInvalid,
+        { reason: issue, path, title: subject.title },
+        'path',
+      ),
+    );
 
   return path;
 };

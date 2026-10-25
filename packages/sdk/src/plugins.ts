@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { KEBAB_CASE } from '#sdk/common';
+import { KEBAB_CASE, issueParamsSchema } from '#sdk/common';
 import { CAPABILITIES } from '#sdk/capabilities';
 import { Errors } from '#sdk/errors';
 
@@ -180,6 +180,8 @@ export const adminPluginSchema = z.object({
   enabled: z.boolean(),
   status: z.enum(['active', 'inactive', 'failed']),
   error: z.string().nullable(),
+  /** Values the catalog `error` leaves out (`PluginRequiresCms` → `range`, `version`). */
+  errorParams: issueParamsSchema.optional(),
   /** Whether the plugin names an update address. */
   updatable: z.boolean(),
   settings: z.array(settingFieldSchema),

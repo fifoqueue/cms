@@ -99,7 +99,7 @@ export class MailTransportRegistry implements Mailer {
                 timeoutMs,
               );
               if (!result.ok || !z.void().safeParse(result.value).success)
-                throw new Error(Errors.EmailSendFailed(Errors.JobFailed));
+                throw new Error(Errors.EmailSendFailed);
             },
           };
     this.transports.set(id, entry);

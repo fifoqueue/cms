@@ -145,6 +145,17 @@ export class MemoryJobQueue implements JobQueue {
     return this.rows.get(id)?.lockedBy === owner ? this.rows.delete(id) : false;
   }
 
+  async pending(kind: string, id: string) {
+    return [...this.rows.values()].some(
+      (row) =>
+        row.kind === kind &&
+        !row.failedAt &&
+        (row.expiresAt > this.now() ||
+          (row.lockedUntil && row.lockedUntil > this.now())) &&
+        JSON.stringify(row.payload) === JSON.stringify({ id }),
+    );
+  }
+
   async fail(
     id: string,
     owner: string,

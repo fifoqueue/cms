@@ -2,6 +2,7 @@
   import type { Path } from '$app/types';
   import { resolve } from '$app/paths';
   import type { Block } from '@cms/sdk';
+  import { default as MessageCircle } from '@lucide/svelte/icons/message-circle';
   import { isArticle } from '#lib/seo/head.js';
   import { useI18n } from '#lib/i18n/index.js';
   import { useDateFormat } from '#lib/theme/format.js';
@@ -66,7 +67,19 @@
         {/if}
       </span>
     {/if}
-    {#if a.showComments && post.commentCount}
+    {#if a.showComments && a.commentIcon}
+      {#if a.showDate || a.showAuthor}<span aria-hidden="true">·</span>{/if}
+      <!-- eslint-disable svelte/no-navigation-without-resolve -- the resolved entry path plus its comments anchor -->
+      <a
+        href={`${resolve(post.path as Path)}#comments`}
+        class="cms-post-comments inline-flex items-baseline hover:text-foreground"
+        aria-label={m.commentCount(post.commentCount)}
+        ><MessageCircle class="size-3 self-center" aria-hidden="true" /><span
+          aria-hidden="true">{post.commentCount}</span
+        ></a
+      >
+      <!-- eslint-enable svelte/no-navigation-without-resolve -->
+    {:else if a.showComments && post.commentCount}
       <span aria-hidden="true">·</span>
       <!-- eslint-disable svelte/no-navigation-without-resolve -- the resolved entry path plus its comments anchor -->
       <a

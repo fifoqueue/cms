@@ -1,6 +1,7 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import { ArrowDown, ArrowUp } from '@lucide/svelte';
+  import { default as ArrowDown } from '@lucide/svelte/icons/arrow-down';
+  import { default as ArrowUp } from '@lucide/svelte/icons/arrow-up';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { issueText } from '#lib/admin/form-errors.js';
   import SettingsForm from '#lib/admin/settings/SettingsForm.svelte';

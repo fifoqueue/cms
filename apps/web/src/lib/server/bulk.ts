@@ -1,13 +1,19 @@
 import { fail } from '@sveltejs/kit';
 import { CmsApiError } from '@cms/sdk/client';
 import { mapLimit } from '#lib/server/bounded.js';
-import { Errors } from '#lib/server/errors.js';
+import type { IssueParams } from '@cms/sdk';
+import { Errors, safeIssues, type FormFailure } from '#lib/server/errors.js';
 
 /** One item a bulk action could not change, with a message safe to show. */
 export interface BulkFailure {
   id: string;
   message: string;
+  /** Values the catalog message leaves out. */
+  params?: IssueParams;
 }
+
+/** What a task reports for an item it could not change: a catalog message and its values. */
+export type BulkProblem = string | { message: string; params?: IssueParams };
 
 /**
  * Runs `task` for every id, a few at a time, and collects the failures instead of stopping at the
@@ -16,7 +22,7 @@ export interface BulkFailure {
  */
 export const eachBounded = async (
   ids: readonly string[],
-  task: (id: string) => Promise<string | void>,
+  task: (id: string) => Promise<BulkProblem | void>,
   /** Selected ids that were not valid for the action; reported, never run. */
   invalid: readonly string[] = [],
 ): Promise<{ done: number; failed: BulkFailure[] }> => {
@@ -28,16 +34,17 @@ export const eachBounded = async (
   await mapLimit(ids, async (id) => {
     try {
       const problem = await task(id);
-      if (problem) failed.push({ id, message: problem });
+      if (typeof problem === 'string') failed.push({ id, message: problem });
+      else if (problem) failed.push({ id, ...problem });
       else done++;
     } catch (caught) {
-      failed.push({
-        id,
-        message:
-          caught instanceof CmsApiError && caught.status < 500
-            ? caught.message
-            : Errors.BulkItemFailed,
-      });
+      if (caught instanceof CmsApiError && caught.status < 500) {
+        // The refusal's own values travel on its issue with an empty path.
+        const params = safeIssues(caught.issues)?.find(
+          (issue) => issue.path === '' && issue.message === caught.message,
+        )?.params;
+        failed.push({ id, message: caught.message, ...(params && { params }) });
+      } else failed.push({ id, message: Errors.BulkItemFailed });
     }
   });
   return { done, failed };
@@ -67,7 +74,16 @@ export const readSelection = (
   ];
   if (ids.length > BULK_LIMIT)
     return {
-      failure: fail(400, { message: Errors.BulkTooMany(BULK_LIMIT) }),
+      failure: fail(400, {
+        message: Errors.BulkTooMany,
+        issues: [
+          {
+            path: '',
+            message: Errors.BulkTooMany,
+            params: { limit: BULK_LIMIT },
+          },
+        ],
+      } satisfies FormFailure),
     } as const;
   return {
     ids: ids.filter(valid),

@@ -1,5 +1,6 @@
 import { error, fail } from '@sveltejs/kit';
-import { Errors, failFrom } from '#lib/server/errors.js';
+import { Errors } from '@cms/sdk/errors';
+import { failFrom } from '#lib/server/errors.js';
 import { readPluginSettings } from '#lib/server/plugin-settings-form.js';
 import { adminFor, requireCapability } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';

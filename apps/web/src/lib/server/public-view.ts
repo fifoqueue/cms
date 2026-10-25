@@ -71,6 +71,7 @@ export const themeView = ({
   templates,
   parts,
   css,
+  fonts,
   preview,
 }: PublicTheme) => ({
   id,
@@ -80,6 +81,7 @@ export const themeView = ({
   templates,
   parts,
   css,
+  fonts,
   preview,
 });
 

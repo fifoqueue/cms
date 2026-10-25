@@ -15,11 +15,18 @@ test('TOC attributes allow omitted defaults, localized titles and empty levels',
   ).toBe(true);
 });
 
+test('TOC attributes accept every heading level', () => {
+  expect(tocAttrsSchema.safeParse({ levels: [1, 2, 3, 4, 5, 6] }).success).toBe(
+    true,
+  );
+});
+
 test('TOC attributes reject invalid levels, thresholds, flags and unknown attributes', () => {
   for (const attrs of [
-    { levels: [1] },
+    { levels: [0] },
     { levels: [2, 2] },
-    { levels: [5] },
+    { levels: [7] },
+    { levels: [2.5] },
     { minHeadings: -1 },
     { minHeadings: 1.5 },
     { minHeadings: '2' },

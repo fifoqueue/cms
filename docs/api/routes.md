@@ -1,10 +1,36 @@
 # HTTP API 라우트
 
+## Media storage
+
+Resync responses additionally contain `cleanupNeedsAttention: number` (cleanup tombstones that exhausted their automatic dispatch budget).
+Connection tests overwrite one tiny `<prefix>/.cms-probe` object and delete it synchronously. They never create cleanup tombstones or retain candidate credentials. A failed delete returns 400 `invalid_input` with fixed SDK `Errors.MediaStorageProbeCleanup` (`"The connection test file could not be removed."`) and `issues: [{ path: "probe", message: Errors.MediaStorageProbeCleanup, params: { bucket, key } }]`. `key` includes the configured prefix; plugin probes use the driver id for `bucket`. SDK error parsing allowlists only these two bounded strings for the `probe` issue and strips arbitrary additional fields.
+
+Admin media rows include `missingAt: string | null` (ISO timestamp for a missing original). `GET /api/v1/admin/media?missing=true` and SDK `media.list({ missing: 'true' })` filter these rows.
+Probe/save failures return 400 `invalid_input` with SDK-catalogued safe reason classes (`MediaStorageProbeAuth`, `MediaStorageProbeBucket`, `MediaStorageProbeNetwork`, `MediaStorageProbeTls`, `MediaStorageProbeRejected`), without provider bodies or credentials. Egress policy denials retain their 403 status. Missing required plugin fields return an issue at `pluginSettings.<key>` with `MediaStorageFieldRequired`.
+
+- `GET /api/v1/admin/media/storage`: `settings.manage`, returns `MediaStorageSettings`.
+- `PUT /api/v1/admin/media/storage`: `settings.manage`, accepts `MediaStorageInput`, tests before saving, returns settings.
+- `POST /api/v1/admin/media/storage/test`: `settings.manage`, same input, returns 204 after a signed probe PUT/delete (no listing).
+- `POST /api/v1/admin/media/storage/resync`: `media.manage`, no body, returns 202 with `MediaResync`; repeated calls return the active job.
+- `GET /api/v1/admin/media/storage/resync`: `media.manage`, returns latest `MediaResync` or null.
+
+SDK: `createAdminClient(...).media.storage.{get(), update(input), test(input), resync(), resyncStatus()}`.
+Settings DTO: `{ driver: 'local' | 's3' | 'plugin:<owner>:<key>', s3: null | { endpoint, region, bucket, accessKeyId, secretAccessKeyConfigured, publicBaseUrl?, forcePathStyle, prefix }, availableDrivers: [{ id, label, fields: [{ key, label, type, required }] }], pluginSettings?, pluginSecretsConfigured? }`.
+Plugin fields use `text | number | boolean | secret`. Input accepts `pluginSettings` scalar values; omitted secret fields retain their sealed values, an empty string clears an optional secret. Output excludes secret values and lists only their keys in `pluginSecretsConfigured`. Each driver retains its settings when another driver is selected; unavailable plugin drivers never fall back to local storage.
+Input replaces `secretAccessKeyConfigured` with optional `secretAccessKey`: omit to retain, provide a nonempty value to replace. A changed access-key ID requires its secret.
+Resync DTO: `{ id, status: 'queued' | 'running' | 'completed' | 'failed', driver, startedAt, finishedAt: string | null, scanned, refreshed, missing, untracked, error: string | null }`.
+
 상위 문서: [AGENTS.md](../../AGENTS.md)
 
 라우트 작성 규약은 [apps/api/AGENTS.md](../../apps/api/AGENTS.md)에 있습니다.
 
 모든 오류 응답: `{ "error": { "code", "message", "issues?" } }`.
+
+- `message`와 `issues[].message`는 SDK `Errors`의 고정 문구입니다. 값이 들어가는 문구도 문구 자체는 바뀌지 않고, 값은 `issues[].params`로 따로 옵니다. 클라이언트는 문구를 키로 번역하고 `params`로 값을 채웁니다.
+- `issues[]`: `{ path: string, message: string, params?: Record<string, string | number> }`. `path`는 필드 경로(`seo.title`)이고, `""`는 거절 자체(최상위 `message`)의 값을 담는 항목입니다. 예: `{ "message": Errors.MediaTooLarge, "issues": [{ "path": "", "message": Errors.MediaTooLarge, "params": { "maxBytes": 10485760 } }] }`.
+- `params` 한도(SDK `ISSUE_PARAMS_LIMITS`, `issueParamsSchema`): 키 최대 8개, 키 40자 이하, 문자열 값 500자 이하, 숫자는 유한한 값. 서버는 보내기 전에 같은 한도로 자르고(`issueParams`), 한도를 넘는 응답은 SDK 파싱에서 `issues`가 버려집니다. 어떤 키가 오는지는 SDK `Errors`의 각 항목 주석에 있습니다.
+- `params`에는 비밀값, 자격 증명, 외부 서버(메일·검색·웹훅 수신자)의 응답 원문이 들어가지 않습니다. 실패 원인은 범주로만 옵니다. 예: 테스트 메일 `EmailSendFailed`의 `reason`(`auth`·`timeout`·`tls`·`network`·`rejected`, SDK `EMAIL_FAILURE_REASONS`)과 HTTP 제공자의 `status`. 원문은 서버 로그에만 남습니다.
+- 같은 형태의 값은 오류 응답 밖의 상태 필드에도 씁니다: WXR 가져오기 `skipped[].params`, 플러그인 `errorParams`, 검색 상태 `lastErrorParams`, 사이트 상태 `detail[]`의 `{ message, params }` 항목.
 
 - `GET/PUT /api/v1/admin/users/:id/fields`: authenticated owner or `users.manage`; private/no-store. GET returns `{ fields, values }`; PUT accepts a namespaced scalar-value patch, validates active declarations, and returns the same DTO.
 - `GET /api/v1/admin/captcha-providers`: `settings.manage`; registered captcha provider IDs and labels, no secrets.
@@ -119,6 +145,7 @@ Discovery and appearance extension endpoints:
 | GET                    | `/api/v1/admin/health`                                                                         | tools.manage                            | Site health checks and system info                                                                                            |
 | GET                    | `/api/v1/admin/themes/:id/editor`                                                              | appearance.manage                       | Site editor: templates, parts and styles with changes                                                                         |
 | PUT, DELETE            | `/api/v1/admin/themes/:id/templates/:name · /parts/:slug · /styles`                            | appearance.manage                       | Save or reset a template, part or global styles                                                                               |
+| GET, PUT               | `/api/v1/admin/fonts`                                                                          | appearance.manage                       | Site fonts every theme's styles may use (`{ fonts }`)                                                                         |
 | GET, PUT               | `/api/v1/admin/sso`                                                                            | settings.manage                         | Single sign-on settings (client secret never returned; redirect URI shown)                                                    |
 | GET                    | `/api/v1/admin/frontend-secret`                                                                | settings.manage                         | The web server's visitor-proof secret (server-to-server only, never sent to browsers)                                         |
 

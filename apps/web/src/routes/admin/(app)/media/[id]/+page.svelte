@@ -4,9 +4,11 @@
   import type { SubmitFunction } from '$app/forms';
   import { can } from '@cms/sdk/capabilities';
   import { resolve } from '$app/paths';
-  import { ChevronLeft, ChevronRight } from '@lucide/svelte';
+  import { default as ChevronLeft } from '@lucide/svelte/icons/chevron-left';
+  import { default as ChevronRight } from '@lucide/svelte/icons/chevron-right';
   import CropBox from '#lib/admin/CropBox.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import {
     Card,
@@ -78,7 +80,14 @@
 <svelte:head><title>{media.filename}</title></svelte:head>
 
 <div class="flex flex-wrap items-center justify-between gap-3">
-  <h1 class="text-2xl font-semibold break-all">{media.filename}</h1>
+  <div class="flex flex-wrap items-center gap-2">
+    <h1 class="text-2xl font-semibold break-all">{media.filename}</h1>
+    {#if media.missingAt}
+      <Badge variant="destructive" title={m.mediaMissingHelp}
+        >{m.mediaMissing}</Badge
+      >
+    {/if}
+  </div>
   <nav class="flex gap-2" aria-label={m.mediaDetails}>
     {#if data.context.newerId}<Button
         variant="outline"
@@ -139,6 +148,13 @@
   >
     <Card>
       <CardContent class="space-y-2 pt-6 text-sm">
+        {#if media.missingAt}
+          <p class="text-destructive">
+            {m.mediaMissingSince(
+              new Date(media.missingAt).toLocaleString(i18n.language),
+            )}
+          </p>
+        {/if}
         <p>
           <span class="text-muted-foreground">{m.mediaUrl}:</span>
           <code class="break-all select-all">{media.url}</code>

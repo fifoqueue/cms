@@ -2,7 +2,6 @@ import { expect, test } from 'bun:test';
 import { ssoSettingsInputSchema } from '@cms/sdk';
 import { Errors as SdkErrors } from '@cms/sdk/errors';
 import { errorMessage, issueText } from '#lib/admin/form-errors.js';
-import { SSO_MESSAGES } from '#lib/admin/sso-messages.js';
 import {
   ssoIssueField,
   ssoProviderValues,
@@ -12,7 +11,7 @@ import {
   readSubjects,
 } from '#lib/admin/settings/sso-form.server.js';
 import { en } from '#lib/i18n/en.js';
-import { ko } from '#lib/i18n/ko.js';
+import { apiErrors as koErrors, ko } from '#lib/i18n/ko.js';
 
 const formOf = (entries: [string, string][]) => {
   const form = new FormData();
@@ -20,22 +19,15 @@ const formOf = (entries: [string, string][]) => {
   return form;
 };
 
-test('every mapped single sign-on message has text in both catalogs', () => {
-  for (const key of Object.values(SSO_MESSAGES)) {
-    expect(typeof en[key]).toBe('string');
-    expect(typeof ko[key]).toBe('string');
-  }
-});
-
 test('known refusals and issues show catalog text in the reader language', () => {
   expect(
     errorMessage(ko, 'ko', {
       message: SdkErrors.SsoLastAccess,
       code: 'conflict',
     }),
-  ).toBe(ko.ssoLastAccess);
+  ).toBe(koErrors.SsoLastAccess as string);
   expect(issueText(ko, 'ko', SdkErrors.SsoProviderIdDuplicate)).toBe(
-    ko.ssoProviderIdDuplicate,
+    koErrors.SsoProviderIdDuplicate as string,
   );
   expect(issueText(ko, 'ko', 'Invalid email address')).toBe(
     ko.errorFieldInvalid,

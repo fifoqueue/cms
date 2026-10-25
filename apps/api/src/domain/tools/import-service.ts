@@ -14,6 +14,9 @@ import type {
 import type { MenuService } from '#api/domain/appearance/menu-service';
 import type { RedirectWriter } from '#api/domain/permalinks/permalink-repository';
 import { classicHtml } from '#api/domain/tools/classic-content';
+import { importMedia, rewriteMedia } from '#api/domain/tools/import-media';
+import type { ImportMediaDeps } from '#api/domain/tools/import-media';
+import type { AdminMedia } from '@cms/sdk';
 import type { ClassicAttachments } from '#api/domain/tools/classic-content';
 import type { UserService } from '#api/domain/users/user-service';
 import { parseInput } from '#api/shared/validation';
@@ -36,12 +39,24 @@ import type {
   WxrTerm,
 } from '#api/domain/tools/wxr';
 import type { UserDirectory } from '#api/domain/users/user-directory';
-import { DomainError, invalidInput, Errors } from '#api/shared/errors';
+import {
+  DomainError,
+  invalidInput,
+  issueParams,
+  paramsOf,
+  Errors,
+} from '#api/shared/errors';
 
 /** Converts imported HTML to an editor document; a body the schema cannot hold throws `invalid_input`. */
 export interface HtmlParser {
   parse(html: string): ContentDocument;
 }
+
+/** A skipped item for a refusal, keeping the values its catalog message leaves out. */
+const skip = (title: string, error: DomainError) => {
+  const params = paramsOf(error);
+  return { title, reason: error.message, ...(params && { params }) };
+};
 
 const STATUSES: Record<string, ContentStatus> = {
   publish: 'published',
@@ -142,6 +157,7 @@ export class ImportService {
   constructor(
     private readonly deps: {
       parser: WxrParser;
+      attachments?: ImportMediaDeps;
       hooks?: HookDispatcher;
       html: HtmlParser;
       content: Pick<ContentService, 'create'>;
@@ -168,7 +184,10 @@ export class ImportService {
     options: unknown = {},
   ): Promise<WxrImportResult> {
     authorize(actor, 'tools.manage');
-    const { authors: mode } = parseInput(wxrImportOptionsSchema, options);
+    const { authors: mode, downloadAttachments } = parseInput(
+      wxrImportOptionsSchema,
+      options,
+    );
     const document = this.deps.parser.parse(xml);
     // Filters get password-free items; the file's password is re-applied afterwards.
     if (this.deps.hooks)
@@ -234,6 +253,28 @@ export class ImportService {
           )
           .map((item) => item.attachmentUrl!),
     };
+    const uploaded = new Map<string, AdminMedia>();
+    const sources = new Map<string, AdminMedia>();
+    if (downloadAttachments) {
+      if (!this.deps.attachments) throw invalidInput(Errors.MediaUploadRefused);
+      const budget = { remaining: 100 };
+      for (const item of attachments.values()) {
+        try {
+          const media =
+            sources.get(item.attachmentUrl!) ??
+            (await importMedia(item, actor, this.deps.attachments, budget));
+          uploaded.set(item.id, media);
+          sources.set(item.attachmentUrl!, media);
+        } catch (error) {
+          const title = item.title || item.attachmentUrl!;
+          result.skipped.push(
+            error instanceof DomainError
+              ? skip(title, error)
+              : { title, reason: Errors.MediaUploadRefused },
+          );
+        }
+      }
+    }
     const origin = originOf(document.baseUrl);
     const created = new Map<string, string>();
     const featured = new Map<string, number>();
@@ -262,7 +303,7 @@ export class ImportService {
             pending.add(pattern.id);
           } catch (error) {
             if (!(error instanceof DomainError)) throw error;
-            result.skipped.push({ title, reason: error.message });
+            result.skipped.push(skip(title, error));
           }
         }
         for (const { item, id, title } of staged) {
@@ -271,12 +312,15 @@ export class ImportService {
               id,
               {
                 title,
-                document: this.deps.html.parse(
-                  classicHtml(
-                    fromWordPressHtml(item.html, patterns),
-                    item.id,
-                    library,
+                document: rewriteMedia(
+                  this.deps.html.parse(
+                    classicHtml(
+                      fromWordPressHtml(item.html, patterns),
+                      item.id,
+                      library,
+                    ),
                   ),
+                  sources,
                 ),
                 synced: item.meta?.wp_pattern_sync_status !== 'unsynced',
                 status: item.status === 'publish' ? 'published' : 'draft',
@@ -290,7 +334,7 @@ export class ImportService {
             pending.delete(id);
             patterns.delete(item.id);
             if (!(error instanceof DomainError)) throw error;
-            result.skipped.push({ title, reason: error.message });
+            result.skipped.push(skip(title, error));
           }
         }
       } finally {
@@ -311,7 +355,9 @@ export class ImportService {
       if (!status || !types.has(item.type)) {
         result.skipped.push({
           title: item.title || item.slug,
-          reason: Errors.ImportItemUnsupported(item.type, item.status),
+          reason: Errors.ImportItemUnsupported,
+          // Both come from the file: bounded like every other params.
+          params: issueParams({ type: item.type, status: item.status }),
         });
         continue;
       }
@@ -329,7 +375,7 @@ export class ImportService {
       } catch (error) {
         // A body the schema cannot hold skips that entry only (nothing is written for it).
         if (!(error instanceof DomainError)) throw error;
-        result.skipped.push({ title, reason: error.message });
+        result.skipped.push(skip(title, error));
         continue;
       }
       const parentId =
@@ -341,7 +387,8 @@ export class ImportService {
         title,
         ...(CONTENT_SLUG.test(item.slug) && { slug: item.slug.slice(0, 191) }),
         excerpt: item.excerpt.trim().slice(0, 1000),
-        document,
+        document: rewriteMedia(document, sources),
+        featuredMediaId: uploaded.get(item.meta?._thumbnail_id ?? '')?.id,
         status: status === 'scheduled' && !scheduled ? 'published' : status,
         categoryIds: item.categories.flatMap(
           (slug) => categories.get(slug) ?? [],
@@ -361,7 +408,7 @@ export class ImportService {
         entry = await this.deps.content.create(input, actor);
       } catch (error) {
         if (!(error instanceof DomainError)) throw error;
-        result.skipped.push({ title: input.title, reason: error.message });
+        result.skipped.push(skip(input.title, error));
         continue;
       }
       created.set(item.id, entry.id);
@@ -380,7 +427,7 @@ export class ImportService {
     }
 
     result.attachments = [...attachments.values()].map((item) => ({
-      url: item.attachmentUrl!,
+      url: uploaded.get(item.id)?.url ?? item.attachmentUrl!,
       title: item.title,
       featured: featured.get(item.id) ?? 0,
     }));
@@ -454,7 +501,7 @@ export class ImportService {
         result.users += 1;
       } catch (error) {
         if (!(error instanceof DomainError)) throw error;
-        result.skipped.push({ title: name, reason: error.message });
+        result.skipped.push(skip(name, error));
       }
     }
     return ids;
@@ -525,7 +572,7 @@ export class ImportService {
       settings = await this.deps.menus.get(actor);
     } catch (error) {
       if (!(error instanceof DomainError)) throw error;
-      result.skipped.push({ title: 'Menus', reason: error.message });
+      result.skipped.push(skip('Menus', error));
       return;
     }
     const added: string[] = [];
@@ -587,7 +634,7 @@ export class ImportService {
       result.menus += added.length;
     } catch (error) {
       if (!(error instanceof DomainError)) throw error;
-      result.skipped.push({ title: 'Menus', reason: error.message });
+      result.skipped.push(skip('Menus', error));
     }
   }
 
@@ -616,7 +663,7 @@ export class ImportService {
         result[taxonomy === 'category' ? 'categories' : 'tags'] += 1;
       } catch (error) {
         if (!(error instanceof DomainError)) throw error;
-        result.skipped.push({ title: term.name, reason: error.message });
+        result.skipped.push(skip(term.name, error));
       }
     }
     return ids;

@@ -16,6 +16,7 @@ import { ProfileFields } from '#api/domain/users/profile-fields';
 import { CaptchaRegistry } from '#api/domain/security/captcha-registry';
 import { EraserRegistry } from '#api/domain/privacy/eraser-registry';
 import type { MailTransportRegistry } from '#api/domain/email/transport-registry';
+import { StorageDrivers } from '#api/domain/media/storage-drivers';
 import type { UserDirectory } from '@cms/sdk/plugin';
 import type { SignInRegistry } from '#api/plugin-runtime/sign-in-registry';
 import type {
@@ -80,6 +81,7 @@ export interface PluginContextServices {
   fields?: DefinitionRegistry<FieldDefinition>;
   capabilities?: CapabilityRegistry;
   mailTransports?: MailTransportRegistry;
+  storageDrivers?: StorageDrivers;
   menuItemTypes?: MenuTypeRegistry;
   themeContributions?: ProviderRegistry<
     ThemeContributionRequest,
@@ -124,6 +126,7 @@ const checkKey = (key: string) => {
 /** Builds the capabilities handed to `activate`. Every registration is tracked by the scope. */
 export class PluginContextFactory {
   constructor(private readonly services: PluginContextServices) {
+    services.storageDrivers ??= new StorageDrivers(services.logger('core'));
     services.contentTypes ??= new ContentTypeRegistry(BUILTIN_TYPES);
     services.permalinkTokens ??= new PermalinkTokenRegistry();
     services.taxonomies ??= new DefinitionRegistry(
@@ -275,6 +278,12 @@ export class PluginContextFactory {
               throw new Error(Errors.EmailDisabled);
             return this.services.mailTransports.plugin(id, key, transport);
           }),
+      },
+      storageDrivers: {
+        register: (key, definition) =>
+          scope.track(() =>
+            this.services.storageDrivers!.plugin(id, key, definition),
+          ),
       },
       menuItemTypes: {
         register: (key, provider) =>

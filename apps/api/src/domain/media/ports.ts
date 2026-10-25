@@ -8,6 +8,13 @@ import type {
 
 export interface StoredVariant {
   key: string;
+  storageKey?: string;
+  storageDriver?: string;
+  publicUrl?: string | null;
+  byteSize?: number | null;
+  mime?: string;
+  etag?: string | null;
+  missingAt?: string | null;
   width: number;
   height: number;
 }
@@ -26,6 +33,11 @@ export interface MediaRecord {
   title?: string;
   description?: string;
   storageKey: string;
+  storageDriver?: string;
+  publicUrl?: string | null;
+  byteSize?: number | null;
+  etag?: string | null;
+  missingAt?: Date | null;
   variants: Partial<Record<ImageSizeName, StoredVariant>>;
   createdAt: Date;
   /** Entries that show the file. */
@@ -35,6 +47,7 @@ export interface MediaRecord {
 export type MediaWrite = Omit<MediaRecord, 'uploaderName' | 'usageCount'>;
 
 export interface MediaCriteria {
+  missing?: boolean;
   kind?: MediaKind;
   /** Substring of the file name, alt text or caption. */
   search?: string;
@@ -101,6 +114,10 @@ export interface MediaStorage {
     end: number;
   } | null>;
   remove(keys: readonly string[]): Promise<void>;
+  /** Internal, key-scoped rollback capability for already-admitted plugin writes. */
+  rollback?(keys: readonly string[]): Promise<void>;
+  pendingWrites?(): boolean;
+  settled?(): Promise<void>;
 }
 
 /** Image decoding and re-encoding. Throws on undecodable input. */

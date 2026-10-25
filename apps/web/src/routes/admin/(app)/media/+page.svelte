@@ -1,24 +1,32 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
-  import { invalidateAll } from '$app/navigation';
+  import { invalidate, invalidateAll } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { MEDIA_KINDS } from '@cms/sdk';
   import type { MediaKind } from '@cms/sdk';
-  import {
-    FileText,
-    Film,
-    LayoutGrid,
-    List,
-    Music,
-    Search,
-    Upload,
-  } from '@lucide/svelte';
+  import { can } from '@cms/sdk/capabilities';
+  import { default as RefreshCw } from '@lucide/svelte/icons/refresh-cw';
+  import { default as FileText } from '@lucide/svelte/icons/file-text';
+  import { default as Film } from '@lucide/svelte/icons/film';
+  import { default as LayoutGrid } from '@lucide/svelte/icons/layout-grid';
+  import { default as List } from '@lucide/svelte/icons/list';
+  import { default as Music } from '@lucide/svelte/icons/music';
+  import { default as Search } from '@lucide/svelte/icons/search';
+  import { default as Upload } from '@lucide/svelte/icons/upload';
+  import FormMessage from '#lib/admin/FormMessage.svelte';
   import ListPager from '#lib/admin/ListPager.svelte';
+  import {
+    RESYNC_POLL_MS,
+    resyncActive,
+    resyncSummary,
+  } from '#lib/admin/media-resync.js';
   import ScreenOptions from '#lib/admin/ScreenOptions.svelte';
   import { listQuery } from '#lib/admin/list-query.js';
   import { thumbnailUrl } from '#lib/admin/media-thumbnail.js';
   import { uploadFile } from '#lib/admin/upload.js';
+  import { catalogMessage } from '#lib/admin/form-errors.js';
+  import { Badge } from '#lib/components/ui/badge/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import { Input } from '#lib/components/ui/input/index.js';
   import { notifyFailure, notifySuccess } from '#lib/feedback.js';
@@ -26,10 +34,25 @@
   import type { Messages } from '#lib/i18n/index.js';
   import type { PageProps } from './$types';
 
-  let { data }: PageProps = $props();
+  let { data, form }: PageProps = $props();
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
+  const resyncing = $derived(resyncActive(data.resync));
+  const resync = $derived(
+    resyncSummary(m, i18n.language, data.resync, (iso) =>
+      new Date(iso).toLocaleString(i18n.language),
+    ),
+  );
+  // While a resync waits or runs, check on it again (each new status schedules the next).
+  $effect(() => {
+    if (!resyncing || !data.resync) return;
+    const timer = setTimeout(
+      () => void invalidate('media:resync'),
+      RESYNC_POLL_MS,
+    );
+    return () => clearTimeout(timer);
+  });
   let uploads = $state<{ name: string; progress: number }[]>([]);
   let dragging = $state(false);
 
@@ -77,7 +100,14 @@
         uploads[index]!.progress = fraction;
       });
       if ('media' in result) notifySuccess(m.mediaUploadedFile(file.name));
-      else notifyFailure(m.mediaUploadFailed(file.name, result.error));
+      // Known refusals (a busy storage) read in the user's language.
+      else
+        notifyFailure(
+          m.mediaUploadFailed(
+            file.name,
+            catalogMessage(m, result.error, result.params) ?? result.error,
+          ),
+        );
       uploads[index]!.progress = 1;
     }
     uploads = [];
@@ -109,6 +139,64 @@
 </div>
 
 <ScreenOptions screen="media" hidden={[]} perPage={data.screen.perPage} />
+
+{#if can(data.user, 'media.manage')}
+  <FormMessage {form} />
+  <section
+    aria-labelledby="resync-title"
+    class="grid gap-3 rounded-md border bg-background p-4 text-sm"
+  >
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div class="grid max-w-prose gap-1">
+        <h2 id="resync-title" class="font-medium">{m.mediaResync}</h2>
+        <p id="resync-help" class="text-muted-foreground">
+          {m.mediaResyncHelp}
+        </p>
+      </div>
+      <form method="POST" action="?/resync" use:enhance>
+        <Button
+          type="submit"
+          variant="outline"
+          size="sm"
+          disabled={resyncing}
+          aria-describedby="resync-help"
+          ><RefreshCw
+            class="size-4 {resyncing ? 'animate-spin' : ''}"
+          />{m.mediaResync}</Button
+        >
+      </form>
+    </div>
+    <div role="status" aria-live="polite">
+      {#if resync}
+        <p
+          class={resync.tone === 'failed'
+            ? 'text-destructive'
+            : resync.tone === 'progress'
+              ? 'text-muted-foreground'
+              : ''}
+        >
+          {resync.title}
+        </p>
+        {#if resync.detail}
+          <p class="text-xs text-muted-foreground">{resync.detail}</p>
+        {/if}
+        {#if resync.counts.length}
+          <dl class="mt-2 flex flex-wrap gap-x-6 gap-y-1">
+            {#each resync.counts as count (count.label)}
+              <div class="flex gap-1.5">
+                <dt class="text-muted-foreground">{count.label}</dt>
+                <dd class="font-medium tabular-nums">{count.value}</dd>
+              </div>
+            {/each}
+          </dl>
+        {/if}
+        {#if resync.attention}
+          <p class="mt-2 text-destructive">{resync.attention}</p>
+        {/if}
+      {/if}
+    </div>
+  </section>
+{/if}
 
 <div
   role="region"
@@ -160,6 +248,14 @@
       class="filter">{kindLabel(m, kind)}</a
     >
   {/each}
+  <a
+    href={resolve(
+      `/admin/(app)/media${query({ missing: data.filter.missing ? undefined : '1', page: 1 })}`,
+    )}
+    aria-current={!!data.filter.missing}
+    title={m.mediaMissingHelp}
+    class="filter">{m.mediaMissing}</a
+  >
   <span class="ml-auto flex gap-1">
     <a
       href={resolve(`/admin/(app)/media${query({ view: undefined })}`)}
@@ -188,6 +284,11 @@
         type="hidden"
         name="view"
         value={data.filter.view}
+      />{/if}
+    {#if data.filter.missing}<input
+        type="hidden"
+        name="missing"
+        value={data.filter.missing}
       />{/if}
     <Input
       name="month"
@@ -290,6 +391,13 @@
                     />{/if}
                   <span class="break-all">{media.filename}</span>
                 </a>
+                {#if media.missingAt}
+                  <Badge
+                    variant="destructive"
+                    class="mt-1"
+                    title={m.mediaMissingHelp}>{m.mediaMissing}</Badge
+                  >
+                {/if}
               </td>
               <td class="p-2">{media.uploaderName || m.none}</td>
               <td class="p-2"
@@ -340,6 +448,13 @@
               </span>
             {/if}
           </a>
+          {#if media.missingAt}
+            <Badge
+              variant="destructive"
+              class="pointer-events-none absolute right-2 bottom-2 bg-background"
+              title={m.mediaMissingHelp}>{m.mediaMissing}</Badge
+            >
+          {/if}
         </li>
       {/each}
     </ul>

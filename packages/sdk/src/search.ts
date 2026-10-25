@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { issueParamsSchema } from '#sdk/common';
 import { Errors } from '#sdk/errors';
 
 /** Meilisearch connection (Settings → Search). MariaDB answers searches whenever it is off or behind. */
@@ -62,6 +63,8 @@ export const searchStatusSchema = z.object({
   documents: z.number().int().nullable(),
   /** The last failure, in words fit for administrators. */
   lastError: z.string().nullable(),
+  /** Values the catalog `lastError` leaves out (`SearchRequestFailed` → `status`). */
+  lastErrorParams: issueParamsSchema.optional(),
   lastSyncAt: z.string().nullable(),
 });
 

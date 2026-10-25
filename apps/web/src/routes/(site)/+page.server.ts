@@ -2,7 +2,7 @@ import { contentApi } from '#lib/server/api.js';
 import { sessionToken } from '#lib/server/session-cookie.js';
 import { entryActions, entryPage } from '#lib/server/content-page.js';
 import { notFoundFrom } from '#lib/server/errors.js';
-import { latestPosts, listPosts } from '#lib/server/archive.js';
+import { homePosts, listPosts } from '#lib/server/archive.js';
 import { homeTypeParam, pageParam } from '#lib/server/public-view.js';
 import { loadSlots } from '#lib/server/slots.js';
 import {
@@ -53,9 +53,14 @@ export const load: PageServerLoad = async (event) => {
       '/',
     );
   }
-  const type = homeTypeParam(url);
-  const [posts, loaded] = await Promise.all([
-    latestPosts(api, type, page, pageSize),
+  const [{ type, posts }, loaded] = await Promise.all([
+    homePosts(
+      api,
+      homeTypeParam(url),
+      url.searchParams.has('type'),
+      page,
+      pageSize,
+    ),
     loadSlots(api, { path: url.pathname }),
   ]);
   return withTemplateData(publicApi, event, {

@@ -8,7 +8,8 @@
   import { CONTENT_STATUSES, UNPUBLISHED_STATUSES } from '@cms/sdk';
   import type { ContentOrder, ContentStatus } from '@cms/sdk';
   import { can } from '@cms/sdk/capabilities';
-  import { Plus, Search } from '@lucide/svelte';
+  import { default as Plus } from '@lucide/svelte/icons/plus';
+  import { default as Search } from '@lucide/svelte/icons/search';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import BulkEdit from '#lib/admin/BulkEdit.svelte';
   import BulkReport from '#lib/admin/BulkReport.svelte';

@@ -110,9 +110,10 @@ export const canonicalPermalinkPath = (path: string): string | null => {
 
 /** Why `path` is not a canonical content path (structure only, no reservation), or `undefined`. */
 const structureIssue = (path: string): string | undefined => {
-  if (path.length > MAX_PERMALINK_PATH_LENGTH) return 'Path is too long';
+  if (path.length > MAX_PERMALINK_PATH_LENGTH)
+    return Errors.PermalinkPathTooLong;
   if (canonicalPermalinkPath(path) !== path)
-    return 'Path must be a canonical percent-encoded path without empty, "." or ".." segments';
+    return Errors.PermalinkPathNotCanonical;
   return undefined;
 };
 
@@ -152,7 +153,7 @@ export const permalinkPathIssue = (path: string): string | undefined => {
     RESERVED_FILES.includes(lower) ||
     lower.endsWith('.md')
   )
-    return 'Path is reserved';
+    return Errors.PermalinkPathReserved;
 
   return undefined;
 };
@@ -284,7 +285,7 @@ export const renderPermalink = (
     .map((part, index) => {
       if (index % 2 === 0) return part;
       if (!isToken(part))
-        throw new TypeError(Errors.UnknownPermalinkToken(part));
+        throw new TypeError(Errors.UnknownPermalinkToken, { cause: part });
       return tokens[part]();
     })
     .join('');

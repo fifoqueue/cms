@@ -3,6 +3,7 @@ import type { AdminEmailSettings } from '@cms/sdk';
 import type { EmailMessage, MailTransport } from '#api/domain/email/ports';
 import { PermanentJobError } from '#api/domain/jobs/job-runner';
 import { Errors } from '#api/shared/errors';
+import { failureOf } from '#api/shared/failures';
 import { signAws } from '#api/infra/aws-signature';
 
 type HttpTransport = Extract<MailTransport, { kind: 'http' }>;
@@ -238,19 +239,16 @@ export const createHttpMailer = (fetch: Fetch, now = () => new Date()) => ({
         secret: transport.secret,
         date: now(),
       });
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body,
-        signal: AbortSignal.timeout(10_000),
-        redirect: 'error',
-      });
-    } catch {
-      // Fetch errors can contain headers or URL credentials; never expose their text.
-      throw new Error(Errors.EmailNetworkFailed);
-    }
+    // Fetch errors can contain headers or URL credentials; only their category is kept.
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body,
+      signal: AbortSignal.timeout(10_000),
+      redirect: 'error',
+    }).catch((error: unknown) => failureOf(error)?.reason ?? 'network');
+    if (typeof response === 'string')
+      throw new Error(Errors.EmailNetworkFailed, { cause: response });
     if (response.ok) {
       await response.body?.cancel();
       return;
@@ -275,7 +273,7 @@ export const createHttpMailer = (fetch: Fetch, now = () => new Date()) => ({
       ![401, 403, 408, 429].includes(response.status) &&
       !(transport.provider === 'sparkpost' && response.status === 420)
     )
-      throw new PermanentJobError(error);
-    throw new Error(error);
+      throw new PermanentJobError(error, { cause: response.status });
+    throw new Error(error, { cause: response.status });
   },
 });

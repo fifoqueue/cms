@@ -7,10 +7,20 @@
   import type { SeoMeta } from '#lib/seo/head.js';
   import SeoHead from '#lib/seo/SeoHead.svelte';
   import Toasts from '#lib/components/Toasts.svelte';
+  import NavigationProgress from '#lib/components/NavigationProgress.svelte';
   import AdminBar from '#lib/theme/AdminBar.svelte';
   import SlotOutlet from '#lib/theme/SlotOutlet.svelte';
   import ThemeStylesheet from '#lib/theme/ThemeStylesheet.svelte';
-  import { siteScheme, themeStyle } from '#lib/theme/style.js';
+  import SiteFonts from '#lib/theme/SiteFonts.svelte';
+  import {
+    rememberedScheme,
+    SCHEME_ATTRIBUTE,
+    SCHEME_KEY,
+    schemeCss,
+    schemeScript,
+    siteScheme,
+    themeStyle,
+  } from '#lib/theme/style.js';
   import { provideI18n } from '#lib/i18n/index.js';
   import { provideDateStyle } from '#lib/theme/format.js';
   import type { LayoutProps } from './$types';
@@ -40,6 +50,23 @@
   const TOAST_LIFT =
     'max(1rem, env(safe-area-inset-bottom), var(--cms-bulk-bar-offset, 0px) + 0.75rem) + 2.5rem';
 
+  // The visitor's light/dark choice: the alternate palette's CSS and the script that restores it.
+  const schemeStyle = $derived(schemeCss(data.theme));
+  const remembered = $derived(schemeScript(data.theme));
+  // The head script only runs on document loads; client navigation into the site and theme
+  // changes apply the stored choice here (the site editor and admin never set the attribute).
+  $effect(() => {
+    let stored: string | null = null;
+    try {
+      stored = localStorage.getItem(SCHEME_KEY);
+    } catch {
+      // Storage may be unavailable; the theme's own scheme shows.
+    }
+    const value = rememberedScheme(data.theme, stored);
+    if (value) document.documentElement.setAttribute(SCHEME_ATTRIBUTE, value);
+    else document.documentElement.removeAttribute(SCHEME_ATTRIBUTE);
+  });
+
   // Every page loads its own slots; error pages have none.
   const slots = $derived(page.data.slots as SlotMap | undefined);
 </script>
@@ -55,8 +82,17 @@
     <link rel="apple-touch-icon" href={data.site.icon.url} />
   {/if}
   <SlotOutlet fragments={slots?.head ?? []} />
+  {#if schemeStyle}
+    <!-- eslint-disable-next-line svelte/no-at-html-tags -- generated from schema-checked palette colors -->
+    {@html `<style>${schemeStyle}</style>`}
+  {/if}
+  {#if remembered}
+    <!-- eslint-disable-next-line svelte/no-at-html-tags -- a fixed script; runs before the first paint so a chosen scheme never flashes -->
+    {@html remembered}
+  {/if}
 </svelte:head>
 <ThemeStylesheet css={data.theme.css} />
+<SiteFonts fonts={data.theme.fonts} />
 
 <a
   href="#main"
@@ -81,6 +117,8 @@
   lang={data.site.locale}
   data-theme={data.theme.id}
 >
+  <!-- Inside the site wrapper so it takes the theme's accent, over the admin toolbar too. -->
+  <NavigationProgress />
   <!-- Inside the site wrapper for the theme's colors; above the back-to-top button (3rem)
        and the comment bulk bar (`--cms-bulk-bar-offset`). -->
   <Toasts theme={siteScheme(data.theme) ?? 'light'} lift={TOAST_LIFT}>

@@ -15,7 +15,9 @@ import { TEMPLATE_NAME } from '@cms/sdk';
 import type { ThemeEditor, ThemeStylesInput } from '@cms/sdk';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { adminFor } from '#lib/server/session.js';
-import { readBlocks } from '#lib/server/theme-admin.js';
+import { fontsAfter, readBlocks } from '#lib/server/theme-admin.js';
+import { FONT_FIELDS } from '#lib/admin/font-issues.js';
+import type { FontFormValues } from '#lib/admin/font-issues.js';
 import { submitAction } from '#lib/server/form-action.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -38,6 +40,7 @@ const editorView = ({
   id,
   name,
   settings,
+  siteFonts,
   styles,
   templates,
   parts,
@@ -45,6 +48,18 @@ const editorView = ({
   id,
   name,
   settings,
+  siteFonts: siteFonts.map((font) => ({
+    slug: font.slug,
+    family: font.family,
+    fallback: font.fallback,
+    stylesheet: font.stylesheet,
+    faces: font.faces.map(({ src, weight, style, display }) => ({
+      src,
+      weight,
+      style,
+      display,
+    })),
+  })),
   styles,
   // `source` is `theme`, `admin` or the contributing plugin's id.
   templates: templates.map(
@@ -336,6 +351,28 @@ export const actions: Actions = {
           radius: text(form, 'radius'),
         } as ThemeStylesInput['styles'],
       }),
+    );
+  },
+  /** Adds a site font (or a face to an existing family) or removes one; the API validates. */
+  saveFonts: async (event) => {
+    const form = await event.request.formData();
+    const admin = adminFor(event);
+    try {
+      const fonts = await admin.themes.fonts();
+      const next = fontsAfter(fonts, form);
+      if (next) await admin.themes.saveFonts({ fonts: next });
+    } catch (caught) {
+      // Shown inside the site fonts section, with what was entered kept.
+      return failFrom(caught, {
+        fontForm: Object.fromEntries(
+          [...FONT_FIELDS, 'source'].map((key) => [key, text(form, key)]),
+        ) as FontFormValues,
+      });
+    }
+    // Back to the Styles panel of the theme being edited.
+    redirect(
+      303,
+      `?theme=${encodeURIComponent(text(form, 'theme'))}&edit=styles&notice=saved`,
     );
   },
   resetStyles: async (event) => {

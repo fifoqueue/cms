@@ -1,20 +1,10 @@
 import { expect, test } from 'bun:test';
 import { DEFAULT_EMAIL_SETTINGS, emailSettingsInputSchema } from '@cms/sdk';
 import { Errors as SdkErrors } from '@cms/sdk/errors';
-import {
-  EMAIL_ISSUE_MESSAGES,
-  emailIssueText,
-} from '#lib/admin/settings/email-issues.js';
+import { emailIssueText } from '#lib/admin/settings/email-issues.js';
 import { readEmailForm } from '#lib/admin/settings/email-form.server.js';
-import { en } from '#lib/i18n/en.js';
-import { ko } from '#lib/i18n/ko.js';
-
-test('every mapped email message has text in both catalogs', () => {
-  for (const key of Object.values(EMAIL_ISSUE_MESSAGES)) {
-    expect(typeof en[key]).toBe('string');
-    expect(typeof ko[key]).toBe('string');
-  }
-});
+import { apiErrors as enErrors, en } from '#lib/i18n/en.js';
+import { apiErrors as koErrors, ko } from '#lib/i18n/ko.js';
 
 test('schema refusals show catalog text in the reader language', () => {
   const result = emailSettingsInputSchema.safeParse({
@@ -26,8 +16,12 @@ test('schema refusals show catalog text in the reader language', () => {
   expect(
     result.error.issues.some(({ message }) => message === issue.message),
   ).toBe(true);
-  expect(emailIssueText(ko, 'ko', issue)).toBe(ko.emailServerRequired);
-  expect(emailIssueText(en, 'en', issue)).toBe(en.emailServerRequired);
+  expect(emailIssueText(ko, 'ko', issue)).toBe(
+    koErrors.EmailServerRequired as string,
+  );
+  expect(emailIssueText(en, 'en', issue)).toBe(
+    enErrors.EmailServerRequired as string,
+  );
 });
 
 const formOf = (entries: Record<string, string>) => {

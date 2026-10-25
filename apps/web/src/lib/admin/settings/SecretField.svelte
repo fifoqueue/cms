@@ -17,7 +17,8 @@
     name: string;
     label: string;
     configured: boolean;
-    removeName: string;
+    /** The removal box's name; without it a saved secret can only be replaced. */
+    removeName?: string;
     helpId: string;
     maxlength?: number;
     /** A field issue, shown under the input. */
@@ -51,7 +52,7 @@
   <p id={helpId} class="text-xs text-muted-foreground">
     {help ?? m.secretKeep}
   </p>
-  {#if configured}
+  {#if configured && removeName}
     <label class="flex items-center gap-2 text-sm">
       <input type="checkbox" name={removeName} />
       {m.secretRemove}

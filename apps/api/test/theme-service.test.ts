@@ -3,9 +3,12 @@ import { zipSync, strToU8 } from 'fflate';
 import {
   cssProblem,
   publicThemeSchema,
+  siteFontsSchema,
   themeEditorSchema,
   themeManifestSchema,
+  walkBlocks,
 } from '@cms/sdk';
+import type { Block } from '@cms/sdk';
 import {
   BUILTIN_THEMES,
   DEFAULT_THEME_ID,
@@ -127,6 +130,334 @@ describe('ThemeService defaults', () => {
       expect(publicThemeSchema.safeParse(shown).success).toBe(true);
       expect(shown?.templates.index?.length).toBeGreaterThan(0);
     }
+  });
+
+  test('ships exactly Canvas (the default, as before) and Journal (dark, with a scheme toggle)', async () => {
+    const { themes } = setup();
+    expect(BUILTIN_THEMES.map(({ manifest }) => manifest.id)).toEqual([
+      DEFAULT_THEME_ID,
+      'journal',
+    ]);
+    expect(DEFAULT_THEME_ID).toBe('canvas');
+
+    const canvas = (await themes.find('canvas'))!;
+    expect(
+      canvas.settings.palette.map(({ slug, color }) => [slug, color]),
+    ).toEqual([
+      ['base', '#ffffff'],
+      ['surface', '#f7f7f8'],
+      ['contrast', '#18181b'],
+      ['muted', '#71717a'],
+      ['accent', '#4f46e5'],
+      ['border', '#e4e4e7'],
+    ]);
+    expect(canvas.settings.fontFamilies.map((font) => font.slug)).toEqual([
+      'sans',
+      'serif',
+    ]);
+    expect(canvas.settings.layout).toEqual({
+      contentSize: '44rem',
+      wideSize: '72rem',
+    });
+    expect(canvas.settings.alternatePalette).toEqual([]);
+    expect(canvas.settings.colorScheme).toEqual({ auto: false, toggle: false });
+    expect(canvas.css).toBe('');
+    const canvasBlocks = [
+      ...walkBlocks([
+        ...Object.values(canvas.templates).flat(),
+        ...canvas.parts.flatMap((part) => part.blocks),
+      ]),
+    ];
+    expect(canvasBlocks.some((block) => block.name === 'scheme-toggle')).toBe(
+      false,
+    );
+
+    const journal = (await themes.find('journal'))!;
+    expect(journal.settings.colorScheme.toggle).toBe(true);
+    expect(
+      journal.settings.alternatePalette.map((entry) => entry.slug).sort(),
+    ).toEqual(journal.settings.palette.map((entry) => entry.slug).sort());
+    expect(
+      journal.settings.palette.find((entry) => entry.slug === 'base')?.color,
+    ).toBe('#1c1c1c');
+    expect(journal.settings.fontFamilies[0]?.fontFamily).toStartWith(
+      '"Nanum Gothic",',
+    );
+    // The admin's bundled Inter Variable face is never named by a public theme stack.
+    for (const { manifest } of BUILTIN_THEMES)
+      for (const font of manifest.settings.typography.fontFamilies)
+        expect(font.fontFamily, manifest.id).not.toContain('Inter Variable');
+    const single = [...walkBlocks(journal.templates.single!)];
+    expect(single.some((block) => block.name === 'post-navigation')).toBe(true);
+  });
+
+  test('search results use the same post list layout as the home page', () => {
+    const query = (blocks: Block[]) =>
+      [...walkBlocks(blocks)].find((block) => block.name === 'query');
+    for (const theme of BUILTIN_THEMES) {
+      const home = query(theme.templates.home!);
+      const search = query(theme.templates.search!);
+      expect(home?.attrs).toBeDefined();
+      expect(search?.name === 'query' && search.attrs.layout).toBe(
+        home?.name === 'query' && home.attrs.layout,
+      );
+    }
+    const journalHome = query(
+      BUILTIN_THEMES.find(({ manifest }) => manifest.id === 'journal')!
+        .templates.home!,
+    );
+    expect(journalHome?.name === 'query' && journalHome.attrs).toMatchObject({
+      layout: 'grid',
+      columns: 3,
+    });
+  });
+
+  test('no source file, class or text names the reference design', async () => {
+    const root = new URL('../../../', import.meta.url).pathname.replace(
+      /^\/([A-Za-z]:)/,
+      '$1',
+    );
+    const hits: string[] = [];
+    for (const dir of ['apps/api/src', 'apps/web/src', 'packages', 'docs'])
+      for await (const path of new Bun.Glob(
+        '**/*.{ts,svelte,css,md,json}',
+      ).scan({ cwd: `${root}${dir}`, onlyFiles: true }))
+        if (
+          !path.includes('node_modules') &&
+          /swyft/i.test(path + (await Bun.file(`${root}${dir}/${path}`).text()))
+        )
+          hits.push(`${dir}/${path}`);
+    expect(hits).toEqual([]);
+  });
+
+  test('every template frames its blocks with the header and footer parts and renders entries once', () => {
+    const parts = (blocks: Block[]) =>
+      [...walkBlocks(blocks)].flatMap((block) =>
+        block.name === 'template-part' ? [block.attrs.slug] : [],
+      );
+    for (const theme of BUILTIN_THEMES) {
+      for (const [name, blocks] of Object.entries(theme.templates))
+        expect(parts(blocks), name).toEqual(['header', 'footer']);
+      for (const name of ['single', 'page']) {
+        const blocks = [...walkBlocks(theme.templates[name]!)];
+        for (const slot of ['post-content', 'comments'])
+          expect(blocks.filter((block) => block.name === slot)).toHaveLength(1);
+      }
+      expect(cssProblem(theme.css)).toBeNull();
+    }
+  });
+});
+
+describe('ThemeService color schemes', () => {
+  test('an alternate palette must use the palette slugs, and scheme options need one', () => {
+    const base = manifest('schemes');
+    const alternate = base.settings.color.palette.map((entry) => ({
+      ...entry,
+      color: '#fafafa',
+    }));
+    const withColor = (color: Record<string, unknown>, scheme = {}) => ({
+      ...base,
+      settings: { ...base.settings, color, colorScheme: scheme },
+    });
+    expect(
+      themeManifestSchema.safeParse(
+        withColor(
+          { ...base.settings.color, alternatePalette: alternate },
+          { toggle: true },
+        ),
+      ).success,
+    ).toBe(true);
+    expect(
+      themeManifestSchema.safeParse(
+        withColor({
+          ...base.settings.color,
+          alternatePalette: alternate.slice(1),
+        }),
+      ).success,
+    ).toBe(false);
+    expect(
+      themeManifestSchema.safeParse(
+        withColor(base.settings.color, { auto: true }),
+      ).success,
+    ).toBe(false);
+    expect(themeManifestSchema.parse(base).settings.colorScheme).toEqual({
+      auto: false,
+      toggle: false,
+    });
+  });
+});
+
+describe('ThemeService site fonts', () => {
+  const stylesheet = {
+    slug: 'nanum-gothic',
+    family: 'Nanum Gothic',
+    stylesheet:
+      'https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap',
+  };
+
+  test('font settings accept https stylesheets and font files only', () => {
+    const ok = (font: Record<string, unknown>) =>
+      siteFontsSchema.safeParse([font]).success;
+    expect(ok(stylesheet)).toBe(true);
+    expect(
+      ok({
+        slug: 'brand',
+        family: 'Brand Sans',
+        faces: [
+          { src: '/media/2026/10/brand.woff2', weight: 700 },
+          {
+            src: 'https://cdn.example.com/fonts/brand-italic.ttf',
+            style: 'italic',
+          },
+        ],
+      }),
+    ).toBe(true);
+    for (const bad of [
+      {
+        ...stylesheet,
+        stylesheet: 'http://fonts.googleapis.com/css2?family=X',
+      },
+      { ...stylesheet, stylesheet: 'javascript:alert(1)' },
+      { ...stylesheet, stylesheet: 'https://user:pass@example.com/a.css' },
+      { ...stylesheet, stylesheet: 'https://example.com/a.css");}body{x' },
+      { ...stylesheet, stylesheet: 'https://example.com/a b.css' },
+      { ...stylesheet, family: 'Bad"Name' },
+      { slug: 'x', family: 'X' },
+      { ...stylesheet, faces: [{ src: '/media/a.woff2' }] },
+      { slug: 'x', family: 'X', faces: [{ src: '/media/x.png' }] },
+      { slug: 'x', family: 'X', faces: [{ src: '/media/../x.woff2' }] },
+      { slug: 'x', family: 'X', faces: [{ src: 'https://e.com/x.woff2?(' }] },
+      { slug: 'x', family: 'X', faces: [{ src: 'data:font/woff2;base64,AA' }] },
+    ])
+      expect(ok(bad), JSON.stringify(bad)).toBe(false);
+    expect(siteFontsSchema.safeParse([stylesheet, stylesheet]).success).toBe(
+      false,
+    );
+  });
+
+  test('a theme stack that names a site font loads it; admin choices win; others are not sent', async () => {
+    const { themes } = setup();
+    expect((await themes.find('journal'))?.fonts).toEqual([]);
+    await themes.saveFonts({
+      fonts: [
+        stylesheet,
+        {
+          slug: 'brand',
+          family: 'Brand Sans',
+          fallback: 'serif',
+          faces: [{ src: '/media/2026/10/brand.woff2' }],
+        },
+      ],
+    });
+    expect(
+      await codeOf(
+        themes.saveFonts({ fonts: [{ ...stylesheet, stylesheet: 'ftp://x' }] }),
+      ),
+    ).toBe('invalid_input');
+
+    // Journal's body stack names Nanum Gothic, so that family loads; the unused one does not.
+    const journal = (await themes.find('journal'))!;
+    expect(journal.fonts).toEqual([
+      { family: 'Nanum Gothic', stylesheet: stylesheet.stylesheet, faces: [] },
+    ]);
+    expect(publicThemeSchema.safeParse(journal).success).toBe(true);
+    // Canvas's stacks do not name it.
+    expect((await themes.find('canvas'))?.fonts).toEqual([]);
+
+    // Choosing a site font for headings uses its stack and loads its faces.
+    const editor = await themes.editor('canvas');
+    expect(editor.siteFonts.map((font) => font.slug)).toEqual([
+      'nanum-gothic',
+      'brand',
+    ]);
+    await themes.saveStyles('canvas', {
+      colors: {},
+      styles: { ...editor.styles.current, headingFontFamily: 'brand' },
+    });
+    const canvas = (await themes.find('canvas'))!;
+    expect(canvas.styles.headingFontFamily).toBe('brand');
+    expect(
+      canvas.settings.fontFamilies.find((font) => font.slug === 'brand')
+        ?.fontFamily,
+    ).toBe('"Brand Sans", serif');
+    expect(canvas.fonts).toEqual([
+      {
+        family: 'Brand Sans',
+        stylesheet: '',
+        faces: [
+          {
+            src: '/media/2026/10/brand.woff2',
+            weight: 400,
+            style: 'normal',
+            display: 'swap',
+          },
+        ],
+      },
+    ]);
+
+    // Journal declares its own heading font; choose the site font there too.
+    const journalEditor = await themes.editor('journal');
+    expect(journalEditor.styles.theme.headingFontFamily).toBe('system');
+    await themes.saveStyles('journal', {
+      colors: {},
+      styles: { ...journalEditor.styles.current, headingFontFamily: 'brand' },
+    });
+    expect((await themes.find('journal'))?.styles.headingFontFamily).toBe(
+      'brand',
+    );
+
+    // Removing the font restores each theme's own default, not "same as body".
+    await themes.saveFonts({ fonts: [stylesheet] });
+    const fallback = (await themes.find('canvas'))!;
+    expect(fallback.styles.headingFontFamily).toBe('');
+    expect(fallback.fonts).toEqual([]);
+    expect((await themes.find('journal'))?.styles.headingFontFamily).toBe(
+      'system',
+    );
+  });
+});
+
+describe('ThemeService removed built-ins', () => {
+  test('a stored active theme or changes for a removed built-in fall back to Canvas; others keep theirs', async () => {
+    const { settings, themes } = setup();
+    settings.values.set(
+      'themes',
+      JSON.stringify({ active: 'magazine', installed: [] }),
+    );
+    settings.values.set(
+      'themes.customizations',
+      JSON.stringify({
+        editorial: { colors: { accent: '#ff0000' } },
+        magazine: { templates: { index: [{ name: 'site-title' }] } },
+        journal: { colors: { accent: '#00ff00' } },
+      }),
+    );
+
+    const shown = await themes.getPublic();
+    expect(shown.id).toBe(DEFAULT_THEME_ID);
+    expect(publicThemeSchema.safeParse(shown).success).toBe(true);
+    const listed = await themes.list();
+    expect(listed.map((theme) => theme.id)).toEqual(['canvas', 'journal']);
+    expect(listed.find((theme) => theme.active)?.id).toBe(DEFAULT_THEME_ID);
+    expect(
+      (await themes.find('journal'))?.settings.palette.find(
+        (entry) => entry.slug === 'accent',
+      )?.color,
+    ).toBe('#00ff00');
+    expect(await themes.find('editorial')).toBeNull();
+    expect(await codeOf(themes.activate('magazine'))).toBe('not_found');
+    expect(await codeOf(themes.editor('editorial'))).toBe('not_found');
+
+    // Activating keeps working and rewrites the stale setting.
+    await themes.activate('journal');
+    expect(JSON.parse(settings.values.get('themes')!).active).toBe('journal');
+
+    // A theme installed later under a removed id starts without the old changes.
+    await themes.install(archive('magazine'));
+    expect((await themes.find('magazine'))?.templates.index).toHaveLength(2);
+    expect(
+      Object.keys(JSON.parse(settings.values.get('themes.customizations')!)),
+    ).toEqual(['journal']);
   });
 });
 

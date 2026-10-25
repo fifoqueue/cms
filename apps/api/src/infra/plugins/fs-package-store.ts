@@ -60,7 +60,7 @@ export class FsPluginPackageStore implements PluginPackageStore {
 
   private directory(pluginId: string): string {
     if (!KEBAB_CASE.test(pluginId))
-      throw new Error(Errors.PluginIdInvalid(pluginId));
+      throw new Error(Errors.PluginIdInvalid, { cause: pluginId });
     return join(this.root, pluginId);
   }
 }

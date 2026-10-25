@@ -7,6 +7,7 @@ export const mediaUrl = (key: string) => `${MEDIA_PATH}${key}`;
 
 export const toAdminMedia = (media: MediaRecord): AdminMedia => ({
   id: media.id,
+  missingAt: media.missingAt?.toISOString() ?? null,
   filename: media.filename,
   mime: media.mime,
   kind: mediaKindOf(media.mime),
@@ -17,14 +18,14 @@ export const toAdminMedia = (media: MediaRecord): AdminMedia => ({
   caption: media.caption,
   title: media.title ?? '',
   description: media.description ?? '',
-  url: mediaUrl(media.storageKey),
+  url: media.publicUrl ?? mediaUrl(media.storageKey),
   variants: Object.keys(media.variants).flatMap((name) => {
     const variant = media.variants[name];
     return variant
       ? [
           {
             name,
-            url: mediaUrl(variant.key),
+            url: variant.publicUrl ?? mediaUrl(variant.key),
             width: variant.width,
             height: variant.height,
           },
@@ -40,12 +41,13 @@ export const toAdminMedia = (media: MediaRecord): AdminMedia => ({
 /** The public projection of an image: original plus responsive sizes, narrowest first. */
 export const toPublicImage = (image: {
   storageKey: string;
+  publicUrl?: string | null;
   alt: string;
   width: number | null;
   height: number | null;
   variants: Partial<Record<ImageSizeName, StoredVariant>>;
 }): PublicImage => ({
-  url: mediaUrl(image.storageKey),
+  url: image.publicUrl ?? mediaUrl(image.storageKey),
   alt: image.alt,
   width: image.width,
   height: image.height,
@@ -53,11 +55,21 @@ export const toPublicImage = (image: {
     ...Object.keys(image.variants).flatMap((name) => {
       const variant = image.variants[name];
       return variant
-        ? [{ url: mediaUrl(variant.key), width: variant.width }]
+        ? [
+            {
+              url: variant.publicUrl ?? mediaUrl(variant.key),
+              width: variant.width,
+            },
+          ]
         : [];
     }),
     ...(image.width
-      ? [{ url: mediaUrl(image.storageKey), width: image.width }]
+      ? [
+          {
+            url: image.publicUrl ?? mediaUrl(image.storageKey),
+            width: image.width,
+          },
+        ]
       : []),
   ],
 });

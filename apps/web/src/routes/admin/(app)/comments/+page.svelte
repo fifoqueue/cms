@@ -4,7 +4,7 @@
   import type { SubmitFunction } from '$app/forms';
   import { COMMENT_STATUSES } from '@cms/sdk';
   import type { CommentStatus } from '@cms/sdk';
-  import { Search } from '@lucide/svelte';
+  import { default as Search } from '@lucide/svelte/icons/search';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import ListPager from '#lib/admin/ListPager.svelte';
   import ScreenOptions from '#lib/admin/ScreenOptions.svelte';

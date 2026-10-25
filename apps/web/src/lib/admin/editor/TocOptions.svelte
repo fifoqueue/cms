@@ -1,6 +1,11 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
-  import { collectHeadings, tocDefaults, tocPage } from '@cms/content/toc';
+  import {
+    HEADING_LEVELS,
+    collectHeadings,
+    tocDefaults,
+    tocPage,
+  } from '@cms/content/toc';
   import type { TocAttrs } from '@cms/content/toc';
   import { Input } from '#lib/components/ui/input/index.js';
   import { useI18n } from '#lib/i18n/index.js';
@@ -61,7 +66,7 @@
 </label>
 <fieldset class="grid gap-2">
   <legend class="mb-1 font-medium">{m.contentTocLevels}</legend>
-  {#each [2, 3, 4] as level (level)}
+  {#each HEADING_LEVELS as level (level)}
     <label class="flex items-center gap-2">
       <input
         type="checkbox"
