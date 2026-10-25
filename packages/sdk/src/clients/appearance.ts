@@ -17,6 +17,8 @@ import type {
 } from '#sdk/menus';
 import { publicReadingSchema, readingSettingsSchema } from '#sdk/reading';
 import { writingSettingsSchema } from '#sdk/writing';
+import { embedSettingsSchema, publicEmbedProviderSchema } from '#sdk/embeds';
+import type { EmbedSettings, PublicEmbedProvider } from '#sdk/embeds';
 import { adminPatternSchema, patternListSchema } from '#sdk/patterns';
 import type { Paginated } from '#sdk/common';
 import type {
@@ -48,6 +50,10 @@ import type { PublicLayout } from '#sdk/layout';
 
 /** Reading settings, menus and widgets as the public site shows them. */
 export const publicAppearanceClient = (request: Request) => ({
+  embedProviders: () =>
+    request<PublicEmbedProvider[]>('GET', '/api/v1/embeds/providers', {
+      response: publicEmbedProviderSchema.array(),
+    }),
   layout: (preview?: string) =>
     request<PublicLayout>('GET', '/api/v1/layout', {
       query: { preview },
@@ -71,6 +77,17 @@ export const publicAppearanceClient = (request: Request) => ({
 
 /** Reading needs `settings.manage`; menus and widgets `appearance.manage`. */
 export const appearanceAdminClient = (request: Request) => ({
+  embeds: {
+    get: () =>
+      request<EmbedSettings>('GET', '/api/v1/admin/embeds', {
+        response: embedSettingsSchema,
+      }),
+    update: (input: unknown) =>
+      request<EmbedSettings>('PUT', '/api/v1/admin/embeds', {
+        json: input,
+        response: embedSettingsSchema,
+      }),
+  },
   /** Patterns: writers list and use them; changing another user's needs `content.editOthers`. */
   patterns: {
     contributions: () =>

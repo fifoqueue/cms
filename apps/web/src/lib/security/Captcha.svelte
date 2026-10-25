@@ -74,7 +74,8 @@
       value={token}
     />
   {/if}
-  <div bind:this={element} {...attributes}></div>
+  <!-- Never wider than the form; a narrow one gets the compact widget (`mountWidget`). -->
+  <div bind:this={element} {...attributes} class="max-w-full min-w-0"></div>
   {#if failed}<p role="alert" class="text-sm text-destructive">
       {i18n.m.errorCaptchaRequired}
     </p>{/if}

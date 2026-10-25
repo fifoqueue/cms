@@ -128,6 +128,7 @@ const app = await createApiApp({
     previews: {} as ApiServices['previews'],
     media: {} as ApiServices['media'],
     reading: {} as ApiServices['reading'],
+    embedSettings: {} as ApiServices['embedSettings'],
     writing: {
       get: record('writing.get'),
       update: record('writing.update'),

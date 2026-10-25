@@ -7,6 +7,7 @@
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import BlockOptions from '#lib/admin/editor/BlockOptions.svelte';
   import { mediaNode } from '#lib/admin/editor/blocks.js';
+  import { outsideRender } from '#lib/admin/editor/outside-render.svelte.js';
   import { loadPluginBlocks } from '#lib/admin/editor/plugin-blocks.js';
   import {
     loadContributedPatterns,
@@ -160,9 +161,7 @@
   $effect(() => {
     const current = editor;
     if (!current) return;
-    const changed = () => {
-      revision += 1;
-    };
+    const changed = () => outsideRender(() => (revision += 1));
     const slash = (event: KeyboardEvent) => {
       const { selection } = current.state;
       if (

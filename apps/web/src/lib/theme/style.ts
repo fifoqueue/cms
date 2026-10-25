@@ -136,6 +136,36 @@ export const schemeCss = (theme: Pick<ThemeView, 'settings'>) => {
 };
 
 /**
+ * Head CSS painting the document root and body in the site's base color, so overscroll and
+ * anything outside `.cms-site` (which holds the palette) match the page instead of the
+ * interface default. Follows the same alternate-palette rules as `schemeCss`; only the site
+ * layout includes it, so the admin area keeps its own colors.
+ */
+export const rootCss = (theme: Pick<ThemeView, 'settings'>) => {
+  const base = (palette: Palette) =>
+    palette.find((entry) => entry.slug === 'base')?.color;
+  const main = base(theme.settings.palette);
+  if (!main) return '';
+  const rule = (selector: string, color: string, suffix = '') =>
+    `${selector} { background-color: ${color}${suffix}; color-scheme: ${schemeOf(color)}${suffix} }`;
+  const alternate = base(theme.settings.alternatePalette);
+  const { colorScheme } = theme.settings;
+  const chosen = `:root[${SCHEME_ATTRIBUTE}='alternate']`;
+  const system = `:root:not([${SCHEME_ATTRIBUTE}])`;
+  return [
+    rule(':root, :root > body', main),
+    alternate && colorScheme.toggle
+      ? rule(`${chosen}, ${chosen} > body`, alternate, ' !important')
+      : '',
+    alternate && colorScheme.auto
+      ? `@media (prefers-color-scheme: ${schemeOf(alternate)}) { ${rule(`${system}, ${system} > body`, alternate, ' !important')} }`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+};
+
+/**
  * The `SCHEME_ATTRIBUTE` value for a stored choice (`light`/`dark`), or null when the theme
  * offers no toggle or nothing valid is stored — the same rule as `schemeScript`, for client
  * navigation into the site and theme changes, where the head script does not run.

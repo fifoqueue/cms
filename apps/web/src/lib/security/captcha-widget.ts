@@ -30,6 +30,28 @@ export const widgetAttributes = (
       .slice(0, MAX_ATTRIBUTES),
   );
 
+/**
+ * The size attribute Turnstile, hCaptcha and reCAPTCHA all read, with `compact` among its
+ * values; widgets that know no such attribute or option ignore it.
+ */
+const SIZE_ATTRIBUTE = 'data-size';
+/** The widest normal-size fixed iframe: reCAPTCHA's 304px (Turnstile 300, hCaptcha 303). */
+const NORMAL_WIDGET_WIDTH = 304;
+
+/**
+ * The size to render with. A declared `data-size` always wins and is returned as is, so
+ * explicit renderers (reCAPTCHA does not read DOM attributes) get it too. Otherwise `compact`
+ * when the container, measured at mount, is narrower than a normal-size widget: providers
+ * render fixed-width iframes that no container styling can shrink. An unrendered container
+ * (no width to measure) keeps the provider's default (null).
+ */
+export const fittedSize = (container: HTMLElement): string | null => {
+  const declared = container.getAttribute(SIZE_ATTRIBUTE);
+  if (declared) return declared;
+  const { width } = container.getBoundingClientRect();
+  return width > 0 && width < NORMAL_WIDGET_WIDTH ? 'compact' : null;
+};
+
 const loading = new Map<string, Promise<boolean>>();
 const loaded = new Set<string>();
 
@@ -75,6 +97,8 @@ type RenderFunction = (
     /** Accepted by Turnstile, hCaptcha and reCAPTCHA; other widgets may ignore them. */
     'expired-callback': () => void;
     'error-callback': () => void;
+    /** The declared `data-size`, or `compact` for a container too narrow (`fittedSize`). */
+    size?: string;
   },
 ) => unknown;
 /** The object `render` belongs to; it may offer `reset(id)` and `remove(id)` beside it. */
@@ -135,7 +159,10 @@ export interface MountedWidget {
  *   removed and inserted again in place, so a script that watches the document for new
  *   containers renders it. A script that only scans once on load renders the first mount only.
  * Either way the provider's `responseField` in the form is followed (read again on submit), so
- * a token the provider replaces or clears there is the one submitted.
+ * a token the provider replaces or clears there is the one submitted, and a container too
+ * narrow for the normal size gets `data-size="compact"` before the script sees it (also passed
+ * to `render` as `size`) unless the declaration sets `data-size` itself, which is then passed
+ * to `render` instead (`fittedSize`).
  */
 export const mountWidget = (
   container: HTMLElement,
@@ -157,6 +184,8 @@ export const mountWidget = (
   let owner: WidgetOwner | undefined;
   const timers: ReturnType<typeof setInterval>[] = [];
   const form = container.closest('form');
+  const size = fittedSize(container);
+  if (size) container.setAttribute(SIZE_ATTRIBUTE, size);
   const set = (value: string) => {
     if (!active || value === token) return;
     token = value;
@@ -211,6 +240,7 @@ export const mountWidget = (
           // An expired or failed challenge leaves no token to submit.
           'expired-callback': lapse,
           'error-callback': lapse,
+          ...(size && { size }),
         });
       } catch {
         fail();

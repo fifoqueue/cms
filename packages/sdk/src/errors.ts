@@ -4,6 +4,12 @@
  * a message leaves out travel as `issues[].params` (named in the comment).
  */
 export const Errors = {
+  EmbedPattern: 'Enter a valid regular expression.',
+  EmbedAllow: 'Choose only supported iframe permissions, without origin lists.',
+  EmbedSource: 'Use an HTTPS template with a fixed origin.',
+  EmbedPlaceholder:
+    'Template placeholders must name capture groups in the URL pattern.',
+  EmbedDuplicate: 'Another embed provider already uses this ID.',
   MediaStorageProbeCleanup: 'The connection test file could not be removed.',
   MediaStorageLocation:
     'Existing S3 storage location cannot be changed; migrate stored assets first',

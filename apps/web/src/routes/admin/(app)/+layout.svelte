@@ -9,6 +9,7 @@
   import { default as X } from '@lucide/svelte/icons/x';
   import { onMount } from 'svelte';
   import AdminMenu from '#lib/admin/AdminMenu.svelte';
+  import AdminSearch from '#lib/admin/AdminSearch.svelte';
   import AdminTopBar from '#lib/admin/AdminTopBar.svelte';
   import FlashNotice from '#lib/admin/FlashNotice.svelte';
   import { claimBackups } from '#lib/admin/editor-backup.js';
@@ -158,7 +159,14 @@
         user={data.user}
         siteTitle={data.siteTitle}
         pendingComments={data.counts.comments}
-      />
+      >
+        <AdminSearch
+          user={data.user}
+          pluginPages={data.pluginPages}
+          types={data.types}
+          taxonomies={data.taxonomies}
+        />
+      </AdminTopBar>
       <main id="admin-main" tabindex="-1" class="p-4 md:p-8">
         <div class="mx-auto max-w-5xl space-y-6">
           <FlashNotice />

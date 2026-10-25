@@ -11,11 +11,7 @@ import { loadConfig } from '#api/config';
 import type { AppConfig } from '#api/config';
 import { hostname } from 'node:os';
 import { ContentLocks } from '#api/domain/content/content-locks';
-import {
-  DEFAULT_EMBED_PRESETS,
-  Embeds,
-  presetProvider,
-} from '#api/domain/content/embeds';
+import { Embeds } from '#api/domain/content/embeds';
 import type { HtmlExpander } from '#api/domain/content/embeds';
 import { BlockRegistry } from '#api/plugin-runtime/block-registry';
 import { SignInRegistry } from '#api/plugin-runtime/sign-in-registry';
@@ -51,6 +47,7 @@ import { EmbedRegistry } from '#api/plugin-runtime/embed-registry';
 import { MediaService } from '#api/domain/media/media-service';
 import { ReadingService } from '#api/domain/site/reading-service';
 import { WritingService } from '#api/domain/site/writing-service';
+import { EmbedService } from '#api/domain/site/embed-service';
 import { TocRenderer } from '#api/domain/content/automatic-toc';
 import { DashboardPreferencesService } from '#api/domain/dashboard/dashboard-preferences';
 import { PrismaPatternCatalog } from '#api/infra/prisma/pattern-catalog';
@@ -336,15 +333,15 @@ export const createContainer = async (
   const pluginRoutes = new PluginRouteRegistry();
   const embedRegistry = new EmbedRegistry({ timeoutMs, logger });
   // Core presets first; plugins add more and never replace them.
-  const corePresets = DEFAULT_EMBED_PRESETS.map(presetProvider);
-  const embeds = new Embeds(() => [
-    ...corePresets,
+  const embeds = new Embeds(async () => [
+    ...(await embedSettings.providers()),
     ...embedRegistry.providers(),
   ]);
 
   const permalinkTokens = new PermalinkTokenRegistry(config.PLUGIN_TIMEOUT_MS);
   const contentRepository = new PrismaContentRepository(db, permalinkTokens);
   const settingsRepository = new PrismaSettingsRepository(db);
+  const embedSettings = new EmbedService(settingsRepository, hooks);
   const blockRegistry = new BlockRegistry({ timeoutMs, logger });
   const patternContributions = new ProviderRegistry<null, PatternContributions>(
     patternContributionSchema,
@@ -1401,6 +1398,7 @@ export const createContainer = async (
       adminContent: content,
       reading,
       writing,
+      embedSettings,
       dashboardPreferences,
       patterns,
       menus,

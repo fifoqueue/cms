@@ -6,9 +6,10 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
   const admin = adminFor(event);
-  const [writing, categories] = await Promise.all([
+  const [writing, categories, model] = await Promise.all([
     admin.writing.get(),
     admin.taxonomy.list('category'),
+    admin.contentModel.model(),
   ]);
   return {
     writing: {
@@ -16,6 +17,7 @@ export const load: PageServerLoad = async (event) => {
       defaultStatus: writing.defaultStatus,
       autoToc: writing.autoToc,
     },
+    types: model.types.map(({ key, pluralName }) => ({ key, pluralName })),
     categories: categories.map(({ id, name, parentId }) => ({
       id,
       name,
@@ -32,13 +34,10 @@ export const actions: Actions = {
       adminFor(event).writing.update({
         autoToc: {
           enabled: form.has('tocEnabled'),
-          types: text(form, 'tocTypes')
-            .split(',')
-            .map((value) => value.trim())
-            .filter(Boolean),
+          types: form.getAll('tocTypes').map(String),
           position: text(form, 'tocPosition') as 'top' | 'beforeFirstHeading',
           title: text(form, 'tocTitle'),
-          levels: text(form, 'tocLevels').split(',').map(Number),
+          levels: form.getAll('tocLevels').map(Number),
           minHeadings: Number(text(form, 'tocMinimum')),
           collapsible: form.has('tocCollapsible'),
           open: form.has('tocOpen'),

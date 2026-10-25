@@ -1,4 +1,6 @@
 import type { Awaitable } from '@cms/sdk';
+import { compileEmbedPattern } from '@cms/sdk/embed-pattern';
+import { embedPermissions, MAX_EMBED_URL_LENGTH } from '@cms/sdk';
 import type { BlockRenderContext } from '@cms/sdk/plugin';
 
 /** Turns stored body HTML into what is served (players, plugin blocks, responsive images). */
@@ -57,10 +59,8 @@ export type EmbedPreset = {
 const PLACEHOLDER = /\{(\w+)(\|urlencode)?\}/g;
 
 const frame = (src: string, preset: EmbedPreset) => {
-  const allow =
-    preset.allow === undefined
-      ? ''
-      : ` allow="${escapeAttribute(preset.allow)}"`;
+  const permissions = embedPermissions(preset.allow ?? '').join('; ');
+  const allow = permissions ? ` allow="${permissions}"` : '';
   const heightPath =
     'heightMessagePath' in preset && preset.heightMessagePath !== undefined
       ? ` data-embed-height-path="${escapeAttribute(preset.heightMessagePath)}"`
@@ -81,14 +81,14 @@ const RAW_VALUE = /^[\w.~-]+$/;
  * and no capture may be `.`/`..` or, unencoded, carry URL delimiters.
  */
 export const presetProvider = (preset: EmbedPreset): EmbedProvider => {
-  const pattern = new RegExp(preset.urlPattern);
+  const pattern = compileEmbedPattern(preset.urlPattern);
   const head = /^https:\/\/[^/?#{]+(?=[/?#])/.exec(preset.src)?.[0];
   const origin = head && URL.canParse(head) ? new URL(head).origin : null;
   return {
     name: preset.id,
     render(url) {
-      if (!origin) return null;
-      const groups = pattern.exec(url.href)?.groups;
+      if (!origin || url.href.length > MAX_EMBED_URL_LENGTH) return null;
+      const groups = pattern?.match(url.href);
       if (!groups) return null;
       let invalid = false;
       const src = preset.src.replace(
@@ -164,7 +164,7 @@ export const DEFAULT_EMBED_PRESETS: readonly EmbedPreset[] = [
  */
 export class Embeds {
   constructor(
-    private readonly providers: () => readonly EmbedProvider[],
+    private readonly providers: () => Awaitable<readonly EmbedProvider[]>,
     private readonly run: (
       provider: EmbedProvider,
       url: URL,
@@ -174,15 +174,20 @@ export class Embeds {
   async expand(html: string): Promise<string> {
     if (!html.includes('data-embed-url')) return html;
     const matches = [...html.matchAll(FIGURE)];
+    if (!matches.length) return html;
+    const providers = await this.providers();
     const players = await Promise.all(
       matches.map(async ([, raw]) => {
+        const href = unescapeAttribute(raw ?? '');
+        if (href.length > MAX_EMBED_URL_LENGTH) return null;
         let url: URL;
         try {
-          url = new URL(unescapeAttribute(raw ?? ''));
+          url = new URL(href);
         } catch {
           return null;
         }
-        for (const provider of this.providers()) {
+        if (url.href.length > MAX_EMBED_URL_LENGTH) return null;
+        for (const provider of providers) {
           const player = await this.run(provider, url);
           if (player) return player;
         }

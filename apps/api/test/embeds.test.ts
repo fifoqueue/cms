@@ -114,15 +114,56 @@ describe('presetProvider', () => {
       urlPattern: '^(?<url>https://example\\.com/(?<id>[\\w-]+)\\?.*)$',
       src: 'https://player.example/{id}?q=1&u={url|urlencode}',
       title: 'Say "hi" <now> & later',
-      allow: 'fullscreen "x"',
+      allow: 'fullscreen',
     });
     const html = await expand('https://example.com/a?x=1&y=2', embeds);
     expect(html).toContain(
       'src="https://player.example/a?q=1&amp;u=https%3A%2F%2Fexample.com%2Fa%3Fx%3D1%26y%3D2"',
     );
     expect(html).toContain('title="Say &quot;hi&quot; &lt;now> &amp; later"');
-    expect(html).toContain('allow="fullscreen &quot;x&quot;"');
+    expect(html).toContain('allow="fullscreen"');
     expect(html).not.toContain('data-embed-height-path');
+  });
+
+  test('filters permissions again when rendering unvalidated presets', async () => {
+    const html = await expand(
+      'https://example.com/a',
+      custom({
+        allow:
+          'camera *; autoplay; microphone *; fullscreen https://example.com; web-share; fullscreen "x"',
+      }),
+    );
+    expect(html).toContain(' allow="autoplay; web-share"');
+    expect(html).not.toContain('camera');
+    expect(html).not.toContain('microphone');
+  });
+
+  test('never matches URLs longer than 2048 characters, including normalized hrefs', async () => {
+    const provider = presetProvider({
+      id: 'length',
+      urlPattern: '^https://example\\.com/(?<path>.*)$',
+      src: 'https://player.example/{path|urlencode}',
+      title: 'Length',
+      ratio: '16 / 9',
+    });
+    const boundary =
+      'https://example.com/' + 'a'.repeat(2048 - 'https://example.com/'.length);
+    expect(await provider.render(new URL(boundary))).not.toBeNull();
+    for (const url of [
+      boundary + 'a',
+      'https://example.com/' + '한'.repeat(300),
+    ]) {
+      expect(await provider.render(new URL(url))).toBeNull();
+      const embeds = new Embeds(() => [
+        {
+          name: 'must-not-run',
+          render() {
+            throw new Error('Oversized URL reached a provider');
+          },
+        },
+      ]);
+      expect(await embeds.expand(figure(url))).toBe(figure(url));
+    }
   });
 
   test('captures cannot move the address off its origin or segment', async () => {

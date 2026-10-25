@@ -14,6 +14,7 @@
   import SiteFonts from '#lib/theme/SiteFonts.svelte';
   import {
     rememberedScheme,
+    rootCss,
     SCHEME_ATTRIBUTE,
     SCHEME_KEY,
     schemeCss,
@@ -53,7 +54,10 @@
     'max(1rem, env(safe-area-inset-bottom), var(--cms-bulk-bar-offset, 0px) + 0.75rem) + 2.5rem';
 
   // The visitor's light/dark choice: the alternate palette's CSS and the script that restores it.
-  const schemeStyle = $derived(schemeCss(data.theme));
+  // The root rules paint overscroll and the page outside the site wrapper in the same colors.
+  const schemeStyle = $derived(
+    [rootCss(data.theme), schemeCss(data.theme)].filter(Boolean).join('\n'),
+  );
   const remembered = $derived(schemeScript(data.theme));
   // The head script only runs on document loads; client navigation into the site and theme
   // changes apply the stored choice here (the site editor and admin never set the attribute).

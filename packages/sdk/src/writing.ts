@@ -10,7 +10,11 @@ export const writingSettingsSchema = z.object({
         .enum(['top', 'beforeFirstHeading'])
         .default('beforeFirstHeading'),
       title: z.string().max(200).default(''),
-      levels: z.array(z.number().int().min(1).max(6)).max(6).default([2, 3, 4]),
+      // Imported and older entries use h1 for body sections; the entry title is outside the body.
+      levels: z
+        .array(z.number().int().min(1).max(6))
+        .max(6)
+        .default([1, 2, 3, 4]),
       minHeadings: z.number().int().min(0).max(100).default(3),
       collapsible: z.boolean().default(true),
       open: z.boolean().default(true),

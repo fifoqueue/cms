@@ -26,6 +26,7 @@ export * from '#sdk/email';
 export * from '#sdk/media';
 export * from '#sdk/reading';
 export * from '#sdk/writing';
+export * from '#sdk/embeds';
 export * from '#sdk/dashboard';
 export * from '#sdk/patterns';
 export * from '#sdk/layout';

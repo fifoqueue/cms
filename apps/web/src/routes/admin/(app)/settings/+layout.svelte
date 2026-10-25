@@ -1,85 +1,25 @@
 <script lang="ts">
-  import { resolve } from '$app/paths';
   import { page } from '$app/state';
-  import { can } from '@cms/sdk/capabilities';
+  import { allowedEntries, settingsTabs } from '#lib/admin/admin-nav.js';
+  import SectionTabs from '#lib/admin/SectionTabs.svelte';
   import { useI18n } from '#lib/i18n/index.js';
-  import type { Messages } from '#lib/i18n/index.js';
   import type { LayoutProps } from './$types';
 
   let { data, children }: LayoutProps = $props();
 
   const i18n = useI18n();
 
-  /** wp-admin's order first, then this CMS's own screens (the same order as the menu). */
-  const tabs = $derived([
-    {
-      route: '/admin/(app)/settings/privacy',
-      label: (m: Messages) => m.privacySettings,
-    },
-    {
-      route: '/admin/(app)/settings',
-      label: (m: Messages) => m.settingsGeneral,
-    },
-    {
-      route: '/admin/(app)/settings/writing',
-      label: (m: Messages) => m.settingsWriting,
-    },
-    {
-      route: '/admin/(app)/settings/reading',
-      label: (m: Messages) => m.settingsReading,
-    },
-    {
-      route: '/admin/(app)/settings/discussion',
-      label: (m: Messages) => m.settingsDiscussion,
-    },
-    {
-      route: '/admin/(app)/settings/media-storage',
-      label: (m: Messages) => m.settingsMediaStorage,
-    },
-    {
-      route: '/admin/(app)/settings/permalinks',
-      label: (m: Messages) => m.permalinksTitle,
-    },
-    {
-      route: '/admin/(app)/settings/email',
-      label: (m: Messages) => m.settingsEmail,
-    },
-    {
-      route: '/admin/(app)/settings/search',
-      label: (m: Messages) => m.settingsSearch,
-    },
-    {
-      route: '/admin/(app)/settings/security',
-      label: (m: Messages) => m.settingsSecurity,
-    },
-    {
-      route: '/admin/(app)/settings/sign-in',
-      label: (m: Messages) => m.settingsSignIn,
-    },
-    {
-      route: '/admin/(app)/settings/sso',
-      label: (m: Messages) => m.settingsSso,
-    },
-    ...(can(data.user, 'egress.manage')
-      ? [
-          {
-            route: '/admin/(app)/settings/egress' as const,
-            label: (m: Messages) => m.settingsEgress,
-          },
-        ]
-      : []),
-  ] as const);
+  /** The same screens and order as the Settings menu (`admin-nav.ts`). */
+  const tabs = $derived(allowedEntries(settingsTabs(), data.user));
 </script>
 
-<nav aria-label={i18n.m.navSettings} class="flex flex-wrap gap-1 border-b">
-  {#each tabs as tab (tab.route)}
-    <a
-      href={resolve(tab.route)}
-      aria-current={page.route.id === tab.route ? 'page' : undefined}
-      class="-mb-px border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground aria-[current=page]:border-foreground aria-[current=page]:text-foreground"
-      >{tab.label(i18n.m)}</a
-    >
-  {/each}
-</nav>
+<SectionTabs
+  label={i18n.m.navSettings}
+  tabs={tabs.map((tab) => ({
+    href: tab.href,
+    label: tab.label(i18n.m),
+    current: page.url.pathname === tab.href,
+  }))}
+/>
 
 {@render children()}

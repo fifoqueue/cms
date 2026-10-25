@@ -78,9 +78,10 @@
       <FormMessage form={permalinkForm} />
       <p class="text-sm text-muted-foreground">
         {m.permalinkTokens}
-        {#each PERMALINK_TOKENS as token (token)}<code class="mr-2"
-            >%{token}%</code
-          >{/each}
+        <!-- Wraps between tokens on narrow screens (adjacent inline codes have no break point). -->
+        <span class="mt-1 flex flex-wrap gap-x-2 gap-y-1">
+          {#each PERMALINK_TOKENS as token (token)}<code>%{token}%</code>{/each}
+        </span>
         {m.permalinkDates}
       </p>
       {#each data.types as { key: type, pluralName } (type)}

@@ -25,6 +25,12 @@ const emailFailure = (reason: unknown) => {
 
 /** Text for every SDK error, by its `Errors` key; read through `ko.apiError`. */
 export const apiErrors: ApiErrorCatalog = {
+  EmbedPattern: '^로 시작하는 올바른 정규식을 입력하세요.',
+  EmbedAllow: '출처 목록 없이 지원하는 iframe 권한만 선택하세요.',
+  EmbedSource: '출처가 고정된 HTTPS 템플릿을 사용하세요.',
+  EmbedPlaceholder:
+    '템플릿 자리표시자는 URL 패턴의 이름 있는 캡처와 일치해야 합니다.',
+  EmbedDuplicate: '다른 임베드 제공자가 이미 사용하는 ID입니다.',
   MediaStorageProbeCleanup: ({ bucket, key }) =>
     bucket === undefined || key === undefined
       ? '연결 확인용 파일을 지우지 못했습니다. 저장소에 남은 확인용 파일을 직접 삭제하세요.'
@@ -456,6 +462,26 @@ export const webErrors: WebErrorCatalog = {
 };
 
 export const ko: Messages = {
+  embedsTitle: '임베드',
+  embedsHelp:
+    '목록 순서대로 확인한 뒤 플러그인 제공자를 확인합니다. 일치하지 않는 URL은 링크로 남습니다.',
+  embedsEnabled: '사용',
+  embedsId: '제공자 ID',
+  embedsLabel: '표시 이름',
+  embedsPattern: 'URL 패턴',
+  embedsSource: 'HTTPS iframe 템플릿',
+  embedsFrameTitle: 'iframe 제목',
+  embedsAllow: 'iframe 권한 (allow)',
+  embedsSizing: '크기 방식',
+  embedsRatio: '화면 비율',
+  embedsHeight: '높이 (px)',
+  embedsHeightPath: '높이 메시지 JSON Pointer (선택)',
+  embedsRestore: '기본값 복원',
+  embedsAdd: '제공자 추가',
+  embedsUp: '위로 이동',
+  embedsDown: '아래로 이동',
+  embedsTemplateHelp:
+    'URL 패턴은 ^로 시작하는 RE2 문법을 사용합니다. (?<id>[a-z]+) 같은 이름 있는 캡처와 {id} 또는 {id|urlencode}를 사용하세요. 선형 시간으로 검사하며 역참조와 전후방 탐색은 지원하지 않습니다. 2048자를 넘는 URL은 검사하지 않습니다. HTTPS 출처는 고정해야 합니다.',
   navDashboard: '대시보드',
   navContent: '콘텐츠',
   navMedia: '미디어',
@@ -1421,6 +1447,12 @@ export const ko: Messages = {
   navEditor: '편집기',
   navAllUsers: '모든 사용자',
   navMenu: '메뉴',
+  adminSearchOpen: '화면 검색',
+  adminSearchTitle: '화면으로 이동',
+  adminSearchHint:
+    '화면이나 메뉴 이름을 입력하세요. 화살표 키로 고르고 Enter로 엽니다.',
+  adminSearchPlaceholder: '메뉴와 설정 검색…',
+  adminSearchEmpty: '일치하는 화면이 없습니다.',
   colorMode: '색상 모드',
   colorModeLight: '라이트',
   colorModeDark: '다크',
@@ -2015,15 +2047,21 @@ export const ko: Messages = {
   writingDefaultCategory: '기본 글 카테고리',
   writingDefaultStatus: '새 글의 기본 상태',
   writingToc: '목차 자동 삽입',
-  writingTocTypes: '콘텐츠 유형 (쉼표로 구분, 예: post,page)',
+  writingTocHelp: '선택한 유형의 글에 제목으로 만든 목차를 자동으로 넣습니다.',
+  writingTocEnabled: '목차 자동 삽입 사용',
+  writingTocTypes: '콘텐츠 유형',
   writingTocPosition: '삽입 위치',
   writingTocTop: '본문 맨 위',
   writingTocBefore: '첫 제목 앞',
-  writingTocTitle: '제목 (비우면 사이트 언어 사용)',
-  writingTocLevels: '제목 단계 (쉼표로 구분)',
+  writingTocTitle: '제목',
+  writingTocTitleHelp: '비워 두면 사이트 언어의 기본 제목을 씁니다.',
+  writingTocLevels: '제목 단계',
   writingTocMinimum: '페이지별 최소 제목 수',
+  writingTocMinimumHelp:
+    '선택한 단계의 제목이 이보다 적은 페이지에는 목차를 넣지 않습니다.',
   writingTocCollapsible: '접기 허용',
   writingTocOpen: '처음에 펼치기',
+  writingTocOpenHelp: '접기를 허용할 때만 적용됩니다.',
   // core-content
   contentInsertBlock: '블록 추가',
   contentSearchBlocks: '블록 검색',

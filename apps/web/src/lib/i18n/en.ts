@@ -31,6 +31,12 @@ const emailFailure = (reason: unknown) => {
 
 /** Text for every SDK error, by its `Errors` key; read through `en.apiError`. */
 export const apiErrors: ApiErrorCatalog = {
+  EmbedPattern: 'Enter a valid regular expression starting with ^.',
+  EmbedAllow: 'Choose only supported iframe permissions, without origin lists.',
+  EmbedSource: 'Use an HTTPS template with a fixed origin.',
+  EmbedPlaceholder:
+    'Template placeholders must name capture groups in the URL pattern.',
+  EmbedDuplicate: 'Another embed provider already uses this ID.',
   MediaStorageProbeCleanup: ({ bucket, key }) =>
     bucket === undefined || key === undefined
       ? 'The connection test file could not be removed. Delete the leftover test file from the storage yourself.'
@@ -455,6 +461,26 @@ export const webErrors: WebErrorCatalog = {
 };
 
 export const en = {
+  embedsTitle: 'Embeds',
+  embedsHelp:
+    'Providers are tried in order before plugin providers. Unmatched URLs remain links.',
+  embedsEnabled: 'Enabled',
+  embedsId: 'Provider ID',
+  embedsLabel: 'Label',
+  embedsPattern: 'URL pattern',
+  embedsSource: 'HTTPS iframe template',
+  embedsFrameTitle: 'Iframe title',
+  embedsAllow: 'Iframe permissions (allow)',
+  embedsSizing: 'Sizing',
+  embedsRatio: 'Aspect ratio',
+  embedsHeight: 'Height (px)',
+  embedsHeightPath: 'Height message JSON Pointer (optional)',
+  embedsRestore: 'Restore defaults',
+  embedsAdd: 'Add provider',
+  embedsUp: 'Move up',
+  embedsDown: 'Move down',
+  embedsTemplateHelp:
+    'Start URL patterns with ^. Use RE2 syntax and named captures such as (?<id>[a-z]+), with {id} or {id|urlencode}. Matching runs in linear time; backreferences and lookarounds are not supported. URLs over 2048 characters are not matched. The HTTPS origin must be fixed.',
   // Navigation
   navDashboard: 'Dashboard',
   navContent: 'Content',
@@ -1449,6 +1475,12 @@ export const en = {
   navEditor: 'Editor',
   navAllUsers: 'All users',
   navMenu: 'Menu',
+  adminSearchOpen: 'Search screens',
+  adminSearchTitle: 'Go to a screen',
+  adminSearchHint:
+    'Type a screen or menu name. Use the arrow keys to choose and Enter to open.',
+  adminSearchPlaceholder: 'Search menus and settings…',
+  adminSearchEmpty: 'No screen matches.',
   colorMode: 'Color mode',
   colorModeLight: 'Light',
   colorModeDark: 'Dark',
@@ -2061,16 +2093,23 @@ export const en = {
   settingsWriting: 'Writing',
   writingDefaultCategory: 'Default post category',
   writingDefaultStatus: 'Default status of new entries',
-  writingToc: 'Automatically insert a table of contents',
-  writingTocTypes: 'Content types (comma-separated keys, e.g. post,page)',
+  writingToc: 'Automatic table of contents',
+  writingTocHelp:
+    'Adds a table of contents built from the headings of entries of the chosen types.',
+  writingTocEnabled: 'Insert a table of contents automatically',
+  writingTocTypes: 'Content types',
   writingTocPosition: 'Position',
   writingTocTop: 'Top of content',
   writingTocBefore: 'Before the first heading',
-  writingTocTitle: 'Title (empty uses the site language)',
-  writingTocLevels: 'Heading levels (comma-separated)',
+  writingTocTitle: 'Title',
+  writingTocTitleHelp: 'Leave empty to use the default for the site language.',
+  writingTocLevels: 'Heading levels',
   writingTocMinimum: 'Minimum headings per page',
+  writingTocMinimumHelp:
+    'Pages with fewer headings at the chosen levels get no table of contents.',
   writingTocCollapsible: 'Collapsible',
   writingTocOpen: 'Initially open',
+  writingTocOpenHelp: 'Applies only when the table of contents is collapsible.',
   // core-content
   contentInsertBlock: 'Add block',
   contentSearchBlocks: 'Search blocks',

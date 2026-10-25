@@ -10,6 +10,7 @@
     ".": "./src/index.ts",
     "./plugin": "./src/plugin.ts",
     "./code-block": "./src/code-block.ts",
+    "./embed-pattern": "./src/embed-pattern.ts",
     "./client": "./src/client.ts",
     "./errors": "./src/errors.ts",
     "./format": "./src/format.ts",
@@ -24,6 +25,7 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "re2js": "2.9.0",
     "zod": "^4.6.7"
   }
 }

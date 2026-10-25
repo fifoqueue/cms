@@ -1,5 +1,15 @@
 # HTTP API 라우트
 
+## 임베드 제공자
+
+- `GET /api/v1/admin/embeds`, `PUT /api/v1/admin/embeds`: `settings.manage` 권한이 필요합니다. `{ providers: [{ id, label, enabled, urlPattern, src, title, allow, sizing }] }`를 조회·저장합니다. `sizing`은 `{ kind: 'ratio', ratio }` 또는 `{ kind: 'height', height, heightMessagePath? }`입니다.
+- `GET /api/v1/embeds/providers`: 활성 제공자의 `[{ id, label, urlPattern }]`만 공개하며 iframe 템플릿은 노출하지 않습니다.
+- 웹 `GET /admin/content/embed-providers`: 로그인한 편집자(`content.create`)에게 같은 공개 목록을 JSON으로 반환합니다.
+- SDK: `admin.embeds.get()`, `admin.embeds.update(input)`, `content.embedProviders()`.
+- 최대 50개이며 ID는 고유한 슬러그입니다. URL 패턴은 전체 href를 대상으로 하며 반드시 `^`로 시작하는 RE2 문법이어야 합니다. SDK의 공통 RE2JS 컴파일러가 저장 검증·서버 렌더링·편집기 붙여넣기에 사용됩니다. 입력 길이에 선형 시간으로 실행하며 역참조와 전후방 탐색은 지원하지 않습니다. 이름 있는 그룹은 `(?<name>…)`과 `(?P<name>…)`를 지원합니다. 서버와 편집기는 검사 전에 URL을 2048자로 제한합니다.
+- `allow`는 세미콜론으로 구분한 `accelerometer`, `autoplay`, `clipboard-write`, `encrypted-media`, `fullscreen`, `gyroscope`, `picture-in-picture`, `web-share` 이름만 허용합니다. 출처 목록은 금지하고 렌더링 시에도 각 지시문 전체를 다시 필터링합니다.
+- 저장 시 정규식, 고정 HTTPS 출처, 이름 있는 캡처와 템플릿 자리표시자의 일치 여부를 검사하고 `settings.updated`(`section: 'embeds'`)를 보냅니다. 본문 확장 호출마다 설정을 한 번 읽어 제공자를 구성하므로 다른 프로세스의 변경도 재시작 없이 반영됩니다.
+
 콘텐츠 관리자의 생성·수정, 휴지통·복원, 리비전 복원, 자동 저장은 댓글과 같은
 프런트엔드 비밀 기반 브라우저 증명을 사용합니다. 제출한 JSON으로는 origin을 설정할 수 없습니다.
 `AdminContent.origin`은 `content.editOthers` 권한이 있는 사용자에게는 null을 허용하는 `ip`와

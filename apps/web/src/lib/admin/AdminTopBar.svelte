@@ -8,6 +8,7 @@
   import { default as Plus } from '@lucide/svelte/icons/plus';
   import { default as UserRound } from '@lucide/svelte/icons/user-round';
   import { onMount } from 'svelte';
+  import type { Snippet } from 'svelte';
   import { typeLabel, useI18n } from '#lib/i18n/index.js';
 
   interface Props {
@@ -15,9 +16,11 @@
     siteTitle: string;
     /** Comments waiting for moderation (0 when the user may not moderate). */
     pendingComments: number;
+    /** Shown at the end, before the account menu (the screen search). */
+    children?: Snippet;
   }
 
-  let { user, siteTitle, pendingComments }: Props = $props();
+  let { user, siteTitle, pendingComments, children }: Props = $props();
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
@@ -127,27 +130,31 @@
       </ul>
     </details>
   {/if}
-  <details data-top-menu class="relative ml-auto">
-    <summary
-      class="inline-flex cursor-pointer list-none items-center gap-1 rounded px-2 py-1 hover:bg-muted"
-      ><UserRound class="size-4" aria-hidden="true" />{user.name}<ChevronDown
-        class="size-3.5"
-        aria-hidden="true"
-      /></summary
-    >
-    <ul class="{menu} right-0">
-      <li>
-        <a href={resolve('/admin/(app)/account')} class={item}>{m.navAccount}</a
-        >
-      </li>
-      <li>
-        <form method="POST" action={resolve('/admin/logout')}>
-          <button type="submit" class="{item} w-full text-left"
-            >{m.signOut}</button
+  <div class="ml-auto flex items-center gap-1">
+    {@render children?.()}
+    <details data-top-menu class="relative">
+      <summary
+        class="inline-flex cursor-pointer list-none items-center gap-1 rounded px-2 py-1 hover:bg-muted"
+        ><UserRound class="size-4" aria-hidden="true" />{user.name}<ChevronDown
+          class="size-3.5"
+          aria-hidden="true"
+        /></summary
+      >
+      <ul class="{menu} right-0">
+        <li>
+          <a href={resolve('/admin/(app)/account')} class={item}
+            >{m.navAccount}</a
           >
-        </form>
-      </li>
-    </ul>
-  </details>
+        </li>
+        <li>
+          <form method="POST" action={resolve('/admin/logout')}>
+            <button type="submit" class="{item} w-full text-left"
+              >{m.signOut}</button
+            >
+          </form>
+        </li>
+      </ul>
+    </details>
+  </div>
 </nav>
 <!-- eslint-enable svelte/no-navigation-without-resolve -->

@@ -30,9 +30,15 @@
   import { codeBlockView } from '#lib/admin/editor/CodeBlockView.js';
   import { embedView } from '#lib/admin/editor/EmbedView.js';
   import {
+    embedMatchers,
+    loadEmbedProviders,
+    pasteEmbed,
+  } from '#lib/admin/editor/embed-paste.js';
+  import {
     footnoteView,
     publishedDocument,
   } from '#lib/admin/editor/FootnoteView.js';
+  import { outsideRender } from '#lib/admin/editor/outside-render.svelte.js';
   import { tocView } from '#lib/admin/editor/TocView.js';
   import {
     editorExtensions,
@@ -162,11 +168,17 @@
     () => m.contentPluginBlockInactive,
   );
 
+  /** Enabled embed providers' URL patterns; none (no auto-embed) until or unless they load. */
+  let embedPatterns: Awaited<ReturnType<typeof embedMatchers>> = [];
+
   onMount(() => {
     void loadPluginBlocks().then((list) => {
       pluginBlocks = list;
       pluginBlock.refresh();
     });
+    void loadEmbedProviders()
+      .then(embedMatchers)
+      .then((patterns) => (embedPatterns = patterns));
     const instance = new Editor({
       element,
       // The shared schema with editor placeholders for markers, patterns and plugin blocks.
@@ -233,14 +245,22 @@
         },
         handlePaste: (view, event) => {
           const files = [...(event.clipboardData?.files ?? [])];
-          if (!files.some(isImage)) return false;
+          if (!files.some(isImage))
+            return (
+              !htmlMode &&
+              pasteEmbed(
+                view,
+                event.clipboardData?.getData('text/plain') ?? '',
+                embedPatterns,
+              )
+            );
           // Pasting replaces the selection, as it does for text, once the upload succeeds.
           const { from, to } = view.state.selection;
           return uploadInto(view, files, from, to);
         },
       },
       onTransaction: ({ transaction }) => {
-        revision++;
+        outsideRender(() => revision++);
         for (const marker of markers) {
           marker.from = transaction.mapping.map(marker.from);
           marker.to = transaction.mapping.map(marker.to);
@@ -652,7 +672,9 @@
   ]);
 </script>
 
-<div class="rounded-md border bg-background">
+<!-- `min-w-0`: inside the form's grid, the box keeps the column's width; long words (URLs) wrap
+     instead of widening the page. -->
+<div class="min-w-0 rounded-md border bg-background">
   <!-- The block and format bars (and table/image settings) stay at the top of the screen while
        a long document scrolls; narrow screens keep only the format bar there, so the pinned
        area stays short. Popovers are portaled above them (z-50). -->
