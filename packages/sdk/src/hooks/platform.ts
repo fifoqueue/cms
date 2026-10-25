@@ -29,6 +29,8 @@ export const platformWxrItemSchema = z.object({
       authorName: z.string(),
       authorEmail: z.string(),
       authorUrl: z.string(),
+      /** WordPress user id of a signed-in commenter (`wp:comment_user_id`); `0` or empty for guests. */
+      userId: z.string().optional(),
       /** `wp:comment_author_IP` / `wp:comment_agent`; empty or absent when unknown. */
       authorIp: z.string().optional(),
       authorUserAgent: z.string().optional(),

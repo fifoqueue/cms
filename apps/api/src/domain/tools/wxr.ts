@@ -1,6 +1,8 @@
 // WordPress eXtended RSS (WXR 1.2), the format of WordPress "Tools → Export/Import".
 
 export interface WxrAuthor {
+  /** WordPress user id (`wp:author_id`), for comments written by this author. */
+  id?: string;
   login: string;
   email: string;
   displayName: string;
@@ -22,6 +24,8 @@ export interface WxrComment {
   authorName: string;
   authorEmail: string;
   authorUrl: string;
+  /** WordPress user id of a signed-in commenter (`wp:comment_user_id`); `0`/empty for guests. */
+  userId?: string;
   /**
    * `wp:comment_author_IP` / `wp:comment_agent` as written; empty when unknown. Absent: the tag
    * is not written (exports by someone without `comments.moderate`).

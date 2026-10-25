@@ -233,6 +233,13 @@ export class ImportService {
       actor,
       result,
     );
+    // WordPress user ids of those authors, so their comments stay theirs.
+    const members = new Map(
+      document.authors.flatMap((author) => {
+        const id = author.id && authors.get(author.login.trim().toLowerCase());
+        return id ? [[author.id!, id] as const] : [];
+      }),
+    );
     const categories = await this.terms(
       'category',
       document.categories,
@@ -415,7 +422,7 @@ export class ImportService {
       }
       created.set(item.id, entry.id);
       result.content += 1;
-      result.comments += await this.comments(entry.id, item.comments);
+      result.comments += await this.comments(entry.id, item.comments, members);
       const previous = oldPath(item.link, origin);
       if (
         previous &&
@@ -513,7 +520,8 @@ export class ImportService {
    * WordPress navigation menus (`nav_menu_item` entries) as core menus, in menu order and up to
    * three levels. Items whose target was not imported are left out with their children moved
    * up. The first imported menu takes the primary location when it is free; WXR files do not
-   * carry theme locations.
+   * carry theme locations. A menu whose name already exists is kept as it is, so importing the
+   * same file again does not duplicate it.
    */
   private async menus(
     document: WxrDocument,
@@ -579,6 +587,8 @@ export class ImportService {
     }
     const added: string[] = [];
     for (const { name, items } of grouped.values()) {
+      const title = (name.trim() || 'Menu').slice(0, 100);
+      if (settings.menus.some((menu) => menu.name === title)) continue;
       const nodes = new Map<string, MenuItem>();
       const depth = new Map<string, number>();
       const roots: MenuItem[] = [];
@@ -624,7 +634,7 @@ export class ImportService {
       const id = this.deps.ids.next();
       settings.menus.push({
         id,
-        name: (name.trim() || 'Menu').slice(0, 100),
+        name: title,
         items: roots.slice(0, 200),
       });
       added.push(id);
@@ -671,8 +681,15 @@ export class ImportService {
     return ids;
   }
 
-  /** Comments in thread order; pingbacks and trackbacks are left out. */
-  private async comments(contentId: string, comments: readonly WxrComment[]) {
+  /**
+   * Comments in thread order; pingbacks and trackbacks are left out. Comments by an imported
+   * author belong to that author's account.
+   */
+  private async comments(
+    contentId: string,
+    comments: readonly WxrComment[],
+    members: ReadonlyMap<string, string>,
+  ) {
     const ids = new Map<string, string>();
     let count = 0;
     const ordered = [...comments].sort(
@@ -693,7 +710,7 @@ export class ImportService {
         id,
         contentId,
         parentId: (comment.parentId && ids.get(comment.parentId)) || null,
-        userId: null,
+        userId: (comment.userId && members.get(comment.userId)) || null,
         authorName: (comment.authorName.trim() || 'Anonymous').slice(0, 100),
         authorEmail: comment.authorEmail.trim().toLowerCase().slice(0, 191),
         authorUrl: /^https?:\/\//i.test(comment.authorUrl)

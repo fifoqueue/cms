@@ -10,7 +10,7 @@ const elements = new Set(
   ),
 );
 const attributes = new Set(
-  'id class style version viewBox width height x y x1 x2 y1 y2 cx cy r rx ry d points transform fill fill-opacity fill-rule stroke stroke-width stroke-opacity stroke-linecap stroke-linejoin stroke-dasharray opacity offset stop-color stop-opacity gradientUnits gradientTransform spreadMethod clip-path clip-rule mask text-anchor font-size font-family font-weight preserveAspectRatio href xlink:href'.split(
+  'id class style version viewBox width height x y x1 x2 y1 y2 cx cy r rx ry d points transform fill fill-opacity fill-rule stroke stroke-width stroke-opacity stroke-linecap stroke-linejoin stroke-dasharray paint-order opacity offset stop-color stop-opacity gradientUnits gradientTransform spreadMethod clip-path clip-rule mask text-anchor font-size font-family font-weight preserveAspectRatio href xlink:href'.split(
     ' ',
   ),
 );

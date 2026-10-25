@@ -280,3 +280,34 @@ Second <script>x()</script>para]]></content:encoded><wp:post_name>classic</wp:po
       .catch((error: { code: string }) => error.code),
   ).toBe('invalid_input');
 });
+
+test('importing a WordPress file again keeps one menu, and member comments keep their account', async () => {
+  const target = await site();
+  const xml = `<?xml version="1.0"?>
+<rss xmlns:wp="http://wordpress.org/export/1.2/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/"><channel>
+<wp:wxr_version>1.2</wp:wxr_version>
+<wp:author><wp:author_id>7</wp:author_id><wp:author_login>owner</wp:author_login><wp:author_email>admin@example.com</wp:author_email></wp:author>
+<item><title>Hello</title><dc:creator>owner</dc:creator><content:encoded><![CDATA[Hi]]></content:encoded><wp:post_id>1</wp:post_id><wp:post_name>hello</wp:post_name><wp:status>publish</wp:status><wp:post_type>post</wp:post_type>
+<wp:comment><wp:comment_id>1</wp:comment_id><wp:comment_author>Guest</wp:comment_author><wp:comment_date_gmt>2026-05-01 00:00:00</wp:comment_date_gmt><wp:comment_content>Question</wp:comment_content><wp:comment_approved>1</wp:comment_approved><wp:comment_user_id>0</wp:comment_user_id></wp:comment>
+<wp:comment><wp:comment_id>2</wp:comment_id><wp:comment_author>Owner</wp:comment_author><wp:comment_date_gmt>2026-05-02 00:00:00</wp:comment_date_gmt><wp:comment_content>Answer</wp:comment_content><wp:comment_approved>1</wp:comment_approved><wp:comment_parent>1</wp:comment_parent><wp:comment_user_id>7</wp:comment_user_id></wp:comment></item>
+<item><title>Home</title><wp:post_id>2</wp:post_id><wp:status>publish</wp:status><wp:post_type>nav_menu_item</wp:post_type><category domain="nav_menu" nicename="main"><![CDATA[Main]]></category>
+<wp:postmeta><wp:meta_key>_menu_item_type</wp:meta_key><wp:meta_value>post_type</wp:meta_value></wp:postmeta>
+<wp:postmeta><wp:meta_key>_menu_item_object_id</wp:meta_key><wp:meta_value>1</wp:meta_value></wp:postmeta></item>
+</channel></rss>`;
+  expect(await target.importer.importWxr(xml, ADMIN)).toMatchObject({
+    content: 1,
+    comments: 2,
+    menus: 1,
+  });
+  expect(await target.importer.importWxr(xml, ADMIN)).toMatchObject({
+    content: 0,
+    menus: 0,
+  });
+  expect(target.menus().menus.map((menu) => menu.name)).toEqual(['Main']);
+  const [entry] = [...target.content.rows.values()];
+  const thread = (await target.comments.thread(entry!.id, 1, 10, 3)).items;
+  expect(thread.map((comment) => [comment.body, comment.userId])).toEqual([
+    ['Question', null],
+    ['Answer', ADMIN.id],
+  ]);
+});

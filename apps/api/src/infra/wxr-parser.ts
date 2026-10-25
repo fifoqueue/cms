@@ -71,6 +71,7 @@ const comment = (node: Node): WxrComment => ({
   authorName: str(node['wp:comment_author']),
   authorEmail: str(node['wp:comment_author_email']),
   authorUrl: str(node['wp:comment_author_url']),
+  userId: str(node['wp:comment_user_id']),
   authorIp: str(node['wp:comment_author_IP']),
   authorUserAgent: str(node['wp:comment_agent']),
   body: str(node['wp:comment_content']),
@@ -173,6 +174,7 @@ export const fastXmlWxrParser: WxrParser = {
       link: str(channel.link),
       baseUrl: str(channel['wp:base_site_url']) || str(channel.link),
       authors: authors.map((author) => ({
+        id: str(author['wp:author_id']),
         login: str(author['wp:author_login']),
         email: str(author['wp:author_email']),
         displayName: str(author['wp:author_display_name']),
