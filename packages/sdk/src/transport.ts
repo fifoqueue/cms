@@ -55,6 +55,7 @@ const toSearch = (query: Query = {}) => {
 export const createTransport = (
   { baseUrl, fetch: fetcher = fetch }: ClientOptions,
   token?: string,
+  defaultHeaders?: Record<string, string>,
 ) => {
   return async <T>(
     method: string,
@@ -62,6 +63,7 @@ export const createTransport = (
     options: RequestOptions<T> = {},
   ): Promise<T> => {
     const headers = new Headers({
+      ...defaultHeaders,
       ...options.headers,
       accept: 'application/json',
     });

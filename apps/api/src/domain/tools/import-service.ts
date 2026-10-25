@@ -27,6 +27,8 @@ import type { ContentService } from '#api/domain/content/content-service';
 import type { ContentTypeService } from '#api/domain/content/content-types';
 import type { Clock, HookDispatcher, IdGenerator } from '#api/domain/ports';
 import { platformImportItemSchema } from '@cms/sdk/plugin';
+import { canonicalAddress } from '#api/shared/ip-address';
+import { cleanUserAgent } from '#api/shared/user-agent';
 import type { TaxonomyService } from '#api/domain/taxonomy/taxonomy-service';
 import { fromWordPressHtml } from '#api/domain/tools/wxr';
 import type { PatternService } from '#api/domain/content/pattern-service';
@@ -697,6 +699,9 @@ export class ImportService {
         authorUrl: /^https?:\/\//i.test(comment.authorUrl)
           ? comment.authorUrl.slice(0, 255)
           : '',
+        // Invalid addresses are dropped; valid ones stored in canonical form.
+        authorIp: canonicalAddress((comment.authorIp ?? '').trim()),
+        authorUserAgent: cleanUserAgent(comment.authorUserAgent ?? ''),
         body,
         status,
         createdAt: comment.createdAt,

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Block } from '@cms/sdk';
-  import { catalogMessage } from '#lib/admin/form-errors.js';
+  import ErrorView from '#lib/components/ErrorView.svelte';
+  import { errorCopy } from '#lib/error-copy.js';
   import { termLabel } from '#lib/seo/head.js';
   import { useI18n } from '#lib/i18n/index.js';
   import { formatMonth } from '#lib/theme/format.js';
@@ -65,24 +66,24 @@
           description: page.archive.description,
           count: m.themePostCount(page.posts.total),
         };
-      case 'error':
-        return page.status === 404
-          ? {
-              label: '404',
-              title: m.themeNotFound,
-              description: m.themeNotFoundHelp,
-            }
-          : {
-              label: String(page.status),
-              title: catalogMessage(m, page.message) ?? page.message,
-            };
       default:
         return null;
     }
   });
 </script>
 
-{#if view}
+{#if page.kind === 'error'}
+  <!-- The same error screen as outside the site; theme templates add the search box. -->
+  {@const copy = errorCopy(m, page.status, page.message, true)}
+  <header class="cms-block-query-title">
+    <ErrorView
+      status={page.status}
+      title={copy.title}
+      help={a.showDescription ? copy.help : ''}
+      level={a.level}
+    />
+  </header>
+{:else if view}
   <header
     class="cms-block-query-title space-y-2"
     class:sr-only={'hidden' in view && view.hidden}

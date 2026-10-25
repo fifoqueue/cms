@@ -10,10 +10,39 @@ import { lockSetting } from '#api/infra/prisma/client';
 import { unauthorized } from '#api/shared/errors';
 import type { Database } from '#api/infra/prisma/client';
 import { PUBLIC_CONTENT } from '#api/infra/prisma/content-criteria';
-import type { Prisma } from '#api/infra/prisma/generated/client';
+import { Prisma } from '#api/infra/prisma/generated/client';
 import { decodePath } from '#api/infra/prisma/permalink-repository';
 
 type Transaction = Prisma.TransactionClient;
+
+/** Exclusive locks on entries, in id order, before their comments change. */
+const lockEntries = async (tx: Transaction, ids: Iterable<string>) => {
+  const unique = [...new Set(ids)];
+  if (unique.length)
+    await tx.$queryRaw`SELECT id FROM contents WHERE id IN (${Prisma.join(unique)}) ORDER BY id FOR UPDATE`;
+};
+
+/**
+ * The comments of `ids`, locked in id order (`FOR UPDATE`). Every comment writer locks in one
+ * order, entry before comment, as deleting an entry does (its row, then the comments through
+ * `ON DELETE CASCADE`): moderation (`PrismaCommentRepository.moderate`), inserts and the
+ * notification claim lock the entry first. Holding the entry exclusively also matters because
+ * changing a comment's indexed columns makes InnoDB check the `content_id` foreign key with a
+ * shared lock on the entry, which two writers would each try to upgrade for the count update.
+ */
+const lockComments = async (
+  tx: Transaction,
+  ids: readonly string[],
+): Promise<CommentRecord[]> =>
+  ids.length
+    ? tx.$queryRaw<CommentRecord[]>(Prisma.sql`
+        SELECT id, content_id AS contentId, parent_id AS parentId, user_id AS userId,
+          author_name AS authorName, author_email AS authorEmail, author_url AS authorUrl,
+          author_ip AS authorIp, author_user_agent AS authorUserAgent, body, status, created_at AS createdAt, updated_at AS updatedAt
+        FROM comments WHERE id IN (${Prisma.join([...new Set(ids)])})
+        ORDER BY id FOR UPDATE
+      `)
+    : Promise.resolve([]);
 
 const ownColumns = {
   id: true,
@@ -23,6 +52,8 @@ const ownColumns = {
   authorName: true,
   authorEmail: true,
   authorUrl: true,
+  authorIp: true,
+  authorUserAgent: true,
   body: true,
   status: true,
   createdAt: true,
@@ -34,17 +65,17 @@ const literal = (value: string) => value.replace(/[\\%_]/g, '\\$&');
 
 const THREAD_ITEMS_MAX = 1000;
 
-/** Applies approved-count changes without rescanning a comment history. */
+/**
+ * Applies approved-count changes without rescanning a comment history: plain increments on
+ * entries the caller already locked.
+ */
 const adjustCounts = async (
   tx: Transaction,
   deltas: ReadonlyMap<string, number>,
 ) => {
-  for (const [id, delta] of deltas)
+  for (const [id, delta] of [...deltas].sort(([a], [b]) => a.localeCompare(b)))
     if (delta)
-      await tx.content.updateMany({
-        where: { id },
-        data: { commentCount: { increment: delta } },
-      });
+      await tx.$executeRaw`UPDATE contents SET comment_count = comment_count + ${delta} WHERE id = ${id}`;
 };
 
 const statusDelta = (before: CommentStatus, after: CommentStatus) =>
@@ -99,6 +130,8 @@ export class PrismaCommentRepository implements CommentRepository {
   async insert(record: CommentRecord) {
     await this.db.$transaction(async (tx) => {
       await lockSetting(tx, 'privacy.jobs');
+      // Before any plain read, like the moderation writes (see `lockComments`).
+      await lockEntries(tx, [record.contentId]);
       if (record.userId) {
         const user = await tx.user.findUnique({
           where: { id: record.userId },
@@ -166,14 +199,23 @@ export class PrismaCommentRepository implements CommentRepository {
     return { items, total, truncated };
   }
 
-  async list({ status, contentId, search, page, pageSize }: CommentCriteria) {
+  async list({
+    status,
+    contentId,
+    ids,
+    search,
+    page,
+    pageSize,
+  }: CommentCriteria) {
     const where: Prisma.CommentWhereInput = {
       status: status ?? { in: ['pending', 'approved'] },
       contentId,
+      ...(ids && { id: { in: [...ids] } }),
       ...(search && {
         OR: [
           { authorName: { contains: literal(search) } },
           { authorEmail: { contains: literal(search) } },
+          { authorIp: { contains: literal(search) } },
           { body: { contains: literal(search) } },
         ],
       }),
@@ -226,18 +268,55 @@ export class PrismaCommentRepository implements CommentRepository {
     return counts;
   }
 
-  async update(id: string, changes: CommentChanges, at: Date) {
+  /**
+   * Runs a moderation write on the comments of `ids` with every lock taken up front, entries
+   * then comments (see `lockComments`), so `write` uses plain statements only. A comment's entry
+   * never changes, so it is read before the transaction: inside it only locking reads run, which
+   * open no snapshot, so no write can fail MariaDB's snapshot isolation check (error 1020) when
+   * a concurrent writer (such as the notification claim) committed first.
+   */
+  private async moderate<T>(
+    ids: readonly string[],
+    write: (tx: Transaction, rows: CommentRecord[]) => Promise<T>,
+  ) {
+    const unique = [...new Set(ids)];
+    const entries = unique.length
+      ? (
+          await this.db.comment.findMany({
+            where: { id: { in: unique } },
+            select: { contentId: true },
+          })
+        ).map((row) => row.contentId)
+      : [];
     return this.db.$transaction(async (tx) => {
-      const before = await tx.comment.findUnique({
-        where: { id },
-        select: ownColumns,
-      });
+      await lockEntries(tx, entries);
+      const rows = await lockComments(tx, unique);
+      // Comments created after the read above (none in practice: ids are generated) lock late.
+      await lockEntries(
+        tx,
+        rows
+          .map((row) => row.contentId)
+          .filter((entry) => !entries.includes(entry)),
+      );
+      return write(tx, rows);
+    });
+  }
+
+  async update(id: string, changes: CommentChanges, at: Date) {
+    return this.moderate([id], async (tx, [before]) => {
       if (!before) return null;
-      const after = await tx.comment.update({
-        where: { id },
-        data: { ...changes, updatedAt: at },
-        select: ownColumns,
-      });
+      const after: CommentRecord = {
+        ...before,
+        ...Object.fromEntries(
+          Object.entries(changes).filter(([, value]) => value !== undefined),
+        ),
+        updatedAt: at,
+      };
+      await tx.$executeRaw`
+        UPDATE comments SET status = ${after.status}, author_name = ${after.authorName},
+          author_email = ${after.authorEmail}, author_url = ${after.authorUrl},
+          body = ${after.body}, updated_at = ${at}
+        WHERE id = ${id}`;
       await adjustCounts(
         tx,
         new Map([[after.contentId, statusDelta(before.status, after.status)]]),
@@ -247,15 +326,9 @@ export class PrismaCommentRepository implements CommentRepository {
   }
 
   async setStatus(ids: readonly string[], status: CommentStatus, at: Date) {
-    return this.db.$transaction(async (tx) => {
-      const before = await tx.comment.findMany({
-        where: { id: { in: [...ids] } },
-        select: ownColumns,
-      });
-      await tx.comment.updateMany({
-        where: { id: { in: before.map((row) => row.id) } },
-        data: { status, updatedAt: at },
-      });
+    return this.moderate(ids, async (tx, before) => {
+      if (before.length)
+        await tx.$executeRaw`UPDATE comments SET status = ${status}, updated_at = ${at} WHERE id IN (${Prisma.join(before.map((row) => row.id))})`;
       const deltas = new Map<string, number>();
       for (const row of before)
         deltas.set(
@@ -268,22 +341,17 @@ export class PrismaCommentRepository implements CommentRepository {
   }
 
   async delete(ids: readonly string[]) {
-    return this.db.$transaction(async (tx) => {
-      const doomed = await tx.comment.findMany({
-        where: { id: { in: [...ids] } },
-        select: ownColumns,
-      });
+    return this.moderate(ids, async (tx, doomed) => {
+      if (!doomed.length) return [];
       const deleted = new Set(doomed.map((row) => row.id));
+      const doomedIds = Prisma.join([...deleted]);
       const parentOf = new Map(doomed.map((row) => [row.id, row.parentId]));
       // Replies move to the nearest ancestor that survives.
       const survivor = (id: string | null): string | null =>
         id && deleted.has(id) ? survivor(parentOf.get(id) ?? null) : id;
       for (const row of doomed)
-        await tx.comment.updateMany({
-          where: { parentId: row.id, id: { notIn: [...deleted] } },
-          data: { parentId: survivor(row.parentId) },
-        });
-      await tx.comment.deleteMany({ where: { id: { in: [...deleted] } } });
+        await tx.$executeRaw`UPDATE comments SET parent_id = ${survivor(row.parentId)} WHERE parent_id = ${row.id} AND id NOT IN (${doomedIds})`;
+      await tx.$executeRaw`DELETE FROM comments WHERE id IN (${doomedIds})`;
       const deltas = new Map<string, number>();
       for (const row of doomed)
         if (row.status === 'approved')

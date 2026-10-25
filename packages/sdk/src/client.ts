@@ -420,8 +420,12 @@ export const createSsoClient = (options: ClientOptions, token?: string) => {
 };
 
 /** Content and system management for a signed-in user. */
-export const createAdminClient = (options: ClientOptions, token: string) => {
-  const request = createTransport(options, token);
+export const createAdminClient = (
+  options: ClientOptions,
+  token: string,
+  proof?: ClientProof,
+) => {
+  const request = createTransport(options, token, visitorHeaders({ proof }));
   const plugin = (id: string) =>
     `/api/v1/admin/plugins/${encodeURIComponent(id)}`;
   const taxonomyPath = (taxonomy: TaxonomyType) =>

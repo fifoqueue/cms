@@ -23,7 +23,7 @@ import { visitorOf } from '#lib/server/visitor.js';
 
 type Event = Pick<
   RequestEvent,
-  'fetch' | 'cookies' | 'url' | 'locals' | 'getClientAddress'
+  'fetch' | 'cookies' | 'url' | 'locals' | 'getClientAddress' | 'request'
 >;
 
 /** The step runner shared by every method and factor, core or plugin. */

@@ -25,10 +25,12 @@ import { z } from 'zod';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
 import type {
+  CommentOrigin,
   CommentRecord,
   CommentRepository,
   CommentTarget,
 } from '#api/domain/comments/ports';
+import { canonicalAddress } from '#api/shared/ip-address';
 import type { AvatarService } from '#api/domain/comments/avatar-service';
 import type { ContentLocks } from '#api/domain/content/content-locks';
 import type { ContentTypeService } from '#api/domain/content/content-types';
@@ -49,6 +51,7 @@ import type { UserDirectory } from '#api/domain/users/user-directory';
 import { forbidden, invalidInput, notFound, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 import { CommentCheckers } from '#api/domain/comments/comment-checkers';
+import type { CommentNotifier } from '#api/domain/comments/comment-notifier';
 
 const KEY = 'discussion';
 const DAY = 24 * 60 * 60 * 1000;
@@ -76,10 +79,16 @@ const toPlugin = (record: CommentRecord): PluginComment => ({
   authorName: record.authorName,
   authorEmail: record.authorEmail,
   authorUrl: record.authorUrl,
+  authorIp: record.authorIp,
+  authorUserAgent: record.authorUserAgent,
   body: record.body,
   status: record.status,
   createdAt: record.createdAt.toISOString(),
 });
+
+/** The stored form of a proven address: canonical text, or null. */
+const authorIp = (address: string | null) =>
+  address ? canonicalAddress(address) : null;
 
 const toAdmin = (
   record: CommentRecord & { contentTitle: string; parentAuthor: string | null },
@@ -93,6 +102,8 @@ const toAdmin = (
   authorName: record.authorName,
   authorEmail: record.authorEmail,
   authorUrl: record.authorUrl,
+  authorIp: record.authorIp,
+  authorUserAgent: record.authorUserAgent,
   body: record.body,
   status: record.status,
   createdAt: record.createdAt.toISOString(),
@@ -109,7 +120,9 @@ export interface CommentServiceDeps {
   types: Pick<ContentTypeService, 'list'>;
   protection: Pick<ProtectionService, 'check'>;
   hooks: HookDispatcher;
-  email: Pick<EmailService, 'enabled' | 'queue'>;
+  email: Pick<EmailService, 'enabled'>;
+  /** Approval notices (entry author, parent comment author), push tokens and the page offer. */
+  notifier: Pick<CommentNotifier, 'offer' | 'pushToken' | 'notice' | 'claim'>;
   roles?: {
     capabilities(role: string, userId?: string): Promise<Capability[]>;
   };
@@ -176,6 +189,7 @@ export class CommentService {
     const ownPending = await this.pending(pendingProof, target.id);
     const viewer = actor ? await this.deps.users.get(actor.id) : null;
     return {
+      notifications: await this.deps.notifier.offer(settings, !!viewer),
       items: await Promise.all(
         items.map((item) => this.toPublic(item, target, item.depth, settings)),
       ),
@@ -205,7 +219,10 @@ export class CommentService {
    */
   async submit(
     input: unknown,
-    attempt: Omit<Attempt, 'action' | 'account'>,
+    attempt: Omit<Attempt, 'action' | 'account'> & {
+      /** The proven browser user agent (`ClientResolver.userAgent`). */
+      userAgent?: string | null;
+    },
     proofs: readonly string[] = [],
     actor: Actor | null = null,
     commenterProof = '',
@@ -251,6 +268,7 @@ export class CommentService {
         page: 1,
         pendingProof: null,
         commenterProof: null,
+        pushToken: null,
       };
 
     const target = await this.deps.repository.target(data.contentId);
@@ -300,12 +318,17 @@ export class CommentService {
         ? await this.deps.repository.hasApproved(data.authorEmail)
         : recognized);
 
+    const origin = {
+      authorIp: authorIp(attempt.address),
+      authorUserAgent: attempt.userAgent ?? null,
+    };
     const draft: CommentDraft = {
       contentId: target.id,
       parentId: data.parentId,
       authorName: data.authorName,
       authorEmail: data.authorEmail,
       authorUrl: data.authorUrl,
+      ...origin,
       body: data.body,
       status:
         actor && can(actor, 'comments.moderate')
@@ -318,6 +341,7 @@ export class CommentService {
                     authorName: data.authorName,
                     authorEmail: data.authorEmail,
                     authorUrl: data.authorUrl,
+                    ...origin,
                     body: data.body,
                   },
                   settings,
@@ -347,6 +371,9 @@ export class CommentService {
     await this.deps.repository.insert(record);
     void this.deps.hooks.emit('comment.created', toPlugin(record));
     void this.notify(record, target, settings).catch(() => undefined);
+    await this.deps.notifier.claim(record);
+    const pushOffered = !!(await this.deps.notifier.offer(settings, !!user))
+      .push;
     let root = record;
     for (
       let level = 0;
@@ -375,6 +402,7 @@ export class CommentService {
           : recognized && status !== 'approved'
             ? commenterProof
             : this.commenterProof(record),
+      pushToken: pushOffered ? this.deps.notifier.pushToken(record) : null,
     };
   }
 
@@ -454,10 +482,17 @@ export class CommentService {
     if (!result) throw notFound(Errors.CommentNotFound);
     this.statusChanged(result.before, result.after.status);
     void this.deps.hooks.emit('comment.updated', toPlugin(result.after));
+    // Claiming is idempotent, so repeating a failed approval announces the comment then.
+    await this.deps.notifier.claim(result.after);
   }
 
-  /** A moderator's reply, approved at once and marked as theirs. */
-  async reply(id: string, input: unknown, actor: Actor) {
+  /** A moderator's reply, approved at once and marked as theirs; `origin` is their proven browser. */
+  async reply(
+    id: string,
+    input: unknown,
+    actor: Actor,
+    origin: CommentOrigin = { address: null, userAgent: null },
+  ) {
     authorize(actor, 'comments.moderate');
     const { body } = parseInput(commentReplySchema, input);
     const parent = await this.deps.repository.findById(id);
@@ -473,6 +508,8 @@ export class CommentService {
       authorName: authorName(user.name),
       authorEmail: user.email,
       authorUrl: '',
+      authorIp: authorIp(origin.address),
+      authorUserAgent: origin.userAgent,
       body,
       status: 'approved',
       createdAt: now,
@@ -483,6 +520,7 @@ export class CommentService {
     if (parent.status === 'pending')
       await this.bulk({ ids: [parent.id], action: 'approve' }, actor);
     void this.deps.hooks.emit('comment.created', toPlugin(record));
+    await this.deps.notifier.claim(record);
   }
 
   async bulk(input: unknown, actor: Actor) {
@@ -515,6 +553,9 @@ export class CommentService {
       this.deps.clock.now(),
     );
     for (const before of changed) this.statusChanged(before, status);
+    // Every approved row, changed or not, so repeating a failed approval announces it then.
+    for (const before of changed)
+      await this.deps.notifier.claim({ ...before, status });
   }
 
   async remove(id: string, actor: Actor) {
@@ -659,33 +700,14 @@ export class CommentService {
     return id;
   }
 
-  /** Mail about a new comment: moderators when it waits, the entry's author when it is shown. */
-  private async notice(input: Parameters<EmailService['queue']>[0]) {
-    const schema = z.object({
-      to: z.literal(input.to),
-      subject: z
-        .string()
-        .min(1)
-        .max(998)
-        .regex(/^[^\r\n]+$/),
-      text: z.string().min(1).max(100000),
-    });
-    const output = schema.parse(
-      await this.deps.hooks.applyFilter(
-        'comment.notification',
-        schema.parse(input),
-        (value) => schema.safeParse(value).success,
-      ),
-    );
-    await this.deps.email.queue({ ...input, ...output });
-  }
-
+  /** Mail to moderators about a comment waiting for review; approval notices are `notifier`'s. */
   private async notify(
     record: CommentRecord,
     target: CommentTarget,
     settings: DiscussionSettings,
   ) {
-    if (record.status === 'spam' || !(await this.deps.email.enabled())) return;
+    if (record.status !== 'pending' || !(await this.deps.email.enabled()))
+      return;
     const site = await this.deps.site();
     const copy = templates(site.locale);
     if (record.status === 'pending' && settings.notifyModerators) {
@@ -713,7 +735,7 @@ export class CommentService {
         .filter((item) => item.allowed)
         .map((item) => item.user);
       for (const user of moderators)
-        await this.notice({
+        await this.deps.notifier.notice({
           to: user.email,
           subjects: [
             user.id,
@@ -723,23 +745,6 @@ export class CommentService {
           ],
           ...copy.commentPending(site.title, target.title, record, link),
         });
-    }
-    if (record.status === 'approved' && settings.notifyAuthors) {
-      const author = await this.deps.users.get(target.authorId);
-      if (!author || author.email === record.authorEmail) return;
-      const link = site.siteUrl
-        ? `${site.siteUrl}${target.path}#comment-${record.id}`
-        : '';
-      await this.notice({
-        to: author.email,
-        subjects: [
-          author.id,
-          record.authorEmail,
-          record.id,
-          ...(record.userId ? [record.userId] : []),
-        ],
-        ...copy.commentApproved(site.title, target.title, record, link),
-      });
     }
   }
 }

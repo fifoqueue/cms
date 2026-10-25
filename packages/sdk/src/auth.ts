@@ -61,6 +61,8 @@ export interface SetupStatus {
 /** Headers a trusted frontend uses to vouch for the address of the browser it serves. */
 export const SSO_CLIENT_ADDRESS_HEADER = 'x-cms-client-address';
 export const SSO_FRONTEND_SECRET_HEADER = 'x-cms-frontend-secret';
+/** The browser's `User-Agent`, trusted (like the address) only next to the frontend secret. */
+export const CLIENT_USER_AGENT_HEADER = 'x-cms-client-user-agent';
 
 /**
  * `provider` is the id of a configured provider. `link` attaches the provider account to the

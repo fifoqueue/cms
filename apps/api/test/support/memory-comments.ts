@@ -83,7 +83,14 @@ export class MemoryCommentRepository implements CommentRepository {
     return { items, total: roots.length, truncated };
   }
 
-  async list({ status, contentId, search, page, pageSize }: CommentCriteria) {
+  async list({
+    status,
+    contentId,
+    ids,
+    search,
+    page,
+    pageSize,
+  }: CommentCriteria) {
     const needle = search?.toLowerCase();
     const matches = [...this.rows.values()]
       .filter(
@@ -92,10 +99,14 @@ export class MemoryCommentRepository implements CommentRepository {
             ? row.status === status
             : row.status === 'pending' || row.status === 'approved') &&
           (!contentId || row.contentId === contentId) &&
+          (!ids || ids.includes(row.id)) &&
           (!needle ||
-            [row.authorName, row.authorEmail, row.body].some((text) =>
-              text.toLowerCase().includes(needle),
-            )),
+            [
+              row.authorName,
+              row.authorEmail,
+              row.authorIp ?? '',
+              row.body,
+            ].some((text) => text.toLowerCase().includes(needle))),
       )
       .sort((a, b) => byDate(b, a));
     const items = await Promise.all(

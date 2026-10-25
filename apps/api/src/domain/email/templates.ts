@@ -20,6 +20,25 @@ interface Templates {
     comment: CommentCopy,
     link: string,
   ): Template;
+  /** A reply to the recipient's comment; ends with the unsubscribe link. */
+  commentReply(
+    site: string,
+    title: string,
+    reply: CommentCopy,
+    link: string,
+    unsubscribe: string,
+  ): Template;
+  /** One message standing for `count` notices held back during a flood; reply summaries can be stopped. */
+  commentSummary(
+    site: string,
+    count: number,
+    link: string,
+    unsubscribe: string,
+  ): Template;
+  /** Browser push titles; `others` counts earlier pushes this one replaces. */
+  pushComment(name: string, title: string, others: number): string;
+  pushReply(name: string, others: number): string;
+  pushSummary(count: number): string;
 }
 
 interface CommentCopy {
@@ -63,6 +82,19 @@ const en: Templates = {
     subject: `[${site}] New comment: ${title}`,
     text: `${comment.authorName} commented on "${title}":\n\n${comment.body}${linkLine(link)}`,
   }),
+  commentReply: (site, title, reply, link, unsubscribe) => ({
+    subject: `[${site}] New reply to your comment on "${title}"`,
+    text: `${reply.authorName} replied to your comment on "${title}":\n\n${reply.body}${linkLine(link)}\n\n--\nYou received this because you commented on ${site}. To stop emails about replies to this comment, open:\n${unsubscribe}`,
+  }),
+  commentSummary: (site, count, link, unsubscribe) => ({
+    subject: `[${site}] ${count} new comments`,
+    text: `${count} more comments arrived while notifications were paused to avoid flooding your inbox.${linkLine(link)}${unsubscribe ? `\n\n--\nTo stop emails about replies to this comment, open:\n${unsubscribe}` : ''}`,
+  }),
+  pushComment: (name, title, others) =>
+    `${name} commented on "${title}"${others ? ` (+${others} more)` : ''}`,
+  pushReply: (name, others) =>
+    `${name} replied to your comment${others ? ` (+${others} more)` : ''}`,
+  pushSummary: (count) => `${count} new comments`,
 };
 
 const ko: Templates = {
@@ -98,6 +130,19 @@ const ko: Templates = {
     subject: `[${site}] 새 댓글: ${title}`,
     text: `${comment.authorName}님이 "${title}"에 댓글을 남겼습니다:\n\n${comment.body}${linkLine(link)}`,
   }),
+  commentReply: (site, title, reply, link, unsubscribe) => ({
+    subject: `[${site}] "${title}"에 남긴 댓글에 새 답글`,
+    text: `${reply.authorName}님이 "${title}"에 남기신 댓글에 답글을 달았습니다:\n\n${reply.body}${linkLine(link)}\n\n--\n${site}에 댓글을 남기셔서 받은 메일입니다. 이 댓글의 답글 알림을 그만 받으려면 다음 주소를 여세요:\n${unsubscribe}`,
+  }),
+  commentSummary: (site, count, link, unsubscribe) => ({
+    subject: `[${site}] 새 댓글 ${count}개`,
+    text: `알림이 너무 많아 잠시 모아 두는 동안 댓글 ${count}개가 더 달렸습니다.${linkLine(link)}${unsubscribe ? `\n\n--\n이 댓글의 답글 알림을 그만 받으려면 다음 주소를 여세요:\n${unsubscribe}` : ''}`,
+  }),
+  pushComment: (name, title, others) =>
+    `${name}님이 "${title}"에 댓글을 남겼습니다${others ? ` (외 ${others}개)` : ''}`,
+  pushReply: (name, others) =>
+    `${name}님이 회원님의 댓글에 답글을 남겼습니다${others ? ` (외 ${others}개)` : ''}`,
+  pushSummary: (count) => `새 댓글 ${count}개`,
 };
 
 /** Mail copy in the site's language (English unless it is Korean). */

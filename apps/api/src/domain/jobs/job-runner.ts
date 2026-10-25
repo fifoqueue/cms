@@ -30,6 +30,47 @@ const BATCH = 4;
 const LEASE_MS = 2 * 60 * 1000;
 const FAILED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
+const FAILURE_TEXT_MAX = 300;
+
+/**
+ * What the log may say about a job failure: the error's name, its codes (such as Prisma's `P2010`
+ * and the database's own code) and its message, flattened to one line. Email addresses and URLs
+ * (push endpoints, webhook targets) are masked, so personal data and capabilities stay out of
+ * the log; the database message is preferred over Prisma's wrapper when present.
+ */
+export const failureSummary = (error: unknown) => {
+  if (!(error instanceof Error)) return 'non-error thrown';
+  const fields = error as Error & {
+    code?: unknown;
+    meta?: {
+      driverAdapterError?: {
+        cause?: { originalCode?: unknown; originalMessage?: unknown };
+      };
+    };
+  };
+  const database = fields.meta?.driverAdapterError?.cause;
+  const codes = [fields.code, database?.originalCode].filter(
+    (code) => typeof code === 'string' || typeof code === 'number',
+  );
+  const message = (
+    typeof database?.originalMessage === 'string'
+      ? database.originalMessage
+      : error.message
+  )
+    .replace(/\b[a-z][\w+.-]*:\/\/[^\s'"`<>]+/gi, (url) => {
+      try {
+        return `${new URL(url).origin}/…`;
+      } catch {
+        return '<url>';
+      }
+    })
+    .replace(/[^\s'"`<>@(),;]+@[^\s'"`<>@(),;]+/g, '<email>')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, FAILURE_TEXT_MAX);
+  return `${error.name}${codes.length ? ` [${codes.join(' ')}]` : ''}: ${message}`;
+};
+
 /** Exponential backoff: 1, 2, 4 … minutes, at most an hour. */
 const backoffMs = (attempt: number) =>
   Math.min(60 * 60 * 1000, 60 * 1000 * 2 ** (attempt - 1));
@@ -85,7 +126,7 @@ export class JobRunner {
               ? new Date(clock.now().getTime() + backoffMs(attempt))
               : null;
           logger.warn(
-            `Job ${job.kind} failed (attempt ${attempt}): ${Errors.JobFailed}`,
+            `Job ${job.kind} failed (attempt ${attempt}): ${Errors.JobFailed} (${failureSummary(error)})`,
           );
           await queue.fail(
             job.id,

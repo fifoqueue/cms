@@ -74,6 +74,9 @@ export default defineConfig(({ mode }) => {
         // The reverse proxy compresses responses; .br/.gz copies would triple every asset.
         adapter: adapter({ precompress: false }),
         env: { dir: envDir },
+        // The push worker is registered only when a visitor or editor turns notifications on
+        // (`#lib/push-client.js`), never on every page load.
+        serviceWorker: { register: false },
       }),
     ],
   };

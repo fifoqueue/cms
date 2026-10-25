@@ -14,6 +14,8 @@ import type {
   Paginated,
 } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
+import type { ContentOrigin } from '#api/domain/content/origin';
+import { canonicalAddress } from '#api/shared/ip-address';
 import { authorize } from '#api/domain/auth/authorization';
 import type { PasswordHasher, UserRepository } from '#api/domain/auth/ports';
 import { toEntry, toEntrySummary } from '#api/domain/content/content-mapper';
@@ -121,10 +123,14 @@ export class ContentService {
   async get(id: string, actor: Actor): Promise<ContentEntry> {
     const record = await this.require(id);
     this.assertEditable(actor, record);
-    return toEntry(record);
+    return toEntry(record, actor);
   }
 
-  async create(input: unknown, actor: Actor): Promise<ContentEntry> {
+  async create(
+    input: unknown,
+    actor: Actor,
+    origin?: ContentOrigin,
+  ): Promise<ContentEntry> {
     authorize(actor, 'content.create');
     const data = await this.prepare(input);
     await this.assertStatus(actor, data);
@@ -153,8 +159,14 @@ export class ContentService {
         createdAt: now,
         updatedAt: now,
         authorId,
+        createdIp: origin?.ip ? canonicalAddress(origin.ip) : null,
+        createdUserAgent: origin?.userAgent ?? null,
+        modifiedIp: origin?.ip ? canonicalAddress(origin.ip) : null,
+        modifiedUserAgent: origin?.userAgent ?? null,
+        createdById: origin ? actor.id : null,
+        modifiedById: origin ? actor.id : null,
       },
-      this.revision(actor),
+      this.revision(actor, true, origin),
     );
 
     const entry = toEntry(record);
@@ -166,7 +178,7 @@ export class ContentService {
       void this.deps.hooks.emit('content.scheduled', entry);
     if (record.status === 'published')
       void this.deps.hooks.emit('content.published', entry);
-    return entry;
+    return toEntry(record, actor);
   }
 
   /** Replaces editable fields. Omitted `slug`, `seo`, `password` and date keep their values. */
@@ -175,6 +187,7 @@ export class ContentService {
     input: unknown,
     actor: Actor,
     revision?: ContentWriteGuard['revision'],
+    origin?: ContentOrigin,
   ): Promise<ContentEntry> {
     const current = await this.require(id);
     this.assertEditable(actor, current);
@@ -204,8 +217,11 @@ export class ContentService {
         createdAt: current.createdAt,
         updatedAt: now,
         authorId,
+        modifiedIp: origin?.ip ? canonicalAddress(origin.ip) : null,
+        modifiedUserAgent: origin?.userAgent ?? null,
+        modifiedById: origin ? actor.id : null,
       },
-      this.revision(actor, !data.preserveAutosave),
+      this.revision(actor, !data.preserveAutosave, origin),
       {
         expectedUpdatedAt: expected,
         autosaveOf: data.preserveAutosave ? actor.id : undefined,
@@ -232,26 +248,38 @@ export class ContentService {
     if (record.status === 'published' && current.status !== 'published') {
       void this.deps.hooks.emit('content.published', entry);
     }
-    return entry;
+    return toEntry(record, actor);
   }
 
   /** Moves the entry to the trash; it stops being public and can be restored. */
-  async trash(id: string, actor: Actor): Promise<void> {
+  async trash(id: string, actor: Actor, origin?: ContentOrigin): Promise<void> {
     const current = await this.require(id);
     this.assertEditable(actor, current);
     if (current.trashedAt) return;
-    await this.deps.repository.setTrashed(id, this.deps.clock.now());
+    await this.deps.repository.setTrashed(id, this.deps.clock.now(), {
+      modifiedIp: origin?.ip ? canonicalAddress(origin.ip) : null,
+      modifiedUserAgent: origin?.userAgent ?? null,
+      modifiedById: origin ? actor.id : null,
+    });
     void this.deps.hooks.emit(
       'content.trashed',
       toEntry(await this.require(id)),
     );
   }
 
-  async restore(id: string, actor: Actor): Promise<void> {
+  async restore(
+    id: string,
+    actor: Actor,
+    origin?: ContentOrigin,
+  ): Promise<void> {
     const current = await this.require(id);
     this.assertEditable(actor, current);
     if (!current.trashedAt) return;
-    await this.deps.repository.setTrashed(id, null);
+    await this.deps.repository.setTrashed(id, null, {
+      modifiedIp: origin?.ip ? canonicalAddress(origin.ip) : null,
+      modifiedUserAgent: origin?.userAgent ?? null,
+      modifiedById: origin ? actor.id : null,
+    });
     void this.deps.hooks.emit(
       'content.restored',
       toEntry(await this.require(id)),
@@ -402,8 +430,14 @@ export class ContentService {
     return data.password ? this.deps.hasher.hash(data.password) : null;
   }
 
-  private revision(actor: Actor, clearAutosave = true): RevisionSave {
+  private revision(
+    actor: Actor,
+    clearAutosave = true,
+    origin?: ContentOrigin,
+  ): RevisionSave {
     return {
+      ip: origin?.ip ? canonicalAddress(origin.ip) : null,
+      userAgent: origin?.userAgent ?? null,
       id: this.deps.ids.next(),
       authorId: actor.id,
       keep: REVISIONS_KEPT,

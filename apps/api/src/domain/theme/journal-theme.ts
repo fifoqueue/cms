@@ -335,9 +335,6 @@ ${XXL} { .theme-journal-page-header .cms-block-query-title :is(h1, h2) { font-si
 .theme-journal-page-header .cms-block-search { margin-top: 2rem; max-width: 50rem; }
 .theme-journal-not-found { align-items: center; text-align: center; gap: 1.5rem; }
 .theme-journal-not-found .cms-block-query-title { max-width: 50rem; }
-.theme-journal-not-found .cms-block-query-title p:first-child { display: none; }
-.theme-journal-not-found .cms-block-query-title :is(h1, h2) { font-size: 2.5rem; }
-.theme-journal-not-found .cms-block-query-title p { color: var(--foreground); font-size: 1.25rem; max-width: none; }
 .theme-journal-not-found .cms-block-search { width: 100%; max-width: 50rem; }
 
 /* Post grids */

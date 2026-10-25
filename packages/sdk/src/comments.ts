@@ -71,6 +71,10 @@ export const discussionSettingsSchema = z
     notifyModerators: z.boolean().default(true),
     /** Email entry authors about approved comments. */
     notifyAuthors: z.boolean().default(true),
+    /** Email a comment's author when a reply to it is approved (no visitor opt-in needed). */
+    notifyCommenters: z.boolean().default(false),
+    /** Offer browser push notifications (visitors' replies, authors' new comments). */
+    pushNotifications: z.boolean().default(false),
   })
   .refine((settings) => settings.showName || settings.defaultName.length > 0, {
     path: ['defaultName'],
@@ -157,9 +161,132 @@ export const publicCommentPageSchema = z.strictObject({
   threadDepth: z.number().int(),
   /** True when the server stopped at its per-page reply safety limit. */
   truncated: z.boolean(),
+  /**
+   * `email`: replies to the viewer's comment will be emailed; `push`: the VAPID application
+   * server key (base64url, uncompressed P-256) while browser push is offered, else null.
+   */
+  notifications: z
+    .strictObject({ email: z.boolean(), push: z.string().nullable() })
+    .default({ email: false, push: null }),
 });
 
 export type PublicCommentPage = z.output<typeof publicCommentPageSchema>;
+
+/**
+ * Push services the API sends to. Visitors supply endpoints, so only these hosts (HTTPS, port
+ * 443, no credentials or fragment) are accepted; `*.` matches any subdomain, not the bare name.
+ */
+export const PUSH_SERVICE_HOSTS = [
+  'fcm.googleapis.com',
+  '*.push.services.mozilla.com',
+  '*.notify.windows.com',
+  'web.push.apple.com',
+  '*.push.apple.com',
+] as const;
+
+/** Whether `endpoint` belongs to an allowed push service. */
+export const isPushEndpoint = (endpoint: string): boolean => {
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return false;
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.username ||
+    url.password ||
+    url.port ||
+    url.hash
+  )
+    return false;
+  const host = url.hostname;
+  return PUSH_SERVICE_HOSTS.some((allowed) =>
+    allowed.startsWith('*.')
+      ? host.endsWith(allowed.slice(1)) && host.length > allowed.length - 1
+      : host === allowed,
+  );
+};
+
+/** The browser's `PushSubscription.toJSON()`; `expirationTime` (epoch ms) is kept when sent. */
+export const pushSubscriptionSchema = z.strictObject({
+  endpoint: z
+    .url()
+    .max(2048)
+    .refine(isPushEndpoint, Errors.CommentPushEndpointInvalid),
+  expirationTime: z.number().int().nullable().optional(),
+  keys: z.strictObject({
+    p256dh: z.string().min(1).max(200),
+    auth: z.string().min(1).max(100),
+  }),
+});
+
+export type PushSubscriptionInput = z.input<typeof pushSubscriptionSchema>;
+
+/** `POST /api/v1/comments/push`: a visitor's browser for replies to the comment it just sent. */
+export const commentPushSchema = z.strictObject({
+  token: z.string().min(1).max(512),
+  subscription: pushSubscriptionSchema,
+});
+
+/** `PUT /api/v1/admin/push-subscription`: a browser of the signed-in user. */
+export const userPushSchema = z.strictObject({
+  subscription: pushSubscriptionSchema,
+});
+
+/** `DELETE /api/v1/admin/push-subscription`. */
+export const userPushRemovalSchema = z.strictObject({
+  endpoint: z.string().min(1).max(2048),
+});
+
+/**
+ * `POST /api/v1/push/renew`: `pushsubscriptionchange` or a page-load re-sync. `old` proves
+ * possession of the replaced subscription: its endpoint and its `keys.auth` secret.
+ */
+export const pushRenewSchema = z.strictObject({
+  old: z.strictObject({
+    endpoint: z
+      .url()
+      .max(2048)
+      .refine(isPushEndpoint, Errors.CommentPushEndpointInvalid),
+    auth: pushSubscriptionSchema.shape.keys.shape.auth,
+  }),
+  subscription: pushSubscriptionSchema,
+});
+
+export type PushRenewInput = z.input<typeof pushRenewSchema>;
+
+export const pushAcceptedSchema = z.strictObject({ ok: z.literal(true) });
+
+/** What the service worker receives. `tag` groups a thread so bursts replace each other. */
+export const commentPushPayloadSchema = z.strictObject({
+  title: z.string().min(1).max(200),
+  body: z.string().max(140),
+  url: z.url(),
+  tag: z.string().min(1).max(64),
+  /** The site icon, absolute and same-origin; omitted when the site has none. */
+  icon: z.url().optional(),
+});
+
+/** `GET /api/v1/admin/push-subscription`: null while browser push is off. */
+export const pushKeySchema = z.strictObject({
+  publicKey: z.string().nullable(),
+});
+
+export type CommentPushPayload = z.output<typeof commentPushPayloadSchema>;
+
+export const COMMENT_NOTICE_CHANNELS = ['email', 'push'] as const;
+export type CommentNoticeChannel = (typeof COMMENT_NOTICE_CHANNELS)[number];
+
+export const commentUnsubscribeSchema = z.object({
+  token: z.string().min(1).max(1024),
+});
+
+export const commentUnsubscribedSchema = z.strictObject({
+  channel: z.enum(COMMENT_NOTICE_CHANNELS),
+});
+
+export type CommentUnsubscribed = z.output<typeof commentUnsubscribedSchema>;
 
 export const commentSubmittedSchema = z.strictObject({
   /** `pending` also covers comments that will never appear. */
@@ -169,6 +296,8 @@ export const commentSubmittedSchema = z.strictObject({
   pendingProof: z.string().nullable().default(null),
   /** Signed proof tied to this anonymous comment; it is recognized only after the comment is approved. */
   commenterProof: z.string().nullable().default(null),
+  /** One-hour token for `POST /api/v1/comments/push`; only while push is offered. */
+  pushToken: z.string().nullable().default(null),
 });
 
 export type CommentSubmitted = z.output<typeof commentSubmittedSchema>;
@@ -183,6 +312,12 @@ export const adminCommentSchema = z.object({
   authorName: z.string(),
   authorEmail: z.string(),
   authorUrl: z.string(),
+  /**
+   * The commenter's IP address (WordPress `comment_author_IP`) and browser user agent
+   * (`comment_agent`), as the web server proved them; null when unproven or unknown. Moderators only.
+   */
+  authorIp: z.string().nullable().default(null),
+  authorUserAgent: z.string().nullable().default(null),
   body: z.string(),
   status: z.enum(COMMENT_STATUSES),
   createdAt: z.string(),
@@ -191,10 +326,25 @@ export const adminCommentSchema = z.object({
 
 export type AdminComment = z.output<typeof adminCommentSchema>;
 
+/**
+ * Comment ids as a comma-separated query value, deduplicated. The parsed array is accepted
+ * too, so a parsed query validates again (the `comment.query` filter).
+ */
+const commentIdsSchema = z
+  .union([
+    z.string().transform((value) => value.split(',')),
+    z.array(z.string()),
+  ])
+  .transform((ids) => [...new Set(ids)])
+  .pipe(z.array(z.string().min(1).max(36)).min(1).max(100));
+
 /** Without `status`, pending and approved comments are listed (WordPress "All"). */
 export const commentListQuerySchema = z.object({
   status: z.enum(COMMENT_STATUSES).optional(),
   contentId: z.string().max(36).optional(),
+  /** Only these comments (combined with the other criteria). */
+  ids: commentIdsSchema.optional(),
+  /** Author name, email, IP address or body. */
   search: z
     .string()
     .trim()

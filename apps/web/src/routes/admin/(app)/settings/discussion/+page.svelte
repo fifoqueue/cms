@@ -205,6 +205,35 @@
         />
         {m.discussionNotifyAuthors}
       </label>
+      <div class="grid gap-1">
+        <label class="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="notifyCommenters"
+            checked={settings.notifyCommenters}
+            aria-describedby={data.emailEnabled === false
+              ? 'notify-commenters-help'
+              : undefined}
+          />
+          {m.discussionNotifyCommenters}
+        </label>
+        {#if data.emailEnabled === false}
+          <p
+            id="notify-commenters-help"
+            class="ml-6 text-xs text-muted-foreground"
+          >
+            {m.discussionNotifyCommentersNoEmail}
+          </p>
+        {/if}
+      </div>
+      <label class="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          name="pushNotifications"
+          checked={settings.pushNotifications}
+        />
+        {m.discussionPushNotifications}
+      </label>
       <div><Button type="submit">{m.save}</Button></div>
     </SettingsForm>
   </CardContent>

@@ -4,6 +4,7 @@
   import CopyButton from '#lib/admin/CopyButton.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import PluginProfileFieldsCard from '#lib/admin/PluginProfileFieldsCard.svelte';
+  import PushDeviceCard from '#lib/admin/PushDeviceCard.svelte';
   import {
     profileFieldsRefusal,
     splitProfileIssues,
@@ -274,6 +275,8 @@
     </ul>
   </CardContent>
 </Card>
+
+<PushDeviceCard />
 
 <Card>
   <CardHeader>

@@ -9,8 +9,10 @@ import type {
 } from '#api/domain/users/user-directory';
 import { guardUnique, lockSetting } from '#api/infra/prisma/client';
 import type { Database } from '#api/infra/prisma/client';
-import type { Prisma } from '#api/infra/prisma/generated/client';
+import { Prisma } from '#api/infra/prisma/generated/client';
+import { eraseContentOrigin } from '#api/infra/prisma/content-origin';
 import {
+  deleteEntries,
   lockPermalinks,
   queueContentPaths,
 } from '#api/infra/prisma/permalink-repository';
@@ -216,17 +218,31 @@ export class PrismaUserDirectory implements UserDirectory, RoleWriter {
 
   async delete(id: string, reassignTo: string | null) {
     await this.db.$transaction(async (tx) => {
-      await lockPermalinks(tx);
+      // The author's entries are locked before any plain read (entry → comment lock order).
+      await lockPermalinks(
+        tx,
+        false,
+        Prisma.sql`author_id = ${id} OR created_by_id = ${id} OR modified_by_id = ${id}
+          OR EXISTS (SELECT 1 FROM content_revisions WHERE content_id = contents.id AND author_id = ${id})`,
+      );
       await lockSetting(tx, LOCK_KEY);
       await assertOtherAdministrator(tx, id);
+      await eraseContentOrigin(tx, id);
       if (reassignTo)
         await tx.content.updateMany({
           where: { authorId: id },
           data: { authorId: reassignTo },
         });
-      // Paths, assignments, sessions and sign-in links go with their rows (ON DELETE CASCADE).
+      // Sessions and sign-in links go with the user (ON DELETE CASCADE).
       else {
-        await tx.content.deleteMany({ where: { authorId: id } });
+        const entries = await tx.content.findMany({
+          where: { authorId: id },
+          select: { id: true },
+        });
+        await deleteEntries(
+          tx,
+          entries.map((entry) => entry.id),
+        );
         await tx.searchOutbox.create({ data: { contentId: null } });
       }
       await tx.setting.deleteMany({ where: { key: profileMetaKey(id) } });

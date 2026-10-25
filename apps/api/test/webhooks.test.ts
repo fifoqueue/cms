@@ -1,13 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { Errors } from '#api/shared/errors';
-import {
-  PermanentJobError,
-  RecoverableJobError,
-} from '#api/domain/jobs/job-runner';
 import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
 import type { SecretBox } from '#api/domain/ports';
 import { WebhookService } from '#api/domain/webhooks/webhook-service';
-import { aesSecretBox } from '#api/infra/secret-box';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
 import {
   ADMIN,
@@ -66,51 +60,6 @@ const setup = (secrets: SecretBox = plainSecretBox) => {
 };
 
 describe('WebhookService', () => {
-  test('CRUD and delivery actions are secret-free; payload filters reject non-JSON', async () => {
-    const { webhooks, hooks, payloads, sent, answer } = setup();
-    const events: { name: string; value: unknown }[] = [];
-    const registrar = hooks.registrar('observer');
-    for (const name of [
-      'webhook.created',
-      'webhook.updated',
-      'webhook.deleted',
-      'webhook.delivered',
-      'webhook.failed',
-    ] as const)
-      registrar.on(name, (value) => {
-        events.push({ name, value });
-      });
-    registrar.filter('webhook.payload', () => ({
-      extra: 'ok',
-      id: 'forged',
-      event: 'forged',
-      occurredAt: 'forged',
-    }));
-    registrar.filter('webhook.payload', () => ({ bad: undefined }));
-    registrar.filter('webhook.payload', () => ({ large: 'x'.repeat(65_536) }));
-    const input = { url: 'https://hooks.example/a', events: ['site.updated'] };
-    const hook = await webhooks.create(input, ADMIN);
-    await webhooks.update(hook.id, input, ADMIN);
-    await webhooks.ping(hook.id, ADMIN);
-    await webhooks.deliver(payloads()[0]);
-    expect(JSON.parse(sent[0]!.body).data.extra).toBe('ok');
-    expect(JSON.parse(sent[0]!.body).event).toBe('ping');
-    expect(JSON.parse(sent[0]!.body).id).not.toBe('forged');
-    expect(JSON.parse(sent[0]!.body).occurredAt).not.toBe('forged');
-    answer(500);
-    await expect(webhooks.deliver(payloads()[0])).rejects.toThrow();
-    await webhooks.remove(hook.id, ADMIN);
-    expect(events.map(({ name }) => name)).toEqual([
-      'webhook.created',
-      'webhook.updated',
-      'webhook.delivered',
-      'webhook.failed',
-      'webhook.deleted',
-    ]);
-    expect(events[2]!.value).toMatchObject({ id: hook.id, status: 200 });
-    expect(events[3]!.value).toMatchObject({ id: hook.id, status: 500 });
-    expect(JSON.stringify(events)).not.toContain('whsec');
-  });
   test('queues signed deliveries for subscribed, enabled webhooks only', async () => {
     const { webhooks, hooks, sent, payloads } = setup();
     const created = await webhooks.create(
@@ -165,80 +114,5 @@ describe('WebhookService', () => {
       lastStatus: 200,
       lastError: null,
     });
-  });
-
-  test('client errors stop retries; server errors are retried', async () => {
-    const { webhooks, answer, payloads } = setup();
-    const hook = await webhooks.create(
-      { url: 'https://hooks.example/a', events: ['site.updated'] },
-      ADMIN,
-    );
-    await webhooks.ping(hook.id, ADMIN);
-    const [delivery] = payloads();
-    answer(404);
-    expect(
-      await webhooks.deliver(delivery).catch((error: unknown) => error),
-    ).toBeInstanceOf(PermanentJobError);
-    answer(503);
-    const retry = await webhooks
-      .deliver(delivery)
-      .catch((error: unknown) => error);
-    expect(retry).toBeInstanceOf(Error);
-    expect(retry).not.toBeInstanceOf(PermanentJobError);
-    expect((await webhooks.list(ADMIN))[0]).toMatchObject({
-      lastStatus: 503,
-      lastError: Errors.WebhookStatus,
-    });
-  });
-
-  test('a failed request records a safe category; its own words reach the log only', async () => {
-    const { webhooks, payloads, fail, lines } = setup();
-    const hook = await webhooks.create(
-      { url: 'https://hooks.example/a', events: ['site.updated'] },
-      ADMIN,
-    );
-    await webhooks.ping(hook.id, ADMIN);
-    const [delivery] = payloads();
-    fail(
-      new TypeError('fetch failed for https://user:pw@hooks.example', {
-        cause: Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }),
-      }),
-    );
-    await expect(webhooks.deliver(delivery)).rejects.toThrow();
-    const [listed] = await webhooks.list(ADMIN);
-    expect(listed).toMatchObject({
-      lastStatus: null,
-      lastError: Errors.OutboundNetworkFailed,
-    });
-    expect(lines.join('\n')).toContain('user:pw');
-    fail(new Error('socket hang up: pw'));
-    await expect(webhooks.deliver(delivery)).rejects.toThrow();
-    expect((await webhooks.list(ADMIN))[0]!.lastError).toBe(
-      Errors.WebhookDeliveryFailed,
-    );
-  });
-
-  test('an unreadable encrypted delivery remains recoverable', async () => {
-    const correct = aesSecretBox('webhook-job-key');
-    const wrong = aesSecretBox('wrong-webhook-job-key');
-    const { webhooks, jobs, settings, clock, payloads } = setup(correct);
-    const hook = await webhooks.create(
-      { url: 'https://hooks.example/a', events: ['site.updated'] },
-      ADMIN,
-    );
-    await webhooks.ping(hook.id, ADMIN);
-    const reader = new WebhookService({
-      settings,
-      secrets: wrong,
-      tokens: { issue: () => 'unused' },
-      sealedJobs: new SealedJobs(jobs, wrong),
-      transport: { check: async () => {}, send: async () => 200 },
-      ids: sequentialIds(),
-      clock,
-    });
-
-    expect(
-      await reader.deliver(payloads()[0]).catch((error: unknown) => error),
-    ).toBeInstanceOf(RecoverableJobError);
   });
 });

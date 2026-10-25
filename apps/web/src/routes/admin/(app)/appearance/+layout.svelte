@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import SectionTabs from '#lib/admin/SectionTabs.svelte';
   import { useI18n } from '#lib/i18n/index.js';
@@ -32,7 +33,7 @@
 <SectionTabs
   label={i18n.m.navAppearance}
   tabs={tabs.map((tab) => ({
-    route: tab.route,
+    href: resolve(tab.route),
     label: tab.label(i18n.m),
     current: page.route.id === tab.route,
   }))}

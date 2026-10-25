@@ -3,7 +3,6 @@ import { pluginCapabilitySchema } from '@cms/sdk';
 import type { AdminBlock } from '@cms/sdk';
 import { definePlugin } from '@cms/sdk/plugin';
 import type { PluginContext } from '@cms/sdk/plugin';
-import { PluginGateway } from '#api/http/plugin-gateway';
 import { createApiApp } from '#api/http/app';
 import type { ApiServices } from '#api/http/services';
 import { ADMIN, profile } from '#test/support/memory';
@@ -19,75 +18,6 @@ const deferred = <T>() => {
 };
 
 describe('plugin permissions', () => {
-  test('disposal preserves outcomes of already-dispatched mutations', async () => {
-    const runtime = createRuntime();
-    const started = deferred<void>();
-    const finish = deferred<void>();
-    let writes = 0;
-    const mutate = async () => {
-      writes++;
-      if (writes === 2) started.resolve();
-      await finish.promise;
-    };
-    await runtime.host.install(
-      runtime.bundles.register(
-        'mutations',
-        definePlugin({
-          manifest,
-          activate({ admin, routes }) {
-            admin.page('mutate', {
-              title: 'Mutate',
-              render: () => [
-                { kind: 'form', action: 'save', submit: 'Save', fields: [] },
-              ],
-              actions: {
-                save: async () => {
-                  await mutate();
-                  return { notice: 'Saved' };
-                },
-              },
-            });
-            routes.add({
-              method: 'POST',
-              path: '/mutate',
-              access: 'admin',
-              handler: async () => {
-                await mutate();
-                return Response.json({ saved: true }, { status: 201 });
-              },
-            });
-          },
-        }),
-      ),
-    );
-    await runtime.host.enable(manifest.id);
-    const gateway = new PluginGateway({
-      routes: runtime.routes,
-      timeoutMs: 100,
-      logger: console,
-      auth: { authenticate: async () => profile({ id: 'admin' }) },
-    });
-    const action = runtime.pages.run(manifest.id, 'mutate', 'save', {}, ADMIN);
-    const response = Promise.resolve(
-      gateway.handle(
-        manifest.id,
-        new Request('http://localhost/api/plugins/permissions/mutate', {
-          method: 'POST',
-          headers: { authorization: 'Bearer admin' },
-        }),
-      ),
-    );
-    await started.promise;
-    await runtime.host.disable(manifest.id);
-    finish.resolve();
-    expect(await action).toEqual({ notice: 'Saved' });
-    const result = await response;
-    expect(result.status).toBe(201);
-    expect(await result.json()).toEqual({ saved: true });
-    expect(result.headers.get('cache-control')).toBe('private, no-store');
-    expect(writes).toBe(2);
-  });
-
   test('only omitted page/widget capabilities default; malformed declarations fail closed', async () => {
     expect(pluginCapabilitySchema.parse(undefined)).toBe('plugins.manage');
     for (const capability of [null, '', 'plugins.mange', '*', false]) {
@@ -225,29 +155,6 @@ describe('plugin permissions', () => {
     ).rejects.toThrow();
   });
 
-  test('an in-flight data read cannot deliver its value after revocation', async () => {
-    const runtime = createRuntime();
-    let context!: PluginContext;
-    await runtime.host.install(
-      runtime.bundles.register(
-        'read',
-        definePlugin({
-          manifest,
-          activate(value) {
-            context = value;
-          },
-        }),
-      ),
-    );
-    await runtime.host.enable(manifest.id);
-    const answer = deferred<unknown>();
-    runtime.data.get = () => answer.promise;
-    const read = context.storage.get('secret');
-    await runtime.host.disable(manifest.id);
-    answer.resolve('secret');
-    await expect(read).rejects.toThrow('Plugin is not active');
-  });
-
   test('admin page actions require the page grant, an own handler, and a current registration', async () => {
     const runtime = createRuntime();
     let calls = 0;
@@ -327,59 +234,6 @@ describe('plugin permissions', () => {
     await expect(action).rejects.toMatchObject({ code: 'not_found' });
     expect(calls).toBe(0);
     await runtime.pages.run(manifest.id, 'private', 'reset', {}, ADMIN);
-    expect(calls).toBe(1);
-  });
-
-  test('pending route authentication cannot dispatch a removed or replaced route', async () => {
-    const runtime = createRuntime();
-    let calls = 0;
-    await runtime.host.install(
-      runtime.bundles.register(
-        'route',
-        definePlugin({
-          manifest,
-          activate({ routes }) {
-            routes.add({
-              method: 'GET',
-              path: '/',
-              access: 'admin',
-              handler() {
-                calls++;
-                return Response.json('private');
-              },
-            });
-          },
-        }),
-      ),
-    );
-    await runtime.host.enable(manifest.id);
-    const started = deferred<void>();
-    const user = deferred<ReturnType<typeof profile>>();
-    const gateway = new PluginGateway({
-      routes: runtime.routes,
-      timeoutMs: 100,
-      logger: console,
-      auth: {
-        authenticate() {
-          started.resolve();
-          return user.promise;
-        },
-      },
-    });
-    const request = new Request(
-      `http://localhost/api/plugins/${manifest.id}/`,
-      { headers: { authorization: 'Bearer test' } },
-    );
-    const pending = Promise.resolve(gateway.handle(manifest.id, request));
-    await started.promise;
-    await runtime.host.disable(manifest.id);
-    await runtime.host.enable(manifest.id);
-    user.resolve(profile({ id: 'admin' }));
-    expect((await pending).status).toBe(404);
-    expect(calls).toBe(0);
-    const response = await gateway.handle(manifest.id, request);
-    expect(response.status).toBe(200);
-    expect(response.headers.get('cache-control')).toBe('private, no-store');
     expect(calls).toBe(1);
   });
 

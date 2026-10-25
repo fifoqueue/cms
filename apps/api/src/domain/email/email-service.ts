@@ -225,7 +225,14 @@ export class EmailService {
 
   /** The job handler for `EMAIL_JOB`. */
   async deliver(payload: unknown): Promise<void> {
-    const message = this.message(payload);
+    await this.sendNow(this.message(payload));
+  }
+
+  /**
+   * Sends `message` now, for job handlers that own their retries (the job fails and retries
+   * when this throws, including while mail is disabled or misconfigured).
+   */
+  async sendNow(message: EmailMessage): Promise<void> {
     const transport = await this.transport();
     // Disabled or misconfigured mail fails for now; enabling it lets queued messages go out.
     if (!transport) throw new Error(Errors.EmailDisabled);

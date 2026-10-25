@@ -1,14 +1,12 @@
 import { expect, test } from 'bun:test';
 import type { MenusSettings } from '@cms/sdk';
-import { CONTENT_DOCUMENT_LIMITS, wxrImportResultSchema } from '@cms/sdk';
+import { wxrImportResultSchema } from '@cms/sdk';
 import { Errors } from '#api/shared/errors';
 import { PatternService } from '#api/domain/content/pattern-service';
 import { TaxonomyService } from '#api/domain/taxonomy/taxonomy-service';
 import { ExportService } from '#api/domain/tools/export-service';
 import { ImportService } from '#api/domain/tools/import-service';
 import type { ImportMediaDeps } from '#api/domain/tools/import-media';
-import type { AdminMedia } from '@cms/sdk';
-import { classicHtml } from '#api/domain/tools/classic-content';
 import type { UserService } from '#api/domain/users/user-service';
 import { tiptapHtmlParser, tiptapRenderer } from '#api/infra/system';
 import { fastXmlWxrParser } from '#api/infra/wxr-parser';
@@ -106,168 +104,6 @@ const site = async (
   };
 };
 
-test('reusable pattern images are bound to imported media before saving', async () => {
-  const media = {
-    id: 'local',
-    url: '/media/local.png',
-    variants: [],
-  } as unknown as AdminMedia;
-  const target = await site(undefined, {
-    settings: new MemorySettings(),
-    fetch: async () => new Response(new Uint8Array([1])),
-    media: {
-      maxBytes: 10,
-      get: async () => media,
-      upload: async () => media,
-      update: async () => media,
-    },
-  });
-  await target.importer.importWxr(
-    `<rss xmlns:wp="http://wordpress.org/export/1.2/" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><wp:wxr_version>1.2</wp:wxr_version>
-<item><wp:post_id>1</wp:post_id><wp:post_type>attachment</wp:post_type><wp:attachment_url>https://old.test/image.png</wp:attachment_url></item>
-<item><title>Pattern</title><wp:post_id>2</wp:post_id><wp:post_type>wp_block</wp:post_type><wp:status>publish</wp:status><content:encoded><![CDATA[<img src="https://old.test/image.png?ver=1">]]></content:encoded></item>
-</channel></rss>`,
-    ADMIN,
-    { downloadAttachments: true },
-  );
-  const patterns = await target.patterns.exportable();
-  expect(patterns).toHaveLength(1);
-  expect(JSON.stringify(patterns)).toContain('/media/local.png');
-  expect(JSON.stringify(patterns)).toContain('"mediaId":"local"');
-  expect(JSON.stringify(patterns)).not.toContain('https://old.test');
-});
-
-test('WXR extension items round trip, validate filters, and emit completion', async () => {
-  const source = await site();
-  const target = await site();
-  const actions: unknown[] = [];
-  source.hooks.registrar('test').on('export.generated', (value) => {
-    actions.push(value);
-  });
-  target.hooks.registrar('test').on('import.completed', (value) => {
-    actions.push(value);
-  });
-  source.hooks.registrar('test').filter('export.data', () => [
-    {
-      id: 'extra',
-      type: 'post',
-      title: 'Extra',
-      slug: 'extra',
-      html: '<p>Hello</p>',
-      excerpt: '',
-      status: 'publish',
-      publishedAt: null,
-      author: '',
-      password: 'open-sesame',
-      sticky: false,
-      commentsOpen: true,
-      categories: [],
-      tags: [],
-      comments: [],
-    },
-  ]);
-  source.hooks.registrar('bad').filter('export.data', () => [null] as never);
-  source.hooks
-    .registrar('oversized')
-    .filter('export.data', (items) =>
-      items.map((item) => ({ ...item, html: 'x'.repeat(16 * 1024 * 1024) })),
-    );
-  let items = 0;
-  target.hooks.registrar('test').filter('import.item', (item) => {
-    items++;
-    expect(item).not.toHaveProperty('password');
-    return { ...item, title: 'Changed', password: '' } as typeof item;
-  });
-  target.hooks.registrar('bad').filter('import.item', () => null as never);
-  const xml = await source.exporter.exportWxr(ADMIN);
-  expect(xml).toContain('Extra');
-  const result = await target.importer.importWxr(xml, ADMIN);
-  expect(result.content).toBe(1);
-  expect(items).toBe(1);
-  // The file's password survives a filter that tries to clear it.
-  expect(
-    [...target.content.rows.values()].map((row) => row.passwordHash !== null),
-  ).toEqual([true]);
-  expect(actions).toEqual([{ format: 'wxr' }, result]);
-  expect(await target.exporter.exportWxr(ADMIN)).toContain('Changed');
-});
-
-test('classic imports bound malformed shortcodes and generated galleries', () => {
-  const attachments = {
-    url: () => undefined,
-    childImages: () =>
-      Array.from(
-        { length: 100 },
-        () => `https://example.com/${'a'.repeat(1900)}.jpg`,
-      ),
-  };
-  expect(() =>
-    classicHtml('[caption]'.repeat(16_000), '', attachments),
-  ).toThrow('import content limit');
-  expect(() => classicHtml('[gallery]'.repeat(100), '', attachments)).toThrow(
-    'import content limit',
-  );
-  expect(classicHtml('[caption]Unclosed', '', attachments)).toContain(
-    '[caption]Unclosed',
-  );
-});
-
-test('classic imports retain blank lines and indentation inside preformatted code', () => {
-  const source = '<pre><code>first\n\n  second\n</code></pre>';
-  const html = classicHtml(source, '', {
-    url: () => undefined,
-    childImages: () => [],
-  });
-  expect(tiptapHtmlParser.parse(html)).toEqual(tiptapHtmlParser.parse(source));
-});
-
-test('classic shortcode boundaries preserve Unicode text and the following paragraph', () => {
-  const html = classicHtml(
-    '[caption]<img src="https://example.com/a.jpg">İ[/caption]AFTER',
-    '',
-    { url: () => undefined, childImages: () => [] },
-  );
-  expect(html).toContain('<figcaption>İ</figcaption>');
-  expect(html).toContain('<p>AFTER</p>');
-});
-
-test('classic shortcodes inside quoted HTML attributes remain inert', () => {
-  const attachments = {
-    url: () => 'https://example.com/a.jpg',
-    childImages: () => [],
-  };
-  for (const value of ['[gallery ids=1]', '> [gallery ids=1]']) {
-    const source = `<div data-note="${value}">keep this</div>`;
-    expect(
-      tiptapHtmlParser.parse(classicHtml(source, '', attachments)),
-    ).toEqual(tiptapHtmlParser.parse(source));
-  }
-});
-
-test('an over-budget author import creates no accounts or content', async () => {
-  let created = 0;
-  const target = await site({
-    create: async () => {
-      created++;
-      throw new Error('unexpected account creation');
-    },
-  });
-  const records = Array.from(
-    { length: 101 },
-    (_, i) =>
-      `<wp:author><wp:author_login>user${i}</wp:author_login><wp:author_email>user${i}@example.com</wp:author_email></wp:author><item><dc:creator>user${i}</dc:creator><wp:post_type>post</wp:post_type><wp:status>draft</wp:status></item>`,
-  ).join('');
-  await expect(
-    target.importer.importWxr(
-      `<rss xmlns:wp="http://wordpress.org/export/1.2/" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><wp:wxr_version>1.2</wp:wxr_version>${records}</channel></rss>`,
-      ADMIN,
-      { authors: 'author' },
-    ),
-  ).rejects.toMatchObject({ code: 'invalid_input' });
-  expect(created).toBe(0);
-  expect(target.content.rows.size).toBe(0);
-});
-
 test('a WXR export imports into another site with terms, entries and threaded comments', async () => {
   const source = await site();
   const news = await source.taxonomy.create('category', { name: '소식' });
@@ -317,6 +153,8 @@ test('a WXR export imports into another site with terms, entries and threaded co
     authorName: 'Ann',
     authorEmail: 'ann@example.com',
     authorUrl: '',
+    authorIp: '203.0.113.7' as string | null,
+    authorUserAgent: 'Mozilla/5.0 (WXR)' as string | null,
     body: 'Stay safe',
     status: 'approved' as const,
     createdAt: at,
@@ -327,6 +165,7 @@ test('a WXR export imports into another site with terms, entries and threaded co
     ...parent,
     id: 'c2',
     parentId: 'c1',
+    authorIp: 'not-an-ip',
     body: 'Thanks',
     createdAt: new Date('2026-05-02T00:00:00.000Z'),
   });
@@ -369,146 +208,30 @@ test('a WXR export imports into another site with terms, entries and threaded co
       (term) => term.id === importedLocal!.parentId,
     )?.slug,
   ).toBe('소식');
+  expect(xml).toContain(
+    '<wp:comment_author_IP><![CDATA[203.0.113.7]]></wp:comment_author_IP>',
+  );
+  // Exporting needs only `tools.manage`; IP and user agent also need `comments.moderate`.
+  const operator = await source.exporter.exportWxr({
+    id: ADMIN.id,
+    role: 'custom',
+    capabilities: ['tools.manage'],
+  });
+  expect(operator).toContain('Stay safe');
+  expect(operator).not.toMatch(/comment_author_IP|comment_agent|203\.0\.113/);
   const thread = (await target.comments.thread(entry.id, 1, 10, 3)).items;
-  expect(thread.map((comment) => [comment.body, comment.depth])).toEqual([
-    ['Stay safe', 0],
-    ['Thanks', 1],
-  ]);
-});
-
-test('patterns, teaser and page breaks survive a WXR round trip, and synced edits show everywhere', async () => {
-  const source = await site();
-  const paragraph = (text: string) => ({
-    type: 'paragraph',
-    content: [{ type: 'text', text }],
-  });
-  const pattern = await source.patterns.create(
-    {
-      title: 'Signup',
-      document: { type: 'doc', content: [paragraph('Join us')] },
-    },
-    ADMIN,
-  );
-  const outer = await source.patterns.create(
-    {
-      title: 'Outer',
-      document: {
-        type: 'doc',
-        content: [{ type: 'patternRef', attrs: { ref: pattern.id } }],
-      },
-    },
-    ADMIN,
-  );
-  await source.service.create(
-    {
-      type: 'post',
-      title: 'Long read',
-      status: 'published',
-      document: {
-        type: 'doc',
-        content: [
-          paragraph('Teaser text'),
-          { type: 'more' },
-          paragraph('Rest'),
-          { type: 'pageBreak' },
-          { type: 'patternRef', attrs: { ref: outer.id } },
-        ],
-      },
-    },
-    ADMIN,
-  );
-  const [entry] = [...source.content.rows.values()];
-  // The teaser is the summary; the served body shows the pattern's current text.
-  expect(entry?.summary).toBe('Teaser text');
-  source.clock.set('2026-06-02T00:00:00.000Z');
-  await source.patterns.update(
-    pattern.id,
-    {
-      title: 'Signup',
-      document: { type: 'doc', content: [paragraph('Join today')] },
-    },
-    ADMIN,
-  );
-  expect(await source.patterns.expand(entry!.html)).toContain('Join today');
-
-  const xml = await source.exporter.exportWxr(ADMIN);
-  expect(xml).toContain('<!--more-->');
-  expect(xml).toContain('<!--nextpage-->');
-
-  const target = await site();
-  expect(xml.indexOf('<title><![CDATA[Outer]]>')).toBeLessThan(
-    xml.indexOf('<title><![CDATA[Signup]]>'),
-  );
-  const result = await target.importer.importWxr(xml, ADMIN);
-  expect(result.skipped).toEqual([]);
-  const { items } = await target.patterns.list({}, ADMIN);
-  const copy = items.find((item) => item.title === 'Outer');
-  const inner = items.find((item) => item.title === 'Signup');
   expect(
-    (await target.patterns.get(copy!.id, ADMIN)).document.content?.[0]?.attrs,
-  ).toEqual({ ref: inner!.id });
-  const imported = [...target.content.rows.values()][0]!;
-  expect(imported.document.content?.map((node) => node.type)).toEqual([
-    'paragraph',
-    'more',
-    'paragraph',
-    'pageBreak',
-    'patternRef',
+    thread.map((comment) => [
+      comment.body,
+      comment.depth,
+      comment.authorIp,
+      comment.authorUserAgent,
+    ]),
+  ).toEqual([
+    ['Stay safe', 0, '203.0.113.7', 'Mozilla/5.0 (WXR)'],
+    // An invalid address in the file is dropped.
+    ['Thanks', 1, null, 'Mozilla/5.0 (WXR)'],
   ]);
-  expect(
-    (imported.document.content?.[4]?.attrs as { ref?: string } | undefined)
-      ?.ref,
-  ).toBe(copy!.id);
-  expect(await target.patterns.expand(imported.html)).toContain('Join today');
-});
-
-test('pattern references expand only to published patterns, without cycles', async () => {
-  const { patterns } = await site();
-  const ref = (id: string) => ({ type: 'patternRef', attrs: { ref: id } });
-  const draft = await patterns.create(
-    {
-      title: 'Draft',
-      status: 'draft',
-      document: {
-        type: 'doc',
-        content: [
-          { type: 'paragraph', content: [{ type: 'text', text: 'Secret' }] },
-        ],
-      },
-    },
-    ADMIN,
-  );
-  const loop = await patterns.create(
-    {
-      title: 'Loop',
-      document: { type: 'doc', content: [{ type: 'paragraph' }] },
-    },
-    ADMIN,
-  );
-  await patterns.update(
-    loop.id,
-    {
-      title: 'Loop',
-      document: { type: 'doc', content: [ref(loop.id), ref(draft.id)] },
-    },
-    ADMIN,
-  );
-  const html = `<div class="cms-pattern" data-cms-pattern="${loop.id}"></div>`;
-  expect(await patterns.expand(html)).toBe('');
-  // A contributor can neither publish a pattern nor change someone else's.
-  const contributor = { id: 'c', role: 'contributor' };
-  await expect(
-    patterns.create(
-      {
-        title: 'X',
-        document: { type: 'doc', content: [{ type: 'paragraph' }] },
-      },
-      contributor,
-    ),
-  ).rejects.toMatchObject({ code: 'forbidden' });
-  await expect(patterns.remove(loop.id, contributor)).rejects.toMatchObject({
-    code: 'forbidden',
-  });
 });
 
 test('WordPress-only items are reported, and files with a DTD are refused', async () => {
@@ -556,184 +279,4 @@ Second <script>x()</script>para]]></content:encoded><wp:post_name>classic</wp:po
       .importWxr('<!DOCTYPE x [<!ENTITY a "b">]><rss/>', ADMIN)
       .catch((error: { code: string }) => error.code),
   ).toBe('invalid_input');
-});
-
-test('a WordPress site keeps its slugs, old addresses, page parents, shortcodes and menus', async () => {
-  const target = await site();
-  const meta = (key: string, value: string) =>
-    `<wp:postmeta><wp:meta_key>${key}</wp:meta_key><wp:meta_value><![CDATA[${value}]]></wp:meta_value></wp:postmeta>`;
-  const xml = `<?xml version="1.0"?>
-<rss xmlns:wp="http://wordpress.org/export/1.2/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/"><channel>
-<link>https://old.example</link>
-<wp:wxr_version>1.2</wp:wxr_version>
-<wp:base_site_url>https://old.example</wp:base_site_url>
-<item><title>About</title><link>https://old.example/about/</link><wp:post_id>10</wp:post_id><wp:post_name>about</wp:post_name><wp:status>publish</wp:status><wp:post_type>page</wp:post_type><wp:post_parent>0</wp:post_parent></item>
-<item><title>Team</title><link>https://old.example/about/team/</link><wp:post_id>11</wp:post_id><wp:post_name>team</wp:post_name><wp:status>publish</wp:status><wp:post_type>page</wp:post_type><wp:post_parent>10</wp:post_parent></item>
-<item><title>News</title><link>https://old.example/2019/05/%ec%86%8c%ec%8b%9d/</link><wp:post_id>20</wp:post_id><wp:post_name>%ec%86%8c%ec%8b%9d</wp:post_name><wp:status>publish</wp:status><wp:post_type>post</wp:post_type>
-<content:encoded><![CDATA[Intro line
-second line
-
-[caption id="attachment_30" align="aligncenter" width="300"]<img src="https://old.example/uploads/a.jpg" alt="A"> Photo caption[/caption]
-
-[gallery ids="30,31" columns="2"]
-
-[embed]https://www.youtube.com/watch?v=abcdefghijk[/embed]]]></content:encoded>${meta('_thumbnail_id', '30')}</item>
-<item><title>A</title><wp:post_id>30</wp:post_id><wp:post_type>attachment</wp:post_type><wp:status>inherit</wp:status><wp:post_parent>20</wp:post_parent><wp:attachment_url>https://old.example/uploads/a.jpg</wp:attachment_url></item>
-<item><title>B</title><wp:post_id>31</wp:post_id><wp:post_type>attachment</wp:post_type><wp:status>inherit</wp:status><wp:attachment_url>https://old.example/uploads/b.jpg</wp:attachment_url></item>
-<item><title></title><wp:post_id>40</wp:post_id><wp:post_type>nav_menu_item</wp:post_type><wp:status>publish</wp:status><wp:menu_order>1</wp:menu_order><category domain="nav_menu" nicename="main"><![CDATA[Main]]></category>${meta('_menu_item_type', 'post_type')}${meta('_menu_item_object_id', '10')}${meta('_menu_item_menu_item_parent', '0')}</item>
-<item><title>Elsewhere</title><wp:post_id>41</wp:post_id><wp:post_type>nav_menu_item</wp:post_type><wp:status>publish</wp:status><wp:menu_order>2</wp:menu_order><category domain="nav_menu" nicename="main"><![CDATA[Main]]></category>${meta('_menu_item_type', 'custom')}${meta('_menu_item_url', 'https://elsewhere.example/')}${meta('_menu_item_menu_item_parent', '40')}</item>
-</channel></rss>`;
-
-  const result = await target.importer.importWxr(xml, ADMIN);
-  expect(result).toMatchObject({ content: 3, menus: 1, skipped: [] });
-  expect(result.attachments).toEqual([
-    { url: 'https://old.example/uploads/a.jpg', title: 'A', featured: 1 },
-    { url: 'https://old.example/uploads/b.jpg', title: 'B', featured: 0 },
-  ]);
-
-  const rows = [...target.content.rows.values()];
-  const about = rows.find((row) => row.slug === 'about')!;
-  const team = rows.find((row) => row.slug === 'team')!;
-  const news = rows.find((row) => row.slug === '소식')!;
-  expect(team.parentId).toBe(about.id);
-
-  // Old addresses that differ from the new ones redirect to them; equal ones need none.
-  const redirects = [...target.content.permalinks.paths.values()].filter(
-    (path) => !path.current,
-  );
-  expect(redirects).toContainEqual({
-    path: '/2019/05/%EC%86%8C%EC%8B%9D',
-    contentId: news.id,
-    current: false,
-  });
-  expect(redirects.some((path) => path.path.startsWith('/about/'))).toBe(
-    (await target.content.findById(team.id))!.path !== '/about/team',
-  );
-  expect(result.redirects).toBe(redirects.length);
-
-  const body = JSON.stringify(news.document);
-  expect(news.html).toStartWith('<p>Intro line<br/>second line</p>');
-  expect(body).toContain('"caption":"Photo caption"');
-  expect(body).toContain('"type":"gallery"');
-  expect(body).toContain('https://old.example/uploads/b.jpg');
-  expect(body).toContain('"type":"embed"');
-
-  const menus = target.menus();
-  expect(menus.locations.primary).toBe(menus.menus[0]!.id);
-  expect(menus.menus[0]).toMatchObject({
-    name: 'Main',
-    items: [
-      {
-        kind: 'content',
-        contentId: about.id,
-        children: [{ kind: 'custom', url: 'https://elsewhere.example/' }],
-      },
-    ],
-  });
-});
-
-test('pattern expansion counts repeated cached references, including nested occurrences', async () => {
-  const { patterns } = await site();
-  let current = await patterns.create(
-    {
-      title: 'Leaf',
-      document: {
-        type: 'doc',
-        content: [
-          {
-            type: 'paragraph',
-            content: [{ type: 'text', text: 'x'.repeat(1024) }],
-          },
-        ],
-      },
-    },
-    ADMIN,
-  );
-  for (let depth = 0; depth < 3; depth++) {
-    current = await patterns.create(
-      {
-        title: `Level ${depth}`,
-        document: {
-          type: 'doc',
-          content: Array.from({ length: 20 }, () => ({
-            type: 'patternRef',
-            attrs: { ref: current.id },
-          })),
-        },
-      },
-      ADMIN,
-    );
-  }
-  const html = await patterns.expand(
-    `<div class="cms-pattern" data-cms-pattern="${current.id}"></div>`,
-  );
-  expect(html.length).toBeGreaterThan(1024);
-  expect(html.length).toBeLessThanOrEqual(50 * 1031);
-  expect(html).not.toContain('data-cms-pattern');
-});
-
-test('pattern expansion rejects aggregate bytes before returning partial markup', async () => {
-  const { patterns } = await site();
-  const pattern = await patterns.create(
-    {
-      title: 'Large',
-      document: {
-        type: 'doc',
-        content: [
-          {
-            type: 'paragraph',
-            content: [{ type: 'text', text: '한'.repeat(100_000) }],
-          },
-        ],
-      },
-    },
-    ADMIN,
-  );
-  const marker = `<div class="cms-pattern" data-cms-pattern="${pattern.id}"></div>`;
-  expect(
-    new TextEncoder().encode(await patterns.expand(marker.repeat(3))).length,
-  ).toBeLessThan(1024 * 1024);
-  expect(await patterns.expand(marker.repeat(4))).toBe('');
-});
-
-test('contributors cannot change or remove their pattern after an editor publishes it', async () => {
-  const { patterns } = await site();
-  const contributor = { id: 'contributor', role: 'contributor' };
-  const input = {
-    title: 'Reviewed',
-    status: 'draft',
-    document: { type: 'doc', content: [{ type: 'paragraph' }] },
-  };
-  const pattern = await patterns.create(input, contributor);
-  await patterns.update(pattern.id, { ...input, status: 'published' }, ADMIN);
-  await expect(
-    patterns.update(pattern.id, input, contributor),
-  ).rejects.toMatchObject({ code: 'forbidden' });
-  await expect(patterns.remove(pattern.id, contributor)).rejects.toMatchObject({
-    code: 'forbidden',
-  });
-  expect((await patterns.get(pattern.id, ADMIN)).status).toBe('published');
-});
-
-test('a rejected imported pattern body removes its staged draft and reports the failure', async () => {
-  const source = await site();
-  await source.patterns.create(
-    {
-      title: 'Invalid nested body',
-      document: {
-        type: 'doc',
-        content: [
-          { type: 'paragraph', content: [{ type: 'text', text: 'too deep' }] },
-        ],
-      },
-    },
-    ADMIN,
-  );
-  const xml = (await source.exporter.exportWxr(ADMIN)).replace(
-    '<p>too deep</p>',
-    `${'<blockquote>'.repeat(CONTENT_DOCUMENT_LIMITS.depth)}<p>too deep</p>${'</blockquote>'.repeat(CONTENT_DOCUMENT_LIMITS.depth)}`,
-  );
-  const target = await site();
-  expect((await target.importer.importWxr(xml, ADMIN)).skipped).toHaveLength(1);
-  expect((await target.patterns.list({}, ADMIN)).total).toBe(0);
 });

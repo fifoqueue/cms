@@ -10,7 +10,9 @@
   import { untrack } from 'svelte';
   import type { Block } from '@cms/sdk';
   import { resolve } from '$app/paths';
+  import { page } from '$app/state';
   import { deserialize, enhance } from '$app/forms';
+  import { actionUrl } from '#lib/admin/action-url.js';
   import type { SubmitFunction } from '$app/forms';
   import {
     THEME_FONT_SIZES,
@@ -83,6 +85,9 @@
       ? { kind: 'template' as const, template }
       : { kind: 'styles' as const };
   });
+
+  /** Every form posts to this page's address, so saving stays on the theme and panel. */
+  const action = (name: string) => actionUrl(page.url.search, name);
 
   const link = (edit: string) =>
     `?theme=${encodeURIComponent(editor.id)}&edit=${encodeURIComponent(edit)}`;
@@ -435,7 +440,11 @@
             >{/if}
         </a>
       {/each}
-      <form method="POST" action="?/addTemplate" class="space-y-2 px-1 pt-2">
+      <form
+        method="POST"
+        action={action('addTemplate')}
+        class="space-y-2 px-1 pt-2"
+      >
         <input type="hidden" name="theme" value={editor.id} />
         <NativeSelect
           name="kind"
@@ -467,7 +476,11 @@
       >
         {m.editorParts}
       </h2>
-      <form method="POST" action="?/addPart" class="space-y-2 px-1 pb-3">
+      <form
+        method="POST"
+        action={action('addPart')}
+        class="space-y-2 px-1 pb-3"
+      >
         <input type="hidden" name="theme" value={editor.id} />
         <Label for="pattern-slug">{m.editorPatternName}</Label>
         <Input
@@ -516,7 +529,7 @@
         <CardContent>
           <form
             method="POST"
-            action="?/saveStyles"
+            action={action('saveStyles')}
             use:enhance={() =>
               async ({ result, update }) => {
                 if (result.type === 'success') stylesDirty = false;
@@ -677,7 +690,7 @@
           {#if editor.styles.customized}
             <form
               method="POST"
-              action="?/resetStyles"
+              action={action('resetStyles')}
               use:enhance={confirmReset}
               class="mt-2"
             >
@@ -702,8 +715,8 @@
               detail: `templates/${selected.template.name}.json`,
               blocks: selected.template.blocks,
               key: `template:${selected.template.name}`,
-              save: '?/saveTemplate',
-              reset: '?/resetTemplate',
+              save: action('saveTemplate'),
+              reset: action('resetTemplate'),
               field: 'name',
               value: selected.template.name,
               customized: selected.template.customized,
@@ -720,8 +733,8 @@
               detail: `parts/${selected.part.slug}.json`,
               blocks: selected.part.blocks,
               key: `part:${selected.part.slug}`,
-              save: '?/savePart',
-              reset: '?/resetPart',
+              save: action('savePart'),
+              reset: action('resetPart'),
               field: 'slug',
               value: selected.part.slug,
               customized: selected.part.customized,
@@ -773,7 +786,7 @@
             </div>
             <form
               method="POST"
-              action="?/customize"
+              action={action('customize')}
               use:enhance
               class="flex flex-wrap items-center gap-3 border-t pt-4"
             >

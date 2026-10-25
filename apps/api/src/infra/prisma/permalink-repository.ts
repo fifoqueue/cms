@@ -121,9 +121,26 @@ const chunks = <T>(items: readonly T[]) =>
 /**
  * Takes the permalink lock. Must be the first statement of every transaction that writes paths,
  * so its reads (settings, paths) see everything committed before the lock was granted.
+ * `entries`: an SQL condition on `contents` selecting the entry rows the transaction will write
+ * or delete; they are locked (in id order) right after it, before any plain read opens the
+ * snapshot, and their ids returned. Comment writers change entries too (comment counts) without
+ * the permalink lock; holding the rows first means none of them can commit a newer version after
+ * the snapshot, which MariaDB's snapshot isolation would reject with error 1020, and keeps the
+ * lock order entry → comment.
  */
-export const lockPermalinks = async (tx: Transaction, regeneration = false) => {
+export const lockPermalinks = async (
+  tx: Transaction,
+  regeneration = false,
+  entries?: Prisma.Sql,
+): Promise<string[]> => {
   await lockPublicPaths(tx);
+  const locked = entries
+    ? (
+        await tx.$queryRaw<{ id: string }[]>(
+          Prisma.sql`SELECT id FROM contents WHERE ${entries} ORDER BY id FOR UPDATE`,
+        )
+      ).map((row) => row.id)
+    : [];
   // A concurrent write invalidates the worker's snapshot instead of rejecting the editor.
   if (!regeneration) {
     const stored = await tx.setting.findUnique({
@@ -137,6 +154,24 @@ export const lockPermalinks = async (tx: Transaction, regeneration = false) => {
       });
     }
   }
+  return locked;
+};
+
+/**
+ * Deletes entries the transaction locked with `lockPermalinks`, with their comments. Comments go
+ * first: InnoDB cannot cascade into replies (their `parent_id` SET NULL re-checks `content_id`
+ * against the entry being deleted), so threads are cut, then removed. Assignments, paths,
+ * redirects and the comments' push registrations go with their rows (ON DELETE CASCADE).
+ */
+export const deleteEntries = async (
+  tx: Transaction,
+  ids: readonly string[],
+) => {
+  if (!ids.length) return;
+  const list = Prisma.join([...ids]);
+  await tx.$executeRaw`UPDATE comments SET parent_id = NULL WHERE content_id IN (${list}) AND parent_id IS NOT NULL`;
+  await tx.$executeRaw`DELETE FROM comments WHERE content_id IN (${list})`;
+  await tx.$executeRaw`DELETE FROM contents WHERE id IN (${list})`;
 };
 
 const readSettings = async (db: Pick<Transaction, 'setting'>) => {

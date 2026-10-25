@@ -49,7 +49,7 @@ export const unlockAction = async ({
       await contentApi(fetch).unlock(
         id,
         text(form, 'password'),
-        visitorOf({ getClientAddress }, form),
+        visitorOf({ getClientAddress, request }, form),
       ),
     );
   } catch (caught) {

@@ -10,6 +10,7 @@ import {
 } from '@cms/sdk/client';
 
 type Fetch = typeof fetch;
+import type { ClientProof } from '@cms/sdk/client';
 
 /** The API listens on this machine by default, so follow its port unless an address is given. */
 export const apiUrl = CMS_API_URL || `http://127.0.0.1:${API_PORT}`;
@@ -20,8 +21,8 @@ export const contentApi = (fetch: Fetch, token?: string | null) =>
 export const authApi = (fetch: Fetch, token?: string | null) =>
   createAuthClient({ baseUrl: apiUrl, fetch }, token ?? undefined);
 
-export const adminApi = (fetch: Fetch, token: string) =>
-  createAdminClient({ baseUrl: apiUrl, fetch }, token);
+export const adminApi = (fetch: Fetch, token: string, proof?: ClientProof) =>
+  createAdminClient({ baseUrl: apiUrl, fetch }, token, proof);
 
 export const installationApi = (fetch: Fetch) =>
   createInstallationClient({ baseUrl: apiUrl, fetch });

@@ -70,6 +70,36 @@ export const parseAddress = (address: string): ParsedAddress | null => {
   return null;
 };
 
+const dotted = (value: bigint) =>
+  [24n, 16n, 8n, 0n].map((shift) => (value >> shift) & 0xffn).join('.');
+
+/**
+ * The canonical text of an IP address: dotted IPv4 (also for IPv4-mapped IPv6), other IPv6 in
+ * RFC 5952 form (lowercase, the first longest run of two or more zero groups as `::`), without a
+ * zone. Null when `address` is not an IP address.
+ */
+export const canonicalAddress = (address: string): string | null => {
+  const parsed = parseAddress(address);
+  if (!parsed) return null;
+  if (parsed.family === 4) return dotted(parsed.value);
+  if (parsed.value >> 32n === 0xffffn)
+    return dotted(parsed.value & 0xffffffffn);
+  const groups = Array.from({ length: 8 }, (_, index) =>
+    ((parsed.value >> BigInt(112 - index * 16)) & 0xffffn).toString(16),
+  );
+  let start = -1;
+  let length = 1;
+  for (let index = 0; index < 8;) {
+    let end = index;
+    while (groups[end] === '0') end += 1;
+    if (end - index > length) [start, length] = [index, end - index];
+    index = Math.max(end, index + 1);
+  }
+  return start < 0
+    ? groups.join(':')
+    : `${groups.slice(0, start).join(':')}::${groups.slice(start + length).join(':')}`;
+};
+
 export const parseRange = (range: string) => {
   const [address, prefixText, extra] = range.split('/');
   if (!address || extra !== undefined) return null;

@@ -10,6 +10,7 @@ import type { SecretBox } from '#api/domain/ports';
 import type { Database } from '#api/infra/prisma/client';
 import { lockSetting } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
+import { eraseContentOrigin } from '#api/infra/prisma/content-origin';
 import { openJob } from '#api/domain/jobs/payload';
 import {
   lockPermalinks,
@@ -128,6 +129,8 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
             authorName: true,
             authorEmail: true,
             authorUrl: true,
+            authorIp: true,
+            authorUserAgent: true,
             body: true,
             status: true,
             createdAt: true,
@@ -135,6 +138,31 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
           },
         })
       ).map(dates);
+    if (section === 'pushSubscriptions')
+      return (
+        await this.db.pushSubscription.findMany({
+          ...page,
+          where: {
+            id,
+            OR: [
+              { comment: { authorEmail: email } },
+              ...(user ? [{ userId: user.id }] : []),
+            ],
+          },
+          select: {
+            id: true,
+            commentId: true,
+            endpoint: true,
+            status: true,
+            createdAt: true,
+            lastSeenAt: true,
+          },
+        })
+      ).map(({ endpoint, ...row }) => ({
+        ...dates(row),
+        // The endpoint itself is a delivery capability; its push service is what identifies.
+        service: new URL(endpoint).hostname,
+      }));
     if (!user) return [];
     if (section === 'passkeys')
       return (
@@ -202,12 +230,40 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
         subject: new TextDecoder().decode(row.subject),
         createdAt: row.createdAt.toISOString(),
       }));
+    if (section === 'revisions')
+      return (
+        await this.db.contentRevision.findMany({
+          ...page,
+          where: { id, authorId: user.id },
+          select: {
+            id: true,
+            contentId: true,
+            kind: true,
+            createdAt: true,
+            ip: true,
+            userAgent: true,
+          },
+        })
+      ).map(dates);
     if (section === 'content')
       return (
         await this.db.content.findMany({
           ...page,
-          where: { id, authorId: user.id },
+          where: {
+            id,
+            OR: [
+              { authorId: user.id },
+              { createdById: user.id },
+              { modifiedById: user.id },
+            ],
+          },
           select: {
+            createdIp: true,
+            createdById: true,
+            modifiedById: true,
+            createdUserAgent: true,
+            modifiedIp: true,
+            modifiedUserAgent: true,
             id: true,
             title: true,
             slug: true,
@@ -220,7 +276,17 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
             updatedAt: true,
           },
         })
-      ).map(dates);
+      ).map(({ createdById, modifiedById, ...row }) =>
+        dates({
+          ...row,
+          createdIp: createdById === user.id ? row.createdIp : null,
+          createdUserAgent:
+            createdById === user.id ? row.createdUserAgent : null,
+          modifiedIp: modifiedById === user.id ? row.modifiedIp : null,
+          modifiedUserAgent:
+            modifiedById === user.id ? row.modifiedUserAgent : null,
+        }),
+      );
     return (
       await this.db.media.findMany({
         ...page,
@@ -263,6 +329,12 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
         )
           throw conflict(Errors.LastAdministrator);
         await lockSetting(tx, 'privacy.jobs');
+        if (user)
+          await tx.$queryRaw`SELECT id FROM contents
+            WHERE created_by_id = ${user.id} OR modified_by_id = ${user.id}
+              OR EXISTS (SELECT 1 FROM content_revisions
+                WHERE content_id = contents.id AND author_id = ${user.id})
+            ORDER BY id FOR UPDATE`;
         const where = {
           OR: [
             { authorEmail: request.email },
@@ -332,18 +404,29 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
           if (jobs.length < 200) break;
           after = jobs.at(-1)!.id;
         }
+        await tx.pushSubscription.deleteMany({
+          where: {
+            OR: [
+              { commentId: { in: comments.map((row) => row.id) } },
+              ...(user ? [{ userId: user.id }] : []),
+            ],
+          },
+        });
         await tx.comment.updateMany({
           where,
           data: {
             authorName: 'Anonymous',
             authorEmail: '',
             authorUrl: '',
+            authorIp: null,
+            authorUserAgent: null,
             body: '',
             userId: null,
             updatedAt: now,
           },
         });
         if (user) {
+          await eraseContentOrigin(tx, user.id);
           await tx.setting.deleteMany({
             where: { key: profileMetaKey(user.id) },
           });
@@ -356,10 +439,6 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
           await tx.apiToken.deleteMany({ where: { userId: user.id } });
           await tx.ssoTransaction.deleteMany({ where: { userId: user.id } });
           await tx.userIdentity.deleteMany({ where: { userId: user.id } });
-          await tx.contentRevision.updateMany({
-            where: { authorId: user.id },
-            data: { authorId: null },
-          });
           await tx.media.updateMany({
             where: { uploaderId: user.id },
             data: {

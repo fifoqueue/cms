@@ -155,7 +155,11 @@ export type {
   CommentVerdict,
 } from '#sdk/hooks/comments';
 
-/** A stored comment as plugins see it (including the private email address). */
+/**
+ * A stored comment as plugins see it, including the private email address, IP address and
+ * user agent (as WordPress passes `comment_author_IP` and `comment_agent`). Never put the
+ * private fields in public output.
+ */
 export interface PluginComment {
   id: string;
   contentId: string;
@@ -163,6 +167,10 @@ export interface PluginComment {
   authorName: string;
   authorEmail: string;
   authorUrl: string;
+  /** Canonical IP address the web server proved; null when unproven or unknown. */
+  authorIp: string | null;
+  /** Browser user agent the web server proved; null when unproven or unknown. */
+  authorUserAgent: string | null;
   body: string;
   status: CommentStatus;
   createdAt: string;
@@ -178,6 +186,8 @@ export interface CommentDraft {
   authorName: string;
   authorEmail: string;
   authorUrl: string;
+  authorIp: string | null;
+  authorUserAgent: string | null;
   body: string;
   status: Exclude<CommentStatus, 'trash'>;
 }

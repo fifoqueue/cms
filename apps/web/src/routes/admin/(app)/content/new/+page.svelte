@@ -36,5 +36,6 @@
     userId={data.authorId}
     defaults={data.defaults}
     defaultAuthorId={data.authorId}
+    pushKey={data.pushKey}
   />
 {/key}

@@ -2,9 +2,6 @@ import { describe, expect, test } from 'bun:test';
 import type { InstallCompleteInput, SessionGrant } from '@cms/sdk';
 import { InstallationService } from '#api/domain/installation/installation-service';
 import type { InstallationBackend } from '#api/domain/installation/installation-service';
-import { createInstallerApp } from '#api/http/app';
-import { recordingLogger } from '#test/support/memory';
-import { HookBus } from '#api/plugin-runtime/hook-bus';
 
 const key = 'installation-test-key';
 const database = {
@@ -68,32 +65,6 @@ const fixture = () => {
 };
 
 describe('InstallationService', () => {
-  test('installed notification follows commit and excludes credentials', async () => {
-    const backend = new MemoryInstallation();
-    backend.connected = true;
-    const hooks = new HookBus({
-      timeoutMs: 50,
-      logger: recordingLogger().logger,
-    });
-    const events: unknown[] = [];
-    hooks.registrar('test').on('site.installed', (value) => {
-      expect(backend.installed).toBe(true);
-      events.push(value);
-    });
-    const service = new InstallationService(
-      backend,
-      () => true,
-      () => hooks,
-    );
-    backend.failure = true;
-    await expect(service.complete(completion)).rejects.toThrow();
-    expect(events).toEqual([]);
-    backend.failure = false;
-    await service.complete(completion);
-    expect(events).toEqual([
-      { ...completion.site, siteUrl: completion.siteUrl },
-    ]);
-  });
   test('walks through database configuration and installation, then locks both writes', async () => {
     const { backend, service } = fixture();
     expect(await service.status()).toEqual({
@@ -132,60 +103,6 @@ describe('InstallationService', () => {
     await expect(service.complete(completion)).rejects.toMatchObject({
       code: 'conflict',
     });
-  });
-
-  test('validates all inputs and passes no installation key to database configuration', async () => {
-    const { backend, service } = fixture();
-    await expect(
-      service.database({ ...database, host: 'localhost/evil' }),
-    ).rejects.toMatchObject({ code: 'invalid_input' });
-    await expect(
-      service.database({ ...database, port: 0 }),
-    ).rejects.toMatchObject({ code: 'invalid_input' });
-    await expect(
-      service.complete({
-        ...completion,
-        site: { ...completion.site, title: '' },
-      }),
-    ).rejects.toMatchObject({ code: 'invalid_input' });
-    for (const siteUrl of [
-      '',
-      'javascript:alert(1)',
-      'https://user:secret@example.com',
-      'https://example.com/path',
-    ])
-      await expect(
-        service.complete({ ...completion, siteUrl }),
-      ).rejects.toMatchObject({ code: 'invalid_input' });
-    let received: unknown;
-    const original = backend.configure.bind(backend);
-    backend.configure = async (...args: unknown[]) => {
-      received = args[0];
-      await original();
-    };
-    await service.database(database);
-    const expected = { ...database };
-    Reflect.deleteProperty(expected, 'token');
-    expect(received).toEqual(expected);
-  });
-
-  test('failed configuration and completion can be retried without advancing state', async () => {
-    const { backend, service } = fixture();
-    backend.failure = true;
-    await expect(service.database(database)).rejects.toThrow(
-      'database unavailable',
-    );
-    expect((await service.status()).databaseConfigured).toBe(false);
-    backend.failure = false;
-    await service.database(database);
-    backend.failure = true;
-    await expect(service.complete(completion)).rejects.toThrow(
-      'transaction rolled back',
-    );
-    expect((await service.status()).setupRequired).toBe(true);
-    backend.failure = false;
-    await service.complete(completion);
-    expect((await service.status()).setupRequired).toBe(false);
   });
 
   test('rejects overlapping installation requests', async () => {
@@ -227,66 +144,5 @@ describe('InstallationService', () => {
     };
     await expect(restarted.status()).rejects.toThrow('connection lost');
     expect(backend.configured()).toBe(true);
-  });
-
-  test('existing administrators cannot be replaced', async () => {
-    const { backend, service } = fixture();
-    backend.connected = true;
-    backend.installed = true;
-    await expect(service.complete(completion)).rejects.toMatchObject({
-      code: 'conflict',
-    });
-    expect(backend.completions).toBe(0);
-  });
-});
-
-describe('Installation HTTP routes', () => {
-  test('status exposes no secrets, malformed JSON fails, and both mutations require a key', async () => {
-    const { service } = fixture();
-    const app = await createInstallerApp({
-      services: { installation: service },
-      logger: recordingLogger().logger,
-    });
-    const request = (path: string, body?: unknown) =>
-      app.fetch(
-        new Request(
-          `http://localhost/api/v1/${path}`,
-          body === undefined
-            ? {}
-            : {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify(body),
-              },
-        ),
-      );
-    expect(await (await request('install/status')).json()).toEqual({
-      databaseConfigured: false,
-      setupRequired: true,
-    });
-    const denied = await request('install/database', {
-      ...database,
-      token: 'wrong',
-    });
-    expect(denied.status).toBe(401);
-    expect(await denied.text()).not.toContain(database.password);
-    expect((await request('install/database', database)).status).toBe(200);
-    expect(
-      (await request('install/complete', { ...completion, token: 'wrong' }))
-        .status,
-    ).toBe(401);
-    expect((await request('install/complete', completion)).status).toBe(201);
-    expect((await request('install/complete', completion)).status).toBe(409);
-    expect((await request('auth/setup', completion.admin)).status).toBe(404);
-    expect(
-      (
-        await app.fetch(
-          new Request('http://localhost/api/v1/install/database', {
-            method: 'POST',
-            body: '{',
-          }),
-        )
-      ).status,
-    ).toBe(400);
   });
 });

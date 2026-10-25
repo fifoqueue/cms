@@ -17,7 +17,13 @@ import { visitorOf } from '#lib/server/visitor.js';
 
 type Event = Pick<
   ServerLoadEvent,
-  'fetch' | 'cookies' | 'url' | 'locals' | 'getClientAddress' | 'setHeaders'
+  | 'fetch'
+  | 'cookies'
+  | 'url'
+  | 'locals'
+  | 'getClientAddress'
+  | 'request'
+  | 'setHeaders'
 >;
 
 /**

@@ -15,6 +15,7 @@ import type { PatternService } from '#api/domain/content/pattern-service';
 import type { MenuService } from '#api/domain/appearance/menu-service';
 import type { WidgetService } from '#api/domain/appearance/widget-service';
 import type { CommentService } from '#api/domain/comments/comment-service';
+import type { CommentNotifier } from '#api/domain/comments/comment-notifier';
 import type { AvatarService } from '#api/domain/comments/avatar-service';
 import type { SearchService } from '#api/domain/search/search-service';
 import type { WebhookService } from '#api/domain/webhooks/webhook-service';
@@ -81,6 +82,8 @@ export type ApiServices = {
   menus: MenuService;
   widgets: WidgetService;
   comments: CommentService;
+  /** Push registrations, unsubscribe links and the VAPID public key. */
+  commentNotifier: CommentNotifier;
   avatars: AvatarService;
   search: SearchService;
   pluginPages: AdminPageRegistry;

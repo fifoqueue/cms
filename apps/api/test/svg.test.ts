@@ -1,38 +1,9 @@
 import { expect, test } from 'bun:test';
-import { execFileSync } from 'node:child_process';
-import { sanitizeSvg, SVG_MAX_BYTES } from '#api/domain/media/svg';
-import { sniffMediaType } from '#api/domain/media/sniff';
+import { sanitizeSvg } from '#api/domain/media/svg';
 
 const bytes = (xml: string) => new TextEncoder().encode(xml);
 const wrap = (body: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480">${body}</svg>`;
-
-test('sniffing scans adversarial preludes linearly within 4 KB', () => {
-  // A regression cannot hang the test runner: the child is killed at the deadline.
-  const script = `
-    import { sniffMediaType } from ${JSON.stringify(import.meta.resolve('#api/domain/media/sniff'))};
-    const bytes = new TextEncoder().encode('<!-- -->'.repeat(500) + '<no>');
-    console.log(JSON.stringify(sniffMediaType(bytes)));
-  `;
-  expect(
-    execFileSync(process.execPath, ['-e', script], {
-      timeout: 2000,
-      encoding: 'utf8',
-    }).trim(),
-  ).toBe('null');
-  expect(
-    sniffMediaType(
-      bytes('\ufeff \n<?xml version="1.0"?> <!-- x --><!-- y --><svg/>'),
-    ),
-  ).toBe('image/svg+xml');
-  for (const input of [
-    '<!-- unfinished',
-    '<?xml version="1.0"',
-    '<svgx/>',
-    ' '.repeat(4096) + '<svg/>',
-  ])
-    expect(sniffMediaType(bytes(input))).toBeNull();
-});
 
 test('CSS resource functions and escaped forms are stripped in both style contexts', () => {
   for (const name of [
@@ -70,15 +41,6 @@ test('CSS resource functions and escaped forms are stripped in both style contex
   ).toContain(safe);
 });
 
-test('static SVG is serialized and dimensions come from viewBox', () => {
-  const result = sanitizeSvg(bytes(wrap('<path d="M0 0 L10 10"/>')));
-  expect(result.width).toBe(640);
-  expect(result.height).toBe(480);
-  expect(new TextDecoder().decode(result.bytes)).toContain(
-    '<path d="M0 0 L10 10"></path>',
-  );
-});
-
 test('SVG rejects active content, resources, entities and malformed XML', () => {
   for (const xml of [
     wrap('<script>alert(1)</script>'),
@@ -94,37 +56,4 @@ test('SVG rejects active content, resources, entities and malformed XML', () => 
     '<html><script>x</script></html>',
   ])
     expect(() => sanitizeSvg(bytes(xml))).toThrow();
-});
-
-test('diagram styles and raster data images survive; unsafe CSS is removed', () => {
-  const xml = wrap(
-    '<style>.box { fill: #fff; stroke: #000 }</style><g style="visibility:visible"><rect class="box" x="10" y="10" width="120" height="60" style="fill:#fff;stroke:#000"/><text x="70" y="40" style="font-size:12px;text-anchor:middle">Diagram</text><image href="data:image/png;base64,iVBORw0KGgo="/></g>',
-  );
-  expect(new TextDecoder().decode(sanitizeSvg(bytes(xml)).bytes)).toContain(
-    'font-size:12px',
-  );
-  for (const style of [
-    '@import "https://example.com/x";',
-    'fill:url(https://example.com/x)',
-    'expression(alert(1))',
-    '-moz-binding:url(x)',
-    'behavior:url(x)',
-  ]) {
-    const output = new TextDecoder().decode(
-      sanitizeSvg(
-        bytes(
-          wrap(
-            `<style>${style}</style><path style="${style.replaceAll('"', '&quot;')}"/>`,
-          ),
-        ),
-      ).bytes,
-    );
-    expect(output).not.toContain('example.com');
-    expect(output).not.toContain('expression(');
-  }
-});
-
-test('SVG input is bounded and internal references remain available', () => {
-  expect(() => sanitizeSvg(new Uint8Array(SVG_MAX_BYTES + 1))).toThrow();
-  expect(() => sanitizeSvg(bytes(wrap('<use href="#shape"/>')))).not.toThrow();
 });

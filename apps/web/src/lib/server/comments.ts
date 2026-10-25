@@ -46,10 +46,17 @@ export const commentsView = (page: PublicCommentPage) => ({
   open: page.open,
   threadDepth: page.threadDepth,
   truncated: page.truncated,
+  notifications: {
+    email: page.notifications.email,
+    push: page.notifications.push,
+  },
 });
 
 export type CommentsView = ReturnType<typeof commentsView>;
-export type { CommentManagement } from '#lib/server/comment-management.js';
+export type {
+  CommentManagement,
+  CommentOrigin,
+} from '#lib/server/comment-management.js';
 
 /**
  * The approved thread page at `?cpage=` (with the visitor's pending receipt), or null when it
@@ -79,16 +86,17 @@ export const loadComments = async (
   contentId: string,
   event: Pick<
     RequestEvent,
-    'url' | 'cookies' | 'fetch' | 'request' | 'setHeaders'
+    'url' | 'cookies' | 'fetch' | 'request' | 'setHeaders' | 'getClientAddress'
   >,
   captchaRequest: Promise<PublicCaptcha | null> = api
     .captcha()
     .catch(() => null),
 ) => {
+  const thread = readThread(api, contentId, event);
   const [comments, captcha, management] = await Promise.all([
-    readThread(api, contentId, event),
+    thread,
     captchaRequest,
-    loadManagement(event, contentId),
+    loadManagement(event, contentId, thread),
   ]);
   // Actions set their own caching rule; a page that shows moderation data is never cached.
   if (management && event.request.method === 'GET')
@@ -239,6 +247,8 @@ export const commentAction = async (event: RequestEvent) => {
       comments: comments ? commentsView(comments) : null,
       moderation: result.status === 'pending',
       location,
+      /** Lets this browser ask for replies by push (`#lib/push-client.js`); expires soon. */
+      pushToken: result.pushToken,
     };
   redirect(303, location);
 };

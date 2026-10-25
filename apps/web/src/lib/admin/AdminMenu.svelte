@@ -453,6 +453,25 @@
     open = null;
   };
 
+  /**
+   * Keeps an open flyout inside the window: when the space below its section runs out it moves
+   * up by the difference, and a flyout taller than the window scrolls.
+   */
+  const fitWindow = (node: HTMLElement) => {
+    if (!matchMedia('(min-width: 48rem)').matches) return;
+    const margin = 8;
+    node.style.maxHeight = `${innerHeight - margin * 2}px`;
+    node.style.overflowY = 'auto';
+    const { top, bottom } = node.getBoundingClientRect();
+    const overflow = bottom - (innerHeight - margin);
+    if (overflow > 0) node.style.top = `${-Math.min(overflow, top - margin)}px`;
+    return () => {
+      node.style.removeProperty('top');
+      node.style.removeProperty('max-height');
+      node.style.removeProperty('overflow-y');
+    };
+  };
+
   const closeOnBlur = (event: FocusEvent, section: string) => {
     const target = event.currentTarget as HTMLElement;
     if (open === section && !target.contains(event.relatedTarget as Node))
@@ -513,6 +532,7 @@
                 ? 'md:absolute md:top-0 md:left-full md:z-50 md:mt-0 md:ml-0 md:min-w-48 md:rounded-md md:border md:bg-popover md:p-1 md:text-popover-foreground md:shadow-md md:duration-150 md:animate-in md:fade-in-0 md:slide-in-from-left-1'
                 : 'md:hidden'),
           ]}
+          {@attach !active && open === section.key ? fitWindow : undefined}
         >
           {#each section.items as item (item.href)}
             <li>

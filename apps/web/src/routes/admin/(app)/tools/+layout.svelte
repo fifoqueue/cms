@@ -29,25 +29,24 @@
 
 <SectionTabs
   label={i18n.m.navTools}
-  tabs={tabs.map((tab) => ({
-    route: tab.route,
-    label: tab.label(i18n.m),
-    current: page.route.id === tab.route,
-  }))}
->
-  {#if can(data.user, 'users.manage')}
-    <a
-      class="px-3 py-2 text-sm"
-      href={resolve('/admin/(app)/tools/privacy/[action]', {
-        action: 'export',
-      })}>{i18n.m.privacyExport}</a
-    >
-    <a
-      class="px-3 py-2 text-sm"
-      href={resolve('/admin/(app)/tools/privacy/[action]', { action: 'erase' })}
-      >{i18n.m.privacyErase}</a
-    >
-  {/if}
-</SectionTabs>
+  tabs={[
+    ...tabs.map((tab) => ({
+      href: resolve(tab.route),
+      label: tab.label(i18n.m),
+      current: page.route.id === tab.route,
+    })),
+    // Privacy requests share one route; the action names the tab.
+    ...(can(data.user, 'users.manage')
+      ? (['export', 'erase'] as const).map((action) => ({
+          href: resolve('/admin/(app)/tools/privacy/[action]', { action }),
+          label:
+            action === 'export' ? i18n.m.privacyExport : i18n.m.privacyErase,
+          current:
+            page.route.id === '/admin/(app)/tools/privacy/[action]' &&
+            page.params.action === action,
+        }))
+      : []),
+  ]}
+/>
 
 {@render children()}

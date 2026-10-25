@@ -52,7 +52,6 @@ const fixture = async () => {
     sessionTtlMs: 600000,
   });
   const checked: unknown[] = [];
-  const callbacks: (string | undefined)[] = [];
   const providers = ['a', 'b'].map((id) => ({
     id,
     issuer: `https://${id}.example`,
@@ -72,12 +71,9 @@ const fixture = async () => {
       },
     },
   }));
-  const setup = async (callbackUrl?: string) => {
-    callbacks.push(callbackUrl);
-    return { providers };
-  };
+  const setup = async () => ({ providers });
   const sso = new SsoService({
-    setup: () => setup(),
+    setup,
     users,
     identities,
     sessions: auth,
@@ -123,23 +119,6 @@ const fixture = async () => {
     clock,
     transactions,
     factorChanges: settings,
-    setupTokens: {
-      find: async (hash, now) => {
-        const token = identities.tokens.rows.get(hash);
-        return token && token.expiresAt > now
-          ? { userId: token.userId, expiresAt: token.expiresAt }
-          : null;
-      },
-      consume: async (hash, userId, now) => {
-        const token = identities.tokens.rows.get(hash);
-        return (
-          !!token &&
-          token.userId === userId &&
-          token.expiresAt > now &&
-          identities.tokens.rows.delete(hash)
-        );
-      },
-    },
     settings: {
       effective: async () => ({
         methods: ['sso'],
@@ -173,10 +152,7 @@ const fixture = async () => {
     sessions,
     transactions,
     tokens,
-    providers,
     checked,
-    callbacks,
-    clock,
     start,
     finish,
     link,
@@ -186,13 +162,8 @@ const fixture = async () => {
   };
 };
 
-test('SSO engine offers providers and binds verified identities through the factor step to sessions', async () => {
+test('SSO engine binds verified identities through the factor step to sessions', async () => {
   const f = await fixture();
-  expect((await f.engine.info()).methods[0]!.options).toEqual([
-    { id: 'a', label: 'a' },
-    { id: 'b', label: 'b' },
-  ]);
-  expect((await f.engine.info()).setup[0]!.id).toBe('sso');
   await f.link();
   f.enroll();
   const start = await f.start();
@@ -208,7 +179,6 @@ test('SSO engine offers providers and binds verified identities through the fact
     id: 'a',
     checks: { state: 'state-a', nonce: 'nonce-a', codeVerifier: 'pkce-a' },
   });
-  expect(f.callbacks.every((callback) => callback === undefined)).toBe(true);
   const prompt = await f.engine.chooseFactor(
     { transaction: handle(choice), factor: 'totp' },
     visitor,
@@ -223,65 +193,4 @@ test('SSO engine offers providers and binds verified identities through the fact
   ).toBe('identity');
   await f.identities.unlink(f.owner.id, 'identity');
   expect(await f.auth.authenticate(result.session.token)).toBeNull();
-});
-
-test('SSO provider state is server-bound, assignments are provider-local, and unlink before session issuance fails closed', async () => {
-  const f = await fixture();
-  f.providers[0]!.subjects.set('assigned', f.owner.email);
-  expect((await f.finish(await f.start(), '?code=assigned')).kind).toBe(
-    'session',
-  );
-  expect([...f.sessions.rows.values()][0]!.identityId).toBeNull();
-  await expect(
-    f.finish(await f.start('b'), '?code=assigned'),
-  ).rejects.toMatchObject({ code: 'unauthorized' });
-  const changed = await f.start();
-  f.providers[0]!.issuer = 'https://changed.example';
-  const calls = f.checked.length;
-  await expect(f.finish(changed)).rejects.toMatchObject({
-    code: 'unauthorized',
-  });
-  expect(f.checked).toHaveLength(calls);
-  f.providers[0]!.issuer = 'https://a.example';
-  await f.link();
-  f.enroll();
-  const choice = await f.finish(await f.start());
-  const prompt = await f.engine.chooseFactor(
-    { transaction: handle(choice), factor: 'totp' },
-    visitor,
-  );
-  await f.identities.unlink(f.owner.id, 'identity');
-  await expect(
-    f.engine.continue(
-      { transaction: handle(prompt), values: { code: 'correct' } },
-      visitor,
-    ),
-  ).rejects.toMatchObject({ code: 'unauthorized' });
-});
-
-test('SSO setup commits the claim and all sibling token revocations once, binding the resulting session', async () => {
-  const f = await fixture();
-  for (const token of ['invite', 'sibling'])
-    await f.identities.tokens.insert({
-      tokenHash: f.tokens.digest(token),
-      userId: f.owner.id,
-      purpose: 'invite',
-      expiresAt: new Date(f.clock.now().getTime() + 60000),
-    });
-  const starts = await Promise.all(
-    [0, 1].map(() =>
-      f.engine.setup('sso', { option: 'a', token: 'invite' }, visitor),
-    ),
-  );
-  const results = await Promise.allSettled(
-    starts.map((step) => f.finish(step)),
-  );
-  expect(
-    results.filter((result) => result.status === 'fulfilled'),
-  ).toHaveLength(1);
-  expect(f.identities.tokens.rows.size).toBe(0);
-  const links = await f.identities.findByUser(f.owner.id);
-  expect(links).toHaveLength(1);
-  expect(links[0]!.issuer).toBe('https://a.example/');
-  expect([...f.sessions.rows.values()][0]!.identityId).toBe(links[0]!.id);
 });

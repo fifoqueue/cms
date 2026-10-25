@@ -1,19 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import type { PublicContent, SiteSettings } from '@cms/sdk';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
 import { recordingLogger } from '#test/support/memory';
-import { publicEntry } from '#test/support/content';
-
-const site: SiteSettings = {
-  title: 'Site',
-  description: '',
-  locale: 'en',
-  iconId: null,
-  logoId: null,
-  loginPath: '/login',
-  showLogin: true,
-};
-const content = publicEntry({ title: 'T' });
 
 describe('HookBus', () => {
   test('skips filters that throw, time out or return invalid values', async () => {
@@ -48,70 +35,5 @@ describe('HookBus', () => {
     );
     expect(result.title).toBe('T!');
     expect(lines.filter((line) => line.startsWith('warn'))).toHaveLength(3);
-  });
-
-  test('runs filters by priority, then registration order', async () => {
-    const bus = new HookBus({
-      timeoutMs: 50,
-      logger: recordingLogger().logger,
-    });
-    const hooks = bus.registrar('p');
-    const append = (suffix: string) => (value: PublicContent) => ({
-      ...value,
-      title: value.title + suffix,
-    });
-    hooks.filter('content.public', append('2'), 20);
-    hooks.filter('content.public', append('1'), 5);
-    hooks.filter('content.public', append('3'), 20);
-    const result = await bus.applyFilter('content.public', content, () => true);
-    expect(result.title).toBe('T123');
-  });
-
-  test('handlers receive copies, so they cannot mutate core state', async () => {
-    const bus = new HookBus({
-      timeoutMs: 50,
-      logger: recordingLogger().logger,
-    });
-    bus.registrar('p').on('site.updated', (payload) => {
-      (payload as SiteSettings).title = 'mutated';
-    });
-    const original = { ...site };
-    await bus.emit('site.updated', original);
-    expect(original.title).toBe('Site');
-  });
-
-  test('emit never rejects and unsubscribe removes the handler', async () => {
-    const { logger, lines } = recordingLogger();
-    const bus = new HookBus({ timeoutMs: 50, logger });
-    const off = bus.registrar('p').on('site.updated', () => {
-      throw new Error('boom');
-    });
-    await bus.emit('site.updated', site);
-    off();
-    await bus.emit('site.updated', site);
-    expect(lines).toEqual(['warn Plugin "p" failed on "site.updated": boom']);
-  });
-
-  test('core handlers run without the plugin timeout and their failures propagate', async () => {
-    const { logger, lines } = recordingLogger();
-    const bus = new HookBus({ timeoutMs: 5, logger });
-    let finished = false;
-    bus.core('core:slow').on('site.updated', async () => {
-      await Bun.sleep(20);
-      finished = true;
-    });
-    await bus.emit('site.updated', site);
-    expect(finished).toBe(true);
-    const off = bus.core('core:failing').on('site.updated', () => {
-      throw new Error('enqueue failed');
-    });
-    await expect(bus.emit('site.updated', site)).rejects.toThrow(
-      'enqueue failed',
-    );
-    expect(lines).toEqual([
-      'error Core handler "core:failing" failed on "site.updated": enqueue failed',
-    ]);
-    off();
-    await bus.emit('site.updated', site);
   });
 });

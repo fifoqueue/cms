@@ -6,6 +6,7 @@ import { commentsView, readThread } from '#lib/server/comments.js';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { sessionToken } from '#lib/server/session-cookie.js';
 import { unlockProofs } from '#lib/server/unlock.js';
+import { clientProof } from '#lib/server/visitor.js';
 
 /** What a moderator can do to a comment from the public page. */
 export const MODERATION_OPERATIONS = [
@@ -105,7 +106,7 @@ export const moderateCommentAction = async (event: RequestEvent) => {
       code: 'not_found',
     });
   try {
-    await adminApi(event.fetch, token).comments.bulk({
+    await adminApi(event.fetch, token, clientProof(event)).comments.bulk({
       ids: commentIds,
       action: operation,
       contentId,
@@ -120,9 +121,10 @@ export const moderateCommentAction = async (event: RequestEvent) => {
     redirect(303, `${event.url.pathname}?${search}#comment-moderation`);
   }
   // The change is saved; a failed refresh only leaves the lists for the next page load.
+  const thread = readThread(contentApi(event.fetch, token), contentId, event);
   const [comments, management] = await Promise.all([
-    readThread(contentApi(event.fetch, token), contentId, event),
-    loadManagement(event, contentId),
+    thread,
+    loadManagement(event, contentId, thread),
   ]);
   return {
     moderated: true,

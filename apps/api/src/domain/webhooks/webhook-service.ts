@@ -61,6 +61,19 @@ export interface WebhookTransport {
 }
 
 /**
+ * Comment events without the commenter's IP address and user agent: those are for moderators
+ * (`comments.moderate`), while webhooks are set up with `tools.manage`.
+ */
+const withoutClient = (data: unknown) => {
+  if (!data || typeof data !== 'object' || !('authorIp' in data)) return data;
+  const { authorIp, authorUserAgent, ...rest } = data as Record<
+    string,
+    unknown
+  >;
+  return rest;
+};
+
+/**
  * Webhooks: signed HTTP notifications of core events, queued as jobs so slow or failing
  * receivers never delay the request that caused the event, and retried with backoff.
  */
@@ -86,7 +99,7 @@ export class WebhookService {
    */
   subscribe(hooks: Pick<HookRegistrar, 'on'>) {
     for (const event of WEBHOOK_EVENTS)
-      hooks.on(event, (data) => this.queue(event, data));
+      hooks.on(event, (data) => this.queue(event, withoutClient(data)));
   }
 
   async list(actor: Actor): Promise<AdminWebhook[]> {

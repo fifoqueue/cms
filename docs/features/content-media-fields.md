@@ -1,5 +1,28 @@
 # 콘텐츠 워크플로·미디어·필드
 
+## Entry origin
+
+Admin writes for every content type record the browser's proven IP and user agent.
+The existing frontend-secret proof is required; forged or absent proof stores null.
+IP text uses the comment canonicalizer; user agents use the comment sanitizer.
+Creation origin is immutable. Explicit saves (including publish/status changes and
+revision restore) replace modification origin; trash/restore also records its actor.
+Saved revisions and separate autosaves carry the origin of their own save, not the
+restored snapshot. Imports and plugin/system writes supply no browser origin.
+
+Admin `ContentEntry` / `AdminContent` exposes `origin.created` and `origin.modified`
+(`ip`, `userAgent`), only with `content.editOthers`; otherwise `origin` is null,
+including for the entry's own author. Revision DTOs similarly return null `ip` and
+`userAgent` without that capability. Public projections and content hook payloads
+never contain origin values. Creation/modification actor IDs remain storage-only.
+
+Origin is retained with its entry/revision until deletion or personal-data erasure.
+Personal export includes only the subject's own creation/modification provenance
+and saved revisions, never another actor's origin on a matching entry. Erasure and
+user deletion clear the subject's origins and actor references while preserving
+other actors' provenance on kept entries. Creator/modifier references use nullable
+foreign keys with `ON DELETE SET NULL`.
+
 ## Configurable storage
 
 Deletion persists a `media.cleanup.delete.<id>` settings tombstone before queueing `media.cleanup` work. Each original/variant is removed through its recorded driver, and the database row is finalized only after every removal succeeds. Tombstones survive terminal job failure, payload scrubbing and job expiry; driver registration/reactivation and the resync action regenerate cleanup jobs. Upload rollback records retain the driver and exact keys independently of media rows. Unknown completion of a timed-out writer retains its tombstone even after deletion, until settlement is observed; after a process restart such uncertain records remain available for repeated recovery rather than risking lost ownership.

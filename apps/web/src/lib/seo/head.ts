@@ -55,6 +55,8 @@ export type SitePage =
       posts: PostList;
     }
   | { kind: 'login' }
+  /** Turning off comment notifications from an emailed link: never indexed. */
+  | { kind: 'unsubscribe' }
   /** Unpublished changes: described like content, never indexed or canonical. */
   | { kind: 'preview'; content: ContentView };
 
@@ -75,6 +77,7 @@ const KINDS: readonly unknown[] = [
   'date',
   'preview',
   'login',
+  'unsubscribe',
 ];
 
 /** The page part of merged page data, or `null` when the page describes nothing. */
@@ -379,12 +382,15 @@ const describe = (
         follow: false,
       };
     case 'login':
+    case 'unsubscribe': {
+      const name =
+        page.kind === 'login' ? m.signInTitle : m.commentUnsubscribeTitle;
       return {
         ...listing,
-        title: format(m.signInTitle),
-        name: m.signInTitle,
+        title: format(name),
+        name,
         description: '',
-        socialTitle: m.signInTitle,
+        socialTitle: name,
         socialDescription: '',
         path: null,
         canonical: '',
@@ -392,6 +398,7 @@ const describe = (
         follow: false,
         type: 'WebPage',
       };
+    }
     case 'content': {
       const { content } = page;
       // Every part of a split entry is canonical to itself, like WordPress.

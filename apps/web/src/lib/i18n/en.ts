@@ -278,6 +278,11 @@ export const apiErrors: ApiErrorCatalog = {
   CommentNotFound: 'Comment not found',
   CommentsClosed: 'Comments are closed for this entry',
   CommentReplyInvalid: 'The comment you are replying to is not available',
+  CommentUnsubscribeInvalid: 'This unsubscribe link is invalid or has expired.',
+  CommentPushEndpointInvalid:
+    'Notifications from this browser’s push service are not supported.',
+  CommentPushTokenInvalid:
+    'This notification request has expired. Post the comment again to turn on notifications.',
   AvatarNotFound: 'Avatar not found',
   SearchNotConfigured: 'Enter the Meilisearch address first',
   SearchUnavailable: 'Meilisearch did not answer',
@@ -990,6 +995,8 @@ export const en = {
   commentApproved: 'Approved',
   commentSpam: 'Spam',
   commentSearch: 'Search comments',
+  clientIp: 'IP address',
+  clientUserAgent: 'Browser',
   commentApprove: 'Approve',
   commentUnapprove: 'Unapprove',
   commentMarkSpam: 'Spam',
@@ -1010,6 +1017,27 @@ export const en = {
   discussionNotifyModerators:
     'Email moderators about comments waiting for review',
   discussionNotifyAuthors: 'Email authors about new comments on their entries',
+  discussionNotifyCommenters:
+    'Email commenters about replies to their comments',
+  discussionNotifyCommentersNoEmail:
+    'Email delivery is not set up, so these emails are not sent yet.',
+  discussionPushNotifications:
+    'Send browser push notifications to entry authors and commenters',
+
+  // Comment notifications
+  commentEmailNotify: 'We will email this address when someone replies.',
+  commentUnsubscribeTitle: 'Turn off notifications',
+  commentUnsubscribeConfirm:
+    'Press the button to stop notifications about replies.',
+  commentUnsubscribeButton: 'Turn off notifications',
+  commentUnsubscribedEmail: 'We will no longer send you email notifications.',
+  commentUnsubscribedPush: 'Browser notifications are turned off.',
+  pushTitle: 'Browser notifications',
+  pushOn: 'This device receives notifications about comments.',
+  pushOff: 'This device does not receive browser notifications.',
+  pushDisable: 'Turn off on this device',
+  pushDisabled: 'Browser notifications are off on this device.',
+  pushDisableFailed: 'Notifications could not be turned off. Try again.',
 
   // Settings: search
   settingsSearch: 'Search',
@@ -1142,6 +1170,17 @@ export const en = {
   themePaged: (title: string, page: number) => `${title} – Page ${page}`,
   themeContentTypes: 'Content types',
   themeNotFound: 'Page not found',
+  errorPageNotFoundHelp:
+    'Check the address, or start again from the home page.',
+  errorPageForbidden: 'You can’t open this page',
+  errorPageForbiddenHelp: 'Your account doesn’t have permission for this page.',
+  errorPageServer: 'Something went wrong',
+  errorPageServerHelp:
+    'Please try again in a moment. If it keeps happening, let the site administrator know.',
+  errorPageOther: 'This request couldn’t be completed',
+  errorPageHome: 'Go home',
+  errorPageDashboard: 'Go to the dashboard',
+  errorPageBack: 'Go back',
 
   // Public theme: archives
   themePostCount: (count: number) =>
@@ -1942,6 +1981,9 @@ export const en = {
   returnToEditor: 'Return to editor',
   revisionsCount: (count: number) => `Revisions: ${count}`,
   revisionsBrowse: 'Browse',
+  contentOrigin: 'Created and edited from',
+  contentOriginCreated: 'Created',
+  contentOriginModified: 'Last modified',
   revisionFrom: 'From',
   revisionTo: 'To',
   revisionTimeline: 'Revision timeline',

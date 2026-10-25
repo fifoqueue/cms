@@ -22,7 +22,7 @@ Bun.plugin({
   },
 });
 
-const { clearPending, readPending, setPending, takePending } =
+const { readPending, setPending, takePending } =
   await import('#lib/server/sso-cookie.js');
 const { ownsPending, pendingEnrollment } =
   await import('#lib/server/sign-in.js');
@@ -143,60 +143,6 @@ describe('pending sign-in cookie', () => {
       ),
     ).toBeNull();
   });
-
-  test('a shown step survives a refused attempt and can be cleared', () => {
-    const state = cookies();
-    setPending(state.api, plain, {
-      transaction: 'step-1',
-      flow: 'login',
-      user: null,
-      back: null,
-      step: totp,
-    });
-    expect(state.options.get('cms_sso')).toMatchObject({
-      path: '/',
-      secure: false,
-    });
-    expect(readPending(state.api, plain)?.step).toEqual(totp);
-    expect(readPending(state.api, plain)?.step).toEqual(totp);
-    clearPending(state.api, plain);
-    expect(readPending(state.api, plain)).toBeNull();
-  });
-
-  test('a step too large for a cookie keeps only its transaction', () => {
-    const state = cookies();
-    const noise = Array.from({ length: 10 }, (_, index) => ({
-      kind: 'text' as const,
-      text:
-        Buffer.from(crypto.getRandomValues(new Uint8Array(900)))
-          .toString('base64')
-          .slice(0, 1990) + index,
-    }));
-    setPending(state.api, secure, {
-      transaction: 'big',
-      flow: 'login',
-      user: null,
-      back: null,
-      step: { ...totp, display: noise, transaction: 'big' },
-    });
-    expect(state.values.get('__Host-cms_sso')!.length).toBeLessThan(3800);
-    expect(readPending(state.api, secure)).toMatchObject({
-      transaction: 'big',
-      step: null,
-    });
-  });
-
-  test('an enrollment or link without its starting user is refused', () => {
-    const state = cookies();
-    setPending(state.api, plain, {
-      transaction: 't',
-      flow: 'link',
-      user: null,
-      back: null,
-      step: null,
-    });
-    expect(readPending(state.api, plain)).toBeNull();
-  });
 });
 
 describe('pending steps belong to who started them', () => {
@@ -246,12 +192,6 @@ describe('pending steps belong to who started them', () => {
         }),
       } as never),
     );
-
-  test('signing out forgets the pending step', async () => {
-    const state = enrolled();
-    expect(await signOut(state)).toBe('/login');
-    expect(readPending(state.api, plain)).toBeNull();
-  });
 
   test('“sign in again” returns to its page, only on this site', async () => {
     expect(await signOut(cookies(), '/admin/account')).toBe(

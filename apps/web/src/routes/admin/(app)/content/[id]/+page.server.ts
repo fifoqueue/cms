@@ -11,6 +11,7 @@ import {
   text,
 } from '#lib/server/errors.js';
 import { loadSeoContext } from '#lib/server/seo-admin.js';
+import { editorPushKey } from '#lib/server/push.js';
 import { adminFor } from '#lib/server/session.js';
 import { loadTermChoices } from '#lib/server/taxonomy-admin.js';
 import type { Actions, PageServerLoad } from './$types';
@@ -19,16 +20,18 @@ export const load: PageServerLoad = async (event) => {
   const admin = adminFor(event);
   const id = event.params.id;
   const user = event.locals.user!;
-  const [entry, terms, seo, revisions, autosave, authors, model] =
+  // A missing entry fails its revisions and autosave reads too: any of them means not found.
+  const [entry, terms, seo, revisions, autosave, authors, model, pushKey] =
     await Promise.all([
-      admin.content.get(id).catch(notFoundFrom),
+      admin.content.get(id),
       loadTermChoices(event),
       loadSeoContext(event),
       admin.content.revisions(id),
       admin.content.pendingAutosave(id),
       can(user, 'content.editOthers') ? admin.users.authors() : null,
       admin.contentModel.model(),
-    ]);
+      editorPushKey(event),
+    ]).catch(notFoundFrom);
   return {
     entry,
     model,
@@ -42,6 +45,7 @@ export const load: PageServerLoad = async (event) => {
     authors,
     canPublish: can(user, 'content.publish'),
     canManageTerms: can(user, 'taxonomy.manage'),
+    pushKey,
   };
 };
 

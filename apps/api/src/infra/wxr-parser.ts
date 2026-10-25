@@ -71,6 +71,8 @@ const comment = (node: Node): WxrComment => ({
   authorName: str(node['wp:comment_author']),
   authorEmail: str(node['wp:comment_author_email']),
   authorUrl: str(node['wp:comment_author_url']),
+  authorIp: str(node['wp:comment_author_IP']),
+  authorUserAgent: str(node['wp:comment_agent']),
   body: str(node['wp:comment_content']),
   approved: str(node['wp:comment_approved']),
   type: str(node['wp:comment_type']),

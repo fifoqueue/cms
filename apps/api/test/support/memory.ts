@@ -67,7 +67,16 @@ export class MemoryContentRepository implements ContentRepository {
     return takenSlugs(this.rows.values(), slugs);
   }
 
-  async setTrashed(id: string, at: Date | null) {
+  async setTrashed(
+    id: string,
+    at: Date | null,
+    origin?: Pick<
+      ContentRecord,
+      'modifiedIp' | 'modifiedUserAgent' | 'modifiedById'
+    >,
+  ) {
+    const row = this.rows.get(id);
+    if (row) Object.assign(row, origin);
     if (at) this.trashed.set(id, at);
     else this.trashed.delete(id);
   }
@@ -263,6 +272,12 @@ export class MemoryContentRepository implements ContentRepository {
     guard: ContentWriteGuard,
   ) {
     const stored = this.rows.get(input.id);
+    input = {
+      ...input,
+      createdIp: stored?.createdIp,
+      createdUserAgent: stored?.createdUserAgent,
+      createdById: stored?.createdById,
+    };
     // The version (`updatedAt`) strictly advances, so equal clocks never share one.
     const record =
       stored && input.updatedAt <= stored.updatedAt
@@ -421,6 +436,12 @@ export class MemoryContentRepository implements ContentRepository {
     return {
       id: row.id,
       textSavedAt: this.textSavedAt.get(row.id) ?? row.updatedAt,
+      createdIp: row.createdIp ?? null,
+      createdUserAgent: row.createdUserAgent ?? null,
+      modifiedIp: row.modifiedIp ?? null,
+      modifiedUserAgent: row.modifiedUserAgent ?? null,
+      createdById: row.createdById ?? null,
+      modifiedById: row.modifiedById ?? null,
       type: row.type,
       slug: row.slug,
       path,

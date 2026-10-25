@@ -36,7 +36,10 @@ const reasonOf = (error: unknown) =>
     : 'unreachable';
 
 /** The request a discovery document or page is served for. */
-export type FilterEvent = Pick<RequestEvent, 'fetch' | 'getClientAddress'>;
+export type FilterEvent = Pick<
+  RequestEvent,
+  'fetch' | 'getClientAddress' | 'request'
+>;
 
 /**
  * Filters every input in one call, proved as the visitor of `event`. Returns the filtered
@@ -48,7 +51,7 @@ export const filterDiscovery = <const T extends readonly FilterInput[]>(
 ) =>
   filterWith(
     event.fetch,
-    filtersAvailable() ? clientProof(event.getClientAddress()) : undefined,
+    filtersAvailable() ? clientProof(event) : undefined,
     inputs,
   );
 

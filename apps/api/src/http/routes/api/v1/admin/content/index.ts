@@ -8,11 +8,15 @@ export const routes = (app: ApiApp) =>
     .get('', async ({ adminContent, query, user }) =>
       json(await adminContent.list(query, user)),
     )
-    .post('', async ({ adminContent, request, user }) =>
+    .post('', async ({ adminContent, clients, request, user }) =>
       json(
         await adminContent.create(
           await readJson(request, CONTENT_BODY_BYTES),
           user,
+          {
+            ip: clients.address(request),
+            userAgent: clients.userAgent(request),
+          },
         ),
         201,
       ),

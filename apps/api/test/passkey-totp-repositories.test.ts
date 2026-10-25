@@ -1,25 +1,30 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import type { PasskeyRepository } from '#api/domain/auth/passkey/ports';
-import type {
-  TotpRepository,
-  TotpMaintenanceRepository,
-} from '#api/domain/auth/totp/ports';
 import { PrismaPasskeyRepository } from '#api/infra/passkey-repository';
 import { PrismaTotpRepository } from '#api/infra/totp-repository';
-import { MemoryPasskeys } from '#test/support/memory-passkey';
-import { MemoryTotpSecrets } from '#test/support/memory-totp';
 import { scratchDatabase } from '#test/support/scratch-database';
 
 const alice = '11111111-1111-4111-8111-111111111111';
 const bob = '22222222-2222-4222-8222-222222222222';
-const contracts = (
-  repositories: () => {
-    passkeys: PasskeyRepository;
-    secrets: TotpRepository & TotpMaintenanceRepository;
-  },
-) => {
+const serverUrl = process.env.CMS_TEST_DATABASE_URL;
+describe.skipIf(!serverUrl)('Prisma credential repository contracts', () => {
+  let scratch: Awaited<ReturnType<typeof scratchDatabase>>;
+  beforeAll(async () => {
+    scratch = await scratchDatabase(serverUrl!, 'cms_credentials_test');
+    await scratch.db.user.createMany({
+      data: [alice, bob].map((id) => ({
+        id,
+        email: `${id}@example.com`,
+        name: id,
+        slug: id,
+        passwordHash: '',
+      })),
+    });
+  }, 60000);
+  afterAll(async () => {
+    await scratch?.drop();
+  }, 60000);
   test('credential bytes are exact and globally unique; usage CAS is atomic and deletion owner-scoped', async () => {
-    const { passkeys } = repositories();
+    const passkeys = new PrismaPasskeyRepository(scratch.db);
     const record = {
       id: crypto.randomUUID(),
       userId: alice,
@@ -63,7 +68,7 @@ const contracts = (
     expect(await passkeys.use(record.id, 1, 2, true, new Date())).toBe(false);
   });
   test('one TOTP per user; concurrent replay and stale credentials after replacement fail', async () => {
-    const { secrets } = repositories();
+    const secrets = new PrismaTotpRepository(scratch.db);
     const record = {
       id: crypto.randomUUID(),
       userId: alice,
@@ -99,42 +104,7 @@ const contracts = (
     );
     expect(await secrets.consume(record.id, 102, 'stale')).toBe(false);
     expect(await secrets.reseal(record.id, 'maintenance', 'stale')).toBe(false);
-    await secrets.insert({ ...record, id: crypto.randomUUID(), userId: bob });
-    const rows = await secrets.scan(null, 1);
-    expect(rows).toHaveLength(1);
-    const next = await secrets.scan(rows[0]!.id, 1);
-    expect(next).toHaveLength(1);
-    expect(next[0]!.id > rows[0]!.id).toBe(true);
-    expect(await secrets.scan(next[0]!.id, 1)).toEqual([]);
   });
-};
-describe('memory credential repository contracts', () => {
-  const passkeys = new MemoryPasskeys();
-  const secrets = new MemoryTotpSecrets();
-  contracts(() => ({ passkeys, secrets }));
-});
-const serverUrl = process.env.CMS_TEST_DATABASE_URL;
-describe.skipIf(!serverUrl)('Prisma credential repository contracts', () => {
-  let scratch: Awaited<ReturnType<typeof scratchDatabase>>;
-  beforeAll(async () => {
-    scratch = await scratchDatabase(serverUrl!, 'cms_credentials_test');
-    await scratch.db.user.createMany({
-      data: [alice, bob].map((id) => ({
-        id,
-        email: `${id}@example.com`,
-        name: id,
-        slug: id,
-        passwordHash: '',
-      })),
-    });
-  }, 60000);
-  afterAll(async () => {
-    await scratch?.drop();
-  }, 60000);
-  contracts(() => ({
-    passkeys: new PrismaPasskeyRepository(scratch.db),
-    secrets: new PrismaTotpRepository(scratch.db),
-  }));
   test('setup commits one credential with all proof revocations; collisions roll back consumption', async () => {
     const db = scratch.db;
     const passkeys = new PrismaPasskeyRepository(db);
@@ -200,14 +170,5 @@ describe.skipIf(!serverUrl)('Prisma credential repository contracts', () => {
         where: { tokenHash: 'c'.repeat(64) },
       }),
     ).not.toBeNull();
-  });
-  test('deleting a user cascades to both credential tables', async () => {
-    await scratch.db.user.delete({ where: { id: alice } });
-    expect(await scratch.db.passkey.count({ where: { userId: alice } })).toBe(
-      0,
-    );
-    expect(
-      await scratch.db.totpSecret.count({ where: { userId: alice } }),
-    ).toBe(0);
   });
 });

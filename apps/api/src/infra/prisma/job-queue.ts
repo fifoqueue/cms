@@ -9,6 +9,59 @@ import { lockSetting } from '#api/infra/prisma/client';
 import type { Database } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
 
+/** Writes one queued job inside `tx`; callers hold the `privacy.jobs` lock (erasure scans under it). */
+export const insertJob = (
+  tx: Prisma.TransactionClient,
+  ids: IdGenerator,
+  job: { kind: string; payload: unknown; runAt?: Date; expiresAt: Date },
+) =>
+  tx.job.create({
+    data: {
+      id: ids.next(),
+      kind: job.kind,
+      payload: stringifyJson(job.payload),
+      runAt: job.runAt ?? new Date(),
+      expiresAt: job.expiresAt,
+      createdAt: new Date(),
+    },
+  });
+
+/**
+ * Which of `refs` (a job's subjects) name an erased comment or user. Read inside `tx` after it
+ * took the `privacy.jobs` lock, so an erasure either committed before (and is seen) or scans the
+ * job written here after this transaction commits.
+ */
+export const erasedSubjects = async (
+  tx: Prisma.TransactionClient,
+  refs: readonly unknown[],
+) => {
+  const ids = [
+    ...new Set(
+      refs.filter(
+        (value): value is string =>
+          typeof value === 'string' && value.length > 0 && value.length <= 36,
+      ),
+    ),
+  ];
+  if (!ids.length) return new Set<string>();
+  const [comments, users] = await Promise.all([
+    tx.comment.findMany({
+      where: { id: { in: ids }, authorEmail: '', body: '', userId: null },
+      select: { id: true },
+    }),
+    tx.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, email: true },
+    }),
+  ]);
+  return new Set([
+    ...comments.map((row) => row.id),
+    ...users
+      .filter((user) => user.email === `erased-${user.id}@invalid.invalid`)
+      .map((user) => user.id),
+  ]);
+};
+
 export class PrismaJobQueue implements JobQueue {
   constructor(
     private readonly db: Database,
@@ -34,45 +87,10 @@ export class PrismaJobQueue implements JobQueue {
           opened?.data?.id,
           opened?.data?.authorId,
           opened?.data?.uploaderId,
-        ]
-          .filter(
-            (value): value is string =>
-              typeof value === 'string' && value.length <= 36,
-          )
-          .slice(0, 100);
-        if (refs.length) {
-          const erasedComment = await tx.comment.findFirst({
-            where: {
-              id: { in: refs },
-              authorEmail: '',
-              body: '',
-              userId: null,
-            },
-            select: { id: true },
-          });
-          const users = await tx.user.findMany({
-            where: { id: { in: refs } },
-            select: { id: true, email: true },
-          });
-          if (
-            erasedComment ||
-            users.some(
-              (user) => user.email === `erased-${user.id}@invalid.invalid`,
-            )
-          )
-            return;
-        }
+        ];
+        if ((await erasedSubjects(tx, refs)).size) return;
       }
-      await tx.job.create({
-        data: {
-          id: this.ids.next(),
-          kind,
-          payload: stringifyJson(payload),
-          runAt,
-          expiresAt,
-          createdAt: new Date(),
-        },
-      });
+      await insertJob(tx, this.ids, { kind, payload, runAt, expiresAt });
     });
   }
 

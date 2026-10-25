@@ -20,7 +20,7 @@ export const ssoApi = (fetch: typeof globalThis.fetch, token?: string | null) =>
 export const linkSso = async (
   event: Pick<
     RequestEvent,
-    'fetch' | 'locals' | 'cookies' | 'url' | 'getClientAddress'
+    'fetch' | 'locals' | 'cookies' | 'url' | 'getClientAddress' | 'request'
   >,
   provider: string,
 ) => {
@@ -28,7 +28,7 @@ export const linkSso = async (
   try {
     start = await ssoApi(event.fetch, event.locals.token).start(
       { provider, intent: 'link' },
-      clientProof(event.getClientAddress()),
+      clientProof(event),
     );
   } catch (caught) {
     return failFrom(caught);

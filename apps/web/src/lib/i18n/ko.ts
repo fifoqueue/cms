@@ -273,6 +273,10 @@ export const apiErrors: ApiErrorCatalog = {
   CommentNotFound: '댓글을 찾을 수 없습니다.',
   CommentsClosed: '이 항목은 댓글을 받지 않습니다.',
   CommentReplyInvalid: '답글을 달려는 댓글을 볼 수 없습니다.',
+  CommentUnsubscribeInvalid: '알림 해제 링크가 올바르지 않거나 만료되었습니다.',
+  CommentPushEndpointInvalid: '이 브라우저의 푸시 서비스는 지원하지 않습니다.',
+  CommentPushTokenInvalid:
+    '알림 요청이 만료되었습니다. 알림을 받으려면 댓글을 다시 작성하세요.',
   AvatarNotFound: '프로필 사진을 찾을 수 없습니다.',
   SearchNotConfigured: '먼저 Meilisearch 주소를 입력하세요.',
   SearchUnavailable: 'Meilisearch가 응답하지 않습니다.',
@@ -970,6 +974,8 @@ export const ko: Messages = {
   commentApproved: '승인됨',
   commentSpam: '스팸',
   commentSearch: '댓글 검색',
+  clientIp: 'IP 주소',
+  clientUserAgent: '브라우저',
   commentApprove: '승인',
   commentUnapprove: '승인 취소',
   commentMarkSpam: '스팸 처리',
@@ -989,6 +995,25 @@ export const ko: Messages = {
   discussionBlockWords: '다음을 포함하면 스팸 처리 (한 줄에 하나)',
   discussionNotifyModerators: '검토 대기 댓글을 관리자에게 메일로 알림',
   discussionNotifyAuthors: '새 댓글을 글쓴이에게 메일로 알림',
+  discussionNotifyCommenters: '댓글 작성자에게 답글 알림 이메일 보내기',
+  discussionNotifyCommentersNoEmail:
+    '메일 발송이 설정되지 않아 아직 이메일이 보내지지 않습니다.',
+  discussionPushNotifications:
+    '글 작성자와 댓글 작성자에게 브라우저 푸시 알림 보내기',
+
+  // Comment notifications
+  commentEmailNotify: '답글이 달리면 이 주소로 알려 드립니다.',
+  commentUnsubscribeTitle: '알림 끄기',
+  commentUnsubscribeConfirm: '답글 알림을 그만 받으려면 버튼을 누르세요.',
+  commentUnsubscribeButton: '알림 끄기',
+  commentUnsubscribedEmail: '이메일 알림을 더 이상 보내지 않습니다.',
+  commentUnsubscribedPush: '브라우저 알림을 끕니다.',
+  pushTitle: '브라우저 알림',
+  pushOn: '이 기기에서 댓글 알림을 받고 있습니다.',
+  pushOff: '이 기기에서는 브라우저 알림을 받지 않습니다.',
+  pushDisable: '이 기기에서 알림 끄기',
+  pushDisabled: '이 기기의 브라우저 알림을 껐습니다.',
+  pushDisableFailed: '알림을 끄지 못했습니다. 다시 시도하세요.',
 
   // Settings: search
   settingsSearch: '검색',
@@ -1119,6 +1144,17 @@ export const ko: Messages = {
   themePaged: (title: string, page: number) => `${title} – ${page}쪽`,
   themeContentTypes: '콘텐츠 유형',
   themeNotFound: '페이지를 찾을 수 없습니다',
+  errorPageNotFoundHelp:
+    '주소가 정확한지 확인하거나 홈에서 다시 시작해 보세요.',
+  errorPageForbidden: '이 페이지를 열 수 없습니다',
+  errorPageForbiddenHelp: '지금 계정에는 이 페이지를 볼 권한이 없습니다.',
+  errorPageServer: '문제가 생겼습니다',
+  errorPageServerHelp:
+    '잠시 후 다시 시도해 주세요. 문제가 계속되면 사이트 관리자에게 알려 주세요.',
+  errorPageOther: '요청을 처리하지 못했습니다',
+  errorPageHome: '홈으로',
+  errorPageDashboard: '대시보드로',
+  errorPageBack: '이전 페이지',
 
   // Public theme: archives
   themePostCount: (count: number) => `글 ${count}개`,
@@ -1911,6 +1947,9 @@ export const ko: Messages = {
   returnToEditor: '편집기로 돌아가기',
   revisionsCount: (count: number) => `리비전: ${count}개`,
   revisionsBrowse: '둘러보기',
+  contentOrigin: '작성·수정 정보',
+  contentOriginCreated: '작성',
+  contentOriginModified: '마지막 수정',
   revisionFrom: '이전',
   revisionTo: '이후',
   revisionTimeline: '리비전 타임라인',

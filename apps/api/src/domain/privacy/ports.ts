@@ -13,12 +13,14 @@ export const PERSONAL_SECTIONS = [
   'profile',
   'profileFields',
   'comments',
+  'pushSubscriptions',
   'apiTokens',
   'identities',
   'recoveryCodes',
   'passkeys',
   'totp',
   'content',
+  'revisions',
   'media',
 ] as const;
 export type PersonalSection = (typeof PERSONAL_SECTIONS)[number];

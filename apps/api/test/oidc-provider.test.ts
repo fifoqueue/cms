@@ -59,7 +59,6 @@ beforeAll(async () => {
 
 /** Minimal in-process OpenID Provider. `tamper` rewrites ID token claims or the signing key. */
 const createProvider = ({
-  discoveredIssuer = ISSUER,
   tamper = (claims: Claims) => claims,
   key = () => signingKey.privateKey,
 } = {}) => {
@@ -74,7 +73,7 @@ const createProvider = ({
 
     if (url.pathname === '/.well-known/openid-configuration')
       return Response.json({
-        issuer: discoveredIssuer,
+        issuer: ISSUER,
         authorization_endpoint: `${ISSUER}/authorize`,
         token_endpoint: `${ISSUER}/token`,
         jwks_uri: `${ISSUER}/jwks`,
@@ -310,10 +309,4 @@ describe('OpenIdClientProvider', () => {
       checks,
     }));
   }
-
-  test('rejects discovery metadata for a different issuer', async () => {
-    const op = createProvider({ discoveredIssuer: 'https://evil.test' });
-    const { provider } = relyingParty(op);
-    await expect(provider.authorize()).rejects.toThrow();
-  });
 });

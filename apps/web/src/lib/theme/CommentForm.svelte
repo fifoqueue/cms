@@ -23,6 +23,8 @@
   import type { ReplyTarget } from '#lib/theme/comment-reply.js';
   import PrivacyPolicyLink from '#lib/theme/PrivacyPolicyLink.svelte';
   import { notifyFailure } from '#lib/feedback.js';
+  import { askPush, enablePush, sendJson } from '#lib/push-client.js';
+  import { COMMENT_PUSH_PATH } from '#lib/push.js';
 
   interface Props {
     id?: string;
@@ -77,12 +79,20 @@
       cancel();
       return;
     }
+    // Asked within the submit gesture, without waiting: the comment goes out either way.
+    const key = section.notifications.push;
+    const permission = key ? askPush() : null;
     submitting = true;
     onbusy(true);
     return async ({ result, update }) => {
       try {
         if (result.type === 'success' && result.data?.commented) {
           body = '';
+          const token = result.data.pushToken;
+          if (permission && key && token)
+            void enablePush(permission, key, (subscription) =>
+              sendJson(COMMENT_PUSH_PATH, 'POST', { token, subscription }),
+            );
           await onposted(result.data);
         }
         if (result.type === 'failure' && result.data)
@@ -111,7 +121,10 @@
   use:enhance={submit}
   class="rounded-lg border bg-card p-4 @min-[40rem]:p-6"
 >
-  <fieldset disabled={submitting} class="grid min-w-0 gap-4">
+  <fieldset
+    disabled={submitting}
+    class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4"
+  >
     <h3 class="font-semibold">
       {replyTo ? m.commentReplyTo(replyTo.name) : m.commentLeave}
     </h3>
@@ -133,9 +146,11 @@
     {#if section.viewer}
       <p class="text-sm">{m.commentSignedIn(section.viewer.name)}</p>
     {:else}
-      <div class="grid gap-4 @min-[40rem]:grid-cols-2">
+      <div
+        class="grid grid-cols-[minmax(0,1fr)] gap-4 @min-[40rem]:grid-cols-2"
+      >
         {#if fields.name}
-          <label class="grid gap-1 text-sm"
+          <label class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 text-sm"
             >{m.commentName}
             <input
               name="authorName"
@@ -148,7 +163,7 @@
           </label>
         {/if}
         {#if fields.email}
-          <label class="grid gap-1 text-sm"
+          <label class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 text-sm"
             >{m.commentEmail}
             <input
               name="authorEmail"
@@ -159,10 +174,15 @@
               bind:value={author.authorEmail}
               class="h-9 rounded-md border bg-background px-3"
             />
+            {#if section.notifications.email}<span
+                class="text-xs text-muted-foreground"
+                >{m.commentEmailNotify}</span
+              >{/if}
           </label>
         {/if}
         {#if fields.website}
-          <label class="grid gap-1 text-sm @min-[40rem]:col-span-2"
+          <label
+            class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 text-sm @min-[40rem]:col-span-2"
             >{m.commentWebsite}
             <input
               name="authorUrl"
@@ -186,7 +206,7 @@
         >
       {/if}
     {/if}
-    <label class="grid gap-1 text-sm"
+    <label class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 text-sm"
       >{m.commentBody}
       <textarea
         name="body"

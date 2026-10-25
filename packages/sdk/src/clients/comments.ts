@@ -1,6 +1,6 @@
 import { unlockHeaders } from '#sdk/clients/content';
 import { visitorHeaders } from '#sdk/clients/security';
-import type { Visitor } from '#sdk/clients/security';
+import type { ClientProof, Visitor } from '#sdk/clients/security';
 import {
   COMMENTER_PROOF_HEADER,
   commentFeedSchema,
@@ -10,8 +10,14 @@ import {
   commentSubmittedSchema,
   discussionSettingsSchema,
   publicCommentPageSchema,
+  commentUnsubscribedSchema,
+  pushAcceptedSchema,
+  pushKeySchema,
 } from '#sdk/comments';
 import type {
+  CommentUnsubscribed,
+  PushRenewInput,
+  PushSubscriptionInput,
   FeedComment,
   AdminComment,
   CommentBulkInput,
@@ -67,6 +73,40 @@ export const publicCommentsClient = (request: Request) => ({
           }),
         },
       }),
+    /** `token` is `pushToken` from `submit`; push replies to that comment to this browser. */
+    subscribePush: (
+      token: string,
+      subscription: PushSubscriptionInput,
+      visitor?: Visitor,
+    ) =>
+      request<{ ok: true }>('POST', '/api/v1/comments/push', {
+        json: { token, subscription },
+        headers: visitorHeaders(visitor),
+        response: pushAcceptedSchema,
+      }),
+    /** Stops the notifications an unsubscribe link (email footer) names. */
+    unsubscribe: (token: string, visitor?: Visitor) =>
+      request<CommentUnsubscribed>('POST', '/api/v1/comments/unsubscribe', {
+        json: { token },
+        headers: visitorHeaders(visitor),
+        response: commentUnsubscribedSchema,
+      }),
+  },
+  push: {
+    /**
+     * Moves every active registration of `old` (its endpoint and `keys.auth`, proving possession)
+     * to `subscription`; also a re-sync. Unknown or mismatched ones answer the same and change nothing.
+     */
+    renew: (
+      old: PushRenewInput['old'],
+      subscription: PushSubscriptionInput,
+      visitor?: Visitor,
+    ) =>
+      request<{ ok: true }>('POST', '/api/v1/push/renew', {
+        json: { old, subscription },
+        headers: visitorHeaders(visitor),
+        response: pushAcceptedSchema,
+      }),
   },
 });
 
@@ -87,11 +127,34 @@ export const commentsAdminClient = (request: Request) => {
         }),
       update: (id: string, input: CommentUpdate) =>
         request<void>('PUT', path(id), { json: input }),
-      reply: (id: string, body: string) =>
-        request<void>('POST', `${path(id)}/reply`, { json: { body } }),
+      /** `proof` lets the API store the moderator's proven address and user agent. */
+      reply: (id: string, body: string, proof?: ClientProof) =>
+        request<void>('POST', `${path(id)}/reply`, {
+          json: { body },
+          headers: visitorHeaders({ proof }),
+        }),
       bulk: (input: CommentBulkInput) =>
         request<void>('POST', '/api/v1/admin/comments/bulk', { json: input }),
       remove: (id: string) => request<void>('DELETE', path(id)),
+    },
+    /** The signed-in user's browsers for new-comment and reply pushes (`content.create`). */
+    pushSubscription: {
+      /** The VAPID application server key for `pushManager.subscribe`; null while push is off. */
+      key: () =>
+        request<{ publicKey: string | null }>(
+          'GET',
+          '/api/v1/admin/push-subscription',
+          { response: pushKeySchema },
+        ),
+      save: (subscription: PushSubscriptionInput) =>
+        request<{ ok: true }>('PUT', '/api/v1/admin/push-subscription', {
+          json: { subscription },
+          response: pushAcceptedSchema,
+        }),
+      remove: (endpoint: string) =>
+        request<void>('DELETE', '/api/v1/admin/push-subscription', {
+          json: { endpoint },
+        }),
     },
     discussion: {
       get: () =>

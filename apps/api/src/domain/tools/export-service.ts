@@ -4,6 +4,7 @@ import type { HookDispatcher } from '#api/domain/ports';
 import type { ContentStatus } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
+import { can } from '@cms/sdk/capabilities';
 import type {
   CommentRecord,
   CommentRepository,
@@ -82,12 +83,17 @@ const patternItem = (pattern: {
   meta: pattern.synced ? {} : { wp_pattern_sync_status: 'unsynced' },
 });
 
-const toComment = (comment: CommentRecord): WxrComment => ({
+/** IP address and user agent are moderator data: only exports by moderators carry them. */
+const toComment = (comment: CommentRecord, moderator: boolean): WxrComment => ({
   id: comment.id,
   parentId: comment.parentId,
   authorName: comment.authorName,
   authorEmail: comment.authorEmail,
   authorUrl: comment.authorUrl,
+  ...(moderator && {
+    authorIp: comment.authorIp ?? '',
+    authorUserAgent: comment.authorUserAgent ?? '',
+  }),
   body: comment.body,
   approved: APPROVED[comment.status],
   type: 'comment',
@@ -143,7 +149,7 @@ export class ExportService {
       categories: categories.map(term),
       tags: tags.map(term),
     };
-    return readable(this.parts(header));
+    return readable(this.parts(header, can(actor, 'comments.moderate')));
   }
 
   /** Small callers and round-trip tests may still collect the stream as text. */
@@ -153,6 +159,7 @@ export class ExportService {
 
   private async *parts(
     header: Parameters<typeof wxrHeader>[0],
+    moderator: boolean,
   ): AsyncGenerator<string> {
     const names = wxrTermNames(header);
     yield wxrHeader(header);
@@ -172,7 +179,8 @@ export class ExportService {
             afterComment,
             PAGE,
           );
-          for (const comment of comments) yield wxrComment(toComment(comment));
+          for (const comment of comments)
+            yield wxrComment(toComment(comment, moderator));
           if (comments.length < PAGE) break;
           afterComment = comments.at(-1)!.id;
         }
@@ -191,7 +199,10 @@ export class ExportService {
       )) ?? [];
     for (const item of platformWxrItemSchema.array().parse(extras)) {
       yield wxrItemStart(item, header, names);
-      for (const comment of item.comments) yield wxrComment(comment);
+      for (const { authorIp, authorUserAgent, ...comment } of item.comments)
+        yield wxrComment(
+          moderator ? { ...comment, authorIp, authorUserAgent } : comment,
+        );
       yield wxrItemEnd;
     }
     yield wxrFooter;

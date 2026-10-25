@@ -7,6 +7,7 @@
   import { default as ExternalLink } from '@lucide/svelte/icons/external-link';
   import { default as RotateCcw } from '@lucide/svelte/icons/rotate-ccw';
   import { default as Trash2 } from '@lucide/svelte/icons/trash-2';
+  import ClientOrigin from '#lib/admin/ClientOrigin.svelte';
   import ContentForm from '#lib/admin/ContentForm.svelte';
   import { onMount } from 'svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
@@ -126,6 +127,7 @@
     model={data.model}
     authors={data.authors}
     canPublish={data.canPublish}
+    pushKey={data.pushKey}
   />
 {/key}
 
@@ -136,7 +138,7 @@
       <ul class="divide-y rounded-md border">
         {#each data.revisions as revision (revision.id)}
           <li class="flex flex-wrap items-center justify-between gap-3 p-3">
-            <div class="text-sm">
+            <div class="min-w-0 text-sm">
               <p class="font-medium">
                 {revision.title}
                 {#if revision.kind === 'autosave'}<Badge
@@ -150,6 +152,11 @@
               <p class="text-muted-foreground">
                 {revision.authorName} · {date(revision.createdAt)}
               </p>
+              <ClientOrigin
+                brief
+                ip={revision.ip}
+                userAgent={revision.userAgent}
+              />
             </div>
             <div class="flex gap-2">
               <Button

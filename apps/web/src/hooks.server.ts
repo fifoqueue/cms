@@ -34,11 +34,21 @@ const isProtected = (pathname: string) =>
 const isUnknownAdmin = (event: Pick<RequestEvent, 'route' | 'url'>) =>
   isAdmin(event.url.pathname) && !event.route.id?.startsWith('/admin');
 
-const privateNotFound = () =>
-  new Response(null, {
-    status: 404,
-    headers: { 'cache-control': 'private, no-store' },
-  });
+/** A copy of `response` that no shared cache keeps, with `status`. */
+const privately = (response: Response, status = response.status) => {
+  const headers = new Headers(response.headers);
+  headers.set('cache-control', 'private, no-store');
+  return new Response(response.body, { status, headers });
+};
+
+/**
+ * An unknown admin path: the public catch-all renders it as the site's own missing page, so a
+ * hidden admin screen answered with it looks like any other missing page.
+ */
+const NOT_FOUND_PATH = '/admin/__not-found';
+
+const siteNotFound = async (event: RequestEvent) =>
+  privately(await event.fetch(new URL(NOT_FOUND_PATH, event.url)), 404);
 
 const KIB = 1024;
 const MIB = 1024 * KIB;
@@ -176,7 +186,7 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
   event.locals.user = null;
 
   // Public catch-alls can match unknown `/admin/*` paths; none may become an auth redirect.
-  if (isUnknownAdmin(event)) return privateNotFound();
+  if (isUnknownAdmin(event)) return privately(await resolve(event));
 
   if (!installed) {
     const installation = await installationApi(event.fetch).status();
@@ -215,7 +225,7 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
     const site = await contentApi(event.fetch)
       .site()
       .catch(() => null);
-    if (!site?.showLogin) return privateNotFound();
+    if (!site?.showLogin) return siteNotFound(event);
     // Enhanced forms get an action redirect they can intercept (the editor keeps unsaved text).
     if (event.request.headers.get('x-sveltekit-action') === 'true')
       return Response.json(

@@ -6,7 +6,12 @@ import { session } from '#api/http/session';
 export const routes = (app: ApiApp) =>
   session(app).post(
     '',
-    async ({ contentRevisions, params, user }) =>
-      json(await contentRevisions.restore(params.id, params.revisionId, user)),
+    async ({ contentRevisions, clients, request, params, user }) =>
+      json(
+        await contentRevisions.restore(params.id, params.revisionId, user, {
+          ip: clients.address(request),
+          userAgent: clients.userAgent(request),
+        }),
+      ),
     revisionParams,
   );

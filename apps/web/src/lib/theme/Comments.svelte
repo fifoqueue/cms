@@ -27,6 +27,7 @@
     CommentsView,
   } from '#lib/server/comments.js';
   import CommentModeration from '#lib/theme/CommentModeration.svelte';
+  import CommentOrigin from '#lib/theme/CommentOrigin.svelte';
   import { MODERATION_NOTICES } from '#lib/theme/CommentModeration.svelte';
   import type {
     Moderated,
@@ -361,7 +362,7 @@
 
 <section
   id="comments"
-  class="mx-auto mt-12 grid max-w-3xl gap-8 border-t pt-8"
+  class="mx-auto mt-12 grid max-w-3xl grid-cols-[minmax(0,1fr)] gap-8 border-t pt-8"
   class:pb-28={selecting}
 >
   <div class="flex flex-wrap items-center justify-between gap-3">
@@ -419,12 +420,15 @@
   {/if}
 
   {#if shown.length}
-    <ol class="grid gap-6">
+    <!-- One column that never grows past the section (`auto` tracks widen to their widest
+         content's minimum size, which some browsers measure larger for form controls). -->
+    <ol class="grid grid-cols-[minmax(0,1fr)] gap-6">
       {#each shown as comment (comment.id)}
+        {@const origin = management?.origins[comment.id]}
         <li
           id="comment-{comment.id}"
           class={[
-            'relative grid min-w-0 gap-2 rounded-lg transition-colors',
+            'relative grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 rounded-lg transition-colors',
             selecting && '-mx-3 px-3 py-2 hover:bg-muted/40',
             selecting && selected.includes(comment.id) && 'bg-muted/60',
           ]}
@@ -452,7 +456,7 @@
                 onchange={() => toggleSelected(comment.id)}
               />
             {/if}
-            <p class="min-w-0 flex-1 text-sm">
+            <p class="relative min-w-0 flex-1 text-sm">
               {#if comment.avatarUrl}
                 <img
                   src={comment.avatarUrl}
@@ -481,9 +485,18 @@
                 >
               {/if}
               <span class="text-muted-foreground">
-                · <time datetime={comment.createdAt}
-                  >{formatDate(comment.createdAt)}</time
-                ></span
+                ·
+                {#if origin}
+                  <CommentOrigin id="comment-{comment.id}-origin" {origin}
+                    ><time datetime={comment.createdAt}
+                      >{formatDate(comment.createdAt)}</time
+                    ></CommentOrigin
+                  >
+                {:else}
+                  <time datetime={comment.createdAt}
+                    >{formatDate(comment.createdAt)}</time
+                  >
+                {/if}</span
               >
               {#if management && badges[statusOf(comment.id, comment.pending)]}
                 {@const status = statusOf(comment.id, comment.pending)}

@@ -11,7 +11,9 @@ import {
   publicContentSchema,
   publicContentSummarySchema,
   toPublicEntrySeo,
+  can,
 } from '@cms/sdk';
+import type { Actor } from '#api/domain/auth/authorization';
 import type {
   ContentRecord,
   ContentSummaryRecord,
@@ -62,9 +64,22 @@ const entryFields = (record: ContentSummaryRecord) => ({
   seo: toAdminSeo(record.seo),
 });
 
-export const toEntry = (record: ContentRecord): ContentEntry =>
+export const toEntry = (record: ContentRecord, actor?: Actor): ContentEntry =>
   adminContentSchema.parse({
     ...entryFields(record),
+    origin:
+      actor && can(actor, 'content.editOthers')
+        ? {
+            created: {
+              ip: record.createdIp ?? null,
+              userAgent: record.createdUserAgent ?? null,
+            },
+            modified: {
+              ip: record.modifiedIp ?? null,
+              userAgent: record.modifiedUserAgent ?? null,
+            },
+          }
+        : null,
     document: record.document,
     html: record.html,
     fields: record.fields,

@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { can } from '@cms/sdk';
 import { readContentInput } from '#lib/server/content-form.js';
 import { failFrom } from '#lib/server/errors.js';
+import { editorPushKey } from '#lib/server/push.js';
 import { loadSeoContext } from '#lib/server/seo-admin.js';
 import { adminFor } from '#lib/server/session.js';
 import { loadTermChoices } from '#lib/server/taxonomy-admin.js';
@@ -9,12 +10,13 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
   const user = event.locals.user!;
-  const [terms, seo, authors, model, writing] = await Promise.all([
+  const [terms, seo, authors, model, writing, pushKey] = await Promise.all([
     loadTermChoices(event),
     loadSeoContext(event),
     can(user, 'content.editOthers') ? adminFor(event).users.authors() : null,
     adminFor(event).contentModel.model(),
     adminFor(event).writing.get(),
+    editorPushKey(event),
   ]);
   return {
     defaults: {
@@ -28,6 +30,7 @@ export const load: PageServerLoad = async (event) => {
     canPublish: can(user, 'content.publish'),
     canManageTerms: can(user, 'taxonomy.manage'),
     authorId: event.locals.user!.id,
+    pushKey,
   };
 };
 

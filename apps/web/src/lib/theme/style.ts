@@ -66,6 +66,14 @@ const declarations = (vars: [string, string][], suffix = '') =>
     .map(([name, value]) => `${name}: ${value}${suffix}`)
     .join('; ');
 
+/** The theme's body font stack (schema-checked); the admin area uses it too. */
+export const bodyFont = ({
+  settings,
+  styles,
+}: Pick<ThemeView, 'settings' | 'styles'>): string =>
+  settings.fontFamilies.find((entry) => entry.slug === styles.fontFamily)
+    ?.fontFamily ?? 'system-ui, sans-serif';
+
 /**
  * Inline custom properties for the site root: the palette (`paletteVars`), fonts and layout
  * sizes. Every value was validated by the theme schema (hex colors, font stacks, CSS lengths),
@@ -74,7 +82,7 @@ const declarations = (vars: [string, string][], suffix = '') =>
 export const themeStyle = ({ settings, styles }: ThemeView): string => {
   const font = (slug: string) =>
     settings.fontFamilies.find((entry) => entry.slug === slug)?.fontFamily;
-  const body = font(styles.fontFamily) ?? 'system-ui, sans-serif';
+  const body = bodyFont({ settings, styles });
   const vars: [string, string][] = [
     ...paletteVars(settings.palette),
     ['--radius', RADIUS[styles.radius]],

@@ -2,9 +2,11 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { isIP } from 'node:net';
 import {
   CAPTCHA_TOKEN_HEADER,
+  CLIENT_USER_AGENT_HEADER,
   SSO_CLIENT_ADDRESS_HEADER,
   SSO_FRONTEND_SECRET_HEADER,
 } from '@cms/sdk';
+import { cleanUserAgent } from '#api/shared/user-agent';
 
 /** Client of every request that cannot prove which browser it acts for. They share one quota. */
 export const UNVERIFIED_CLIENT = 'unverified';
@@ -73,21 +75,31 @@ export class ClientResolver {
     return this.secret !== null;
   }
 
+  /** Whether the request carries the frontend secret, so its client headers are the web server's. */
+  private trusted(request: Request) {
+    const proof = request.headers.get(SSO_FRONTEND_SECRET_HEADER);
+    return (
+      !!this.secret &&
+      proof !== null &&
+      timingSafeEqual(digest(proof), this.secret)
+    );
+  }
+
   /** The browser's IP address, when the web server proved it. */
   address(request: Request): string | null {
-    const proof = request.headers.get(SSO_FRONTEND_SECRET_HEADER);
     const address = request.headers.get(SSO_CLIENT_ADDRESS_HEADER);
-
-    if (
-      !this.secret ||
-      proof === null ||
-      address === null ||
-      !timingSafeEqual(digest(proof), this.secret)
-    )
-      return null;
+    if (address === null || !this.trusted(request)) return null;
 
     this.proven = true;
     return clientNetwork(address) ? address : null;
+  }
+
+  /** The browser's user agent (cleaned for storage), when the web server vouched for it. */
+  userAgent(request: Request): string | null {
+    const agent = request.headers.get(CLIENT_USER_AGENT_HEADER);
+    return agent !== null && this.trusted(request)
+      ? cleanUserAgent(agent)
+      : null;
   }
 
   /** Who attempts a protected action, as `ProtectionService` counts it. */

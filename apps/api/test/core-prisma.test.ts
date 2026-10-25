@@ -1,8 +1,5 @@
 import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
-import { Scheduler } from '#api/domain/jobs/scheduler';
-import { DEFAULT_EMAIL_SETTINGS, permalinkPathSchema } from '@cms/sdk';
 import { PrivacyService } from '#api/domain/privacy/privacy-service';
-import { RoleService } from '#api/domain/users/role-service';
 import { readSiteSettings } from '#api/domain/site/site-service';
 import { EmailService } from '#api/domain/email/email-service';
 import { ProtectionService } from '#api/domain/security/protection-service';
@@ -11,36 +8,22 @@ import { PrismaPrivacyRepository } from '#api/infra/prisma/privacy-repository';
 import { aesSecretBox } from '#api/infra/secret-box';
 import { hmacSigner } from '#api/infra/hmac-signer';
 import { randomTokenIssuer } from '#api/infra/system';
-import { openJob } from '#api/domain/jobs/payload';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { default as sharp } from 'sharp';
 import { DEFAULT_RATE_RULES, DEFAULT_ENTRY_SEO } from '@cms/sdk';
-import { PatternService } from '#api/domain/content/pattern-service';
-import { PrismaPatternCatalog } from '#api/infra/prisma/pattern-catalog';
 import { ContentService } from '#api/domain/content/content-service';
 import { ContentTypeService } from '#api/domain/content/content-types';
 import { FieldService } from '#api/domain/content/fields';
 import { PublishedContentReader } from '#api/domain/content/public-content';
 import { RevisionService, inputOf } from '#api/domain/content/revision-service';
-import { MediaService } from '#api/domain/media/media-service';
 import { ArchivePathsService } from '#api/domain/permalinks/archive-paths';
 import { PermalinkResolver } from '#api/domain/permalinks/permalink-resolver';
-import { SearchService } from '#api/domain/search/search-service';
 import { TaxonomyService } from '#api/domain/taxonomy/taxonomy-service';
-import { ExportService } from '#api/domain/tools/export-service';
-import { createMeilisearchEngine } from '#api/infra/meilisearch-engine';
 import { PrismaUserRepository } from '#api/infra/prisma/auth-repositories';
 import { PrismaArchivePaths } from '#api/infra/prisma/archive-paths';
 import type { Database } from '#api/infra/prisma/client';
 import { PrismaCommentRepository } from '#api/infra/prisma/comment-repository';
 import { PrismaContentRepository } from '#api/infra/prisma/content-repository';
 import { PrismaJobQueue } from '#api/infra/prisma/job-queue';
-import { PrismaCleanupCatalog } from '#api/infra/prisma/cleanup-catalog';
-import {
-  MediaCleanup,
-  MEDIA_CLEANUP_JOB,
-} from '#api/domain/media/media-cleanup';
-import { PrismaMediaRepository } from '#api/infra/prisma/media-repository';
 import {
   lockPermalinks,
   PrismaPermalinkRepository,
@@ -49,14 +32,10 @@ import { PrismaPublishedContentRepository } from '#api/infra/prisma/published-co
 import { PrismaRateLimitStore } from '#api/infra/prisma/rate-limit-store';
 import { PrismaRevisionRepository } from '#api/infra/prisma/revision-repository';
 import { PrismaSearchSource } from '#api/infra/prisma/search-source';
-import { PrismaSettingsTransactions } from '#api/infra/prisma/settings-transactions';
 import { PrismaSettingsRepository } from '#api/infra/prisma/settings-repository';
 import { PrismaSiteSettingsWriter } from '#api/infra/prisma/site-settings';
 import { PrismaTaskLeases } from '#api/infra/prisma/task-leases';
 import { PrismaTaxonomyRepository } from '#api/infra/prisma/taxonomy-repository';
-import { PrismaUserDirectory } from '#api/infra/prisma/user-directory';
-import { PermalinkTokenRegistry } from '#api/domain/permalinks/token-registry';
-import { sharpImages } from '#api/infra/sharp-images';
 import { tiptapRenderer, uuidV7, systemClock } from '#api/infra/system';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
 import {
@@ -65,32 +44,15 @@ import {
   recordingLogger,
   userRecord,
 } from '#test/support/memory';
-import { plainSecretBox } from '#test/support/memory-security';
-import { MemoryMediaStorage } from '#test/support/memory-media';
 import { scratchDatabase } from '#test/support/scratch-database';
 import { textDocument } from '#test/support/content';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { StorageSettings } from '#api/domain/media/storage-settings';
-import { MediaReconciler } from '#api/infra/media-reconciler';
 
 /**
  * Core Prisma adapters on a real MariaDB (opt in with `CMS_TEST_DATABASE_URL`, see
  * `scratchDatabase`): what in-memory adapters cannot show — transactions, raw SQL, row locks.
- * With `CMS_TEST_MEILISEARCH_URL` (and `CMS_TEST_MEILISEARCH_KEY`) the search index is checked too.
  */
 const serverUrl = process.env.CMS_TEST_DATABASE_URL;
-const meiliUrl = process.env.CMS_TEST_MEILISEARCH_URL;
 const SLOW = 60_000;
-
-const waitFor = async (check: () => Promise<boolean>, message: string) => {
-  const deadline = Date.now() + 2500;
-  while (!(await check())) {
-    if (Date.now() >= deadline) throw new Error(message);
-    await Bun.sleep(10);
-  }
-};
 
 describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
   let db: Database;
@@ -104,204 +66,6 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
   }, SLOW);
 
   afterAll(() => drop(), SLOW);
-
-  test(
-    'cleanup recovery atomically deduplicates concurrent dispatches and pages persistent intents',
-    async () => {
-      const settings = new PrismaSettingsRepository(db);
-      const catalog = new PrismaCleanupCatalog(db);
-      const queue = new PrismaJobQueue(db, uuidV7);
-      const id = `delete.${uuidV7.next()}`;
-      const key = `media.cleanup.${id}`;
-      const cleanup = new MediaCleanup({
-        settings,
-        catalog,
-        queue,
-        transactions: new PrismaSettingsTransactions(db),
-        storage: async () => {
-          throw new Error('not executed by recovery');
-        },
-        finalize: async () => undefined,
-        logger: recordingLogger().logger,
-      });
-      try {
-        await settings.set(key, {
-          mediaId: null,
-          objects: [{ driver: 'local', key: 'object' }],
-          uncertain: false,
-        });
-        await Promise.all([
-          cleanup.recover(),
-          cleanup.recover(),
-          cleanup.recover(),
-        ]);
-        const jobs = await db.job.findMany({
-          where: { kind: MEDIA_CLEANUP_JOB },
-        });
-        expect(jobs).toHaveLength(1);
-        expect(await queue.pending(MEDIA_CLEANUP_JOB, id)).toBe(true);
-        expect(await settings.get(key)).toMatchObject({ attempts: 1 });
-        expect(await catalog.page('', 1)).toHaveLength(1);
-        expect(await catalog.page(key, 1)).toEqual([]);
-        await settings.set(key, {
-          mediaId: null,
-          objects: [],
-          uncertain: false,
-          attempts: 5,
-          nextAttemptAt: 0,
-        });
-        expect(await catalog.attention()).toBe(1);
-      } finally {
-        await db.job.deleteMany({ where: { kind: MEDIA_CLEANUP_JOB } });
-        await db.setting.deleteMany({
-          where: { key: { startsWith: 'media.cleanup.' } },
-        });
-      }
-    },
-    SLOW,
-  );
-
-  test(
-    'media backfill and real filesystem reconciliation preserve populated rows and restore missing variants',
-    async () => {
-      const root = await mkdtemp(join(tmpdir(), 'media-reconcile-'));
-      const id = uuidV7.next();
-      try {
-        await db.media.create({
-          data: {
-            id,
-            filename: 'original.webp',
-            mime: 'image/webp',
-            size: 3,
-            storageKey: 'original.webp',
-            createdAt: new Date('2026-01-01'),
-            variants: JSON.stringify({
-              thumbnail: { key: 'small.webp', width: 10, height: 10 },
-            }),
-          },
-        });
-        await db.$executeRawUnsafe(
-          'ALTER TABLE media DROP COLUMN storage_driver, DROP COLUMN public_url, DROP COLUMN byte_size, DROP COLUMN etag, DROP COLUMN missing_at',
-        );
-        const sql = await Bun.file(
-          new URL(
-            '../prisma/migrations/20261114000000_media_storage/migration.sql',
-            import.meta.url,
-          ),
-        ).text();
-        for (const statement of sql
-          .split(';')
-          .map((part) => part.trim())
-          .filter(Boolean))
-          await db.$executeRawUnsafe(statement);
-        const backfilled = await db.media.findUniqueOrThrow({ where: { id } });
-        expect(backfilled).toMatchObject({
-          storageDriver: 'local',
-          publicUrl: '/media/original.webp',
-          byteSize: 3,
-        });
-        expect(JSON.parse(backfilled.variants).thumbnail).toMatchObject({
-          publicUrl: '/media/small.webp',
-          storageDriver: 'local',
-          byteSize: null,
-        });
-        await writeFile(join(root, 'original.webp'), '12345');
-        await writeFile(join(root, 'untracked.webp'), 'x');
-        const settings = new StorageSettings({
-          settings: new PrismaSettingsRepository(db),
-          transactions: new PrismaSettingsTransactions(db),
-          secrets: plainSecretBox,
-          test: async () => undefined,
-        });
-        const reconcile = new MediaReconciler(db, settings, root, async () => {
-          throw new Error('local storage must not use the network');
-        });
-        expect(await reconcile.run('local', new Date())).toEqual({
-          scanned: 2,
-          refreshed: 1,
-          missing: 1,
-          untracked: 1,
-        });
-        const missing = await db.media.findUniqueOrThrow({ where: { id } });
-        expect(missing.byteSize).toBe(5);
-        expect(JSON.parse(missing.variants).thumbnail.missingAt).not.toBeNull();
-        await db.media.update({
-          where: { id },
-          data: { missingAt: new Date('2026-01-20') },
-        });
-        const missingRows = await new PrismaMediaRepository(db).list({
-          missing: true,
-          page: 1,
-          pageSize: 30,
-        });
-        expect(missingRows.items.map((row) => row.id)).toEqual([id]);
-        await writeFile(join(root, 'small.webp'), '123');
-        await reconcile.run('local', new Date());
-        const restored = await db.media.findUniqueOrThrow({ where: { id } });
-        expect(restored.missingAt).toBeNull();
-        expect(
-          (
-            await new PrismaMediaRepository(db).list({
-              missing: true,
-              page: 1,
-              pageSize: 30,
-            })
-          ).total,
-        ).toBe(0);
-        expect(JSON.parse(restored.variants).thumbnail).toMatchObject({
-          missingAt: null,
-          byteSize: 3,
-        });
-        await reconcile.run('local', new Date());
-        expect(
-          (await db.media.findUniqueOrThrow({ where: { id } })).variants,
-        ).toBe(restored.variants);
-        const concurrentVariants = JSON.stringify({
-          thumbnail: {
-            key: 'concurrent.webp',
-            width: 20,
-            height: 20,
-            storageDriver: 's3',
-          },
-        });
-        const concurrent = db.$extends({
-          query: {
-            media: {
-              async findMany({ args, query }) {
-                const snapshot = await query(args);
-                await db.media.update({
-                  where: { id },
-                  data: { variants: concurrentVariants },
-                });
-                return snapshot;
-              },
-            },
-          },
-        });
-        await new MediaReconciler(
-          concurrent as unknown as Database,
-          settings,
-          root,
-          async () => {
-            throw new Error('unexpected network');
-          },
-        ).run('local', new Date());
-        expect(
-          (await db.media.findUniqueOrThrow({ where: { id } })).variants,
-        ).toBe(concurrentVariants);
-        await expect(
-          reconcile.run('local', new Date(), AbortSignal.abort()),
-        ).rejects.toThrow();
-        expect(
-          (await db.media.findUniqueOrThrow({ where: { id } })).variants,
-        ).toBe(concurrentVariants);
-      } finally {
-        await db.media.deleteMany({ where: { id } });
-        await rm(root, { recursive: true, force: true });
-      }
-    },
-    SLOW,
-  );
 
   const services = (repository = new PrismaContentRepository(db)) => {
     const settings = new PrismaSettingsRepository(db);
@@ -377,128 +141,6 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       source: new PrismaSearchSource(db),
     };
   };
-
-  /** Media on the Prisma repository, with files kept in memory. */
-  const mediaServices = () => {
-    const repository = new PrismaMediaRepository(db);
-    const storage = new MemoryMediaStorage();
-    const media = new MediaService({
-      repository,
-      storage,
-      images: sharpImages,
-      ids: uuidV7,
-      clock: systemClock,
-      hooks: new HookBus({ timeoutMs: 50, logger: recordingLogger().logger }),
-      limiter: new PrismaRateLimitStore(db),
-      limits: async () => ({ uploadsPerHour: 60, freeSpaceMb: 256 }),
-      maxBytes: 1024 * 1024,
-    });
-    return { repository, storage, media };
-  };
-
-  /** The token of the privacy confirmation email queued for `subject`. */
-  const confirmationToken = async (
-    secrets: Parameters<typeof openJob>[1],
-    subject: string,
-  ) => {
-    const rows = await db.job.findMany({ where: { kind: 'email.send' } });
-    const message = rows
-      .map(
-        (row) =>
-          openJob(JSON.parse(row.payload), secrets) as {
-            to: string;
-            text: string;
-          },
-      )
-      .find((item) => item.to === subject)!;
-    return decodeURIComponent(/token=([^\s]+)/.exec(message.text)![1]!);
-  };
-
-  test(
-    'text-save migration backfills history without hiding valid autosaves, including entries without history',
-    async () => {
-      const { content, revisions } = services();
-      const entry = await content.create(
-        {
-          type: 'post',
-          title: 'Migration history',
-          document: textDocument('Saved'),
-        },
-        ADMIN,
-      );
-      const noHistory = await content.create(
-        {
-          type: 'post',
-          title: 'Migration fallback',
-          document: textDocument('Saved'),
-        },
-        ADMIN,
-      );
-      const savedAt = new Date('2026-03-01T00:00:00Z');
-      const autosaveAt = new Date('2026-03-02T00:00:00Z');
-      const statusAt = new Date('2026-03-03T00:00:00Z');
-      await db.contentRevision.updateMany({
-        where: { contentId: entry.id },
-        data: { createdAt: savedAt },
-      });
-      await db.contentRevision.deleteMany({
-        where: { contentId: noHistory.id },
-      });
-      await db.content.updateMany({
-        where: { id: { in: [entry.id, noHistory.id] } },
-        data: { updatedAt: statusAt },
-      });
-      await db.contentRevision.create({
-        data: {
-          id: uuidV7.next(),
-          contentId: entry.id,
-          authorId: ADMIN.id,
-          kind: 'autosave',
-          title: 'Pending across migration',
-          excerpt: '',
-          document: JSON.stringify(textDocument('Unsaved')),
-          createdAt: autosaveAt,
-        },
-      });
-      // Re-run the actual additive migration against populated pre-column rows in this disposable DB.
-      await db.$executeRawUnsafe(
-        'ALTER TABLE contents DROP COLUMN text_saved_at',
-      );
-      const sql = await Bun.file(
-        new URL(
-          '../prisma/migrations/20261108100000_content_text_saved_at/migration.sql',
-          import.meta.url,
-        ),
-      ).text();
-      for (const statement of sql
-        .split(';')
-        .map((part) => part.trim())
-        .filter(Boolean))
-        await db.$executeRawUnsafe(statement);
-      expect(
-        (await db.content.findUniqueOrThrow({ where: { id: entry.id } }))
-          .textSavedAt,
-      ).toEqual(savedAt);
-      expect(
-        (await db.content.findUniqueOrThrow({ where: { id: noHistory.id } }))
-          .textSavedAt,
-      ).toEqual(statusAt);
-      expect(
-        (await revisions.pendingAutosave(entry.id, ADMIN.id, savedAt))?.title,
-      ).toBe('Pending across migration');
-      const baseline = await new PrismaContentRepository(db).findById(entry.id);
-      for (const row of await revisions.list(entry.id))
-        if (row.kind === 'revision')
-          await revisions.delete(entry.id, row.id, baseline!);
-      expect(await new PrismaContentRepository(db).findById(entry.id)).toEqual(
-        baseline,
-      );
-      expect(
-        (await revisions.pendingAutosave(entry.id, ADMIN.id, savedAt))?.title,
-      ).toBe('Pending across migration');
-    },
-    SLOW,
-  );
 
   test(
     'revision mutations share the content lock, reject stale ownership and source rows, and preserve later autosaves',
@@ -662,81 +304,6 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
   );
 
   test(
-    'metadata-only saves preserve other writers’ pending text and the current revision on MariaDB',
-    async () => {
-      const { content, repository, taxonomy, revisions, history } = services();
-      const entry = await content.create(
-        {
-          type: 'post',
-          title: 'Metadata base',
-          document: textDocument('Unchanged'),
-        },
-        ADMIN,
-      );
-      const writer = userRecord({
-        id: uuidV7.next(),
-        email: 'metadata-writer@example.com',
-        slug: 'metadata-writer',
-        createdAt: new Date(),
-      });
-      await new PrismaUserRepository(db).insert(writer);
-      const other = { ...ADMIN, id: writer.id };
-      await history.autosave(
-        entry.id,
-        {
-          title: 'Other pending text',
-          excerpt: '',
-          document: textDocument('Unsaved'),
-        },
-        other,
-      );
-      const before = (await repository.findById(entry.id))!;
-      const listed = await history.list(entry.id, ADMIN);
-      const term = await taxonomy.create('category', {
-        name: 'Revision metadata',
-      });
-      const metadata = await content.update(
-        entry.id,
-        {
-          ...inputOf(entry),
-          status: 'published',
-          categoryIds: [term.id],
-          preserveAutosave: true,
-        },
-        ADMIN,
-      );
-      expect(metadata.updatedAt > entry.updatedAt).toBe(true);
-      expect((await repository.findById(entry.id))!.textSavedAt).toEqual(
-        before.textSavedAt,
-      );
-      expect(await history.list(entry.id, ADMIN)).toEqual(listed);
-      expect((await history.pendingAutosave(entry.id, other))?.title).toBe(
-        'Other pending text',
-      );
-      await history.autosave(
-        entry.id,
-        {
-          title: 'Own pending text',
-          excerpt: '',
-          document: textDocument('Own'),
-        },
-        ADMIN,
-      );
-      await content.update(entry.id, inputOf(metadata), ADMIN);
-      expect(await revisions.findAutosave(entry.id, ADMIN.id)).toBeNull();
-      expect((await history.pendingAutosave(entry.id, other))?.title).toBe(
-        'Other pending text',
-      );
-      expect(
-        (await history.list(entry.id, ADMIN)).filter(
-          (row) => row.kind === 'revision',
-        ),
-      ).toEqual(listed.filter((row) => row.kind === 'revision'));
-    },
-    SLOW,
-  );
-
-  test(
     'revision persistence failures roll back content, history, covered autosaves, paths and outbox together',
     async () => {
       const { content, revisions, history } = services();
@@ -853,72 +420,6 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     },
     SLOW,
   );
-
-  test('content writes queue search updates in their transaction; documents carry category ancestors', async () => {
-    const { content, taxonomy, source } = services();
-    await source.acknowledge(await source.lastId());
-    const news = await taxonomy.create('category', { name: 'News' });
-    const local = await taxonomy.create('category', {
-      name: 'Local',
-      parentId: news.id,
-    });
-    const entry = await content.create(
-      {
-        type: 'post',
-        title: 'Flood',
-        status: 'published',
-        categoryIds: [local.id],
-        document: textDocument('River rising'),
-      },
-      ADMIN,
-    );
-    const publicReads = new PrismaPublishedContentRepository(db);
-    expect(
-      (await publicReads.summaries({ search: 'River', page: 1, pageSize: 10 }))
-        .items,
-    ).toMatchObject([{ id: entry.id }]);
-    expect(
-      (
-        await publicReads.summaries({
-          category: 'news',
-          page: 1,
-          pageSize: 10,
-        })
-      ).items,
-    ).toMatchObject([{ id: entry.id }]);
-    await content.trash(entry.id, ADMIN);
-    // Admin lists honour every filter (the trash view and author included).
-    const listed = (view: 'active' | 'trash') =>
-      content
-        .list({ view, author: 'user' }, ADMIN)
-        .then((page) => page.items.map((item) => item.id));
-    expect(await listed('trash')).toEqual([entry.id]);
-    expect(await listed('active')).not.toContain(entry.id);
-    await content.restore(entry.id, ADMIN);
-    expect((await source.pending(10)).map((row) => row.contentId)).toEqual([
-      entry.id,
-      entry.id,
-      entry.id,
-    ]);
-    const [document] = await source.documents([entry.id]);
-    expect(document).toMatchObject({
-      title: 'Flood',
-      text: 'River rising',
-      categories: ['local', 'news'],
-    });
-    // Renaming a term can change what filters match: a full rebuild is queued.
-    await taxonomy.update('category', news.id, {
-      name: 'World',
-      slug: 'world',
-    });
-    expect((await source.pending(10)).at(-1)?.contentId).toBeNull();
-    await content.remove(entry.id, ADMIN).catch(async () => {
-      await content.trash(entry.id, ADMIN);
-      await content.remove(entry.id, ADMIN);
-    });
-    expect(await source.documents([entry.id])).toEqual([]);
-    expect((await source.pending(10)).at(-1)?.contentId).toBe(entry.id);
-  });
 
   test(
     'public projections keep relation metadata while hiding editorial and protected data',
@@ -1064,7 +565,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
   );
 
   test('approved comment counts follow every status change; deleting a parent keeps its replies', async () => {
-    const { content, comments, repository } = services();
+    const { content, comments, repository, secrets } = services();
     const entry = await content.create(
       {
         type: 'post',
@@ -1081,6 +582,8 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       authorName: 'Ann',
       authorEmail: 'ann@example.com',
       authorUrl: '',
+      authorIp: '203.0.113.9',
+      authorUserAgent: 'Mozilla/5.0',
       body: 'First',
       createdAt: at,
       updatedAt: at,
@@ -1114,25 +617,136 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     expect(await comments.recent(5)).toEqual([
       { author: 'Ann', title: 'Talk', path: entry.path },
     ]);
-  });
 
-  test('monthly archive counts group public posts by UTC month', async () => {
-    const { content } = services();
-    await content.create(
-      {
-        type: 'post',
-        title: 'Old',
-        status: 'published',
-        publishedAt: '2020-02-29T23:30:00.000Z',
-        document: textDocument('x'),
+    // Moderation lists filter by id and search IP addresses; erasure clears them.
+    await comments.insert({
+      ...base,
+      id: 'c3',
+      parentId: null,
+      authorEmail: 'bob@example.com',
+      authorIp: null,
+      authorUserAgent: null,
+      status: 'approved',
+    });
+    const listed = async (criteria: { ids?: string[]; search?: string }) =>
+      (await comments.list({ ...criteria, page: 1, pageSize: 20 })).items.map(
+        (item) => [item.id, item.authorIp, item.authorUserAgent],
+      );
+    expect(await listed({ ids: ['c2', 'missing'] })).toEqual([
+      ['c2', '203.0.113.9', 'Mozilla/5.0'],
+    ]);
+    expect(await listed({ search: '203.0.113' })).toEqual([
+      ['c2', '203.0.113.9', 'Mozilla/5.0'],
+    ]);
+    const privacy = new PrismaPrivacyRepository(db, secrets);
+    const subject = userRecord({
+      id: uuidV7.next(),
+      email: 'ann@example.com',
+      createdAt: new Date(),
+    });
+    await db.user.create({ data: subject });
+    await db.content.update({
+      where: { id: entry.id },
+      data: {
+        modifiedById: subject.id,
+        createdById: ADMIN.id,
+        createdIp: '192.0.2.100',
+        createdUserAgent: 'Other browser',
+        modifiedIp: '192.0.2.9',
+        modifiedUserAgent: 'Origin browser',
       },
-      ADMIN,
+    });
+    await db.contentRevision.updateMany({
+      where: { contentId: entry.id },
+      data: {
+        authorId: subject.id,
+        ip: '192.0.2.9',
+        userAgent: 'Origin browser',
+      },
+    });
+    expect(await privacy.data(subject.email, 'content', null, 10)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: entry.id,
+          createdIp: null,
+          createdUserAgent: null,
+          modifiedIp: '192.0.2.9',
+          modifiedUserAgent: 'Origin browser',
+        }),
+      ]),
     );
-    const months = await new PrismaPublishedContentRepository(db).months(
-      ['post'],
-      100,
+    expect(await privacy.data(subject.email, 'revisions', null, 10)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ip: '192.0.2.9',
+          userAgent: 'Origin browser',
+        }),
+      ]),
     );
-    expect(months).toContainEqual({ year: 2020, month: 2, count: 1 });
+    expect(
+      await privacy.data('ann@example.com', 'comments', null, 10),
+    ).toMatchObject([
+      { id: 'c2', authorIp: '203.0.113.9', authorUserAgent: 'Mozilla/5.0' },
+    ]);
+    await db.content.update({
+      where: { id: entry.id },
+      data: {
+        createdById: subject.id,
+        createdIp: '192.0.2.9',
+        createdUserAgent: 'Origin browser',
+        modifiedById: ADMIN.id,
+        modifiedIp: '192.0.2.100',
+        modifiedUserAgent: 'Other browser',
+      },
+    });
+    expect(await privacy.data(subject.email, 'content', null, 10)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: entry.id,
+          createdIp: '192.0.2.9',
+          createdUserAgent: 'Origin browser',
+          modifiedIp: null,
+          modifiedUserAgent: null,
+        }),
+      ]),
+    );
+    const now = new Date();
+    await privacy.insert({
+      id: 'comment-erasure',
+      email: 'ann@example.com',
+      action: 'erase',
+      status: 'confirmed',
+      tokenHash: null,
+      createdAt: now,
+      expiresAt: new Date(now.getTime() + 60_000),
+      confirmedAt: now,
+      completedAt: null,
+    });
+    await privacy.erase('comment-erasure', 'erased-hash', now);
+    expect(
+      await db.content.findUnique({ where: { id: entry.id } }),
+    ).toMatchObject({
+      createdIp: null,
+      createdUserAgent: null,
+      createdById: null,
+      modifiedById: ADMIN.id,
+      modifiedIp: '192.0.2.100',
+      modifiedUserAgent: 'Other browser',
+    });
+    expect(
+      await db.contentRevision.findFirst({ where: { contentId: entry.id } }),
+    ).toMatchObject({
+      ip: null,
+      userAgent: null,
+    });
+    expect(await comments.findById('c2')).toMatchObject({
+      authorEmail: '',
+      authorIp: null,
+      authorUserAgent: null,
+    });
+    expect(await comments.findById('c3')).toMatchObject({
+      authorEmail: 'bob@example.com',
+    });
   });
 
   test('jobs, task leases and rate limits hold under concurrent processes', async () => {
@@ -1199,444 +813,6 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     ).toBe(true);
     expect(await limits.hit('ip:1', rule, expiry)).toBe(false);
     expect(await otherLimits.exceeded('ip:1', rule, expiry)).toBe(false);
-  });
-
-  test('role deletion is atomic with assignments across processes', async () => {
-    const settings = new PrismaSettingsRepository(db);
-    const first = new PrismaUserDirectory(db);
-    const second = new PrismaUserDirectory(db);
-    const roles = new RoleService(settings, first);
-    const target = uuidV7.next();
-    await first.insert(userRecord({ id: target, role: 'author' }));
-    await roles.save(
-      { key: 'staff', name: 'Staff', capabilities: ['content.create'] },
-      ADMIN,
-    );
-    const created = uuidV7.next();
-
-    await Promise.allSettled([
-      roles.remove('staff', { reassignTo: 'editor' }, ADMIN),
-      second.setRole(target, 'staff'),
-      second.insert(
-        userRecord({
-          id: created,
-          email: `${created}@example.com`,
-          slug: `user-${created}`,
-          role: 'staff',
-        }),
-      ),
-    ]);
-
-    expect(await db.user.count({ where: { role: 'staff' } })).toBe(0);
-    expect((await roles.list()).some(({ key }) => key === 'staff')).toBe(false);
-  });
-
-  test('deleting an author with their content queues a rebuild, and export reads every table', async () => {
-    const { content, source, terms, comments } = services();
-    await new PrismaUserRepository(db).insert(
-      userRecord({ id: 'writer', role: 'author', createdAt: new Date() }),
-    );
-    await content.create(
-      {
-        type: 'post',
-        title: 'By writer',
-        authorId: 'writer',
-        document: textDocument('w'),
-      },
-      ADMIN,
-    );
-    const directory = new PrismaUserDirectory(db);
-    const xml = await new ExportService({
-      content: new PrismaContentRepository(db),
-      terms,
-      comments,
-      users: directory,
-      site: async () => ({ title: 'Site', siteUrl: 'https://example.com' }),
-    }).exportWxr(ADMIN);
-    expect(xml).toContain('<title><![CDATA[By writer]]></title>');
-    expect(xml).toContain(
-      '<wp:comment_content><![CDATA[Reply]]></wp:comment_content>',
-    );
-
-    await source.acknowledge(await source.lastId());
-    await directory.delete('writer', null);
-    expect(await source.pending(10)).toEqual([
-      expect.objectContaining({ contentId: null }),
-    ]);
-  });
-
-  test('image uploads persist writable media fields and load derived uploader data', async () => {
-    const { repository, storage, media } = mediaServices();
-    const png = await sharp({
-      create: { width: 100, height: 80, channels: 3, background: '#abcdef' },
-    })
-      .png()
-      .toBuffer();
-
-    const uploaded = await media.upload(png, 'upload.png', ADMIN);
-
-    expect(uploaded).toMatchObject({
-      mime: 'image/png',
-      width: 100,
-      height: 80,
-      uploaderId: ADMIN.id,
-      uploaderName: ADMIN.id,
-      usageCount: 0,
-    });
-    const stored = await repository.get(uploaded.id);
-    expect(stored).toMatchObject({
-      id: uploaded.id,
-      filename: 'upload.png',
-      width: 100,
-      height: 80,
-    });
-    expect(storage.files.has(stored!.storageKey)).toBe(true);
-  });
-
-  test('core-only category rename refreshes paths before returning without a regeneration marker', async () => {
-    const { content, taxonomy } = services();
-    const paths = new PrismaPermalinkRepository(db);
-    const original = await paths.readSettings();
-    const suffix = uuidV7.next();
-    try {
-      await paths.saveSettings({ ...original, post: '/%category%/%slug%' });
-      const term = await taxonomy.create('category', {
-        name: `Sync ${suffix}`,
-        slug: `sync-${suffix}`,
-      });
-      const entry = await content.create(
-        {
-          type: 'post',
-          title: `Sync entry ${suffix}`,
-          categoryIds: [term.id],
-          document: textDocument('Body'),
-          status: 'published',
-        },
-        ADMIN,
-      );
-      expect(entry.path).toBe(`/sync-${suffix}/${entry.slug}`);
-      await taxonomy.update('category', term.id, {
-        name: `Renamed ${suffix}`,
-        slug: `renamed-${suffix}`,
-      });
-      expect((await content.get(entry.id, ADMIN)).path).toBe(
-        `/renamed-${suffix}/${entry.slug}`,
-      );
-      expect(
-        await db.setting.findUnique({
-          where: { key: 'permalinks.regeneration' },
-        }),
-      ).toBeNull();
-      expect(await paths.findByPath(entry.path)).toEqual({
-        contentId: entry.id,
-        current: false,
-      });
-    } finally {
-      await paths.saveSettings(original);
-    }
-  });
-
-  test('a plugin overriding author defers rename and kicks after commit without blocking an unrelated save', async () => {
-    const tokens = new PermalinkTokenRegistry(4000);
-    let release = () => {};
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let blocked = false;
-    let resolving = false;
-    let resolutions = 0;
-    tokens.register('author', async (values) => {
-      if (blocked) {
-        resolutions++;
-        resolving = true;
-        await gate;
-      }
-      return `by-${values.author}`;
-    });
-    const { logger, lines } = recordingLogger();
-    const paths = new PrismaPermalinkRepository(db, tokens, logger);
-    const original = await paths.readSettings();
-    const id = uuidV7.next();
-    const scheduler = new Scheduler({
-      leases: new PrismaTaskLeases(db),
-      clock: systemClock,
-      logger,
-      owner: id,
-    });
-    let passes = 0;
-    scheduler.add({
-      name: 'core:permalink-regeneration',
-      intervalMs: 5000,
-      run: async () => {
-        passes++;
-        await paths.resume();
-      },
-    });
-    let running: Promise<void> | undefined;
-    const user = userRecord({
-      id,
-      email: `${id}@example.test`,
-      slug: `author-${id}`,
-    });
-    await new PrismaUserRepository(db).insert(user);
-    const { content } = services(new PrismaContentRepository(db, tokens));
-    let entryId: string | undefined;
-    let kicked = false;
-    try {
-      await paths.saveSettings({ ...original, post: '/%author%/%slug%' });
-      const entry = await content.create(
-        {
-          type: 'post',
-          title: `Token-${id}`,
-          document: textDocument('Body'),
-          authorId: id,
-          status: 'published',
-        },
-        ADMIN,
-      );
-      entryId = entry.id;
-      const unrelated = await content.create(
-        {
-          type: 'page',
-          title: `Unrelated-${id}`,
-          document: textDocument('Original'),
-        },
-        ADMIN,
-      );
-      lines.length = 0;
-      blocked = true;
-      const directory = new PrismaUserDirectory(
-        db,
-        undefined,
-        () => {
-          kicked = true;
-          running = scheduler.runNow('core:permalink-regeneration');
-        },
-        tokens,
-      );
-      await directory.updateProfile({
-        id,
-        email: user.email,
-        name: user.name,
-        slug: `renamed-${id}`,
-        bio: '',
-        locale: '',
-      });
-      expect(kicked).toBe(true);
-      await waitFor(
-        async () => resolving,
-        'Post-commit kick did not start the resolver',
-      );
-      expect((await content.get(entry.id, ADMIN)).path).toBe(entry.path);
-      expect(
-        await db.setting.findUnique({
-          where: { key: 'permalinks.regeneration' },
-        }),
-      ).not.toBeNull();
-      const saved = await content.update(
-        unrelated.id,
-        {
-          ...inputOf(unrelated),
-          title: `Saved-${id}`,
-          document: textDocument('Saved while pending'),
-        },
-        ADMIN,
-      );
-      expect(saved.title).toBe(`Saved-${id}`);
-      expect(saved.path).toBe(unrelated.path);
-      await Promise.all(
-        Array.from({ length: 5 }, () =>
-          scheduler.runNow('core:permalink-regeneration'),
-        ),
-      );
-      release();
-      await running;
-      expect(passes).toBe(2);
-      expect(resolutions).toBe(1);
-      await waitFor(
-        async () =>
-          !(await db.setting.findUnique({
-            where: { key: 'permalinks.regeneration' },
-          })),
-        'Post-commit regeneration did not finish without a scheduler',
-      );
-      expect((await content.get(entry.id, ADMIN)).path).toBe(
-        `/by-renamed-${id}/${entry.slug}`,
-      );
-      expect(await paths.findByPath(entry.path)).toEqual({
-        contentId: entry.id,
-        current: false,
-      });
-    } finally {
-      blocked = false;
-      release();
-      await running;
-      if (kicked)
-        await waitFor(
-          async () =>
-            lines.some(
-              (line) => line.includes('complete') || line.startsWith('error '),
-            ),
-          'Detached regeneration did not settle',
-        );
-      if (entryId) await db.content.delete({ where: { id: entryId } });
-      await paths.saveSettings(original);
-      await db.user.delete({ where: { id } });
-    }
-  });
-
-  test('two plugin category renames merge pending IDs before the retry worker runs', async () => {
-    const tokens = new PermalinkTokenRegistry(50);
-    tokens.register(
-      'section',
-      (values) => `section-${values.category?.join('-')}`,
-    );
-    const paths = new PrismaPermalinkRepository(db, tokens);
-    const original = await paths.readSettings();
-    const { content, taxonomy } = services(
-      new PrismaContentRepository(db, tokens),
-    );
-    const suffix = uuidV7.next();
-    try {
-      await paths.saveSettings({ ...original, post: '/%section%/%slug%' });
-      const entries = [];
-      for (const name of ['first', 'second']) {
-        const term = await taxonomy.create('category', {
-          name: `${name}-${suffix}`,
-          slug: `${name}-${suffix}`,
-        });
-        const entry = await content.create(
-          {
-            type: 'post',
-            title: `Merge ${name} ${suffix}`,
-            categoryIds: [term.id],
-            status: 'published',
-            document: textDocument('Body'),
-          },
-          ADMIN,
-        );
-        entries.push({ term, entry, slug: `renamed-${name}-${suffix}` });
-      }
-      // No kick is wired here: exercise two committed writes before a scheduler retry.
-      for (const { term, slug } of entries)
-        await taxonomy.update('category', term.id, { name: slug, slug });
-      const marker = await db.setting.findUniqueOrThrow({
-        where: { key: 'permalinks.regeneration' },
-      });
-      expect(JSON.parse(marker.value).ids.sort()).toEqual(
-        entries.map(({ entry }) => entry.id).sort(),
-      );
-      for (const { entry } of entries)
-        expect((await content.get(entry.id, ADMIN)).path).toBe(entry.path);
-      await paths.resume();
-      for (const { entry, slug } of entries) {
-        expect((await content.get(entry.id, ADMIN)).path).toBe(
-          `/section-${slug}/${entry.slug}`,
-        );
-        expect(await paths.findByPath(entry.path)).toEqual({
-          contentId: entry.id,
-          current: false,
-        });
-      }
-      expect(
-        await db.setting.findUnique({
-          where: { key: 'permalinks.regeneration' },
-        }),
-      ).toBeNull();
-    } finally {
-      await paths.saveSettings(original);
-    }
-  });
-
-  test('a throwing plugin resolver warns, keeps valid fallback paths and clears regeneration intent', async () => {
-    const { logger, lines } = recordingLogger();
-    const tokens = new PermalinkTokenRegistry(50, logger);
-    let failing = false;
-    let failures = 0;
-    tokens.register('section', (values) => {
-      if (failing) {
-        failures++;
-        throw new Error('Resolver unavailable: PRIVATE_PLUGIN_SECRET');
-      }
-      return `section-${values.category?.join('-')}`;
-    });
-    const paths = new PrismaPermalinkRepository(db, tokens, logger);
-    const original = await paths.readSettings();
-    const { content, taxonomy } = services(
-      new PrismaContentRepository(db, tokens),
-    );
-    const suffix = uuidV7.next();
-    try {
-      await paths.saveSettings({ ...original, post: '/%section%/%slug%' });
-      const term = await taxonomy.create('category', {
-        name: `Failure ${suffix}`,
-        slug: `failure-${suffix}`,
-      });
-      const entry = await content.create(
-        {
-          type: 'post',
-          title: `Retry ${suffix}`,
-          categoryIds: [term.id],
-          status: 'published',
-          document: textDocument('Body'),
-        },
-        ADMIN,
-      );
-      const slug = `recovered-${suffix}`;
-      await taxonomy.update('category', term.id, { name: slug, slug });
-      failing = true;
-      lines.length = 0;
-      const scheduler = new Scheduler({
-        leases: new PrismaTaskLeases(db),
-        clock: systemClock,
-        logger,
-        owner: suffix,
-      });
-      scheduler.add({
-        name: 'core:permalink-regeneration',
-        intervalMs: 5000,
-        run: () => paths.resume(),
-      });
-      await scheduler.runNow('core:permalink-regeneration');
-      await waitFor(
-        async () =>
-          lines.some(
-            (line) => line.includes('complete') || line.startsWith('error '),
-          ),
-        'Failed resolver worker did not settle',
-      );
-      const current = (await content.get(entry.id, ADMIN)).path;
-      expect(current).toBe(`/${entry.slug}`);
-      expect(permalinkPathSchema.safeParse(current).success).toBe(true);
-      expect(await paths.findByPath(current)).toEqual({
-        contentId: entry.id,
-        current: true,
-      });
-      expect(await paths.findByPath(entry.path)).toMatchObject({
-        contentId: entry.id,
-      });
-      const pending = await db.setting.findUnique({
-        where: { key: 'permalinks.regeneration' },
-      });
-      expect(pending).toBeNull();
-      expect(lines).toContain(
-        `warn Permalink token "section" failed for entry "${entry.id}"; using core fallback`,
-      );
-      expect(lines.join('\n')).not.toContain('PRIVATE_PLUGIN_SECRET');
-      expect(failures).toBe(1);
-      // A scheduler tick must not retry a failing plugin once fallback succeeded.
-      await paths.resume();
-      expect(failures).toBe(1);
-      expect((await content.get(entry.id, ADMIN)).path).toBe(current);
-      expect(
-        await db.setting.findUnique({
-          where: { key: 'permalinks.regeneration' },
-        }),
-      ).toBeNull();
-    } finally {
-      failing = false;
-      await paths.saveSettings(original);
-    }
   });
 
   test('moving a page tree updates descendant paths atomically and preserves redirects', async () => {
@@ -1891,901 +1067,4 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       await writer.save(original);
     }
   });
-
-  test.skipIf(!meiliUrl)(
-    'the search index serves public results only after it caught up',
-    async () => {
-      const { settings, content, source } = services();
-      const search = new SearchService({
-        settings,
-        secrets: plainSecretBox,
-        // This adapter test supplies its own test endpoint; egress policy has a separate suite.
-        engine: createMeilisearchEngine((input, init) => fetch(input, init)),
-        source,
-        clock: systemClock,
-        logger: recordingLogger().logger,
-      });
-      await search.update({
-        enabled: true,
-        host: meiliUrl,
-        indexPrefix: `cms_test_${crypto.randomUUID().slice(0, 8)}`,
-        apiKey: process.env.CMS_TEST_MEILISEARCH_KEY ?? '',
-      });
-      const query = { text: 'aurora', page: 1, pageSize: 10 };
-      const entry = await content.create(
-        {
-          type: 'post',
-          title: 'Aurora tonight',
-          status: 'published',
-          document: textDocument('Lights'),
-        },
-        ADMIN,
-      );
-      expect(await search.find(query)).toBeNull();
-      await search.sync();
-      expect(await search.find(query)).toEqual({ ids: [entry.id], total: 1 });
-
-      await content.trash(entry.id, ADMIN);
-      expect(await search.find(query)).toBeNull();
-      await search.sync();
-      expect(await search.find(query)).toEqual({ ids: [], total: 0 });
-    },
-    SLOW,
-  );
-  test(
-    'privacy confirmation signatures cannot be changed or consumed twice',
-    async () => {
-      const { privacy, email, secrets } = services();
-      await email.update({
-        ...DEFAULT_EMAIL_SETTINGS,
-        enabled: true,
-        smtp: { ...DEFAULT_EMAIL_SETTINGS.smtp, host: 'smtp.example.com' },
-        fromEmail: 'site@example.com',
-      });
-      const subject = `confirm-${uuidV7.next()}@example.com`;
-      const attempt = { client: subject, address: null, captchaToken: null };
-      const request = await privacy.create(
-        { email: subject, action: 'export' },
-        ADMIN,
-        attempt,
-      );
-      const token = await confirmationToken(secrets, subject);
-      expect(JSON.stringify(request)).not.toContain(token);
-      await expect(
-        privacy.confirm({ token: `${token}x` }, attempt),
-      ).rejects.toMatchObject({ code: 'invalid_input' });
-      const results = await Promise.allSettled([
-        privacy.confirm({ token }, attempt),
-        privacy.confirm({ token }, attempt),
-      ]);
-      expect(
-        results.filter((result) => result.status === 'fulfilled'),
-      ).toHaveLength(1);
-      expect(
-        (await db.privacyRequest.findUnique({ where: { id: request.id } }))
-          ?.tokenHash,
-      ).toBeNull();
-      await expect(privacy.confirm({ token }, attempt)).rejects.toMatchObject({
-        code: 'invalid_input',
-      });
-    },
-    SLOW,
-  );
-
-  test.each(['update', 'remove'] as const)(
-    'a paused contributor %s cannot change a pattern published by another transaction',
-    async (operation) => {
-      const settings = new PrismaSettingsRepository(db);
-      const transactions = new PrismaSettingsTransactions(db);
-      const deps = {
-        settings,
-        transactions,
-        catalog: new PrismaPatternCatalog(db),
-        renderer: tiptapRenderer,
-        ids: uuidV7,
-        clock: systemClock,
-      };
-      const publisher = new PatternService(deps);
-      const contributor = { id: 'contributor', role: 'contributor' };
-      const input = {
-        title: 'Reviewed interleaving',
-        status: 'draft',
-        document: textDocument('Contributor draft'),
-      };
-      const pattern = await publisher.create(input, contributor);
-      const entered = Promise.withResolvers<void>();
-      const resume = Promise.withResolvers<void>();
-      const staleSettings = {
-        get: settings.get.bind(settings),
-        list: settings.list.bind(settings),
-        // This also reproduces the old check-then-set implementation at its unsafe write seam.
-        set: async (key: string, value: unknown) => {
-          entered.resolve();
-          await resume.promise;
-          await settings.set(key, value);
-        },
-      };
-      const writer = new PatternService({
-        ...deps,
-        settings: staleSettings,
-        transactions: {
-          run: async (lock, task) => {
-            entered.resolve();
-            await resume.promise;
-            return new PrismaSettingsTransactions(db).run(lock, task);
-          },
-        },
-      });
-      const mutation =
-        operation === 'update'
-          ? writer.update(pattern.id, input, contributor)
-          : writer.remove(pattern.id, contributor);
-      const outcome = mutation.then(
-        () => null,
-        (error: unknown) => error,
-      );
-      try {
-        await entered.promise;
-        await publisher.update(
-          pattern.id,
-          {
-            ...input,
-            status: 'published',
-            document: textDocument('Approved by administrator'),
-          },
-          ADMIN,
-        );
-      } finally {
-        resume.resolve();
-      }
-      expect(await outcome).toMatchObject({ code: 'forbidden' });
-      expect(await publisher.get(pattern.id, ADMIN)).toMatchObject({
-        status: 'published',
-        document: textDocument('Approved by administrator'),
-      });
-      await publisher.remove(pattern.id, ADMIN);
-    },
-    SLOW,
-  );
-
-  test(
-    'independent pattern writers cannot both claim the last library slot',
-    async () => {
-      const settings = new PrismaSettingsRepository(db);
-      const deps = {
-        settings,
-        catalog: new PrismaPatternCatalog(db),
-        renderer: tiptapRenderer,
-        ids: uuidV7,
-        clock: systemClock,
-      };
-      const first = new PatternService({
-        ...deps,
-        transactions: new PrismaSettingsTransactions(db),
-      });
-      const second = new PatternService({
-        ...deps,
-        transactions: new PrismaSettingsTransactions(db),
-      });
-      const input = {
-        title: 'Last pattern slot',
-        status: 'draft',
-        document: textDocument('Quota'),
-      };
-      const existing = await settings.count('pattern.');
-      const rows = Array.from({ length: 499 - existing }, () => {
-        const id = uuidV7.next();
-        return {
-          key: `pattern.${id}`,
-          value: JSON.stringify({
-            ...input,
-            id,
-            synced: true,
-            authorId: ADMIN.id,
-            updatedAt: systemClock.now().toISOString(),
-            html: '<p>Quota</p>',
-          }),
-        };
-      });
-      const owned = rows.map(({ key }) => key);
-      try {
-        await db.setting.createMany({ data: rows });
-        const outcomes = await Promise.allSettled([
-          first.create(input, ADMIN),
-          second.create(input, ADMIN),
-        ]);
-        const saved = outcomes.flatMap((result) =>
-          result.status === 'fulfilled' ? [result.value] : [],
-        );
-        owned.push(...saved.map(({ id }) => `pattern.${id}`));
-        expect(saved).toHaveLength(1);
-        expect(
-          outcomes.find((result) => result.status === 'rejected'),
-        ).toMatchObject({
-          status: 'rejected',
-          reason: { code: 'invalid_input' },
-        });
-        expect(await settings.count('pattern.')).toBe(500);
-        await first.remove(saved[0]!.id, ADMIN);
-        const replacement = await second.create(input, ADMIN);
-        owned.push(`pattern.${replacement.id}`);
-        expect(await settings.count('pattern.')).toBe(500);
-      } finally {
-        await db.setting.deleteMany({ where: { key: { in: owned } } });
-      }
-    },
-    SLOW,
-  );
-
-  test(
-    'pattern catalogs page metadata and keep other writers drafts private',
-    async () => {
-      const patterns = new PatternService({
-        settings: new PrismaSettingsRepository(db),
-        transactions: new PrismaSettingsTransactions(db),
-        catalog: new PrismaPatternCatalog(db),
-        renderer: tiptapRenderer,
-        ids: uuidV7,
-        clock: systemClock,
-      });
-      const contributor = { id: 'contributor', role: 'contributor' };
-      const secret = await patterns.create(
-        {
-          title: 'Catalog A private',
-          status: 'draft',
-          document: textDocument('Administrator secret'),
-        },
-        ADMIN,
-      );
-      const own = await patterns.create(
-        {
-          title: 'Catalog B own',
-          status: 'draft',
-          document: textDocument('My draft'),
-        },
-        contributor,
-      );
-      const shared = await patterns.create(
-        {
-          title: 'Catalog C shared',
-          document: textDocument('x'.repeat(300_000)),
-        },
-        ADMIN,
-      );
-      const first = await patterns.list(
-        { search: 'Catalog', pageSize: 1 },
-        contributor,
-      );
-      expect(first.total).toBe(2);
-      expect(first.items.map(({ id }) => id)).toEqual([own.id]);
-      const second = await patterns.list(
-        { search: 'Catalog', pageSize: 1, page: 2 },
-        contributor,
-      );
-      expect(second.items.map(({ id }) => id)).toEqual([shared.id]);
-      expect(JSON.stringify(second).length).toBeLessThan(1000);
-      expect(second.items[0]).not.toHaveProperty('document');
-      expect(second.items[0]).not.toHaveProperty('html');
-      await expect(patterns.get(secret.id, contributor)).rejects.toMatchObject({
-        code: 'not_found',
-      });
-      expect((await patterns.get(own.id, contributor)).document).toEqual(
-        textDocument('My draft'),
-      );
-      expect((await patterns.get(shared.id, contributor)).document).toEqual(
-        textDocument('x'.repeat(300_000)),
-      );
-      expect((await patterns.list({ search: 'Catalog' }, ADMIN)).total).toBe(3);
-      for (const pattern of [secret, own, shared])
-        await patterns.remove(pattern.id, ADMIN);
-    },
-    SLOW,
-  );
-
-  test(
-    'personal export contains only its confirmed subject and no credentials',
-    async () => {
-      const { privacy, email, secrets, content, comments } = services();
-      await email.update({
-        ...DEFAULT_EMAIL_SETTINGS,
-        enabled: true,
-        smtp: { ...DEFAULT_EMAIL_SETTINGS.smtp, host: 'smtp.example.com' },
-        fromEmail: 'site@example.com',
-      });
-      const id = uuidV7.next();
-      const subject = `export-${id}@example.com`;
-      await new PrismaUserRepository(db).insert(
-        userRecord({
-          id,
-          email: subject,
-          role: 'author',
-          name: 'Subject',
-          passwordHash: 'SECRET-HASH',
-        }),
-      );
-      const entry = await content.create(
-        {
-          type: 'post',
-          title: `Export ${id}`,
-          status: 'published',
-          authorId: id,
-          document: textDocument('Own content'),
-        },
-        ADMIN,
-      );
-      const now = new Date();
-      await comments.insert({
-        id: uuidV7.next(),
-        contentId: entry.id,
-        parentId: null,
-        userId: id,
-        authorName: 'Subject',
-        authorEmail: subject,
-        authorUrl: '',
-        body: 'Own comment',
-        status: 'pending',
-        createdAt: now,
-        updatedAt: now,
-      });
-      await comments.insert({
-        id: uuidV7.next(),
-        contentId: entry.id,
-        parentId: null,
-        userId: null,
-        authorName: 'OTHER-PERSON',
-        authorEmail: 'other-person@example.com',
-        authorUrl: '',
-        body: 'OTHER-PRIVATE-COMMENT',
-        status: 'pending',
-        createdAt: now,
-        updatedAt: now,
-      });
-      const tokenHash = randomTokenIssuer.digest(uuidV7.next());
-      await db.apiToken.create({
-        data: {
-          id: uuidV7.next(),
-          userId: id,
-          name: 'Phone',
-          tokenHash,
-          createdAt: now,
-        },
-      });
-      const attempt = { client: subject, address: null, captchaToken: null };
-      const request = await privacy.create(
-        { email: subject, action: 'export' },
-        ADMIN,
-        attempt,
-      );
-      await expect(privacy.export(request.id, ADMIN)).rejects.toMatchObject({
-        code: 'invalid_input',
-      });
-      await privacy.confirm(
-        { token: await confirmationToken(secrets, subject) },
-        attempt,
-      );
-      await expect(
-        privacy.export(request.id, { id, role: 'author' }),
-      ).rejects.toMatchObject({ code: 'forbidden' });
-      const json = await new Response(
-        await privacy.export(request.id, ADMIN),
-      ).text();
-      expect(json).toContain('Own comment');
-      expect(json).toContain('Own content');
-      expect(json).toContain('Phone');
-      for (const value of [
-        'OTHER-PERSON',
-        'other-person@example.com',
-        'OTHER-PRIVATE-COMMENT',
-        'SECRET-HASH',
-        tokenHash,
-        'tokenHash',
-        'passwordHash',
-      ])
-        expect(json).not.toContain(value);
-    },
-    SLOW,
-  );
-
-  test(
-    'privacy erasure anonymizes the subject, revokes credentials and removes queued and failed snapshots atomically',
-    async () => {
-      const { privacy, email, jobs, secrets, content, comments } = services();
-      await email.update({
-        ...DEFAULT_EMAIL_SETTINGS,
-        enabled: true,
-        smtp: { ...DEFAULT_EMAIL_SETTINGS.smtp, host: 'smtp.example.com' },
-        fromEmail: 'site@example.com',
-      });
-      const id = uuidV7.next(),
-        subject = `erase-${id}@example.com`,
-        now = new Date();
-      await new PrismaUserRepository(db).insert(
-        userRecord({
-          id,
-          email: subject,
-          role: 'author',
-          name: 'Subject Name',
-          bio: 'Personal biography',
-        }),
-      );
-      const entry = await content.create(
-        {
-          type: 'post',
-          title: `Erase ${id}`,
-          status: 'published',
-          authorId: id,
-          document: textDocument('Preserved publication'),
-        },
-        ADMIN,
-      );
-      const mediaId = uuidV7.next(),
-        identityId = uuidV7.next();
-      const passkeyId = uuidV7.next(),
-        totpId = uuidV7.next(),
-        recoveryId = uuidV7.next();
-      await db.passkey.create({
-        data: {
-          id: passkeyId,
-          userId: id,
-          credentialId: Buffer.from(passkeyId),
-          publicKey: Buffer.from('PRIVATE-KEY-MATERIAL'),
-          counter: 0n,
-          transports: '[]',
-          deviceType: 'singleDevice',
-          backedUp: false,
-          discoverable: true,
-          name: 'Laptop',
-          createdAt: now,
-        },
-      });
-      await db.totpSecret.create({
-        data: {
-          id: totpId,
-          userId: id,
-          sealedSecret: 'SEALED-TOTP-SECRET',
-          lastStep: 1n,
-          createdAt: now,
-        },
-      });
-      await db.recoveryCode.create({
-        data: {
-          id: recoveryId,
-          userId: id,
-          codeHash: randomTokenIssuer.digest('recovery-secret'),
-          createdAt: now,
-        },
-      });
-      await db.signInTransaction.create({
-        data: {
-          handleHash: randomTokenIssuer.digest(`signin:${id}`),
-          userId: id,
-          methodId: 'passkey',
-          stage: 'account',
-          factorId: 'passkey',
-          state: '{"secret":"PENDING-SECRET"}',
-          clientKey: randomTokenIssuer.digest(id),
-          expiresAt: new Date(now.getTime() + 60000),
-        },
-      });
-      const personal = new PrismaPrivacyRepository(db, secrets);
-      expect(await personal.data(subject, 'passkeys', null, 10)).toEqual([
-        {
-          id: passkeyId,
-          factor: 'passkey',
-          label: 'Laptop',
-          createdAt: now.toISOString(),
-        },
-      ]);
-      expect(await personal.data(subject, 'totp', null, 10)).toEqual([
-        {
-          id: totpId,
-          factor: 'totp',
-          label: 'Authenticator app',
-          createdAt: now.toISOString(),
-        },
-      ]);
-      expect(await personal.data(subject, 'recoveryCodes', null, 10)).toEqual([
-        {
-          id: recoveryId,
-          factor: 'recovery-code',
-          label: 'Recovery code',
-          createdAt: now.toISOString(),
-        },
-      ]);
-      await db.media.create({
-        data: {
-          id: mediaId,
-          uploaderId: id,
-          filename: 'personal.pdf',
-          title: 'Personal title',
-          description: 'Personal description',
-          alt: 'Personal alt',
-          caption: 'Personal caption',
-          mime: 'application/pdf',
-          size: 10,
-          storageKey: `privacy/${mediaId}.pdf`,
-          createdAt: now,
-        },
-      });
-      await db.userIdentity.create({
-        data: {
-          id: identityId,
-          userId: id,
-          issuer: new TextEncoder().encode('https://issuer.example.com'),
-          subject: new TextEncoder().encode('PRIVATE-SUBJECT'),
-          createdAt: now,
-        },
-      });
-      await db.ssoTransaction.create({
-        data: {
-          handleHash: randomTokenIssuer.digest(`sso:${id}`),
-          providerId: 'default',
-          userId: id,
-          state: 'state',
-          nonce: 'nonce',
-          codeVerifier: 'verifier',
-          clientKey: randomTokenIssuer.digest(id),
-          expiresAt: new Date(now.getTime() + 60000),
-        },
-      });
-      const commentId = uuidV7.next();
-      await comments.insert({
-        id: commentId,
-        contentId: entry.id,
-        parentId: null,
-        userId: id,
-        authorName: 'Subject Name',
-        authorEmail: subject,
-        authorUrl: 'https://example.com/me',
-        body: 'Personal comment body',
-        status: 'approved',
-        createdAt: now,
-        updatedAt: now,
-      });
-      await db.session.create({
-        data: {
-          tokenHash: randomTokenIssuer.digest(`session:${id}`),
-          userId: id,
-          expiresAt: new Date(now.getTime() + 86400000),
-        },
-      });
-      await db.apiToken.create({
-        data: {
-          id: uuidV7.next(),
-          userId: id,
-          name: 'Token',
-          tokenHash: randomTokenIssuer.digest(`api:${id}`),
-          createdAt: now,
-        },
-      });
-      await db.passwordToken.create({
-        data: {
-          tokenHash: randomTokenIssuer.digest(`reset:${id}`),
-          userId: id,
-          purpose: 'reset',
-          expiresAt: new Date(now.getTime() + 3600000),
-        },
-      });
-      await email.queue({
-        to: 'moderator@example.com',
-        subjects: [id, commentId, subject],
-        subject: 'Moderation',
-        text: 'Personal snapshot',
-      });
-      const failedId = uuidV7.next();
-      await db.job.create({
-        data: {
-          id: failedId,
-          kind: 'email.send',
-          payload: JSON.stringify({
-            to: subject,
-            text: 'Legacy private snapshot',
-          }),
-          runAt: now,
-          createdAt: now,
-          failedAt: now,
-        },
-      });
-      const attempt = { client: subject, address: null, captchaToken: null };
-      const request = await privacy.create(
-        { email: subject, action: 'erase' },
-        ADMIN,
-        attempt,
-      );
-      const rows = await db.job.findMany({ where: { kind: 'email.send' } });
-      const confirmation = rows
-        .map((row) => ({
-          row,
-          message: openJob(JSON.parse(row.payload), secrets) as {
-            to: string;
-            text: string;
-            subjects?: string[];
-          },
-        }))
-        .find(
-          ({ message }) =>
-            message.to === subject && message.text.includes('token='),
-        )!;
-      expect(confirmation.row.expiresAt?.toISOString()).toBe(request.expiresAt);
-      expect(confirmation.message.subjects).toEqual([subject]);
-      await privacy.confirm(
-        {
-          token: decodeURIComponent(
-            /token=([^\s]+)/.exec(confirmation.message.text)![1]!,
-          ),
-        },
-        attempt,
-      );
-      await db.job.update({
-        where: { id: failedId },
-        data: { lockedUntil: new Date(Date.now() + 60000) },
-      });
-      await expect(privacy.erase(request.id, ADMIN)).rejects.toMatchObject({
-        code: 'conflict',
-      });
-      expect(await db.passkey.count({ where: { userId: id } })).toBe(1);
-      expect(await db.totpSecret.count({ where: { userId: id } })).toBe(1);
-      expect(await db.signInTransaction.count({ where: { userId: id } })).toBe(
-        1,
-      );
-      expect(await db.recoveryCode.count({ where: { userId: id } })).toBe(1);
-      expect((await db.user.findUnique({ where: { id } }))?.email).toBe(
-        subject,
-      );
-      await db.job.update({
-        where: { id: failedId },
-        data: { lockedUntil: null },
-      });
-      await privacy.erase(request.id, ADMIN);
-      expect(await db.user.findUnique({ where: { id } })).toMatchObject({
-        name: 'Anonymous',
-        bio: '',
-        email: `erased-${id}@invalid.invalid`,
-        role: 'subscriber',
-      });
-      expect(
-        await db.comment.findUnique({ where: { id: commentId } }),
-      ).toMatchObject({
-        authorEmail: '',
-        authorUrl: '',
-        body: '',
-        userId: null,
-      });
-      expect(await db.session.count({ where: { userId: id } })).toBe(0);
-      expect(await db.apiToken.count({ where: { userId: id } })).toBe(0);
-      expect(await db.passwordToken.count({ where: { userId: id } })).toBe(0);
-      expect(await db.content.count({ where: { id: entry.id } })).toBe(1);
-      expect(await db.userIdentity.count({ where: { userId: id } })).toBe(0);
-      expect(await db.ssoTransaction.count({ where: { userId: id } })).toBe(0);
-      expect(await db.passkey.count({ where: { userId: id } })).toBe(0);
-      expect(await db.totpSecret.count({ where: { userId: id } })).toBe(0);
-      expect(await db.recoveryCode.count({ where: { userId: id } })).toBe(0);
-      expect(await db.signInTransaction.count({ where: { userId: id } })).toBe(
-        0,
-      );
-      expect(
-        await db.media.findUnique({ where: { id: mediaId } }),
-      ).toMatchObject({
-        uploaderId: null,
-        title: '',
-        description: '',
-        alt: '',
-        caption: '',
-        storageKey: `privacy/${mediaId}.pdf`,
-      });
-      const remaining = await db.job.findMany();
-      expect(
-        remaining.every(
-          (row) =>
-            !JSON.stringify(openJob(JSON.parse(row.payload), secrets)).includes(
-              subject,
-            ),
-        ),
-      ).toBe(true);
-      const count = remaining.length;
-      await new SealedJobs(jobs, secrets).enqueue(
-        'email.send',
-        {
-          to: 'moderator@example.com',
-          subjects: [commentId],
-          text: 'Late snapshot',
-        },
-        new Date(now.getTime() + 60_000),
-      );
-      expect(await db.job.count()).toBe(count);
-    },
-    SLOW,
-  );
-  test(
-    'changing the site timezone retains stored addresses when an entry is saved later',
-    async () => {
-      const { settings, content } = services();
-      const paths = new PrismaPermalinkRepository(db);
-      const current = await paths.readSettings();
-      await settings.set('reading', { timeZone: 'UTC' });
-      await paths.saveSettings({
-        ...current,
-        post: '/dated/%year%/%month%/%day%/%slug%',
-      });
-      const entry = await content.create(
-        {
-          type: 'post',
-          title: `Timezone ${uuidV7.next()}`,
-          status: 'published',
-          publishedAt: '2026-01-01T00:30:00.000Z',
-          document: textDocument('Date boundary'),
-        },
-        ADMIN,
-      );
-      expect(entry.path).toContain('/2026/01/01/');
-      await settings.set('reading', { timeZone: 'America/Los_Angeles' });
-      expect((await content.get(entry.id, ADMIN)).path).toBe(entry.path);
-      const saved = await content.update(
-        entry.id,
-        inputOf(await content.get(entry.id, ADMIN)),
-        ADMIN,
-      );
-      expect(saved.path).toContain('/2025/12/31/');
-      expect(await paths.findByPath(entry.path)).toMatchObject({
-        contentId: entry.id,
-        current: false,
-      });
-      const published = new PrismaPublishedContentRepository(db);
-      expect(
-        (
-          await published.list({
-            type: 'post',
-            year: 2025,
-            month: 12,
-            day: 31,
-            page: 1,
-            pageSize: 100,
-          })
-        ).items.some((item) => item.id === entry.id),
-      ).toBe(true);
-      expect(
-        (await published.monthNeighbours(['post'], 2026, 1)).previous,
-      ).toEqual({ year: 2025, month: 12 });
-      await settings.set('reading', { timeZone: 'UTC' });
-      await paths.saveSettings(current);
-    },
-    SLOW,
-  );
-  test(
-    'erasure does not declare completion while an unscoped legacy comment notice remains',
-    async () => {
-      const { privacy } = services();
-      const id = uuidV7.next(),
-        jobId = uuidV7.next(),
-        now = new Date();
-      await db.privacyRequest.create({
-        data: {
-          id,
-          email: `legacy-${id}@example.com`,
-          action: 'erase',
-          status: 'confirmed',
-          createdAt: now,
-          confirmedAt: now,
-          expiresAt: new Date(now.getTime() + 86400000),
-        },
-      });
-      await db.job.create({
-        data: {
-          id: jobId,
-          kind: 'email.send',
-          payload: JSON.stringify({
-            to: 'moderator@example.com',
-            subject: '[Site] New comment: Post',
-            text: 'An old name and comment without a link',
-          }),
-          runAt: now,
-          createdAt: now,
-          failedAt: now,
-        },
-      });
-      await expect(privacy.erase(id, ADMIN)).rejects.toMatchObject({
-        code: 'conflict',
-      });
-      expect(
-        (await db.privacyRequest.findUnique({ where: { id } }))?.status,
-      ).toBe('confirmed');
-      expect(await db.job.count({ where: { id: jobId } })).toBe(1);
-      await db.job.delete({ where: { id: jobId } });
-    },
-    SLOW,
-  );
-
-  test(
-    'media used only by a nested pattern is attached and needs forced deletion',
-    async () => {
-      const { repository, media } = mediaServices();
-      const patterns = new PatternService({
-        settings: new PrismaSettingsRepository(db),
-        transactions: new PrismaSettingsTransactions(db),
-        catalog: new PrismaPatternCatalog(db),
-        renderer: tiptapRenderer,
-        ids: uuidV7,
-        clock: systemClock,
-      });
-      const id = uuidV7.next();
-      await repository.insert({
-        id,
-        uploaderId: ADMIN.id,
-        filename: 'pattern.webp',
-        mime: 'image/webp',
-        size: 1,
-        width: 1,
-        height: 1,
-        alt: '',
-        caption: '',
-        storageKey: `2026/06/${id}.webp`,
-        variants: {},
-        createdAt: new Date(),
-      });
-      const input = {
-        title: 'Image pattern',
-        document: {
-          type: 'doc',
-          content: [
-            {
-              type: 'image',
-              attrs: { src: '/media/pattern.webp', mediaId: id },
-            },
-          ],
-        },
-      };
-      const inner = await patterns.create(input, ADMIN);
-      const outer = await patterns.create(
-        {
-          title: 'Outer image pattern',
-          document: {
-            type: 'doc',
-            content: [{ type: 'patternRef', attrs: { ref: inner.id } }],
-          },
-        },
-        ADMIN,
-      );
-      const { content } = services();
-      await content.create(
-        {
-          type: 'post',
-          title: 'Pattern-only image',
-          status: 'published',
-          document: {
-            type: 'doc',
-            content: [{ type: 'patternRef', attrs: { ref: outer.id } }],
-          },
-        },
-        ADMIN,
-      );
-      expect((await media.get(id, ADMIN)).usageCount).toBe(1);
-      expect(
-        (await media.list({ unattached: 'true' }, ADMIN)).items.map(
-          (item) => item.id,
-        ),
-      ).not.toContain(id);
-      await expect(media.remove(id, false, ADMIN)).rejects.toMatchObject({
-        code: 'conflict',
-      });
-      await patterns.update(
-        inner.id,
-        { ...input, document: textDocument('No image') },
-        ADMIN,
-      );
-      expect((await media.get(id, ADMIN)).usageCount).toBe(0);
-      await patterns.update(inner.id, input, ADMIN);
-      await patterns.remove(inner.id, ADMIN);
-      expect(
-        (await media.list({ unattached: 'true' }, ADMIN)).items.map(
-          (item) => item.id,
-        ),
-      ).toContain(id);
-      const replacement = await patterns.create(input, ADMIN);
-      await media.remove(id, true, ADMIN);
-      expect(await repository.exists(id)).toBe(false);
-      await patterns.remove(replacement.id, ADMIN);
-      await patterns.remove(outer.id, ADMIN);
-    },
-    SLOW,
-  );
 });

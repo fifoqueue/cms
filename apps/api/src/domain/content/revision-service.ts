@@ -1,4 +1,6 @@
-import { autosaveInputSchema } from '@cms/sdk';
+import { autosaveInputSchema, can } from '@cms/sdk';
+import type { ContentOrigin } from '#api/domain/content/origin';
+import { canonicalAddress } from '#api/shared/ip-address';
 import type {
   ContentInput,
   ContentRevision,
@@ -19,7 +21,13 @@ import { parseInput } from '#api/shared/validation';
 const toSummary = (
   revision: Omit<RevisionRecord, 'document' | 'excerpt'>,
   savedAt: Date,
+  actor?: Actor,
 ): ContentRevisionSummary => ({
+  ip: actor && can(actor, 'content.editOthers') ? (revision.ip ?? null) : null,
+  userAgent:
+    actor && can(actor, 'content.editOthers')
+      ? (revision.userAgent ?? null)
+      : null,
   id: revision.id,
   kind: revision.kind,
   authorName: revision.authorName,
@@ -33,8 +41,9 @@ const toSummary = (
 const toRevision = (
   revision: RevisionRecord,
   savedAt: Date,
+  actor?: Actor,
 ): ContentRevision => ({
-  ...toSummary(revision, savedAt),
+  ...toSummary(revision, savedAt, actor),
   excerpt: revision.excerpt,
   document: revision.document,
 });
@@ -78,7 +87,7 @@ export class RevisionService {
   ): Promise<ContentRevisionSummary[]> {
     const record = await this.editable(contentId, actor);
     return (await this.deps.revisions.list(contentId)).map((revision) =>
-      toSummary(revision, record.textSavedAt),
+      toSummary(revision, record.textSavedAt, actor),
     );
   }
 
@@ -88,7 +97,11 @@ export class RevisionService {
     actor: Actor,
   ): Promise<ContentRevision> {
     const record = await this.editable(contentId, actor);
-    return toRevision(await this.require(contentId, id), record.textSavedAt);
+    return toRevision(
+      await this.require(contentId, id),
+      record.textSavedAt,
+      actor,
+    );
   }
 
   async delete(contentId: string, id: string, actor: Actor): Promise<void> {
@@ -108,6 +121,7 @@ export class RevisionService {
     contentId: string,
     id: string,
     actor: Actor,
+    origin?: ContentOrigin,
   ): Promise<ContentEntry> {
     const entry = await this.deps.content.get(contentId, actor);
     const revision = await this.require(contentId, id);
@@ -122,16 +136,24 @@ export class RevisionService {
       },
       actor,
       { id, authorId: entry.authorId, status: entry.status },
+      origin,
     );
   }
 
   /** Keeps the actor's unsaved text; the next save of the entry discards it. */
-  async autosave(contentId: string, input: unknown, actor: Actor) {
+  async autosave(
+    contentId: string,
+    input: unknown,
+    actor: Actor,
+    origin?: ContentOrigin,
+  ) {
     const record = await this.editable(contentId, actor);
     const data = parseInput(autosaveInputSchema, input);
     // Rejects documents outside the editor schema, like a save would.
     this.deps.renderer.render(data.document);
     await this.deps.revisions.autosave({
+      ip: origin?.ip ? canonicalAddress(origin.ip) : null,
+      userAgent: origin?.userAgent ?? null,
       id: this.deps.ids.next(),
       contentId,
       authorId: actor.id,
@@ -164,7 +186,7 @@ export class RevisionService {
       actor.id,
       record.textSavedAt,
     );
-    return autosave && toRevision(autosave, record.textSavedAt);
+    return autosave && toRevision(autosave, record.textSavedAt, actor);
   }
 
   private async editable(contentId: string, actor: Actor) {

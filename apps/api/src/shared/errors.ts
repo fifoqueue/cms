@@ -43,6 +43,11 @@ export const ServerErrors = {
   EmailNetworkFailed: 'Email API request failed or timed out',
   EmailTemplateInvalid: 'The custom email template is not valid JSON',
   EmailInvalidJob: 'The queued message is not valid',
+  PushKeyUnreadable:
+    'The stored VAPID private key cannot be read with the site secret key',
+  PushSubjectMissing:
+    'Browser push needs an https site address or an administrator email',
+  PushFailed: (status: number) => `Push service answered HTTP ${status}`,
   ContentPathMissing: 'Content has no current path',
   MediaKeyInvalid: 'Invalid media key',
   MediaDriverDuplicate: 'The core media storage driver is already registered',
@@ -166,6 +171,9 @@ export const Errors = {
   CommentNotFound: SdkErrors.CommentNotFound,
   CommentsClosed: SdkErrors.CommentsClosed,
   CommentReplyInvalid: SdkErrors.CommentReplyInvalid,
+  CommentUnsubscribeInvalid: SdkErrors.CommentUnsubscribeInvalid,
+  CommentPushEndpointInvalid: SdkErrors.CommentPushEndpointInvalid,
+  CommentPushTokenInvalid: SdkErrors.CommentPushTokenInvalid,
   AvatarNotFound: SdkErrors.AvatarNotFound,
   SearchNotConfigured: SdkErrors.SearchNotConfigured,
   SearchUnavailable: SdkErrors.SearchUnavailable,

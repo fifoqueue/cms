@@ -34,7 +34,10 @@ export const routes = (app: ApiApp) =>
       return json(
         await comments.submit(
           await readJson(request, SMALL_BODY_BYTES),
-          clients.attempt(request),
+          {
+            ...clients.attempt(request),
+            userAgent: clients.userAgent(request),
+          },
           unlockProofs(request),
           await currentUser(auth, request),
           request.headers.get(COMMENTER_PROOF_HEADER) ?? '',

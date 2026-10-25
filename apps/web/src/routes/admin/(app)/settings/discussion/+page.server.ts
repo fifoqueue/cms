@@ -5,9 +5,15 @@ import { submitAction } from '#lib/server/form-action.js';
 import { adminFor } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async (event) => ({
-  discussion: await adminFor(event).discussion.get(),
-});
+export const load: PageServerLoad = async (event) => {
+  const admin = adminFor(event);
+  const [discussion, email] = await Promise.all([
+    admin.discussion.get(),
+    // Both screens need `settings.manage`; an unreadable mail setup only drops the note.
+    admin.email.settings().catch(() => null),
+  ]);
+  return { discussion, emailEnabled: email ? email.enabled : null };
+};
 
 const number = (form: FormData, key: string) =>
   Math.trunc(Number(text(form, key)));
@@ -46,6 +52,8 @@ export const actions: Actions = {
       blockWords: lines(form, 'blockWords'),
       notifyModerators: form.has('notifyModerators'),
       notifyAuthors: form.has('notifyAuthors'),
+      notifyCommenters: form.has('notifyCommenters'),
+      pushNotifications: form.has('pushNotifications'),
     };
     return submitAction(() => adminFor(event).discussion.update(input));
   },

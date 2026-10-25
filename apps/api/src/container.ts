@@ -181,6 +181,20 @@ import { AdminPageRegistry } from '#api/plugin-runtime/admin-page-registry';
 import { DashboardWidgetRegistry } from '#api/plugin-runtime/dashboard-widget-registry';
 import { WidgetService } from '#api/domain/appearance/widget-service';
 import { CommentService } from '#api/domain/comments/comment-service';
+import {
+  COMMENT_MAIL_JOB,
+  COMMENT_NOTICE_JOB,
+  COMMENT_PUSH_JOB,
+  COMMENT_SUMMARY_JOB,
+  CommentNotifier,
+} from '#api/domain/comments/comment-notifier';
+import { VapidKeys } from '#api/domain/comments/vapid-keys';
+import {
+  PrismaCommentNoticeState,
+  PrismaNoticeOutbox,
+} from '#api/infra/prisma/comment-notices';
+import { PrismaPushSubscriptionRepository } from '#api/infra/prisma/push-subscription-repository';
+import { createWebPushSender, generateVapidKeys } from '#api/infra/web-push';
 import { AvatarService } from '#api/domain/comments/avatar-service';
 import { SearchService } from '#api/domain/search/search-service';
 import {
@@ -226,7 +240,7 @@ import type { PatternContributions } from '@cms/sdk/plugin';
 import { OpenIdClientProvider } from '#api/infra/oidc/openid-client-provider';
 import type { OidcClientSettings } from '#api/infra/oidc/openid-client-provider';
 import { outbound } from '#api/infra/egress-policy';
-import type { EgressRule, EgressService } from '@cms/sdk';
+import type { DiscussionSettings, EgressRule, EgressService } from '@cms/sdk';
 import {
   PrismaIdentityRepository,
   PrismaSsoTransactionRepository,
@@ -956,7 +970,58 @@ export const createContainer = async (
 
   const commentRepository = new PrismaCommentRepository(db);
   const commentCheckers = new CommentCheckers(timeoutMs);
+  const commentSite = async () => {
+    const [{ siteUrl }, settings, publicSite] = await Promise.all([
+      seo.getPublic(),
+      site.get(),
+      site.getPublic(),
+    ]);
+    return { siteUrl, ...settings, icon: publicSite.icon?.url ?? null };
+  };
+  const commentNotifier = new CommentNotifier({
+    comments: commentRepository,
+    state: new PrismaCommentNoticeState(db, uuidV7),
+    subscriptions: new PrismaPushSubscriptionRepository(db),
+    outbox: new PrismaNoticeOutbox(db, uuidV7),
+    keys: new VapidKeys({
+      transactions: new PrismaSettingsTransactions(db),
+      secrets,
+      generate: generateVapidKeys,
+    }),
+    // Visitor-supplied endpoints: public addresses only, pinned DNS, redirects returned as-is.
+    sender: createWebPushSender((input, init) => outbound.fetch(input, init)),
+    email,
+    jobs: sealedJobs,
+    logger,
+    limits: rateLimits,
+    hooks,
+    signer,
+    users: directory,
+    site: commentSite,
+    // `comments` is created below; settings are only read when notices go out.
+    discussion: (): Promise<DiscussionSettings> => comments.discussion(),
+    ids: uuidV7,
+    clock: systemClock,
+  });
+  jobs.handle(COMMENT_NOTICE_JOB, (payload) =>
+    commentNotifier.deliverNotice(payload),
+  );
+  jobs.handle(COMMENT_MAIL_JOB, (payload) =>
+    commentNotifier.deliverMail(payload),
+  );
+  jobs.handle(COMMENT_PUSH_JOB, (payload) =>
+    commentNotifier.deliverPush(payload),
+  );
+  jobs.handle(COMMENT_SUMMARY_JOB, (payload) =>
+    commentNotifier.deliverSummary(payload),
+  );
+  scheduler.add({
+    name: 'comments.push-validate',
+    intervalMs: 24 * HOUR,
+    run: () => commentNotifier.validate(),
+  });
   const comments = new CommentService({
+    notifier: commentNotifier,
     checkers: commentCheckers,
     locks,
     signer,
@@ -969,10 +1034,7 @@ export const createContainer = async (
     hooks,
     email,
     users: directory,
-    site: async () => ({
-      siteUrl: (await seo.getPublic()).siteUrl,
-      ...(await site.get()),
-    }),
+    site: commentSite,
     ids: uuidV7,
     clock: systemClock,
   });
@@ -1247,6 +1309,7 @@ export const createContainer = async (
     emailEnabled: () => email.enabled(),
     search: () => search.status(),
     leases: taskLeases,
+    recurring: () => scheduler.names(),
     jobs: jobQueue,
     plugins: () => plugins.list(),
     visitorProof: () => clients.proven,
@@ -1324,6 +1387,7 @@ export const createContainer = async (
       menus,
       widgets,
       comments,
+      commentNotifier,
       avatars,
       search,
       pluginPages,

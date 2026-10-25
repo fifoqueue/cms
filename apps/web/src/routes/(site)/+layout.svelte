@@ -23,6 +23,8 @@
   } from '#lib/theme/style.js';
   import { provideI18n } from '#lib/i18n/index.js';
   import { provideDateStyle } from '#lib/theme/format.js';
+  import { resyncPush } from '#lib/push-client.js';
+  import { onMount } from 'svelte';
   import type { LayoutProps } from './$types';
 
   /** The page shell: theme variables and stylesheet, head, toolbar. Templates draw the rest. */
@@ -66,6 +68,8 @@
     if (value) document.documentElement.setAttribute(SCHEME_ATTRIBUTE, value);
     else document.documentElement.removeAttribute(SCHEME_ATTRIBUTE);
   });
+
+  onMount(resyncPush);
 
   // Every page loads its own slots; error pages have none.
   const slots = $derived(page.data.slots as SlotMap | undefined);

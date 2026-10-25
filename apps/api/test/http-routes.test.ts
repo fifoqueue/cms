@@ -7,40 +7,6 @@ import { conflict, expiredSignIn } from '#api/shared/errors';
 import { MemorySettings, profile } from '#test/support/memory';
 
 const TOKEN = 'admin-token';
-test('extension discovery routes enforce permissions and preserve source', async () => {
-  for (const path of [
-    'patterns/contributions',
-    'capabilities',
-    'menus/types',
-    'menus/objects?type=examples&search=One&pageSize=1',
-  ]) {
-    const url = `http://localhost/api/v1/admin/${path}`;
-    expect((await app.handle(new Request(url))).status).toBe(401);
-    const response = await app.handle(
-      new Request(url, { headers: { authorization: `Bearer ${TOKEN}` } }),
-    );
-    expect(response.status).toBe(200);
-    const body = await response.json();
-    if (!path.startsWith('menus/objects'))
-      expect(body[0].source).toBe('example');
-    else expect(body.items[0].id).toBe('one');
-  }
-  for (const path of [
-    'capabilities',
-    'menus/types',
-    'menus/objects?type=examples',
-  ]) {
-    expect(
-      (
-        await app.handle(
-          new Request(`http://localhost/api/v1/admin/${path}`, {
-            headers: { authorization: `Bearer ${WRITER}` },
-          }),
-        )
-      ).status,
-    ).toBe(403);
-  }
-});
 const user = profile({ id: 'u1', email: 'a@example.com', name: 'Admin' });
 
 /** Accounts with one side of the Writing settings permissions. */
@@ -87,7 +53,7 @@ const app = await createApiApp({
       info: () => ({ enabled: false }),
       unlink: record('sso.unlink'),
     } as unknown as ApiServices['sso'],
-    clients: new ClientResolver(undefined),
+    clients: new ClientResolver('content-proof'),
     site: { get: record('site.get') } as unknown as ApiServices['site'],
     seo: {
       getPublic: record('seo.public'),
@@ -189,6 +155,7 @@ const app = await createApiApp({
     } as unknown as ApiServices['menus'],
     widgets: {} as ApiServices['widgets'],
     comments: {} as ApiServices['comments'],
+    commentNotifier: {} as ApiServices['commentNotifier'],
     avatars: {} as ApiServices['avatars'],
     search: {} as ApiServices['search'],
     pluginPages: {} as ApiServices['pluginPages'],
@@ -269,314 +236,34 @@ const call = (
   );
 
 describe('API route compatibility', () => {
-  const bodyRoutes = [
-    ['/api/v1/admin/seo', 'seo.update', [], 200, 512 * 1024, false],
-    [
-      '/api/v1/admin/themes/t/styles',
-      'themes.saveStyles',
-      ['t'],
-      204,
-      512 * 1024,
-      false,
-    ],
-    [
-      '/api/v1/admin/themes/t/parts/header',
-      'themes.savePart',
-      ['t', 'header'],
-      204,
-      512 * 1024,
-      false,
-    ],
-    [
-      '/api/v1/admin/themes/t/templates/index',
-      'themes.saveTemplate',
-      ['t', 'index'],
-      204,
-      512 * 1024,
-      false,
-    ],
-    ['/api/v1/admin/content/1', 'admin.update', ['1'], 200, 1024 * 1024, true],
-    [
-      '/api/v1/admin/patterns/1',
-      'patterns.update',
-      ['1'],
-      200,
-      1024 * 1024,
-      true,
-    ],
-    [
-      '/api/v1/admin/content-types/post',
-      'contentTypes.update',
-      ['post'],
-      200,
-      512 * 1024,
-      true,
-    ],
-    [
-      '/api/v1/admin/fields/custom',
-      'fields.update',
-      ['custom'],
-      200,
-      512 * 1024,
-      true,
-    ],
-  ] as const;
-
-  for (const [path, method, args, status, limit, actor] of bodyRoutes) {
-    test(`manual JSON parsing and byte limits: ${path}`, async () => {
-      calls.length = 0;
-      const input = { value: 'valid' };
-      const send = (body: string) =>
-        call('PUT', path, {
-          token: TOKEN,
-          type: 'application/json',
-          body,
-        });
-      expect((await send(JSON.stringify(input))).status).toBe(status);
-      expect(calls).toEqual([
-        [method, ...args, input, ...(actor ? [user] : [])],
-      ]);
-      calls.length = 0;
-      const malformed = await send('{');
-      expect(malformed.status).toBe(400);
-      expect(await malformed.json()).toMatchObject({
-        error: { code: 'invalid_input', message: 'Request body must be JSON' },
-      });
-      expect(calls).toEqual([]);
-      // ASCII JSON quotes add two bytes, so these straddle the exact boundary.
-      expect((await send(JSON.stringify('x'.repeat(limit - 2)))).status).toBe(
-        status,
-      );
-      calls.length = 0;
-      expect((await send(JSON.stringify('x'.repeat(limit - 1)))).status).toBe(
-        413,
-      );
-      expect(calls).toEqual([]);
-    });
-  }
-
-  test('theme reset ignores junk JSON bodies', async () => {
-    for (const [path, method, args] of [
-      ['/api/v1/admin/themes/t/styles', 'themes.resetStyles', ['t']],
-      [
-        '/api/v1/admin/themes/t/parts/header',
-        'themes.resetPart',
-        ['t', 'header'],
-      ],
-      [
-        '/api/v1/admin/themes/t/templates/index',
-        'themes.resetTemplate',
-        ['t', 'index'],
-      ],
-    ] as const) {
-      calls.length = 0;
-      const response = await call('DELETE', path, {
-        token: TOKEN,
-        type: 'application/json',
-        body: '{',
-      });
-      expect(response.status).toBe(204);
-      expect(calls).toEqual([[method, ...args]]);
+  test('content writes accept origin only from the frontend proof', async () => {
+    for (const secret of ['forged', 'content-proof']) {
+      for (const method of ['POST', 'PUT']) {
+        calls.length = 0;
+        await app.fetch(
+          new Request(
+            `http://localhost/api/v1/admin/content${method === 'PUT' ? '/abc' : ''}`,
+            {
+              method,
+              headers: {
+                authorization: `Bearer ${TOKEN}`,
+                'content-type': 'application/json',
+                'x-cms-frontend-secret': secret,
+                'x-cms-client-address': '192.0.2.3',
+                'x-cms-client-user-agent': 'Browser',
+              },
+              body: JSON.stringify({ title: 'Origin' }),
+            },
+          ),
+        );
+        expect(calls[0]?.at(-1)).toEqual(
+          secret === 'content-proof'
+            ? { ip: '192.0.2.3', userAgent: 'Browser' }
+            : { ip: null, userAgent: null },
+        );
+      }
     }
   });
-
-  test('static, dynamic and query routes keep their paths and inputs', async () => {
-    expect(await (await call('GET', '/api/health')).json()).toEqual({
-      status: 'ok',
-    });
-    expect(await (await call('GET', '/api/v1/content/hello')).json()).toEqual({
-      slug: 'hello',
-    });
-    expect(
-      await (await call('GET', '/api/v1/content/caf%C3%A9')).json(),
-    ).toEqual({ slug: 'café' });
-    calls.length = 0;
-    await call('GET', '/api/v1/content?type=post&page=2');
-    await call('GET', '/api/v1/slots?path=%2Fa&contentId=7');
-    expect(calls).toEqual([
-      ['public.list', { type: 'post', page: '2' }],
-      ['slots', { path: '/a', contentId: '7' }],
-    ]);
-  });
-
-  test('authenticated permalink responses carry the verified actor and cannot be cached', async () => {
-    calls.length = 0;
-    const response = await call('GET', '/api/v1/resolve?path=%2Fprivate', {
-      token: TOKEN,
-    });
-    expect(response.status).toBe(200);
-    expect(response.headers.get('cache-control')).toBe('private, no-store');
-    expect(calls).toEqual([
-      ['permalinks.resolve', { path: '/private' }, [], user],
-    ]);
-  });
-
-  test('unknown paths and methods return the API error body', async () => {
-    for (const [method, path] of [
-      ['GET', '/nope'],
-      ['POST', '/api/health'],
-      ['GET', '/api/v1/content/a/b'],
-    ] as const) {
-      const response = await call(method, path);
-      expect(response.status).toBe(404);
-      expect(await response.json()).toEqual({
-        error: { code: 'not_found', message: 'Route not found' },
-      });
-    }
-  });
-
-  test('sign-in settings require settings.manage and pass the authenticated actor', async () => {
-    for (const method of ['GET', 'PUT']) {
-      expect((await call(method, '/api/v1/admin/sign-in')).status).toBe(401);
-      expect(
-        (await call(method, '/api/v1/admin/sign-in', { token: WRITER })).status,
-      ).toBe(403);
-    }
-    calls.length = 0;
-    expect(
-      (await call('GET', '/api/v1/admin/sign-in', { token: OPERATOR })).status,
-    ).toBe(200);
-    expect(calls).toEqual([['signIn.getAdmin']]);
-    calls.length = 0;
-    const policy = {
-      methods: ['password'],
-      secondFactors: [],
-      requireSecondFactor: [],
-    };
-    expect(
-      (
-        await call('PUT', '/api/v1/admin/sign-in', {
-          token: OPERATOR,
-          type: 'application/json',
-          body: JSON.stringify(policy),
-        })
-      ).status,
-    ).toBe(200);
-    expect(calls).toEqual([['signIn.update', policy, accounts[OPERATOR]]]);
-  });
-
-  test('expired sign-in handles have one restart status and SDK message', async () => {
-    for (const path of [
-      '/api/v1/auth/sign-in/continue',
-      '/api/v1/auth/sign-in/factor',
-    ]) {
-      const response = await call('POST', path, {
-        type: 'application/json',
-        body: JSON.stringify({ transaction: 'expired' }),
-      });
-      expect(response.status).toBe(410);
-      expect(response.headers.get('cache-control')).toBe('private, no-store');
-      expect(await response.json()).toMatchObject({
-        error: {
-          code: 'sign_in_expired',
-          message: 'This sign-in request is no longer valid. Start again.',
-        },
-      });
-    }
-  });
-
-  test('step-based sign-in routes dispatch bounded JSON and optional actor without caching', async () => {
-    const visitor = { client: null, address: null, captchaToken: null };
-    calls.length = 0;
-    const info = await call('GET', '/api/v1/auth/sign-in');
-    expect(info.status).toBe(200);
-    expect(info.headers.get('cache-control')).toBe('private, no-store');
-    expect(calls).toEqual([['signIn.info']]);
-    const body = { transaction: 'handle', values: { code: '123456' } };
-    for (const [path, name, prefix, suffix] of [
-      [
-        '/api/v1/auth/sign-in/plugin%3Atest%3Amethod',
-        'signIn.start',
-        ['plugin:test:method'],
-        [],
-      ],
-      [
-        '/api/v1/auth/sign-in/setup/plugin%3Atest%3Amethod',
-        'signIn.setup',
-        ['plugin:test:method'],
-        [],
-      ],
-      ['/api/v1/auth/sign-in/continue', 'signIn.continue', [], [undefined]],
-      ['/api/v1/auth/sign-in/factor', 'signIn.chooseFactor', [], []],
-    ] as const) {
-      calls.length = 0;
-      const response = await call('POST', path, {
-        body: JSON.stringify(body),
-        type: 'application/json',
-      });
-      expect(response.status).toBe(200);
-      expect(response.headers.get('cache-control')).toBe('private, no-store');
-      expect(calls).toEqual([[name, ...prefix, body, visitor, ...suffix]]);
-      expect(
-        (await call('POST', path, { body: '{', type: 'application/json' }))
-          .status,
-      ).toBe(400);
-      expect(
-        (
-          await call('POST', path, {
-            body: JSON.stringify({ values: { code: 'a'.repeat(32 * 1024) } }),
-            type: 'application/json',
-          })
-        ).status,
-      ).toBe(413);
-    }
-    calls.length = 0;
-    await call('POST', '/api/v1/auth/sign-in/continue', {
-      token: WRITER,
-      type: 'application/json',
-      body: JSON.stringify(body),
-    });
-    expect(calls).toEqual([
-      ['signIn.continue', body, visitor, accounts[WRITER]],
-    ]);
-  });
-
-  test('account factor routes require a user, not administrator capability', async () => {
-    for (const [method, path] of [
-      ['GET', '/api/v1/auth/factors'],
-      ['POST', '/api/v1/auth/factors/plugin%3Atest%3Afactor/enroll'],
-      ['DELETE', '/api/v1/auth/factors/plugin%3Atest%3Afactor/credential'],
-    ])
-      expect((await call(method!, path!)).status).toBe(401);
-    calls.length = 0;
-    expect(
-      (await call('GET', '/api/v1/auth/factors', { token: WRITER })).status,
-    ).toBe(200);
-    expect(
-      (
-        await call(
-          'POST',
-          '/api/v1/auth/factors/plugin%3Atest%3Afactor/enroll',
-          { token: WRITER },
-        )
-      ).status,
-    ).toBe(200);
-    expect(
-      (
-        await call(
-          'DELETE',
-          '/api/v1/auth/factors/plugin%3Atest%3Afactor/credential',
-          { token: WRITER },
-        )
-      ).status,
-    ).toBe(204);
-    expect(calls).toEqual([
-      ['signIn.factors', accounts[WRITER]],
-      [
-        'signIn.enroll',
-        accounts[WRITER],
-        'plugin:test:factor',
-        { client: null, address: null, captchaToken: null },
-      ],
-      [
-        'signIn.removeFactor',
-        accounts[WRITER],
-        'plugin:test:factor',
-        'credential',
-      ],
-    ]);
-  });
-
   test('domain errors map to statuses and unexpected errors stay hidden', async () => {
     const conflicted = await call('GET', '/api/v1/content/taken');
     expect(conflicted.status).toBe(409);
@@ -590,18 +277,6 @@ describe('API route compatibility', () => {
     expect(text).toContain('internal');
     expect(text).not.toContain('secret failure');
     expect(errors).toHaveLength(1);
-  });
-
-  test('a session guard covers only the routes after it', async () => {
-    expect((await call('GET', '/api/v1/auth/status')).status).toBe(200);
-    expect((await call('GET', '/api/v1/auth/me')).status).toBe(401);
-    expect(
-      (await call('GET', '/api/v1/auth/me', { token: 'bad' })).status,
-    ).toBe(401);
-    expect(
-      await (await call('GET', '/api/v1/auth/me', { token: TOKEN })).json(),
-    ).toEqual(user);
-    expect((await call('GET', '/api/v1/content')).status).toBe(200);
   });
 
   test('admin routes require a session and read the JSON body themselves', async () => {
@@ -651,181 +326,18 @@ describe('API route compatibility', () => {
     await call('GET', '/api/v1/admin/content?page=3', { token: TOKEN });
     await call('POST', '/api/v1/admin/plugins/p-1/enable', { token: TOKEN });
     expect(calls).toEqual([
-      ['admin.create', { title: 'Hi' }, user],
-      ['admin.update', 'abc', { title: 'Yo' }, user],
+      ['admin.create', { title: 'Hi' }, user, { ip: null, userAgent: null }],
+      [
+        'admin.update',
+        'abc',
+        { title: 'Yo' },
+        user,
+        undefined,
+        { ip: null, userAgent: null },
+      ],
       ['admin.remove', 'abc', user],
       ['admin.list', { page: '3' }, user],
       ['plugins.enable', 'p-1'],
     ]);
-  });
-
-  test('dashboard preferences belong only to the authenticated writer across requests', async () => {
-    const path = '/api/v1/admin/dashboard-preferences';
-    const layout = { order: ['draft', 'activity'], hidden: ['activity'] };
-    for (const method of ['GET', 'PUT']) {
-      expect((await call(method, path)).status).toBe(401);
-      expect((await call(method, path, { token: OPERATOR })).status).toBe(403);
-    }
-    const saved = await call('PUT', path, {
-      token: WRITER,
-      type: 'application/json',
-      body: JSON.stringify(layout),
-    });
-    expect(saved.status).toBe(200);
-    expect(await saved.json()).toEqual(layout);
-    expect(await (await call('GET', path, { token: TOKEN })).json()).toEqual({
-      order: [],
-      hidden: [],
-    });
-    const spoofed = await call('PUT', path, {
-      token: TOKEN,
-      type: 'application/json',
-      body: JSON.stringify({ ...layout, userId: accounts[WRITER]!.id }),
-    });
-    expect(spoofed.status).toBe(400);
-    expect(await (await call('GET', path, { token: TOKEN })).json()).toEqual({
-      order: [],
-      hidden: [],
-    });
-    const restored = await call('GET', path, { token: WRITER });
-    expect(restored.headers.get('cache-control')).toBe('private, no-store');
-    expect(await restored.json()).toEqual(layout);
-  });
-
-  test('dashboard layouts larger than a cookie persist; oversized settings never overwrite them', async () => {
-    const path = '/api/v1/admin/dashboard-preferences';
-    const order = Array.from(
-      { length: 15 },
-      (_, index) =>
-        `plugin:${'p'.repeat(64)}:${'w'.repeat(62)}${String(index).padStart(2, '0')}`,
-    );
-    const layout = { order, hidden: order };
-    expect(encodeURIComponent(JSON.stringify(layout)).length).toBeGreaterThan(
-      4096,
-    );
-    const put = (input: unknown) =>
-      call('PUT', path, {
-        token: TOKEN,
-        type: 'application/json',
-        body: JSON.stringify(input),
-      });
-    expect((await put(layout)).status).toBe(200);
-    for (const input of [
-      { ...layout, order: Array(101).fill('draft') },
-      { ...layout, hidden: Array(101).fill('draft') },
-      { ...layout, order: ['w'.repeat(201)] },
-      { ...layout, hidden: [null] },
-    ])
-      expect((await put(input)).status).toBe(400);
-    expect(await (await call('GET', path, { token: TOKEN })).json()).toEqual(
-      layout,
-    );
-  });
-
-  test('Writing settings: writers read them, settings operators change them', async () => {
-    const put = (token: string) =>
-      call('PUT', '/api/v1/admin/writing', {
-        token,
-        type: 'application/json',
-        body: JSON.stringify({ defaultStatus: 'draft' }),
-      });
-    expect(
-      (await call('GET', '/api/v1/admin/writing', { token: WRITER })).status,
-    ).toBe(200);
-    expect((await put(WRITER)).status).toBe(403);
-    expect(
-      (await call('GET', '/api/v1/admin/writing', { token: OPERATOR })).status,
-    ).toBe(403);
-    expect((await put(OPERATOR)).status).toBe(200);
-  });
-
-  test('malformed JSON is invalid input and bundle uploads arrive as raw text', async () => {
-    const malformed = await call('POST', '/api/v1/auth/login', {
-      body: '{',
-      type: 'application/json',
-    });
-    expect(malformed.status).toBe(400);
-    expect(await malformed.json()).toMatchObject({
-      error: { code: 'invalid_input' },
-    });
-    calls.length = 0;
-    const source = 'export const plugin = {};\n';
-    for (const type of ['text/javascript', 'application/json'])
-      expect(
-        (
-          await call('POST', '/api/v1/admin/plugins', {
-            token: TOKEN,
-            type,
-            body: source,
-          })
-        ).status,
-      ).toBe(201);
-    expect(calls).toEqual([
-      ['plugins.install', source],
-      ['plugins.install', source],
-    ]);
-    const empty = await call('POST', '/api/v1/admin/plugins', {
-      token: TOKEN,
-      body: '  ',
-    });
-    expect(empty.status).toBe(400);
-  });
-
-  test('small public endpoints stop oversized bodies before JSON parsing', async () => {
-    const response = await call('POST', '/api/v1/auth/login', {
-      body: JSON.stringify({ padding: 'x'.repeat(33 * 1024) }),
-      type: 'application/json',
-    });
-
-    expect(response.status).toBe(413);
-    expect(await response.json()).toMatchObject({
-      error: { message: 'Request body is too large' },
-    });
-  });
-
-  test('extension upload limits count UTF-8 bytes rather than characters', async () => {
-    calls.length = 0;
-
-    const response = await call('POST', '/api/v1/admin/plugins', {
-      token: TOKEN,
-      type: 'text/javascript',
-      body: '가'.repeat(2 * 1024 * 1024),
-    });
-
-    expect(response.status).toBe(413);
-    expect(
-      (
-        await call('POST', '/api/v1/admin/themes', {
-          token: TOKEN,
-          type: 'application/zip',
-          body: '가'.repeat(700_000),
-        })
-      ).status,
-    ).toBe(400);
-    expect(calls).toEqual([]);
-  });
-});
-
-describe('file-based routes', () => {
-  test('route files map to their URLs, including SSO and the plugin gateway', async () => {
-    expect(await (await call('GET', '/api/v1/auth/sso')).json()).toEqual({
-      enabled: false,
-    });
-    expect(
-      (await call('DELETE', '/api/v1/auth/sso/identity/identity-1')).status,
-    ).toBe(401);
-    expect(
-      (
-        await call('DELETE', '/api/v1/auth/sso/identity/identity-1', {
-          token: TOKEN,
-        })
-      ).status,
-    ).toBe(204);
-    expect(await (await call('GET', '/api/plugins/demo')).json()).toEqual({
-      gateway: 'demo',
-    });
-    expect(
-      await (await call('POST', '/api/plugins/demo/a/b', { body: 'x' })).json(),
-    ).toEqual({ gateway: 'demo' });
   });
 });

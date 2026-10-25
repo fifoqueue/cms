@@ -4,6 +4,7 @@ import { failFrom, text } from '#lib/server/errors.js';
 import { clampPage } from '#lib/server/page-range.js';
 import { readScreenOptions } from '#lib/server/screen-options.js';
 import { adminFor, requireCapability } from '#lib/server/session.js';
+import { clientProof } from '#lib/server/visitor.js';
 import { COMMENT_COLUMNS } from '#lib/admin/screen-options.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -49,6 +50,8 @@ export const load: PageServerLoad = async (event) => {
         authorName: item.authorName,
         authorEmail: item.authorEmail,
         authorUrl: item.authorUrl,
+        authorIp: item.authorIp,
+        authorUserAgent: item.authorUserAgent,
         body: item.body,
         status: item.status as CommentStatus,
         createdAt: item.createdAt,
@@ -141,6 +144,7 @@ export const actions: Actions = {
       await adminFor(event).comments.reply(
         text(form, 'id'),
         text(form, 'body'),
+        clientProof(event),
       );
     } catch (caught) {
       return failFrom(caught);

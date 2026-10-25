@@ -22,6 +22,12 @@ export interface WxrComment {
   authorName: string;
   authorEmail: string;
   authorUrl: string;
+  /**
+   * `wp:comment_author_IP` / `wp:comment_agent` as written; empty when unknown. Absent: the tag
+   * is not written (exports by someone without `comments.moderate`).
+   */
+  authorIp?: string;
+  authorUserAgent?: string;
   body: string;
   /** WordPress `comment_approved`: `1`, `0`, `spam` or `trash`. */
   approved: string;
@@ -185,7 +191,7 @@ export const wxrItemStart = (
 };
 
 export const wxrComment = (comment: WxrComment) =>
-  `<wp:comment>${tag('wp:comment_id', text(comment.id))}${tag('wp:comment_author', cdata(comment.authorName))}${tag('wp:comment_author_email', cdata(comment.authorEmail))}${tag('wp:comment_author_url', text(comment.authorUrl))}${tag('wp:comment_date_gmt', sqlDate(comment.createdAt))}${tag('wp:comment_content', cdata(comment.body))}${tag('wp:comment_approved', cdata(comment.approved))}${tag('wp:comment_type', cdata(comment.type))}${tag('wp:comment_parent', text(comment.parentId ?? '0'))}</wp:comment>`;
+  `<wp:comment>${tag('wp:comment_id', text(comment.id))}${tag('wp:comment_author', cdata(comment.authorName))}${tag('wp:comment_author_email', cdata(comment.authorEmail))}${tag('wp:comment_author_url', text(comment.authorUrl))}${comment.authorIp === undefined ? '' : tag('wp:comment_author_IP', cdata(comment.authorIp))}${comment.authorUserAgent === undefined ? '' : tag('wp:comment_agent', cdata(comment.authorUserAgent))}${tag('wp:comment_date_gmt', sqlDate(comment.createdAt))}${tag('wp:comment_content', cdata(comment.body))}${tag('wp:comment_approved', cdata(comment.approved))}${tag('wp:comment_type', cdata(comment.type))}${tag('wp:comment_parent', text(comment.parentId ?? '0'))}</wp:comment>`;
 
 export const wxrItemEnd = '</item>\n';
 export const wxrFooter = '</channel>\n</rss>\n';

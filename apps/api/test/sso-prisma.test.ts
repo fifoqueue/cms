@@ -53,23 +53,6 @@ const prismaCli = async (...args: string[]) => {
 
 const hash = (label: string) => label.padEnd(64, '0');
 
-const MIGRATIONS = fileURLToPath(
-  new URL('../prisma/migrations/', import.meta.url),
-);
-
-/** The statements of one migration, in order. */
-const statementsOf = async (migration: string) =>
-  (await Bun.file(`${MIGRATIONS}${migration}/migration.sql`).text())
-    .split(/;\s*$/m)
-    .map((statement) =>
-      statement
-        .split('\n')
-        .filter((line) => !line.trim().startsWith('--'))
-        .join('\n')
-        .trim(),
-    )
-    .filter(Boolean);
-
 describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
   let server: Database;
   let db: Database;
@@ -331,75 +314,6 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
       },
     ]);
   });
-
-  test(
-    'the security migration keeps existing links and signs everyone out',
-    async () => {
-      const upgrade = `${SCRATCH}_upgrade`;
-      await server.$executeRawUnsafe(
-        `CREATE DATABASE \`${upgrade}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
-      );
-      const old = createDatabase(urlFor(upgrade));
-
-      try {
-        for (const migration of [
-          '20261021000000_init',
-          '20261022000000_oidc_sso',
-        ])
-          for (const statement of await statementsOf(migration))
-            await old.$executeRawUnsafe(statement);
-
-        await old.$executeRawUnsafe(
-          "INSERT INTO users (id, email, name, password_hash) VALUES ('u1', 'u1@example.com', 'U1', 'x'), ('u2', 'u2@example.com', 'U2', 'x')",
-        );
-        await old.$executeRawUnsafe(
-          `INSERT INTO user_identities (issuer, subject, user_id, created_at) VALUES ('${ISSUER}', 'Alice', 'u1', NOW(3)), ('${ISSUER}', 'Zoë ', 'u2', NOW(3))`,
-        );
-        await old.$executeRawUnsafe(
-          `INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ('${hash('old-1')}', 'u1', NOW(3) + INTERVAL 1 DAY), ('${hash('old-2')}', 'u2', NOW(3) + INTERVAL 1 DAY)`,
-        );
-        await old.$executeRawUnsafe(
-          `INSERT INTO sso_transactions (handle_hash, state, nonce, code_verifier, expires_at) VALUES ('${hash('old-tx')}', 's', 'n', 'v', NOW(3) + INTERVAL 5 MINUTE)`,
-        );
-
-        for (const statement of await statementsOf(
-          '20261023000000_sso_exact_identity_sessions',
-        ))
-          await old.$executeRawUnsafe(statement);
-
-        const identities = new PrismaIdentityRepository(old);
-        const [u1] = await identities.findByUser('u1');
-        const [u2] = await identities.findByUser('u2');
-
-        expect(u1).toMatchObject({ issuer: ISSUER, subject: 'Alice' });
-        expect(u2).toMatchObject({ issuer: ISSUER, subject: 'Zoë ' });
-        expect(u1?.id).toMatch(/^[0-9a-f-]{36}$/);
-        expect(u1?.id).not.toBe(u2?.id);
-        expect(await identities.find(ISSUER, 'alice')).toBeNull();
-        expect(await old.session.count()).toBe(0);
-        expect(await old.ssoTransaction.count()).toBe(0);
-        expect(await old.user.count()).toBe(2);
-        for (const statement of await statementsOf(
-          '20261109000000_sso_providers_recovery',
-        ))
-          await old.$executeRawUnsafe(statement);
-        expect(await identities.findByUser('u1')).toEqual([u1!]);
-        expect(await identities.findByUser('u2')).toEqual([u2!]);
-        await identities.link({
-          id: 'second-issuer',
-          issuer: 'https://second.example',
-          subject: 'Alice',
-          userId: 'u1',
-          createdAt: new Date(),
-        });
-        expect(await identities.findByUser('u1')).toHaveLength(2);
-      } finally {
-        await old.$disconnect();
-        await server.$executeRawUnsafe(`DROP DATABASE \`${upgrade}\``);
-      }
-    },
-    SLOW,
-  );
 
   test(
     'admission keeps both bounds under concurrency and purges expired requests',

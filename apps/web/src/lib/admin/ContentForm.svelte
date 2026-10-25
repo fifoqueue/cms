@@ -26,6 +26,7 @@
   import { onDestroy, onMount, untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import type { ContentFormValues } from '#lib/admin/content-form-values.js';
+  import ClientOrigin from '#lib/admin/ClientOrigin.svelte';
   import Editor from '#lib/admin/Editor.svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import SeoEditor from '#lib/admin/SeoEditor.svelte';
@@ -59,6 +60,8 @@
   } from '#lib/components/ui/native-select/index.js';
   import { Textarea } from '#lib/components/ui/textarea/index.js';
   import { statusLabel, typeLabel, useI18n } from '#lib/i18n/index.js';
+  import { askPush, enablePush, sendJson } from '#lib/push-client.js';
+  import { ADMIN_PUSH_PATH } from '#lib/push.js';
 
   interface TermOption {
     id: string;
@@ -99,6 +102,8 @@
     revisionCount?: number;
     /** Status a new entry was just created with (shown as the save result). */
     created?: string | null;
+    /** The site's push key while browser notifications are offered; saving asks to allow them. */
+    pushKey?: string | null;
   }
 
   let {
@@ -121,10 +126,28 @@
     revisionCount = 0,
     defaults,
     created = null,
+    pushKey = null,
   }: Props = $props();
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
+  /** Where the entry was created and last saved from; only rows with a recorded value. */
+  const originRows = $derived(
+    entry?.origin
+      ? [
+          {
+            key: 'created',
+            label: m.contentOriginCreated,
+            ...entry.origin.created,
+          },
+          {
+            key: 'modified',
+            label: m.contentOriginModified,
+            ...entry.origin.modified,
+          },
+        ].filter((row) => row.ip || row.userAgent)
+      : [],
+  );
   const loginPath = $derived(
     (page.data as { loginPath?: string }).loginPath ?? '/login',
   );
@@ -543,6 +566,9 @@
 
   let formElement: HTMLFormElement;
   const submit: SubmitFunction = async () => {
+    // Asked within the click, before anything is awaited; the save never waits for it.
+    const key = pushKey;
+    const permission = key ? askPush() : null;
     const previous = entry?.status;
     const sent = { text: snapshot(), edits, draftStatus };
     saving = true;
@@ -568,6 +594,10 @@
         if (outcome.data?.stale) notifyFailure(m.entryConflict);
         else saveFailure = (outcome.data ?? {}) as ActionData;
       } else {
+        if (permission && key)
+          void enablePush(permission, key, (subscription) =>
+            sendJson(ADMIN_PUSH_PATH, 'PUT', { subscription }),
+          );
         // Before `update`: a new entry's redirect must not ask about the text it just saved.
         savedText = kept = sent.text;
         savedEdits = sent.edits;
@@ -949,6 +979,24 @@
               })}>{m.revisionsBrowse}</a
             >
           </p>
+        {/if}
+
+        {#if originRows.length}
+          <section class="grid min-w-0 gap-1" aria-labelledby="content-origin">
+            <h3 id="content-origin" class="text-sm font-medium">
+              {m.contentOrigin}
+            </h3>
+            <dl
+              class="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 text-xs"
+            >
+              {#each originRows as row (row.key)}
+                <dt class="text-muted-foreground">{row.label}</dt>
+                <dd class="min-w-0">
+                  <ClientOrigin ip={row.ip} userAgent={row.userAgent} />
+                </dd>
+              {/each}
+            </dl>
+          </section>
         {/if}
 
         <fieldset class="grid gap-2">

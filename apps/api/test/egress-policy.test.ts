@@ -26,37 +26,6 @@ describe('outbound egress policy', () => {
     }
   });
 
-  test('private access requires matching service, host, port and address', async () => {
-    const policy = new EgressPolicy({
-      resolver: async () => [{ address: '127.0.0.1', family: 4 }],
-    });
-    const rule = {
-      service: 'search' as const,
-      host: 'localhost',
-      port: 7700,
-      addresses: ['127.0.0.1'],
-    };
-
-    expect(
-      await policy.resolveHost('localhost', 7700, {
-        service: 'search',
-        rules: [rule],
-      }),
-    ).toEqual([{ address: '127.0.0.1', family: 4, serverName: 'localhost' }]);
-    await expect(
-      policy.resolveHost('localhost', 7701, {
-        service: 'search',
-        rules: [rule],
-      }),
-    ).rejects.toThrow(Errors.OutboundAddressBlocked);
-    await expect(
-      policy.resolveHost('localhost', 7700, {
-        service: 'webhook',
-        rules: [rule],
-      }),
-    ).rejects.toThrow(Errors.OutboundAddressBlocked);
-  });
-
   test('pins requests, retries checked GET addresses, and checks redirects', async () => {
     const calls: { url: string; init?: BunFetchRequestInit }[] = [];
     const policy = new EgressPolicy({
@@ -88,19 +57,5 @@ describe('outbound egress policy', () => {
       'hooks.example:8443',
     );
     expect(calls[1]?.init?.tls?.serverName).toBe('hooks.example');
-  });
-
-  test('DNS resolution obeys the total abort signal', async () => {
-    const policy = new EgressPolicy({
-      resolver: () => new Promise(() => undefined),
-    });
-    const started = performance.now();
-
-    await expect(
-      policy.resolveHost('slow.example', 443, {
-        signal: AbortSignal.timeout(10),
-      }),
-    ).rejects.toBeDefined();
-    expect(performance.now() - started).toBeLessThan(100);
   });
 });

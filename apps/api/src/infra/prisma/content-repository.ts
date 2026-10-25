@@ -33,6 +33,7 @@ import {
   assignContentPath,
   refreshContentPaths,
   decodePath,
+  deleteEntries,
   lockPermalinks,
 } from '#api/infra/prisma/permalink-repository';
 
@@ -107,7 +108,15 @@ const toRow = ({
   ...record
 }: ContentWrite): Omit<
   Content,
-  'trashedAt' | 'commentCount' | 'textSavedAt'
+  | 'trashedAt'
+  | 'commentCount'
+  | 'textSavedAt'
+  | 'createdIp'
+  | 'createdUserAgent'
+  | 'modifiedIp'
+  | 'modifiedUserAgent'
+  | 'createdById'
+  | 'modifiedById'
 > => ({
   ...record,
   parentId: record.parentId ?? null,
@@ -283,17 +292,29 @@ export class PrismaContentRepository implements ContentRepository {
 
   async delete(id: string) {
     await this.db.$transaction(async (tx) => {
-      await lockPermalinks(tx);
-      // Assignments, current route and redirects go with it (ON DELETE CASCADE).
-      await tx.content.deleteMany({ where: { id } });
+      // The entry before its comments, the order every comment writer uses.
+      await deleteEntries(
+        tx,
+        await lockPermalinks(tx, false, Prisma.sql`id = ${id}`),
+      );
       await refreshContentPaths(tx, { type: 'page' }, this.tokens);
       await tx.searchOutbox.create({ data: { contentId: id } });
     });
   }
 
-  async setTrashed(id: string, at: Date | null) {
+  async setTrashed(
+    id: string,
+    at: Date | null,
+    origin?: Pick<
+      ContentRecord,
+      'modifiedIp' | 'modifiedUserAgent' | 'modifiedById'
+    >,
+  ) {
     await this.db.$transaction([
-      this.db.content.update({ where: { id }, data: { trashedAt: at } }),
+      this.db.content.update({
+        where: { id },
+        data: { trashedAt: at, ...origin },
+      }),
       this.db.searchOutbox.create({ data: { contentId: id } }),
     ]);
   }
@@ -317,7 +338,7 @@ export class PrismaContentRepository implements ContentRepository {
       // Under the content write lock, rechecked there: an edit that unscheduled it meanwhile
       // wins, and the version still strictly advances (no reuse of an earlier `updatedAt`).
       const changed = await this.db.$transaction(async (tx) => {
-        await lockPermalinks(tx);
+        await lockPermalinks(tx, false, Prisma.sql`id = ${id}`);
         const current = await tx.content.findUnique({
           where: { id },
           select: {
@@ -338,6 +359,9 @@ export class PrismaContentRepository implements ContentRepository {
           where: { id },
           data: {
             status: 'published',
+            modifiedIp: null,
+            modifiedUserAgent: null,
+            modifiedById: null,
             updatedAt:
               now > current.updatedAt
                 ? now
@@ -385,7 +409,7 @@ export class PrismaContentRepository implements ContentRepository {
       return await guardUnique(
         () =>
           this.db.$transaction(async (tx) => {
-            await lockPermalinks(tx);
+            await lockPermalinks(tx, false, Prisma.sql`id = ${record.id}`);
             const current = await tx.content.findUnique({
               where: { id: record.id },
               select: {

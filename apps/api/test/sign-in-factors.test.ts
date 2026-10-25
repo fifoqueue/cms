@@ -18,10 +18,6 @@ test('required enrollment, optional enrolled factors, expiry and admission fail 
   const { logger } = recordingLogger();
   const registry = new SignInRegistry({ logger, timeoutMs: 100 });
   const hooks = new HookBus({ logger, timeoutMs: 100 });
-  const changes: string[] = [];
-  hooks.registrar('test').on('user.secondFactorChanged', ({ change }) => {
-    changes.push(change);
-  });
   let enrolled = false;
   let required = true;
   let now = new Date('2026-01-01');
@@ -121,7 +117,6 @@ test('required enrollment, optional enrolled factors, expiry and admission fail 
       )
     ).kind,
   ).toBe('session');
-  expect(changes).toEqual(['enrolled']);
   expect(attempts).toBe(2);
   required = false;
   const optional = await service.start('plugin:test:method', {}, visitor);

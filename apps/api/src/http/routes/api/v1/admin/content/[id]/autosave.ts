@@ -20,11 +20,15 @@ export const routes = (app: ApiApp) =>
     )
     .put(
       '',
-      async ({ contentRevisions, params, request, user }) => {
+      async ({ contentRevisions, clients, params, request, user }) => {
         await contentRevisions.autosave(
           params.id,
           await readJson(request, CONTENT_BODY_BYTES),
           user,
+          {
+            ip: clients.address(request),
+            userAgent: clients.userAgent(request),
+          },
         );
         return noContent();
       },

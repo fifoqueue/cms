@@ -16,6 +16,7 @@
   import Toasts from '#lib/components/Toasts.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import { provideI18n } from '#lib/i18n/index.js';
+  import { resyncPush } from '#lib/push-client.js';
   import type { LayoutProps } from './$types';
 
   let { data, children }: LayoutProps = $props();
@@ -42,6 +43,7 @@
     } catch {
       // Storage blocked: the full menu shows.
     }
+    resyncPush();
   });
   const toggleCollapsed = () => {
     collapsed = !collapsed;

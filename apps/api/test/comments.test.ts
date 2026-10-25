@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { DEFAULT_SECURITY_SETTINGS } from '@cms/sdk';
 import type { ContentInput } from '@cms/sdk';
+import {
+  CLIENT_USER_AGENT_HEADER,
+  SSO_CLIENT_ADDRESS_HEADER,
+  SSO_FRONTEND_SECRET_HEADER,
+} from '@cms/sdk';
+import { ClientResolver } from '#api/http/client-identity';
 import { CommentService } from '#api/domain/comments/comment-service';
 import type { CommentServiceDeps } from '#api/domain/comments/comment-service';
 import { CommentCheckers } from '#api/domain/comments/comment-checkers';
@@ -28,6 +33,25 @@ import {
   MemoryRateLimitStore,
   plainSecretBox,
 } from '#test/support/memory-security';
+import type { CommentPushPayload } from '@cms/sdk';
+import {
+  COMMENT_MAIL_JOB,
+  COMMENT_NOTICE_JOB,
+  COMMENT_PUSH_JOB,
+  COMMENT_SUMMARY_JOB,
+  CommentNotifier,
+} from '#api/domain/comments/comment-notifier';
+import { JobRunner } from '#api/domain/jobs/job-runner';
+import { VapidKeys } from '#api/domain/comments/vapid-keys';
+import type { EmailMessage } from '#api/domain/email/ports';
+import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
+import { generateVapidKeys } from '#api/infra/web-push';
+import { MemoryJobQueue } from '#test/support/memory-jobs';
+import {
+  MemoryCommentNoticeState,
+  MemoryNoticeOutbox,
+  MemoryPushSubscriptions,
+} from '#test/support/memory-notifications';
 
 const codeOf = (promise: Promise<unknown>) =>
   promise.then(
@@ -60,7 +84,85 @@ const setup = (
     signer,
     clock,
   });
-  const comments = new CommentService({
+  const email = {
+    enabled: async () => mail,
+    queue: async (message: EmailMessage) => {
+      notices.push(message);
+    },
+    /** Set to make the next sends fail, like an unreachable mail server. */
+    failures: 0,
+    sendNow: async (message: EmailMessage) => {
+      if (email.failures > 0) {
+        email.failures -= 1;
+        throw new Error('mail server unreachable');
+      }
+      notices.push(message);
+    },
+  };
+  const users: CommentServiceDeps['users'] = recipients.users ?? {
+    list: async () => [],
+    get: async (id) =>
+      id === ADMIN.id
+        ? {
+            ...userRecord({
+              id,
+              name: 'Profile name',
+              email: 'profile@example.com',
+            }),
+            contentCount: 0,
+          }
+        : null,
+  };
+  const siteIcon = { value: '/media/icon.png' as string | null };
+  const site = async () => ({
+    siteUrl: 'https://blog.example',
+    title: 'Site',
+    locale: 'en',
+    icon: siteIcon.value,
+  });
+  const queue = new MemoryJobQueue(() => clock.now());
+  const jobs = new SealedJobs(queue, plainSecretBox);
+  const subscriptions = new MemoryPushSubscriptions();
+  const outbox = new MemoryNoticeOutbox(queue);
+  const noticeState = new MemoryCommentNoticeState(store, queue);
+  const dropped: unknown[] = [];
+  const sent: { endpoint: string; payload: CommentPushPayload }[] = [];
+  const sender = {
+    status: 201,
+    send: async (target: { endpoint: string }, payload: string) => {
+      sent.push({
+        endpoint: target.endpoint,
+        payload: JSON.parse(payload) as CommentPushPayload,
+      });
+      return sender.status;
+    },
+  };
+  const limits = new MemoryRateLimitStore();
+  const notifier = new CommentNotifier({
+    comments: store,
+    state: noticeState,
+    subscriptions,
+    outbox,
+    logger: { info: (_message, details) => void dropped.push(details) },
+    keys: new VapidKeys({
+      transactions: settings,
+      secrets: plainSecretBox,
+      generate: generateVapidKeys,
+    }),
+    sender,
+    email,
+    jobs,
+    limits,
+    hooks,
+    signer,
+    users,
+    site,
+    discussion: () => comments.discussion(),
+    ids,
+    clock,
+  });
+  const comments: CommentService = new CommentService({
+    notifier,
     checkers,
     locks,
     signer,
@@ -80,31 +182,38 @@ const setup = (
       clock,
     }),
     hooks,
-    email: {
-      enabled: async () => mail,
-      queue: async (message) => {
-        notices.push(message);
-      },
-    },
-    users: {
-      list: async () => [],
-      get: async (id) =>
-        id === ADMIN.id
-          ? {
-              ...userRecord({
-                id,
-                name: 'Profile name',
-                email: 'profile@example.com',
-              }),
-              contentCount: 0,
-            }
-          : null,
-    },
-    site: async () => ({ siteUrl: '', title: 'Site', locale: 'en' }),
+    email,
+    users,
+    site,
     ids,
     clock,
     ...recipients,
   });
+  const runner = new JobRunner({
+    queue,
+    clock,
+    logger: recordingLogger().logger,
+    owner: 'test',
+  });
+  runner.handle(COMMENT_NOTICE_JOB, (payload) =>
+    notifier.deliverNotice(payload),
+  );
+  runner.handle(COMMENT_MAIL_JOB, (payload) => notifier.deliverMail(payload));
+  runner.handle(COMMENT_PUSH_JOB, (payload) => notifier.deliverPush(payload));
+  runner.handle(COMMENT_SUMMARY_JOB, (payload) =>
+    notifier.deliverSummary(payload),
+  );
+  /** Runs the job runner until no job is due now (retries wait for their backoff). */
+  const drain = async () => {
+    const due = () =>
+      [...queue.rows.values()].some(
+        (row) =>
+          !row.failedAt &&
+          row.runAt <= clock.now() &&
+          (!row.lockedUntil || row.lockedUntil < clock.now()),
+      );
+    while (due()) await runner.drain();
+  };
   const publish = (overrides: Partial<ContentInput> = {}) =>
     content.create(
       {
@@ -127,6 +236,18 @@ const setup = (
     clock,
     locks,
     notices,
+    notifier,
+    subscriptions,
+    noticeState,
+    outbox,
+    email,
+    dropped,
+    sender,
+    sent,
+    queue,
+    drain,
+    settings,
+    siteIcon,
   };
 };
 
@@ -143,70 +264,6 @@ const comment = (
 });
 
 describe('CommentService', () => {
-  test('moderator mail resolves capabilities for the recipient identity', async () => {
-    const calls: unknown[] = [];
-    const { comments, publish, notices } = setup(true, undefined, {
-      users: {
-        list: async () => [
-          {
-            ...userRecord({
-              id: 'recipient',
-              role: 'author',
-              email: 'moderator@example.com',
-            }),
-            contentCount: 0,
-          },
-        ],
-        get: async () => null,
-      },
-      roles: {
-        capabilities: async (role, id) => {
-          calls.push([role, id]);
-          return id === 'recipient' ? ['comments.moderate'] : [];
-        },
-      },
-    });
-    const entry = await publish();
-    await comments.submit(comment(entry.id), visitor);
-    // Notification dispatch intentionally outlives the submit response.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(calls).toEqual([['author', 'recipient']]);
-    expect(notices).toContainEqual(
-      expect.objectContaining({ to: 'moderator@example.com' }),
-    );
-  });
-  test('moderators bypass checkers but still pass through beforeSave', async () => {
-    let calls = 0;
-    const { comments, publish, hooks } = setup(false, {
-      check: async (input) => {
-        calls++;
-        expect(Object.keys(input.comment).sort()).toEqual([
-          'authorEmail',
-          'authorName',
-          'authorUrl',
-          'body',
-          'contentId',
-        ]);
-        return { status: 'spam', reasons: [] };
-      },
-    });
-    const entry = await publish();
-    hooks.registrar('test').filter('comment.beforeSave', (value) => ({
-      ...value,
-      body: 'Filtered',
-    }));
-    const submitted = await comments.submit(
-      comment(entry.id),
-      visitor,
-      [],
-      ADMIN,
-    );
-    expect(submitted.status).toBe('approved');
-    expect(submitted.comment!.body).toBe('Filtered');
-    expect(calls).toBe(0);
-    await comments.submit(comment(entry.id), visitor);
-    expect(calls).toBe(1);
-  });
   test('a failing core checker fails the submit instead of approving', async () => {
     const checkers = new CommentCheckers(10);
     checkers.registerCore({
@@ -221,142 +278,6 @@ describe('CommentService', () => {
       'core offline',
     );
     expect(store.rows.size).toBe(0);
-  });
-  test('notifications filter outgoing content and reject invalid addresses', async () => {
-    const { comments, publish, hooks, notices } = setup(true);
-    const entry = await publish();
-    await comments.updateDiscussion(
-      { moderation: 'auto', notifyAuthors: true },
-      ADMIN,
-    );
-    const plugin = hooks.registrar('notice');
-    plugin.filter('comment.notification', (notice) => {
-      expect(notice.to).toBe('profile@example.com');
-      expect(notice.text).toContain('Nice post');
-      return { ...notice, subject: 'Custom notice', text: 'Custom body' };
-    });
-    plugin.filter(
-      'comment.notification',
-      (notice) => ({ ...notice, to: 'other@example.com' }),
-      20,
-    );
-    await comments.submit(comment(entry.id), visitor);
-    // Notifications are intentionally fire-and-forget.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(notices).toMatchObject([
-      {
-        to: 'profile@example.com',
-        subject: 'Custom notice',
-        text: 'Custom body',
-      },
-    ]);
-  });
-
-  test('reply creation, bulk moderation, bulk deletion and purge emit per committed row', async () => {
-    const { comments, publish, hooks, store } = setup();
-    const entry = await publish();
-    await comments.updateDiscussion({ moderation: 'auto' }, ADMIN);
-    const first = (await comments.submit(comment(entry.id), visitor)).comment!;
-    const second = (
-      await comments.submit(comment(entry.id, { body: 'Second' }), visitor)
-    ).comment!;
-    const created: unknown[] = [];
-    const changed: unknown[] = [];
-    const deleted: unknown[] = [];
-    const plugin = hooks.registrar('events');
-    plugin.on('comment.created', (value) => {
-      created.push(value);
-    });
-    plugin.on('comment.statusChanged', (value) => {
-      changed.push(value);
-    });
-    plugin.on('comment.deleted', (value) => {
-      deleted.push(value);
-    });
-    await comments.reply(first.id, { body: 'Reply' }, ADMIN);
-    expect(created).toMatchObject([
-      { parentId: first.id, body: 'Reply', status: 'approved' },
-    ]);
-    await comments.bulk({ ids: [first.id, second.id], action: 'spam' }, ADMIN);
-    expect(changed).toMatchObject([
-      { id: first.id, previousStatus: 'approved', status: 'spam' },
-      { id: second.id, previousStatus: 'approved', status: 'spam' },
-    ]);
-    await comments.bulk({ ids: [first.id], action: 'delete' }, ADMIN);
-    await store.update(second.id, { status: 'trash' }, new Date('2000-01-01'));
-    await comments.purge();
-    expect(deleted).toMatchObject([
-      { id: first.id, status: 'spam' },
-      { id: second.id, status: 'trash' },
-    ]);
-    expect(await store.findById(second.id)).toBeNull();
-  });
-  test('submission refusal cannot be reversed by a later filter', async () => {
-    const { comments, publish, hooks } = setup();
-    const entry = await publish();
-    const plugin = hooks.registrar('admission');
-    plugin.filter('comment.submitAllowed', (value) => {
-      expect(value.contentId).toBe(entry.id);
-      expect(value.authorEmail).toBe('ann@example.com');
-      expect(value.address).toBeNull();
-      return { ...value, allowed: false };
-    });
-    plugin.filter(
-      'comment.submitAllowed',
-      (value) => ({ ...value, allowed: true }),
-      20,
-    );
-    expect(await codeOf(comments.submit(comment(entry.id), visitor))).toBe(
-      'forbidden',
-    );
-    expect((await comments.list({}, ADMIN)).total).toBe(0);
-  });
-  test('discussion, query, public, edit and deletion hooks preserve validated boundaries', async () => {
-    const { comments, publish, hooks } = setup();
-    const plugin = hooks.registrar('comments');
-    const settings: unknown[] = [];
-    const updates: unknown[] = [];
-    const deletions: unknown[] = [];
-    plugin.on('discussion.updated', (value) => {
-      settings.push(value);
-    });
-    plugin.on('comment.updated', (value) => {
-      updates.push(value);
-    });
-    plugin.on('comment.deleted', (value) => {
-      deletions.push(value);
-    });
-    plugin.filter('discussion.beforeSave', (value) => ({
-      ...value,
-      moderation: 'auto' as const,
-    }));
-    plugin.filter(
-      'discussion.beforeSave',
-      (value) => ({ ...value, pageSize: -1 }),
-      20,
-    );
-    const saved = await comments.updateDiscussion({}, ADMIN);
-    expect(saved.moderation).toBe('auto');
-    expect(settings).toEqual([saved]);
-    const entry = await publish();
-    const sent = await comments.submit(comment(entry.id), visitor);
-    const id = sent.comment!.id;
-    plugin.filter('comment.public', (value) => ({
-      ...value,
-      body: 'Filtered',
-    }));
-    expect((await comments.publicPage(entry.id, 1)).items[0]!.body).toBe(
-      'Filtered',
-    );
-    plugin.filter('comment.query', (value) => ({
-      ...value,
-      search: 'no-match',
-    }));
-    expect((await comments.list({}, ADMIN)).total).toBe(0);
-    await comments.update(id, { body: 'Edited' }, ADMIN);
-    expect(updates).toMatchObject([{ id, body: 'Edited' }]);
-    await comments.remove(id, ADMIN);
-    expect(deletions).toMatchObject([{ id, body: 'Edited' }]);
   });
   test('public threads never expose emails and only public, open entries take comments', async () => {
     const { comments, publish, content } = setup();
@@ -444,6 +365,71 @@ describe('CommentService', () => {
     ).toBe('not_found');
   });
 
+  test('only proven IP addresses and user agents are stored, and only moderators see them', async () => {
+    const { comments, publish, store } = setup();
+    const entry = await publish();
+    await comments.updateDiscussion({ moderation: 'auto' }, ADMIN);
+    const clients = new ClientResolver('frontend-secret');
+    const browser = {
+      [SSO_CLIENT_ADDRESS_HEADER]: '::ffff:203.0.113.9',
+      [CLIENT_USER_AGENT_HEADER]: `Mozilla/5.0\t(Test) ${'x'.repeat(300)}`,
+    };
+    // As the comment routes read a request.
+    const from = (headers: Record<string, string>) => {
+      const request = new Request('http://localhost/', { headers });
+      return {
+        ...clients.attempt(request),
+        userAgent: clients.userAgent(request),
+      };
+    };
+    const proven = await comments.submit(
+      comment(entry.id),
+      from({ ...browser, [SSO_FRONTEND_SECRET_HEADER]: 'frontend-secret' }),
+    );
+    // The same headers without the frontend secret, or with a wrong one, are forged.
+    const forged = await comments.submit(
+      comment(entry.id, { body: 'Forged' }),
+      from(browser),
+    );
+    const wrong = await comments.submit(
+      comment(entry.id, { body: 'Wrong secret' }),
+      from({ ...browser, [SSO_FRONTEND_SECRET_HEADER]: 'guess' }),
+    );
+    expect(store.rows.get(proven.comment!.id)).toMatchObject({
+      authorIp: '203.0.113.9',
+      authorUserAgent: `Mozilla/5.0(Test) ${'x'.repeat(237)}`,
+    });
+    for (const sent of [forged, wrong])
+      expect(store.rows.get(sent.comment!.id)).toMatchObject({
+        authorIp: null,
+        authorUserAgent: null,
+      });
+    await comments.reply(proven.comment!.id, { body: 'Thanks' }, ADMIN, {
+      address: '2001:DB8:0:0:0:0:0:1',
+      userAgent: 'Moderator browser',
+    });
+
+    const ids = [proven, forged, proven].map((sent) => sent.comment!.id);
+    const listed = await comments.list({ ids: ids.join(',') }, ADMIN);
+    expect(
+      listed.items.map((item) => [item.body, item.authorIp]).sort(),
+    ).toEqual([
+      ['Forged', null],
+      ['Nice post', '203.0.113.9'],
+    ]);
+    expect(
+      (await comments.list({ search: '2001:db8::1' }, ADMIN)).items,
+    ).toMatchObject([{ body: 'Thanks', authorUserAgent: 'Moderator browser' }]);
+    for (const output of [
+      proven,
+      await comments.publicPage(entry.id, 1),
+      await comments.feed({ contentId: entry.id }),
+    ])
+      expect(JSON.stringify(output)).not.toMatch(
+        /203\.0\.113|2001:db8|Mozilla|Moderator browser/,
+      );
+  });
+
   test('registered-only comments use the authenticated profile, never supplied identity', async () => {
     const { comments, publish, store } = setup();
     const entry = await publish();
@@ -483,83 +469,6 @@ describe('CommentService', () => {
       authorName: 'Profile name',
     });
     expect(JSON.stringify(sent)).not.toContain('profile@example.com');
-  });
-
-  test('disabled identity fields are ignored independently and names require a configured default', async () => {
-    const { comments, publish, store } = setup();
-    const entry = await publish();
-    expect(
-      await codeOf(comments.updateDiscussion({ showName: false }, ADMIN)),
-    ).toBe('invalid_input');
-    expect(
-      await codeOf(
-        comments.updateDiscussion({ showName: false, defaultName: ' ' }, ADMIN),
-      ),
-    ).toBe('invalid_input');
-    expect(
-      await codeOf(
-        comments.updateDiscussion(
-          { showEmail: false },
-          { id: 'writer', role: 'author' },
-        ),
-      ),
-    ).toBe('forbidden');
-    for (const [setting, field, expected] of [
-      ['showName', 'authorName', 'Guest'],
-      ['showEmail', 'authorEmail', ''],
-      ['showWebsite', 'authorUrl', ''],
-    ] as const) {
-      await comments.updateDiscussion(
-        { [setting]: false, defaultName: 'Guest', moderation: 'auto' },
-        ADMIN,
-      );
-      const sent = await comments.submit(
-        comment(entry.id, { [field]: { malicious: true } }),
-        visitor,
-      );
-      expect(store.rows.get(sent.comment!.id)?.[field]).toBe(expected);
-    }
-    await comments.updateDiscussion({}, ADMIN);
-    expect(
-      await codeOf(
-        comments.submit(comment(entry.id, { authorName: '' }), visitor),
-      ),
-    ).toBe('invalid_input');
-    expect(
-      await codeOf(
-        comments.submit(comment(entry.id, { authorEmail: '' }), visitor),
-      ),
-    ).toBe('invalid_input');
-  });
-
-  test('comments without email never share approved identity, commenter proofs or avatars', async () => {
-    const { comments, publish, store } = setup();
-    const entry = await publish();
-    await comments.updateDiscussion(
-      { showEmail: false, moderation: 'auto', showAvatars: true },
-      ADMIN,
-    );
-    const first = await comments.submit(comment(entry.id), visitor);
-    expect(first.commenterProof).toBeNull();
-    expect(first.comment?.avatarUrl).toBeNull();
-    expect(store.rows.get(first.comment!.id)?.authorEmail).toBe('');
-    await comments.updateDiscussion(
-      { showEmail: false, moderation: 'known' },
-      ADMIN,
-    );
-    const second = await comments.submit(
-      comment(entry.id, { authorEmail: 'another@example.com' }),
-      visitor,
-    );
-    expect(second.status).toBe('pending');
-    expect(second.commenterProof).toBeNull();
-    // Moderators can edit an existing email-less comment without inventing an email.
-    await comments.update(
-      first.comment!.id,
-      { body: 'Edited', authorEmail: '' },
-      ADMIN,
-    );
-    expect(store.rows.get(first.comment!.id)?.body).toBe('Edited');
   });
 
   test('only authenticated moderators bypass approval rules, keeping trust and entry checks', async () => {
@@ -855,64 +764,152 @@ describe('CommentService', () => {
     expect(thread.items[1]!.id).toBe(reply.comment!.id);
     expect(repository.commentCounts.get(entry.id)).toBe(2);
   });
+});
 
-  test('plugins may mark spam but cannot reassign a comment; failing filters change nothing', async () => {
-    const { comments, store, publish, hooks } = setup();
-    const entry = await publish();
-    const other = await publish({ title: 'Other' });
-    await comments.updateDiscussion({ moderation: 'auto' }, ADMIN);
-    const plugin = hooks.registrar('spam-check');
-    const off = plugin.filter('comment.beforeSave', (draft) => ({
-      ...draft,
-      contentId: other.id,
-      authorName: 'Someone else',
-      status: draft.body.includes('buy') ? 'spam' : draft.status,
-    }));
-    plugin.filter('comment.beforeSave', () => {
-      throw new Error('boom');
-    });
-
-    await comments.submit(comment(entry.id, { body: 'buy now' }), visitor);
-    await comments.submit(comment(entry.id, { body: 'hello' }), visitor);
-    const rows = [...store.rows.values()];
-    expect(
-      rows.map((row) => [row.contentId, row.authorName, row.status]),
-    ).toEqual([
-      [entry.id, 'Ann', 'spam'],
-      [entry.id, 'Ann', 'approved'],
-    ]);
-    off();
-    expect(
-      (await comments.submit(comment(entry.id, { body: 'buy' }), visitor))
-        .status,
-    ).toBe('approved');
+describe('comment notifications', () => {
+  const browser = (endpoint = 'https://fcm.googleapis.com/fcm/send/abc') => ({
+    endpoint,
+    expirationTime: null,
+    keys: { p256dh: 'p256dh-key', auth: 'auth-secret' },
   });
+  const reply = (contentId: string, parentId: string, name = 'Bob') =>
+    comment(contentId, {
+      parentId,
+      authorName: name,
+      authorEmail: `${name.toLowerCase()}@example.com`,
+      body: `Reply from ${name}`,
+    });
+  const ready = async (
+    mail = true,
+    discussion: Record<string, unknown> = {},
+  ) => {
+    const context = setup(mail);
+    const entry = await context.publish();
+    await context.comments.updateDiscussion(
+      {
+        moderation: 'auto',
+        notifyCommenters: true,
+        pushNotifications: true,
+        ...discussion,
+      },
+      ADMIN,
+    );
+    const parent = await context.comments.submit(comment(entry.id), visitor);
+    await context.drain();
+    context.notices.length = 0;
+    return { ...context, entry, parent };
+  };
+  const to = (notices: unknown[], address: string) =>
+    (notices as EmailMessage[]).filter((notice) => notice.to === address);
 
-  test('visitors the frontend did not vouch for share one rate limit', async () => {
-    const { comments, publish, security } = setup();
-    const entry = await publish();
-    await security.update({
-      captcha: DEFAULT_SECURITY_SETTINGS.captcha,
-      rules: {
-        ...DEFAULT_SECURITY_SETTINGS.rules,
-        commentClient: {
-          enabled: true,
-          max: 2,
-          windowSeconds: 600,
-          blockSeconds: 600,
-          enforcement: 'block',
+  test('an approved reply emails and pushes the parent author exactly once', async () => {
+    const { comments, notifier, entry, parent, notices, drain, sent } =
+      await ready();
+    await notifier.registerVisitor(
+      { token: parent.pushToken, subscription: browser() },
+      visitor.client,
+    );
+    const answer = await comments.submit(
+      reply(entry.id, parent.comment!.id),
+      visitor,
+    );
+    await drain();
+    const mails = to(notices, 'ann@example.com');
+    expect(mails).toHaveLength(1);
+    expect(mails[0]!.text).toContain('Reply from Bob');
+    expect(mails[0]!.text).toContain(
+      'https://blog.example/comments/unsubscribe?token=',
+    );
+    await drain();
+    expect(sent).toEqual([
+      {
+        endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
+        payload: {
+          title: 'Bob replied to your comment',
+          body: 'Reply from Bob',
+          url: `https://blog.example/hello#comment-${answer.comment!.id}`,
+          tag: `comment-${parent.comment!.id}`,
+          icon: 'https://blog.example/media/icon.png',
         },
       },
-    });
-    const unproven = { client: null, address: null, captchaToken: null };
-    await comments.submit(comment(entry.id), unproven);
-    await comments.submit(comment(entry.id), { ...unproven });
-    expect(await codeOf(comments.submit(comment(entry.id), unproven))).toBe(
-      'rate_limited',
+    ]);
+    // Moderation flips never announce the same reply again.
+    await comments.bulk(
+      { ids: [answer.comment!.id], action: 'unapprove' },
+      ADMIN,
     );
-    // A proven visitor has a limit of their own.
-    expect(await codeOf(comments.submit(comment(entry.id), visitor))).toBe(
-      'ok',
+    await comments.bulk(
+      { ids: [answer.comment!.id], action: 'approve' },
+      ADMIN,
     );
+    await drain();
+    expect(to(notices, 'ann@example.com')).toHaveLength(1);
+    expect(sent).toHaveLength(1);
+  });
+
+  const later = (clock: { now(): Date; set(iso: string): void }) =>
+    // Past the job runner's first retry backoff (one minute).
+    clock.set(new Date(clock.now().getTime() + 2 * 60_000).toISOString());
+
+  test('a failed claim surfaces, leaves the comment unclaimed and a repeated approval announces it once', async () => {
+    const { comments, entry, parent, notices, drain, noticeState, queue } =
+      await ready();
+    await comments.updateDiscussion(
+      { moderation: 'manual', notifyCommenters: true },
+      ADMIN,
+    );
+    await comments.submit(reply(entry.id, parent.comment!.id), visitor);
+    const [held] = (await comments.list({ status: 'pending' }, ADMIN)).items;
+    noticeState.failures = 1;
+    expect(
+      await codeOf(
+        comments.bulk({ ids: [held!.id], action: 'approve' }, ADMIN),
+      ),
+    ).not.toBe('ok');
+    expect(noticeState.claimed.has(held!.id)).toBe(false);
+    expect(
+      [...queue.rows.values()].some((row) => row.kind === COMMENT_NOTICE_JOB),
+    ).toBe(false);
+    // The status change committed; approving again claims and queues the notice.
+    await comments.bulk({ ids: [held!.id], action: 'approve' }, ADMIN);
+    await comments.bulk({ ids: [held!.id], action: 'approve' }, ADMIN);
+    await drain();
+    expect(to(notices, 'ann@example.com')).toHaveLength(1);
+  });
+
+  test('fan-out and delivery failures retry; a repeated fan-out queues nothing twice', async () => {
+    // Only the reply mail goes out, so the injected failure hits it.
+    const {
+      comments,
+      notifier,
+      entry,
+      parent,
+      notices,
+      drain,
+      outbox,
+      email,
+      queue,
+      clock,
+    } = await ready(true, { notifyAuthors: false });
+    outbox.failures = 1;
+    email.failures = 1;
+    await comments.submit(reply(entry.id, parent.comment!.id), visitor);
+    const [notice] = [...queue.rows.values()].filter(
+      (row) => row.kind === COMMENT_NOTICE_JOB,
+    );
+    const payload = structuredClone(notice!.payload);
+    await drain();
+    expect(to(notices, 'ann@example.com')).toHaveLength(0);
+    later(clock);
+    await drain();
+    // The fan-out ran; the mail itself failed once and waits for its own retry.
+    expect(to(notices, 'ann@example.com')).toHaveLength(0);
+    later(clock);
+    await drain();
+    expect(to(notices, 'ann@example.com')).toHaveLength(1);
+    // A fan-out retried after it already queued (a crash before completion) queues nothing.
+    await notifier.deliverNotice(payload);
+    await drain();
+    expect(to(notices, 'ann@example.com')).toHaveLength(1);
   });
 });

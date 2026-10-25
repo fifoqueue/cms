@@ -29,6 +29,8 @@ export class MemoryRevisionRepository implements RevisionRepository {
         id: revision.id,
         contentId: record.id,
         authorId: revision.authorId,
+        ip: revision.ip ?? null,
+        userAgent: revision.userAgent ?? null,
         authorName: revision.authorId,
         kind: 'revision',
         title: record.title,

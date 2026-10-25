@@ -228,6 +228,11 @@ export const Errors = {
   CommentNotFound: 'Comment not found',
   CommentsClosed: 'Comments are closed for this entry',
   CommentReplyInvalid: 'The comment you are replying to is not available',
+  CommentUnsubscribeInvalid: 'This unsubscribe link is invalid or has expired.',
+  CommentPushEndpointInvalid:
+    'Notifications from this browser’s push service are not supported.',
+  CommentPushTokenInvalid:
+    'This notification request has expired. Post the comment again to turn on notifications.',
   AvatarNotFound: 'Avatar not found',
   SearchNotConfigured: 'Enter the Meilisearch address first',
   SearchUnavailable: 'Meilisearch did not answer',

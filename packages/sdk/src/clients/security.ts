@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  CLIENT_USER_AGENT_HEADER,
   SSO_CLIENT_ADDRESS_HEADER,
   SSO_FRONTEND_SECRET_HEADER,
 } from '#sdk/auth';
@@ -36,6 +37,8 @@ import type {
 export interface ClientProof {
   address: string;
   secret: string;
+  /** The browser's `User-Agent`; the API stores it with the comments that browser writes. */
+  userAgent?: string;
 }
 
 /** A visitor's proven address and solved captcha, for rate-limited actions. */
@@ -49,6 +52,7 @@ export const visitorHeaders = ({ proof, captchaToken }: Visitor = {}) => ({
   ...(proof && {
     [SSO_CLIENT_ADDRESS_HEADER]: proof.address,
     [SSO_FRONTEND_SECRET_HEADER]: proof.secret,
+    ...(proof.userAgent && { [CLIENT_USER_AGENT_HEADER]: proof.userAgent }),
   }),
   ...(captchaToken && { [CAPTCHA_TOKEN_HEADER]: captchaToken }),
 });

@@ -1,35 +1,23 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
-  import { resolve } from '$app/paths';
-
-  type SectionRoute =
-    | '/admin/(app)/appearance'
-    | '/admin/(app)/appearance/editor'
-    | '/admin/(app)/appearance/menus'
-    | '/admin/(app)/appearance/widgets'
-    | '/admin/(app)/tools/health'
-    | '/admin/(app)/tools/transfer'
-    | '/admin/(app)/tools/webhooks';
-
+  /** Section tabs; callers pass `href`s already built with `resolve()`. */
   let {
     label,
     tabs,
-    children,
   }: {
     label: string;
-    tabs: readonly { route: SectionRoute; label: string; current: boolean }[];
-    children?: Snippet;
+    tabs: readonly { href: string; label: string; current: boolean }[];
   } = $props();
 </script>
 
+<!-- eslint-disable svelte/no-navigation-without-resolve -- every href comes from resolve() -->
 <nav aria-label={label} class="flex flex-wrap gap-1 border-b">
-  {#each tabs as tab (tab.route)}
+  {#each tabs as tab (tab.href)}
     <a
-      href={resolve(tab.route)}
+      href={tab.href}
       aria-current={tab.current ? 'page' : undefined}
       class="-mb-px border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground aria-[current=page]:border-foreground aria-[current=page]:text-foreground"
       >{tab.label}</a
     >
   {/each}
-  {@render children?.()}
 </nav>
+<!-- eslint-enable svelte/no-navigation-without-resolve -->

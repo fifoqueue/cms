@@ -14,19 +14,20 @@
 }
 
 /*
- * The admin's bundled Inter Variable never applies on public pages: chrome outside the theme
- * (skip link, toolbar) uses system faces and toasts follow the theme's body font. Only theme
- * stacks and site fonts decide what the public site loads.
+ * Chrome outside the theme (skip link, toolbar) reads in the site's body font like every other
+ * screen (`--cms-ui-font`, set by the root layout); system faces only when it is unknown.
  */
 body:has(.cms-site[data-theme]),
 body:has(.cms-site[data-theme]) .cms-admin-bar {
-  font-family:
+  font-family: var(
+    --cms-ui-font,
     system-ui,
     -apple-system,
     'Segoe UI',
     'Apple SD Gothic Neo',
     'Malgun Gothic',
-    sans-serif;
+    sans-serif
+  );
 }
 .cms-site [data-sonner-toast] {
   font-family: var(--cms-font);

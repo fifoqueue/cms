@@ -11,11 +11,21 @@ export interface CommentRecord {
   authorEmail: string;
   /** Empty when none. */
   authorUrl: string;
+  /** Canonical IP address the web server proved (WordPress `comment_author_IP`). Never public. */
+  authorIp: string | null;
+  /** Browser user agent the web server proved (WordPress `comment_agent`). Never public. */
+  authorUserAgent: string | null;
   /** Plain text. */
   body: string;
   status: CommentStatus;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** The browser a comment was written from, as the web server proved it; null when unproven. */
+export interface CommentOrigin {
+  address: string | null;
+  userAgent: string | null;
 }
 
 /** An entry that can be commented on: public (published, not trashed). */
@@ -41,7 +51,9 @@ export interface CommentCriteria {
   /** Without a status: pending and approved. */
   status?: CommentStatus;
   contentId?: string;
-  /** Substring of the author name, email or body. */
+  /** Only these comments. */
+  ids?: readonly string[];
+  /** Substring of the author name, email, IP address or body. */
   search?: string;
   page: number;
   pageSize: number;

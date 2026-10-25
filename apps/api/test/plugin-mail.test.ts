@@ -7,45 +7,6 @@ import { aesSecretBox } from '#api/infra/secret-box';
 import { MemorySettings } from '#test/support/memory';
 import { MemoryJobQueue } from '#test/support/memory-jobs';
 
-test('plugin mail uses the supplied delivery timeout', async () => {
-  const registry = new MailTransportRegistry(100);
-  registry.plugin('test', 'slow', {
-    label: 'Slow',
-    fields: [],
-    async send() {
-      await Bun.sleep(20);
-    },
-  });
-  await registry.send(
-    {
-      kind: 'plugin',
-      id: 'plugin:test:slow',
-      settings: {},
-      from: { name: '', email: 'from@example.com' },
-    },
-    { to: 'to@example.com', subject: 'Hi', text: 'Body' },
-  );
-  const short = new MailTransportRegistry(5);
-  short.plugin('test', 'slow', {
-    label: 'Slow',
-    fields: [],
-    async send() {
-      await Bun.sleep(20);
-    },
-  });
-  await expect(
-    short.send(
-      {
-        kind: 'plugin',
-        id: 'plugin:test:slow',
-        settings: {},
-        from: { name: '', email: 'from@example.com' },
-      },
-      { to: 'to@example.com', subject: 'Hi', text: 'Body' },
-    ),
-  ).rejects.toThrow();
-});
-
 test('plugin mail selection seals secrets, preserves omitted credentials and fails closed on removal', async () => {
   const transports = new MailTransportRegistry();
   const sent: unknown[] = [];

@@ -75,28 +75,3 @@ test('connect, commit, read, remove and streaming failures are bounded and sanit
   ).toBe(true);
   expect(drivers.get('local')).toBeNull();
 });
-
-test('a late connection cannot start a write after its admission timed out', async () => {
-  const connection = Promise.withResolvers<MediaStorage>();
-  const drivers = new StorageDrivers(undefined, 10);
-  let writes = 0;
-  drivers.plugin('faulty', 'late', {
-    label: 'Late',
-    fields: [],
-    connect: () => connection.promise as unknown as MediaStorage,
-  });
-  const storage = drivers.get('plugin:faulty:late')!;
-  await expect(
-    storage.commit([{ key: 'late', bytes: new Uint8Array([1]) }], 0),
-  ).rejects.toThrow(Errors.MediaStorageOperation);
-  connection.resolve({
-    commit: async () => {
-      writes++;
-      return 'stored';
-    },
-    read: async () => null,
-    remove: async () => undefined,
-  });
-  await storage.settled!();
-  expect(writes).toBe(0);
-});

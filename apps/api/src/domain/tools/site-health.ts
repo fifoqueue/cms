@@ -15,6 +15,8 @@ export interface SiteHealthDeps {
   emailEnabled: () => Promise<boolean>;
   search: () => Promise<SearchStatus>;
   leases: Pick<TaskLeases, 'list'>;
+  /** Recurring tasks this process schedules; lease rows used only as locks are not tasks. */
+  recurring: () => readonly string[];
   jobs: Pick<JobQueue, 'failures'>;
   plugins: () => Promise<PluginInfo[]>;
   visitorProof: () => boolean;
@@ -64,7 +66,10 @@ export class SiteHealthService {
       };
     });
     this.checks.registerCore('scheduler', async () => {
-      const tasks = await deps.leases.list();
+      const recurring = new Set(deps.recurring());
+      const tasks = (await deps.leases.list()).filter((task) =>
+        recurring.has(task.name),
+      );
       const overdue = tasks.filter(
         (task) =>
           deps.clock.now().getTime() - task.nextRunAt.getTime() > OVERDUE_MS,

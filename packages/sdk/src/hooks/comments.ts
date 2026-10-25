@@ -1,12 +1,22 @@
 import type { DiscussionSettings } from '#sdk/comments';
-import type { PublicComment, CommentListQuery } from '#sdk/comments';
+import type {
+  CommentPushPayload,
+  PublicComment,
+  CommentListQuery,
+} from '#sdk/comments';
 import type { PluginComment } from '#sdk/plugin';
 import type { Awaitable } from '#sdk/common';
 
 export interface CommentCheck {
   comment: Pick<
     PluginComment,
-    'contentId' | 'authorName' | 'authorEmail' | 'authorUrl' | 'body'
+    | 'contentId'
+    | 'authorName'
+    | 'authorEmail'
+    | 'authorUrl'
+    | 'authorIp'
+    | 'authorUserAgent'
+    | 'body'
   >;
   settings: DiscussionSettings;
   known: boolean;
@@ -34,6 +44,8 @@ export interface CommentFilterHooks {
   'comment.query': CommentListQuery;
   'comment.public': PublicComment;
   'comment.notification': { to: string; subject: string; text: string };
+  /** Browser push before it is queued; `url` and `tag` are fixed by core. */
+  'comment.push': CommentPushPayload;
   'comment.submitAllowed': {
     allowed: boolean;
     contentId: string;

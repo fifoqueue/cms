@@ -1,7 +1,7 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import { page } from '$app/state';
-  import { fontsActionUrl } from '#lib/admin/font-issues.js';
+  import { actionUrl as editorAction } from '#lib/admin/action-url.js';
   import { FONT_DISPLAYS } from '@cms/sdk';
   import type { SiteFont } from '@cms/sdk';
   import {
@@ -51,7 +51,7 @@
   const m = $derived(i18n.m);
   const id = $props.id();
   // Posting to the current address keeps the theme and the Styles panel open after the action.
-  const actionUrl = $derived(fontsActionUrl(page.url.search));
+  const actionUrl = $derived(editorAction(page.url.search, 'saveFonts'));
   const values = $derived(failure?.fontForm ?? {});
   let source = $state<'stylesheet' | 'file'>('stylesheet');
   // A refused attempt comes back with the source it used.

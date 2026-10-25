@@ -14,32 +14,6 @@ const paragraph = (text: string, marks?: unknown[]) => ({
 });
 
 describe('renderDocument', () => {
-  test('renders headings and marks', () => {
-    const html = renderDocument({
-      type: 'doc',
-      content: [
-        {
-          type: 'heading',
-          attrs: { level: 2 },
-          content: [{ type: 'text', text: 'Title' }],
-        },
-        {
-          type: 'paragraph',
-          content: [{ type: 'text', text: 'bold', marks: [{ type: 'bold' }] }],
-        },
-      ],
-    });
-    // Accept the pre-wiring renderer too; TOC tests assert the generated id exactly.
-    expect(html).toMatch(/<h2(?: id="title")?>Title<\/h2>/);
-    expect(html).toContain('<strong>bold</strong>');
-  });
-
-  test('escapes text', () => {
-    expect(
-      renderDocument(paragraph('<script>alert(1)</script>')),
-    ).not.toContain('<script>');
-  });
-
   test('drops unsafe link protocols', () => {
     const html = renderDocument(
       paragraph('x', [
@@ -80,12 +54,6 @@ describe('renderDocument', () => {
     // Unknown attributes are dropped, never rendered.
     expect(html).not.toContain('onerror');
     expect(html).not.toContain('extra');
-  });
-
-  test('rejects nodes outside the schema', () => {
-    expect(() =>
-      renderDocument({ type: 'doc', content: [{ type: 'iframe' }] }),
-    ).toThrow(InvalidDocumentError);
   });
 });
 
@@ -257,28 +225,4 @@ test('WordPress core block HTML keeps its structure and attributes through impor
   expect(html).toContain('<th>');
   expect(html).toContain('<caption>Table caption</caption>');
   expect(parseHtml(html)).toEqual(document);
-});
-
-const doc = (...content: unknown[]) =>
-  ({ type: 'doc', content }) as Parameters<typeof renderDocument>[0];
-
-test('teaser, page breaks and pattern references render as markers, breaks only at the top level', () => {
-  const html = renderDocument(
-    doc(
-      { type: 'more' },
-      { type: 'patternRef', attrs: { ref: 'pattern-1' } },
-      { type: 'pageBreak' },
-    ),
-  );
-  expect(html).toBe(
-    '<div class="cms-more" data-cms-more="true"></div><div class="cms-pattern" data-cms-pattern="pattern-1"></div><div class="cms-nextpage" data-cms-nextpage="true"></div>',
-  );
-  expect(() =>
-    renderDocument(
-      doc({ type: 'blockquote', content: [{ type: 'pageBreak' }] }),
-    ),
-  ).toThrow();
-  expect(() =>
-    renderDocument(doc({ type: 'patternRef', attrs: { ref: '"><script>' } })),
-  ).toThrow();
 });

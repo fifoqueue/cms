@@ -13,6 +13,12 @@ import type { RevisionSave } from '#api/domain/content/revisions';
 
 /** Stored content as read back, with its assigned terms ordered by `compareTerms`. */
 export interface ContentRecord {
+  createdIp?: string | null;
+  createdUserAgent?: string | null;
+  modifiedIp?: string | null;
+  modifiedUserAgent?: string | null;
+  createdById?: string | null;
+  modifiedById?: string | null;
   parentId?: string | null;
   menuOrder?: number;
   id: string;
@@ -161,7 +167,14 @@ export interface ContentRepository {
   /** Also removes its term assignments, paths and revisions. */
   delete(id: string): Promise<void>;
   /** Moves the entry to the trash (`at`) or back out of it (null). */
-  setTrashed(id: string, at: Date | null): Promise<void>;
+  setTrashed(
+    id: string,
+    at: Date | null,
+    origin?: Pick<
+      ContentRecord,
+      'modifiedIp' | 'modifiedUserAgent' | 'modifiedById'
+    >,
+  ): Promise<void>;
   /** Whether any entry, trashed or not, has `type`. */
   typeInUse(type: string): Promise<boolean>;
   /** Publishes scheduled entries that are due; returns their ids. */

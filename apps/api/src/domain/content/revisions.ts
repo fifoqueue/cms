@@ -7,6 +7,8 @@ export type RevisionDeleteGuard = Pick<
 >;
 
 export interface RevisionRecord {
+  ip?: string | null;
+  userAgent?: string | null;
   id: string;
   contentId: string;
   authorId: string | null;
@@ -22,6 +24,8 @@ export type RevisionWrite = Omit<RevisionRecord, 'authorName'>;
 
 /** History policy and attribution, committed atomically by the content store. */
 export interface RevisionSave {
+  ip?: string | null;
+  userAgent?: string | null;
   id: string;
   authorId: string;
   keep: number;

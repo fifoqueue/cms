@@ -7,8 +7,11 @@ import { session } from '#api/http/session';
 export const routes = (app: ApiApp) =>
   session(app).post(
     '',
-    async ({ comments, params, request, user }) => {
-      await comments.reply(params.id, await readJson(request), user);
+    async ({ comments, clients, params, request, user }) => {
+      await comments.reply(params.id, await readJson(request), user, {
+        address: clients.address(request),
+        userAgent: clients.userAgent(request),
+      });
       return noContent();
     },
     idParams,

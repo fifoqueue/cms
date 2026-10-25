@@ -1,16 +1,3 @@
-/**
- * The site fonts form action, keeping the editor's query (`theme`, `edit=styles`) so the same
- * panel renders after the action, with or without JavaScript. Other actions and one-time
- * notices are dropped.
- */
-export const fontsActionUrl = (search: string) => {
-  const params = new URLSearchParams(search);
-  for (const key of [...params.keys()])
-    if (key.startsWith('/') || key === 'notice') params.delete(key);
-  const query = params.toString();
-  return `?${query ? `${query}&` : ''}/saveFonts`;
-};
-
 /** Inputs of the add-font form that can show a field issue. */
 export const FONT_FIELDS = [
   'family',

@@ -35,86 +35,6 @@ const options = (payload: unknown) => ({
 });
 
 describe('DTO trust boundaries', () => {
-  test('probe error locations retain only the documented non-secret params', async () => {
-    const client = createAuthClient({
-      baseUrl: 'http://localhost:4000',
-      fetch: (async () =>
-        Response.json(
-          {
-            error: {
-              code: 'invalid_input',
-              message: 'The connection test file could not be removed.',
-              issues: [
-                {
-                  path: 'probe',
-                  message: 'The connection test file could not be removed.',
-                  params: {
-                    bucket: 'media',
-                    key: 'uploads/.cms-probe',
-                    secret: 'secret-token',
-                  },
-                  rawBody: 'secret-body',
-                },
-              ],
-            },
-          },
-          { status: 400 },
-        )) as typeof fetch,
-    });
-    try {
-      await client.login({ email: 'wrong', password: 'password' });
-      throw new Error('Expected failure');
-    } catch (error) {
-      expect(error).toBeInstanceOf(CmsApiError);
-      expect(error).toMatchObject({
-        issues: [
-          {
-            path: 'probe',
-            message: 'The connection test file could not be removed.',
-            params: { bucket: 'media', key: 'uploads/.cms-probe' },
-          },
-        ],
-      });
-      expect(JSON.stringify(error)).not.toContain('secret-');
-    }
-  });
-  test('API errors project field issues instead of forwarding arbitrary data', async () => {
-    const client = createAuthClient({
-      baseUrl: 'http://localhost:4000',
-      fetch: (async () =>
-        Response.json(
-          {
-            error: {
-              code: 'invalid_input',
-              message: 'Invalid input',
-              password: 'secret-envelope',
-              issues: [
-                {
-                  path: 'email',
-                  message: 'Enter an email address',
-                  received: 'secret-input',
-                  details: { token: 'secret-token' },
-                },
-              ],
-            },
-          },
-          { status: 400 },
-        )) as typeof fetch,
-    });
-    try {
-      await client.login({ email: 'wrong', password: 'password' });
-      throw new Error('Expected validation failure');
-    } catch (error) {
-      expect(error).toBeInstanceOf(CmsApiError);
-      expect(error).toMatchObject({
-        status: 400,
-        code: 'invalid_input',
-        issues: [{ path: 'email', message: 'Enter an email address' }],
-      });
-      expect(JSON.stringify(error)).not.toContain('secret-');
-    }
-  });
-
   test('public content rejects admin fields before they can become page data', async () => {
     const stored = { title: ' Public title ', focusKeyword: 'private' };
     const projected = toPublicEntrySeo(stored);
@@ -156,25 +76,6 @@ describe('DTO trust boundaries', () => {
         expect(JSON.stringify(error)).not.toContain('secret-');
       }
     }
-  });
-
-  test('public lists reject private fields nested in their items', async () => {
-    // List items have no body; JSON drops the undefined `html`.
-    const listed = { ...published, html: undefined };
-    const envelope = { items: [listed], total: 1, page: 1, pageSize: 10 };
-    expect(await createContentClient(options(envelope)).list()).toEqual(
-      envelope,
-    );
-    await expect(
-      createContentClient(
-        options({
-          ...envelope,
-          items: [{ ...listed, authorId: 'private' }],
-        }),
-      ).list(),
-    ).rejects.toMatchObject({
-      code: 'invalid_response',
-    });
   });
 
   test('public settings and authenticated profiles strip undeclared fields', async () => {

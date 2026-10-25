@@ -36,6 +36,8 @@ model User {
   createdAt      DateTime          @default(now()) @map("created_at") @db.DateTime(3)
   sessions       Session[]
   contents       Content[]
+  createdContents Content[] @relation("ContentCreator")
+  modifiedContents Content[] @relation("ContentModifier")
   revisions      ContentRevision[]
   media          Media[]
   identities     UserIdentity[]
@@ -45,6 +47,7 @@ model User {
   passwordTokens PasswordToken[]
   apiTokens      ApiToken[]
   comments       Comment[]
+  pushSubscriptions PushSubscription[]
   passkeys       Passkey[]
   totpSecret     TotpSecret?
 
@@ -172,6 +175,14 @@ model Session {
 }
 
 model Content {
+  creator             User?             @relation("ContentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  modifier            User?             @relation("ContentModifier", fields: [modifiedById], references: [id], onDelete: SetNull)
+  createdById          String?           @map("created_by_id") @db.Char(36)
+  modifiedById         String?           @map("modified_by_id") @db.Char(36)
+  createdIp            String?           @map("created_ip") @db.VarChar(45)
+  createdUserAgent     String?           @map("created_user_agent") @db.VarChar(255)
+  modifiedIp           String?           @map("modified_ip") @db.VarChar(45)
+  modifiedUserAgent    String?           @map("modified_user_agent") @db.VarChar(255)
   parentId             String?           @map("parent_id") @db.Char(36)
   parent               Content?          @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: SetNull, onUpdate: Restrict)
   children             Content[]         @relation("PageHierarchy")
@@ -408,6 +419,8 @@ model ApiToken {
 
 /// Earlier versions of an entry's text, and per-user autosaves of unsaved edits.
 model ContentRevision {
+  ip        String?  @db.VarChar(45)
+  userAgent String?  @map("user_agent") @db.VarChar(255)
   id        String   @id @db.Char(36)
   contentId String   @map("content_id") @db.Char(36)
   /// Whoever saved it; kept as null when the user is deleted.
@@ -493,10 +506,18 @@ model Comment {
   authorName  String        @map("author_name") @db.VarChar(100)
   authorEmail String        @map("author_email") @db.VarChar(191)
   authorUrl   String        @default("") @map("author_url") @db.VarChar(255)
+  /// Canonical IP address and browser user agent the web server proved; moderators only.
+  authorIp    String?       @map("author_ip") @db.VarChar(45)
+  authorUserAgent String?   @map("author_user_agent") @db.VarChar(255)
   body        String        @db.Text
   status      CommentStatus
   createdAt   DateTime      @map("created_at") @db.DateTime(3)
   updatedAt   DateTime      @map("updated_at") @db.DateTime(3)
+  /// When the entry's author and the parent comment's author were notified; set once.
+  notifiedAt  DateTime?     @map("notified_at") @db.DateTime(3)
+  /// False after the author followed the unsubscribe link of a reply email.
+  replyMail   Boolean       @default(true) @map("reply_mail")
+  pushSubscriptions PushSubscription[]
 
   /// Public threads of an entry, oldest first.
   @@index([contentId, status, parentId, createdAt])
@@ -504,6 +525,55 @@ model Comment {
   @@index([status, createdAt])
   @@index([authorEmail, status])
   @@map("comments")
+}
+
+/// Browser push registrations: a visitor's for replies to one comment, or a user's browser.
+/// `endpointHash` is the SHA-256 of `endpoint` (too long to index).
+model PushSubscription {
+  id            String    @id @db.Char(36)
+  commentId     String?   @map("comment_id") @db.Char(36)
+  comment       Comment?  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId        String?   @map("user_id") @db.Char(36)
+  user          User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint      String    @db.VarChar(2048)
+  endpointHash  String    @map("endpoint_hash") @db.Char(64)
+  p256dh        String    @db.VarChar(200)
+  auth          String    @db.VarChar(100)
+  expiresAt     DateTime? @map("expires_at") @db.DateTime(3)
+  /// `active` or `invalid`.
+  status        String    @default("active") @db.VarChar(16)
+  invalidReason String?   @map("invalid_reason") @db.VarChar(16)
+  invalidatedAt DateTime? @map("invalidated_at") @db.DateTime(3)
+  lastSeenAt    DateTime  @map("last_seen_at") @db.DateTime(3)
+  createdAt     DateTime  @map("created_at") @db.DateTime(3)
+
+  @@unique([commentId, endpointHash])
+  @@unique([userId, endpointHash])
+  @@index([endpointHash])
+  @@index([status, invalidatedAt])
+  @@map("push_subscriptions")
+}
+
+/// Fixed-window notification counters per recipient (flood valve and push "+N more").
+/// `key` is the SHA-256 of the recipient key, which may contain an email address.
+model NoticeWindow {
+  key       String   @id @db.Char(64)
+  windowEnd DateTime @map("window_end") @db.DateTime(3)
+  sent      Int      @default(0)
+  deferred  Int      @default(0)
+
+  @@index([windowEnd])
+  @@map("notice_windows")
+}
+
+/// Fan-outs already queued (SHA-256 of the dispatch key), so a retried notification job never
+/// queues its deliveries twice.
+model NoticeDispatch {
+  key       String   @id @db.Char(64)
+  createdAt DateTime @map("created_at") @db.DateTime(3)
+
+  @@index([createdAt])
+  @@map("notice_dispatches")
 }
 
 /// Content changes not yet applied to the search index, written in the same transaction as the

@@ -42,6 +42,11 @@ export class Scheduler {
     };
   }
 
+  /** Names of the registered recurring tasks; other lease rows are one-off locks. */
+  names(): string[] {
+    return [...this.tasks.keys()];
+  }
+
   async tick(): Promise<void> {
     if (this.running) return;
     this.running = true;

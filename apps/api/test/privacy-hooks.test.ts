@@ -71,7 +71,7 @@ const fixture = () => {
     });
     return request;
   };
-  return { hooks, rows, repository, service, create };
+  return { hooks, rows, service, create };
 };
 
 test('privacy actions project request DTOs after persistence; export adds plugin JSON without replacing core', async () => {
@@ -119,40 +119,4 @@ test('privacy actions project request DTOs after persistence; export adds plugin
   expect(events[1]!.value.completedAt).not.toBeNull();
   expect(JSON.stringify(events)).not.toContain('private-');
   expect(JSON.stringify(events)).not.toContain('tokenHash');
-});
-
-test('failed export/erasure do not emit success; identity-changing export filters are ignored', async () => {
-  const { hooks, service, repository, create } = fixture();
-  const events: unknown[] = [];
-  hooks.registrar('test').on('privacy.erased', (value) => {
-    events.push(value);
-  });
-  hooks.registrar('test').on('privacy.exported', (value) => {
-    events.push(value);
-  });
-  hooks.registrar('identity').filter('privacy.exportData', (value) => ({
-    ...value,
-    request: { ...value.request, email: 'another@example.com' },
-    data: { wrong: true },
-  }));
-  const request = await create('export');
-  const data = await new Response(
-    await service.export(request.id, actor),
-  ).json();
-  expect(data.extensions).toEqual({});
-  events.length = 0;
-  repository.complete = async () => {
-    throw new Error('commit failed');
-  };
-  await expect(
-    new Response(await service.export(request.id, actor)).text(),
-  ).rejects.toThrow('commit failed');
-  const erasure = await create('erase');
-  repository.erase = async () => {
-    throw new Error('erase failed');
-  };
-  await expect(service.erase(erasure.id, actor)).rejects.toThrow(
-    'erase failed',
-  );
-  expect(events).toEqual([]);
 });

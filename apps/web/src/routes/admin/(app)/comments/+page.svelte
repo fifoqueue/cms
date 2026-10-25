@@ -5,6 +5,7 @@
   import { COMMENT_STATUSES } from '@cms/sdk';
   import type { CommentStatus } from '@cms/sdk';
   import { default as Search } from '@lucide/svelte/icons/search';
+  import ClientOrigin from '#lib/admin/ClientOrigin.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import ListPager from '#lib/admin/ListPager.svelte';
   import ScreenOptions from '#lib/admin/ScreenOptions.svelte';
@@ -249,6 +250,16 @@
             {/if}
             <Badge variant="secondary">{statusName(m, item.status)}</Badge>
           </p>
+          <!-- The address leads to comments from it, across entries. -->
+          <ClientOrigin
+            ip={item.authorIp}
+            userAgent={item.authorUserAgent}
+            ipHref={item.authorIp
+              ? resolve(
+                  `/admin/(app)/comments${listQuery({ q: item.authorIp, page: 1 }, {})}`,
+                )
+              : undefined}
+          />
           <p class="text-xs text-muted-foreground">
             {date(item.createdAt)}
             {#if !data.screen.hidden.includes('response')}

@@ -24,6 +24,11 @@ export class SealedJobs {
     );
   }
 
+  /** The sealed form of `payload`, for job rows written inside another transaction. */
+  seal(payload: unknown) {
+    return sealJob(payload, this.secrets);
+  }
+
   open<T>(payload: unknown, schema: z.ZodType<T>): T {
     const opened = inspectJob(payload, this.secrets);
     if (!opened.ok && opened.reason === 'unreadable')

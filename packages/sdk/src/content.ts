@@ -274,6 +274,19 @@ export type PublicContentListQuery = z.input<
 
 /** Full content record, visible to authenticated users only. Allowlist: undeclared keys are stripped. */
 export const adminContentSchema = z.object({
+  origin: z
+    .object({
+      created: z.object({
+        ip: z.string().nullable(),
+        userAgent: z.string().nullable(),
+      }),
+      modified: z.object({
+        ip: z.string().nullable(),
+        userAgent: z.string().nullable(),
+      }),
+    })
+    .nullable()
+    .default(null),
   id: z.string(),
   type: contentTypeKeySchema,
   slug: z.string(),
@@ -433,6 +446,8 @@ export const CONTENT_REVISION_KINDS = ['revision', 'autosave'] as const;
 
 /** A saved version of an entry's text, listed in the editor. */
 export const contentRevisionSummarySchema = z.object({
+  ip: z.string().nullable().default(null),
+  userAgent: z.string().nullable().default(null),
   id: z.string(),
   kind: z.enum(CONTENT_REVISION_KINDS),
   authorName: z.string(),
