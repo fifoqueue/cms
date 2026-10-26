@@ -428,13 +428,13 @@ ${LG} {
 ${XL} { .theme-journal-entry-title .cms-block-post-meta { font-size: 1.125rem; } }
 ${XXL} { .theme-journal-entry-title .cms-block-post-title { font-size: 3.5rem; } }
 
-/* Content beside the sidebar (360px from 992px, 400px from 1200px) */
+/* Content beside the sidebar (280px from 992px, 300px from 1200px) */
 .theme-journal-entry .cms-block-columns { flex-direction: column; gap: 3rem; }
 ${LG} {
-  .theme-journal-entry .cms-block-columns { flex-direction: row; gap: 48px; }
-  .theme-journal-entry .cms-block-column:has(.cms-block-widget-area) { flex: 0 0 360px; }
+  .theme-journal-entry .cms-block-columns { flex-direction: row; gap: 32px; }
+  .theme-journal-entry .cms-block-column:has(.cms-block-widget-area) { flex: 0 0 280px; }
 }
-${XL} { .theme-journal-entry .cms-block-column:has(.cms-block-widget-area) { flex-basis: 400px; } }
+${XL} { .theme-journal-entry .cms-block-column:has(.cms-block-widget-area) { flex-basis: 300px; } }
 .theme-journal-entry .cms-block-column { gap: 0; }
 
 /* Entry content */
@@ -508,11 +508,12 @@ ${XXL} {
 /* Sidebar widgets */
 .theme-journal-entry .cms-block-widget-area > div { display: block; }
 ${LG} { .theme-journal-entry .cms-block-widget-area { position: sticky; top: calc(var(--cms-admin-bar, 0px) + 81px + 20px); } }
-.theme-journal-entry .cms-block-widget-area section { margin: 0 0 40px; padding-bottom: 40px; border-bottom: 1px solid var(--border); font-size: 1rem; }
+.theme-journal-entry .cms-block-widget-area section { margin: 0 0 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border); font-size: 1rem; }
 .theme-journal-entry .cms-block-widget-area section > h2 { ${heading}; margin-bottom: 1.75rem; color: var(--foreground); font-size: 1.25rem; font-weight: 700; letter-spacing: -0.04em; line-height: 1.12; }
 .theme-journal-entry .cms-block-widget-area section li { padding-block: 12px; }
 .theme-journal-entry .cms-block-widget-area section li + li { margin-top: 0; border-top: 1px solid var(--border); }
 .theme-journal-entry .cms-block-widget-area section li:first-child { padding-top: 0; }
+.theme-journal-entry .cms-block-widget-area section li:last-child { padding-bottom: 0; }
 .theme-journal-entry .cms-block-widget-area section li a { ${heading}; color: var(--foreground); font-size: 1.125rem; font-weight: 600; letter-spacing: -0.03em; line-height: 1.3; text-decoration: none; }
 .theme-journal-entry .cms-block-widget-area section li a:hover { color: var(--cms-color-title-hover); text-decoration: none; }
 
