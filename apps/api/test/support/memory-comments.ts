@@ -2,14 +2,17 @@ import type { CommentStatus } from '@cms/sdk';
 import type {
   CommentChanges,
   CommentCriteria,
+  CommentPosition,
   CommentRecord,
   CommentRepository,
   ThreadRecord,
 } from '#api/domain/comments/ports';
 import type { MemoryContentRepository } from '#test/support/memory';
 
-const byDate = (a: CommentRecord, b: CommentRecord) =>
-  a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id);
+const byDate = (
+  a: Pick<CommentRecord, 'id' | 'createdAt'>,
+  b: Pick<CommentRecord, 'id' | 'createdAt'>,
+) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id);
 
 /** Same contract as `PrismaCommentRepository`, keeping the entries' approved counts. */
 export class MemoryCommentRepository implements CommentRepository {
@@ -38,7 +41,7 @@ export class MemoryCommentRepository implements CommentRepository {
     return row ? { ...row } : null;
   }
 
-  async pageOf(root: CommentRecord, pageSize: number) {
+  async pageOf(root: CommentPosition, pageSize: number) {
     const before = [...this.rows.values()].filter(
       (row) =>
         row.contentId === root.contentId &&
@@ -217,11 +220,15 @@ export class MemoryCommentRepository implements CommentRepository {
     const rows = [...this.rows.values()]
       .filter((row) => row.status === 'approved')
       .sort((a, b) => byDate(b, a));
-    const result: { author: string; title: string; path: string }[] = [];
+    const result: Awaited<ReturnType<CommentRepository['recent']>> = [];
     for (const row of rows) {
       const target = await this.target(row.contentId);
       if (target && !target.protected)
         result.push({
+          id: row.id,
+          contentId: row.contentId,
+          parentId: row.parentId,
+          createdAt: row.createdAt,
           author: row.authorName,
           title: target.title,
           path: target.path,

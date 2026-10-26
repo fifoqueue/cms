@@ -26,6 +26,7 @@ import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
 import type {
   CommentOrigin,
+  CommentPosition,
   CommentRecord,
   CommentRepository,
   CommentTarget,
@@ -374,14 +375,7 @@ export class CommentService {
     await this.deps.notifier.claim(record);
     const pushOffered = !!(await this.deps.notifier.offer(settings, !!user))
       .push;
-    let root = record;
-    for (
-      let level = 0;
-      root.parentId && level < settings.threadDepth;
-      level += 1
-    )
-      root = (await this.deps.repository.findById(root.parentId)) ?? root;
-    const page = await this.deps.repository.pageOf(root, settings.pageSize);
+    const page = await this.pageFor(record, settings);
     const expires = this.deps.clock.now().getTime() + DAY;
     const payload = `comment:${record.contentId}:${record.id}:${expires}`;
     return {
@@ -444,8 +438,29 @@ export class CommentService {
   }
 
   /** Newest approved comments on public entries, for the recent comments widget. */
-  recent(limit: number) {
-    return this.deps.repository.recent(limit);
+  async recent(limit: number) {
+    const [rows, settings] = await Promise.all([
+      this.deps.repository.recent(limit),
+      this.discussion(),
+    ]);
+    return Promise.all(
+      rows.map(async (row) => ({
+        author: row.author,
+        title: row.title,
+        path: `${row.path}?cpage=${await this.pageFor(row, settings)}#comment-${row.id}`,
+      })),
+    );
+  }
+
+  private async pageFor(record: CommentPosition, settings: DiscussionSettings) {
+    let root = record;
+    for (
+      let level = 0;
+      root.parentId && level < settings.threadDepth;
+      level += 1
+    )
+      root = (await this.deps.repository.findById(root.parentId)) ?? root;
+    return this.deps.repository.pageOf(root, settings.pageSize);
   }
 
   async list(query: unknown, actor: Actor) {

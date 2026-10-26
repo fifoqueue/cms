@@ -2,6 +2,7 @@ import type { CommentStatus } from '@cms/sdk';
 import type {
   CommentChanges,
   CommentCriteria,
+  CommentPosition,
   CommentRecord,
   CommentRepository,
   ThreadRecord,
@@ -112,7 +113,7 @@ export class PrismaCommentRepository implements CommentRepository {
     return this.db.comment.findUnique({ where: { id }, select: ownColumns });
   }
 
-  async pageOf(root: CommentRecord, pageSize: number) {
+  async pageOf(root: CommentPosition, pageSize: number) {
     const before = await this.db.comment.count({
       where: {
         contentId: root.contentId,
@@ -410,6 +411,10 @@ export class PrismaCommentRepository implements CommentRepository {
         content: { ...PUBLIC_CONTENT, passwordHash: null },
       },
       select: {
+        id: true,
+        contentId: true,
+        parentId: true,
+        createdAt: true,
         authorName: true,
         content: {
           select: { title: true, currentPath: { select: { path: true } } },
@@ -418,16 +423,21 @@ export class PrismaCommentRepository implements CommentRepository {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit,
     });
-    return rows.flatMap(({ authorName, content }) =>
-      content.currentPath
-        ? [
-            {
-              author: authorName,
-              title: content.title,
-              path: decodePath(content.currentPath.path),
-            },
-          ]
-        : [],
+    return rows.flatMap(
+      ({ id, contentId, parentId, createdAt, authorName, content }) =>
+        content.currentPath
+          ? [
+              {
+                id,
+                contentId,
+                parentId,
+                createdAt,
+                author: authorName,
+                title: content.title,
+                path: decodePath(content.currentPath.path),
+              },
+            ]
+          : [],
     );
   }
 

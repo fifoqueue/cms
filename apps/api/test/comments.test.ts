@@ -327,6 +327,44 @@ describe('CommentService', () => {
     expect(JSON.stringify(avatars)).not.toContain('example.com');
   });
 
+  test('recent comment links locate roots and replies on their actual comment page', async () => {
+    const { comments, publish, store } = setup();
+    const entry = await publish();
+    await comments.updateDiscussion({ pageSize: 5 }, ADMIN);
+    for (let index = 0; index < 7; index += 1) {
+      const at = new Date(Date.UTC(2026, 0, 1, 0, 0, index));
+      await store.insert({
+        id: `recent-${index}`,
+        contentId: entry.id,
+        parentId: index === 6 ? 'recent-5' : null,
+        userId: null,
+        authorName: 'Ann',
+        authorEmail: 'ann@example.com',
+        authorUrl: '',
+        authorIp: null,
+        authorUserAgent: null,
+        body: 'Note',
+        status: 'approved',
+        createdAt: at,
+        updatedAt: at,
+      });
+    }
+    expect(await comments.recent(2)).toEqual(
+      [6, 5].map((index) => ({
+        author: 'Ann',
+        title: entry.title,
+        path: `${entry.path}?cpage=2#comment-recent-${index}`,
+      })),
+    );
+    expect(
+      (await comments.publicPage(entry.id, 2)).items.map(({ id }) => id),
+    ).toEqual(['recent-5', 'recent-6']);
+    await comments.updateDiscussion({ pageSize: 10 }, ADMIN);
+    expect((await comments.recent(1))[0]?.path).toBe(
+      `${entry.path}?cpage=1#comment-recent-6`,
+    );
+  });
+
   test('protected comments require a current unlock proof for both reads and writes', async () => {
     const { comments, content, publish, locks } = setup();
     const entry = await publish({ password: 'secret' });

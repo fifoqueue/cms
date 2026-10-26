@@ -615,7 +615,15 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     expect(await comments.findById('c2')).toMatchObject({ parentId: null });
     expect((await repository.findById(entry.id))?.commentCount).toBe(1);
     expect(await comments.recent(5)).toEqual([
-      { author: 'Ann', title: 'Talk', path: entry.path },
+      {
+        id: 'c2',
+        contentId: entry.id,
+        parentId: null,
+        createdAt: new Date(at.getTime() + 1000),
+        author: 'Ann',
+        title: 'Talk',
+        path: entry.path,
+      },
     ]);
 
     // Moderation lists filter by id and search IP addresses; erasure clears them.

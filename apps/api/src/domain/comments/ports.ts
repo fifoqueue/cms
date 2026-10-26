@@ -22,6 +22,12 @@ export interface CommentRecord {
   updatedAt: Date;
 }
 
+/** The fields needed to locate a comment in its paginated thread. */
+export type CommentPosition = Pick<
+  CommentRecord,
+  'id' | 'contentId' | 'parentId' | 'createdAt'
+>;
+
 /** The browser a comment was written from, as the web server proved it; null when unproven. */
 export interface CommentOrigin {
   address: string | null;
@@ -78,7 +84,7 @@ export interface CommentRepository {
   target(contentId: string): Promise<CommentTarget | null>;
   findById(id: string): Promise<CommentRecord | null>;
   /** Page containing this top-level comment, ordered by creation time then id. */
-  pageOf(root: CommentRecord, pageSize: number): Promise<number>;
+  pageOf(root: CommentPosition, pageSize: number): Promise<number>;
   insert(record: CommentRecord): Promise<void>;
   /**
    * Approved comments of an entry: a page of top-level comments, oldest first, each followed by
@@ -124,7 +130,9 @@ export interface CommentRepository {
   /** Newest approved comments on public entries. */
   recent(
     limit: number,
-  ): Promise<{ author: string; title: string; path: string }[]>;
+  ): Promise<
+    (CommentPosition & { author: string; title: string; path: string })[]
+  >;
   /** Deletes spam and trashed comments last changed before `before`; returns deleted rows. */
   purge(before: Date, limit: number): Promise<CommentRecord[]>;
 }
