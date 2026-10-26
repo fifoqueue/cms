@@ -29,6 +29,68 @@ export const fragmentTarget = (href: string, root: Element) => {
   return target && root.contains(target) ? target : null;
 };
 
+/**
+ * Animates the height of every TOC box inside `element` when its summary toggles (click, Enter,
+ * Space). toc.css animates `::details-content` natively where `auto` heights interpolate, so this
+ * only runs elsewhere, and never under reduced motion; the public page and the editor share it.
+ */
+export const collapseToc = (element: HTMLElement) => {
+  const view = element.ownerDocument.defaultView!;
+  const native =
+    view.CSS.supports('interpolate-size', 'allow-keywords') &&
+    view.CSS.supports('selector(::details-content)');
+  const reduced = view.matchMedia('(prefers-reduced-motion: reduce)');
+  type Run = { animation: Animation; closing: boolean };
+  const runs = new Map<HTMLDetailsElement, Run>();
+  /** Ends a run in its target state and drops the temporary clipping. */
+  const settle = (details: HTMLDetailsElement, run: Run) => {
+    run.animation.cancel();
+    runs.delete(details);
+    details.style.removeProperty('overflow');
+    if (run.closing) details.open = false;
+  };
+
+  const toggle = (event: MouseEvent) => {
+    if (native || reduced.matches) return;
+    const summary = (event.target as Element).closest('summary');
+    const details = summary?.parentElement;
+    if (
+      !summary ||
+      !(details instanceof view.HTMLDetailsElement) ||
+      details.firstElementChild !== summary ||
+      !details.parentElement?.matches('nav.cms-toc')
+    )
+      return;
+    event.preventDefault();
+    const running = runs.get(details);
+    const from = details.getBoundingClientRect().height;
+    const closing = running ? !running.closing : details.open;
+    running?.animation.cancel();
+    details.open = true;
+    const to = closing
+      ? summary.getBoundingClientRect().height
+      : details.getBoundingClientRect().height;
+    details.style.overflow = 'hidden';
+    const run = {
+      animation: details.animate(
+        { height: [`${from}px`, `${to}px`] },
+        { duration: 220, easing: 'ease' },
+      ),
+      closing,
+    };
+    runs.set(details, run);
+    run.animation.onfinish = () => settle(details, run);
+  };
+
+  element.addEventListener('click', toggle);
+  return {
+    destroy() {
+      element.removeEventListener('click', toggle);
+      runs.forEach((run, details) => settle(details, run));
+    },
+  };
+};
+
 /** Native links/details remain usable without this progressive enhancement. */
 export const enhanceToc = (element: HTMLElement) => {
   const view = element.ownerDocument.defaultView!;
@@ -151,6 +213,7 @@ export const enhanceToc = (element: HTMLElement) => {
     focusHeading(target.heading);
   };
 
+  const collapse = collapseToc(element);
   const mutations = new view.MutationObserver(prepare);
   const sizes = new view.ResizeObserver(measure);
   prepare();
@@ -167,6 +230,7 @@ export const enhanceToc = (element: HTMLElement) => {
       view.removeEventListener('resize', measure);
       view.removeEventListener('scroll', scroll);
       element.removeEventListener('click', click);
+      collapse.destroy();
       targets.forEach(({ links }) =>
         links.forEach((link) => link.removeAttribute('aria-current')),
       );

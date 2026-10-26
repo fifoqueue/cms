@@ -7,6 +7,7 @@ import {
   validTocCount,
 } from '@cms/content/toc';
 import type { Transaction } from '@tiptap/pm/state';
+import { collapseToc } from '#lib/theme/content/toc.js';
 
 /** A live view only: the persisted schema and attributes stay identical to the API's. */
 export const tocView = (empty: () => string) =>
@@ -51,6 +52,8 @@ export const tocView = (empty: () => string) =>
         dom.onclick = (event) => {
           if ((event.target as Element).closest('a')) event.preventDefault();
         };
+        // The summary's toggle animates like the public page's (`enhanceToc`).
+        const collapse = collapseToc(dom);
         editor.on('transaction', changed);
         render();
         return {
@@ -66,6 +69,7 @@ export const tocView = (empty: () => string) =>
           ignoreMutation: () => true,
           destroy: () => {
             editor.off('transaction', changed);
+            collapse.destroy();
           },
         };
       };
