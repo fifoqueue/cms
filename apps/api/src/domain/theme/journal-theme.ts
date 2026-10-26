@@ -187,7 +187,7 @@ const entry = (single: boolean) =>
         ...(single ? [block('post-navigation')] : []),
         block('comments'),
       ]),
-      block('column', { width: 34 }, [block('widget-area')]),
+      block('column', {}, [block('widget-area')]),
     ]),
   ]);
 
