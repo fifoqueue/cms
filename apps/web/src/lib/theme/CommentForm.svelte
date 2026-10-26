@@ -240,7 +240,10 @@
         <!-- eslint-disable svelte/no-navigation-without-resolve -- the same page without the reply -->
         <a
           href={cancel.href}
-          class={buttonVariants({ variant: 'outline', class: 'px-4' })}
+          class={buttonVariants({
+            variant: 'outline',
+            class: 'cms-comment-cancel px-4',
+          })}
           onclick={(event) => {
             event.preventDefault();
             cancel.onclick();

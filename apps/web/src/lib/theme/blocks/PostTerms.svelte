@@ -7,9 +7,16 @@
 
   const current = useCurrentPost();
   const post = $derived(current().post);
+  const terms = $derived(
+    taxonomy === 'category'
+      ? (post?.categories ?? [])
+      : taxonomy === 'tag'
+        ? (post?.tags ?? [])
+        : (post?.extraTerms.filter((term) => term.taxonomy === taxonomy) ?? []),
+  );
 </script>
 
-{#if post}
+{#if post && terms.length}
   <div class="cms-block-post-terms">
     {#if taxonomy === 'category'}
       <TermLinks categories={post.categories} />
@@ -17,7 +24,7 @@
       <TermLinks tags={post.tags} />
     {:else}
       <ul class="flex flex-wrap gap-2 text-sm">
-        {#each post.extraTerms.filter((term) => term.taxonomy === taxonomy) as term (term.id)}
+        {#each terms as term (term.id)}
           <li>
             <a
               href={resolve('/(site)/taxonomy/[taxonomy]/[slug]', {
