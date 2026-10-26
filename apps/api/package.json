@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "prisma generate && bun ../../scripts/parallel.mjs dev:schema dev:server",
     "dev:schema": "prisma generate --watch",
-    "dev:server": "bun --env-file=../../.env --watch src/main.ts",
+    "dev:server": "bun ../../scripts/watch.mjs src ../../packages/sdk/src ../../packages/content/src -- --env-file=../../.env src/main.ts",
     "start": "bun --env-file=../../.env src/main.ts",
     "build": "prisma generate",
     "db:generate": "prisma generate",
