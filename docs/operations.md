@@ -19,6 +19,53 @@
 
 ## 실행과 배포
 
+### Docker Compose로 로컬 실행
+
+```bash
+docker compose up -d --build
+docker compose logs api
+```
+
+웹은 `http://127.0.0.1:3000`, API는 `http://127.0.0.1:4000`, MariaDB는
+`127.0.0.1:3306`, Meilisearch는 `http://127.0.0.1:7700`에서만 호스트에 공개됩니다.
+`WEB_PORT`, `API_PORT`, `MARIADB_PORT`, `MEILI_PORT`로 호스트 포트를 바꿔도
+바인딩 주소는 `127.0.0.1`로 유지됩니다. 컨테이너 안에서는 다른 컨테이너와
+Docker 포트 전달을 받기 위해 `0.0.0.0`에서 수신합니다. 이는 외부 인터페이스에
+호스트 포트를 공개하는 설정이 아닙니다. 아웃바운드 인터넷 연결은 제한하지 않습니다.
+
+API 로그의 설치 키로 `/admin/setup`을 열고, DB 호스트 `mariadb`, 포트 `3306`,
+DB·사용자·비밀번호 `cms`를 입력합니다. 컨테이너 간 연결에는 호스트에 공개한
+포트 대신 서비스 이름과 컨테이너 포트를 사용합니다. `.env`는 필요하지 않습니다.
+
+API·웹은 `bun` 사용자, MariaDB `12.3.3-ubi`는 `mysql` 사용자,
+Meilisearch `v1.55.0`은 UID/GID `1000:1000`으로 실행됩니다. 모든 서비스에서
+Linux capability를 제거하고 `no-new-privileges`를 적용합니다. API의 설정·비밀 키·
+미디어·플러그인은 `api-data`, 웹의 방문자 증명 비밀은 `web-data`, DB와 검색 색인은
+각각 `mariadb`, `meilisearch` named volume에 보존됩니다. 이미지에는 로컬 `.env`,
+`data`, 기존 빌드 결과를 넣지 않습니다.
+
+여기서 비루트 실행은 컨테이너 프로세스에 적용됩니다. Docker 데몬까지 비루트로
+실행하려면 호스트에 [Docker rootless mode](https://docs.docker.com/engine/security/rootless/)를
+설정하고 해당 context에서 같은 Compose 명령을 실행하세요. Dockerfile이나
+Compose가 호스트 데몬을 rootless로 전환하지는 않습니다.
+
+Meilisearch는 관리자 **설정 → 검색**에서 `http://meilisearch:7700`과
+기본 키 `cms-local-search-key`로 연결합니다. `MEILI_MASTER_KEY`를 재정의했다면
+그 값을 입력하세요. 사설 주소 접근은 **설정 → 아웃바운드 접근**에서 서비스
+`search`, 호스트 `meilisearch`, 포트 `7700`, 해당 Docker 네트워크의 CIDR을
+명시적으로 허용해야 합니다. 네트워크 CIDR은 아래 명령으로 확인합니다.
+
+```bash
+docker inspect "$(docker compose ps -q meilisearch)" --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{println}}{{end}}'
+docker network inspect <위에서-확인한-네트워크> --format '{{range .IPAM.Config}}{{.Subnet}}{{println}}{{end}}'
+```
+
+DB 비밀번호와 검색 키 기본값은 로컬 실행용입니다. 기존 MariaDB 11 볼륨을
+사용한다면 12.3으로 시작하기 전에 DB와 `api-data`를 백업하고 별도 볼륨에서
+업그레이드를 검증하세요. 이 구성은 기존 볼륨을 삭제하거나 자동 업그레이드하지 않습니다.
+호스트에서 `bun run dev`로 개발할 때는 `docker compose up -d mariadb meilisearch`로
+의존 서비스만 시작합니다.
+
 플러그인의 일회성 잡은 코어 큐와 지수 백오프 재시도 정책을 공유합니다. 지연 잡을 포함해 페이로드는 항상 사이트의 비밀 키로 봉인됩니다. 플러그인을 비활성화하면 그 핸들러가 해제되어, 큐에 있던 잡은 알 수 없는 종류로 실패합니다. 비밀 키는 데이터베이스 백업과 함께 보관하세요.
 
 로그인 예약/바인딩 마이그레이션은 `20261112000000_passkey_discoverable` 다음의 `20261113000000_sign_in_reservations`입니다. 이전의 임시 예약 타임스탬프는 배포하면 안 됩니다. 업데이트된 API를 실행하기 전에 Prisma를 생성하고 마이그레이션을 적용하세요. 관리형 SSO 제공자는 기존 `/admin/sso/callback` 등록을 유지하고, 환경변수 제공자는 계속 `OIDC_REDIRECT_URI`를 씁니다. 플러그인 리디렉션 방식은 `/admin/sign-in/callback`을 씁니다.

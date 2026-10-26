@@ -1,7 +1,47 @@
 services:
-  mariadb:
-    image: mariadb:11
+  api:
+    build:
+      context: .
+      target: api
     restart: unless-stopped
+    init: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:${API_PORT:-4000}:4000'
+    volumes:
+      - api-data:/app/apps/api/data
+
+  web:
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    init: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      CMS_API_URL: http://api:4000
+      ADDRESS_HEADER: ''
+    depends_on:
+      - api
+    ports:
+      - '127.0.0.1:${WEB_PORT:-3000}:3000'
+    volumes:
+      - web-data:/app/apps/web/data
+
+  mariadb:
+    image: mariadb:12.3.3-ubi
+    user: mysql
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     environment:
       MARIADB_ROOT_PASSWORD: root
       MARIADB_DATABASE: cms
@@ -11,6 +51,38 @@ services:
       - '127.0.0.1:${MARIADB_PORT:-3306}:3306'
     volumes:
       - mariadb:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  meilisearch:
+    build:
+      context: .
+      target: meilisearch
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      MEILI_ENV: production
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-cms-local-search-key}
+      MEILI_NO_ANALYTICS: 'true'
+    ports:
+      - '127.0.0.1:${MEILI_PORT:-7700}:7700'
+    volumes:
+      - meilisearch:/meili_data
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:7700/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
+  api-data:
+  web-data:
   mariadb:
+  meilisearch:

@@ -26,7 +26,7 @@ WordPress·Ghost 같은 **헤드리스 CMS**입니다.
 
 ```bash
 bun install
-docker compose up -d                          # MariaDB (또는 기존 MariaDB 사용)
+docker compose up -d mariadb meilisearch      # 로컬 의존 서비스 (또는 기존 서비스 사용)
 bun run --filter @cms/api db:generate         # Prisma Client 생성 (src/infra/prisma/generated)
 bun run dev                                   # API :4000 + Web :5173(WEB_PORT 있으면 그 포트) → 첫 설치 마법사
 ```

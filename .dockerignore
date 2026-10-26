@@ -1,0 +1,12 @@
+.git
+**/node_modules
+**/.env
+**/.env.*
+**/data
+**/build
+**/dist
+**/.svelte-kit
+**/.web-releases
+**/.active-web-release
+apps/api/src/infra/prisma/generated
+**/*.log
