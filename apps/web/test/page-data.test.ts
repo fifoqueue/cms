@@ -9,9 +9,14 @@ import {
 } from '@cms/sdk';
 
 // SvelteKit provides `$app/env/private` at build time; point the SDK clients at a fake API.
+let requestEvent: unknown;
 Bun.plugin({
   name: 'sveltekit-env',
   setup(build) {
+    build.module('$app/server', () => ({
+      exports: { getRequestEvent: () => requestEvent },
+      loader: 'object',
+    }));
     build.module('$app/env/private', () => ({
       exports: {
         CMS_API_URL: 'http://cms.test',
@@ -111,6 +116,10 @@ const reading = {
   postsPagePath: null,
 };
 
+/** The reading settings the layout API answers with; a test may switch to a static front page. */
+let layoutReading:
+  typeof reading | (typeof reading & { frontPagePath: string }) = reading;
+
 interface Call {
   method: string;
   url: URL;
@@ -185,7 +194,7 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         site: { title: 'Site', description: '', locale: 'en' },
         seo: SEO_SETTINGS_DEFAULTS,
         theme,
-        reading,
+        reading: layoutReading,
         menus: { primary: null, footer: null },
         widgets: { sidebar: [], footer: [] },
       });
@@ -307,10 +316,14 @@ const forbidden = (name: string) =>
 
 const publicLocals = () =>
   new Proxy(
-    { token: null as string | null },
+    {
+      token: null as string | null,
+      siteLayout: undefined as App.Locals['siteLayout'],
+    },
     {
       get(target, key) {
         if (key === 'token') return target.token;
+        if (key === 'siteLayout') return target.siteLayout;
         throw new Error(`public loader read locals.${String(key)}`);
       },
     },
@@ -370,6 +383,45 @@ describe('public page data', () => {
   });
 
   test('uses the anonymous public API only and drops fields no view needs', async () => {
+    const event = {
+      ...(publicEvent('/') as object),
+      parent: async () => ({
+        reading,
+        theme: {
+          id: theme.id,
+          name: theme.name,
+          settings: theme.settings,
+          styles: theme.styles,
+          fonts: theme.fonts,
+          preview: theme.preview,
+        },
+      }),
+    };
+    requestEvent = event;
+    const projected = await loadHome(event as never);
+    expect(projected).toMatchObject({ template: [], parts: [] });
+    expect(
+      calls.filter(({ url }) => url.pathname === '/api/v1/layout'),
+    ).toHaveLength(1);
+    calls = [];
+    layoutReading = { ...reading, frontPagePath: '/hello' };
+    try {
+      await loadHome({
+        ...(publicEvent('/') as object),
+        parent: async () => ({ reading: layoutReading, theme }),
+      } as never);
+    } finally {
+      layoutReading = reading;
+    }
+    expect(
+      calls
+        .filter(({ url }) => url.pathname === '/api/v1/slots')
+        .map(({ url }) => ({
+          path: url.searchParams.get('path'),
+          contentId: url.searchParams.get('contentId'),
+        })),
+    ).toEqual([{ path: '/', contentId: content('hello').id }]);
+    calls = [];
     const pages = [
       // Reading `url` or `route` would re-run the layout on every navigation.
       await loadSiteLayout({
@@ -384,6 +436,7 @@ describe('public page data', () => {
       await loadEntry(publicEvent('/search', { slug: 'search' })),
     ];
 
+    expect(pages[0]).toMatchObject({ errorFallback: null });
     // Each page requests its own slots once; the layout requests none.
     expect(
       calls

@@ -1,7 +1,6 @@
-import { loadTemplateData } from '#lib/server/theme-queries.js';
+import { loadErrorData } from '#lib/server/theme-queries.js';
 import { themeLinks } from '#lib/server/theme-links.js';
 import { authApi, contentApi } from '#lib/server/api.js';
-import { Errors } from '#lib/server/errors.js';
 import {
   menuView,
   pageLink,
@@ -11,7 +10,8 @@ import {
   themeView,
   widgetsView,
 } from '#lib/server/public-view.js';
-import { themePreviewToken } from '#lib/server/theme-preview.js';
+import { siteLayout } from '#lib/server/site-layout.js';
+import { themeCss } from '#lib/server/theme-css.js';
 import type { LayoutServerLoad } from './$types';
 
 /**
@@ -25,7 +25,7 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
   // The hook chooses the scheme-specific cookie without making this layout depend on `url`.
   const token = locals.token;
   const [layout, user] = await Promise.all([
-    api.layout(themePreviewToken(cookies)),
+    siteLayout({ fetch, cookies, locals }),
     token
       ? authApi(fetch, token)
           .me()
@@ -39,16 +39,8 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
   const [pages, blocks, linkRoutes] = await Promise.all([
     // Without a primary menu, navigation falls back to the published pages.
     primary ? null : api.list({ type: 'page', pageSize: 20 }),
-    // Pages load the data of their own template; error pages only have this one.
-    loadTemplateData(
-      api,
-      { theme, reading },
-      {
-        kind: 'error',
-        status: 404,
-        message: Errors.NotFound,
-      },
-    ),
+    // Errors have no load: both templates share their data, fetched in parallel.
+    loadErrorData(api, theme, reading.timeZone),
     themeLinks(layout.theme),
   ]);
   return {
@@ -58,7 +50,15 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
     ...blocks,
     site: siteView(site),
     seo: seoSettingsView(seo),
-    theme,
+    cssHash: themeCss(theme.css).hash,
+    theme: {
+      id: theme.id,
+      name: theme.name,
+      settings: theme.settings,
+      styles: theme.styles,
+      fonts: theme.fonts,
+      preview: theme.preview,
+    },
     reading: readingView(reading),
     menus: {
       primary: primary && menuView(primary),

@@ -1,6 +1,7 @@
 <script lang="ts">
   import '#lib/theme/site.css';
   import { routeLink } from '#lib/route-link.js';
+  import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import type { SlotMap } from '@cms/sdk';
   import { buildHead, sitePage } from '#lib/seo/head.js';
@@ -10,7 +11,6 @@
   import NavigationProgress from '#lib/components/NavigationProgress.svelte';
   import AdminBar from '#lib/theme/AdminBar.svelte';
   import SlotOutlet from '#lib/theme/SlotOutlet.svelte';
-  import ThemeStylesheet from '#lib/theme/ThemeStylesheet.svelte';
   import SiteFonts from '#lib/theme/SiteFonts.svelte';
   import {
     rememberedScheme,
@@ -95,8 +95,11 @@
     <!-- eslint-disable-next-line svelte/no-at-html-tags -- a fixed script; runs before the first paint so a chosen scheme never flashes -->
     {@html remembered}
   {/if}
+  <link
+    rel="stylesheet"
+    href={`${resolve('/preview/theme/style.css')}?v=${data.cssHash}`}
+  />
 </svelte:head>
-<ThemeStylesheet css={data.theme.css} />
 <SiteFonts fonts={data.theme.fonts} />
 
 <a

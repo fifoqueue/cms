@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { siteLayout } from '#lib/server/site-layout.js';
 import {
   calendar as calendarParts,
   isIndependentQuery,
@@ -13,6 +14,7 @@ import type {
 import { childrenOf } from '@cms/sdk/tree';
 import type { contentApi } from '#lib/server/api.js';
 import { Errors } from '@cms/sdk/errors';
+import { Errors as WebErrors } from '#lib/server/errors.js';
 import { listView } from '#lib/server/public-view.js';
 import { mapLimit } from '#lib/server/bounded.js';
 import type { PostList, ThemeView } from '#lib/server/public-view.js';
@@ -137,16 +139,24 @@ export const contextOf = (page: ThemePage): BlockContext => ({
 
 /** A template's blocks followed by those of the parts it includes, each part once. */
 export const withParts = (blocks: Block[], parts: ThemeView['parts']) => {
-  const all = [...blocks];
+  return [
+    ...blocks,
+    ...includedParts(blocks, parts).flatMap((part) => part.blocks),
+  ];
+};
+
+const includedParts = (blocks: Block[], parts: ThemeView['parts']) => {
+  const all: ThemeView['parts'] = [];
+  const index = new Map(parts.map((part) => [part.slug, part]));
   const seen = new Set<string>();
   const include = (list: Block[]) => {
     for (const block of walkBlocks(list)) {
       if (block.name !== 'template-part' || seen.has(block.attrs.slug))
         continue;
       seen.add(block.attrs.slug);
-      const part = parts.find(({ slug }) => slug === block.attrs.slug);
+      const part = index.get(block.attrs.slug);
       if (part) {
-        all.push(...part.blocks);
+        all.push(part);
         include(part.blocks);
       }
     }
@@ -193,7 +203,8 @@ type Shared = Partial<
 
 /** What the site layout already loaded (for error pages); pages reuse it instead of asking again. */
 export type LayoutBlockData = {
-  theme: ThemeView;
+  theme: Omit<ThemeView, 'templates' | 'parts' | 'css'> &
+    Partial<Pick<ThemeView, 'templates' | 'parts'>>;
   reading?: { timeZone: string };
 } & Shared;
 
@@ -447,24 +458,64 @@ export const loadBlockData = async (
   };
 };
 
+/** Error templates share one union of data needs, loaded in parallel without duplicate calls. */
+export const loadErrorData = async (
+  api: Api,
+  theme: ThemeView,
+  timeZone: string,
+) => {
+  const select = (status: number) =>
+    pickTemplate(
+      theme.templates,
+      templateCandidates({
+        kind: 'error',
+        status,
+        message: WebErrors.NotFound,
+      }),
+    );
+  const template = select(404);
+  const fallback = select(500);
+  const parts = includedParts(template, theme.parts);
+  const shared = template === fallback;
+  const data = await loadBlockData(
+    api,
+    withParts(shared ? template : [...template, ...fallback], theme.parts),
+    { ...NO_CONTEXT, timeZone },
+  );
+  return {
+    ...data,
+    template,
+    parts,
+    errorFallback: shared
+      ? null
+      : { template: fallback, parts: includedParts(fallback, theme.parts) },
+  };
+};
+
 /** Block data of the template `page` renders with, and of the parts it includes. */
-export const loadTemplateData = (
+export const loadTemplateData = async (
   api: Api,
   layout: LayoutBlockData,
   page: ThemePage,
-) =>
-  loadBlockData(
+) => {
+  const theme =
+    layout.theme.templates && layout.theme.parts
+      ? (layout.theme as ThemeView)
+      : (await siteLayout((await import('$app/server')).getRequestEvent()))
+          .theme;
+  const template = pickTemplate(
+    theme.templates,
+    templateCandidates(page, isFrontPage(page)),
+  );
+  const parts = includedParts(template, theme.parts);
+  const data = await loadBlockData(
     api,
-    withParts(
-      pickTemplate(
-        layout.theme.templates,
-        templateCandidates(page, isFrontPage(page)),
-      ),
-      layout.theme.parts,
-    ),
+    [...template, ...parts.flatMap((part) => part.blocks)],
     { ...contextOf(page), timeZone: layout.reading?.timeZone },
     layout,
   );
+  return { ...data, template, parts };
+};
 
 /**
  * Page data plus the block data of its template and the page's filtered head

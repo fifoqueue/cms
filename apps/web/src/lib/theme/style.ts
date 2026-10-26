@@ -79,7 +79,10 @@ export const bodyFont = ({
  * sizes. Every value was validated by the theme schema (hex colors, font stacks, CSS lengths),
  * so nothing else can be written.
  */
-export const themeStyle = ({ settings, styles }: ThemeView): string => {
+export const themeStyle = ({
+  settings,
+  styles,
+}: Pick<ThemeView, 'settings' | 'styles'>): string => {
   const font = (slug: string) =>
     settings.fontFamilies.find((entry) => entry.slug === slug)?.fontFamily;
   const body = bodyFont({ settings, styles });

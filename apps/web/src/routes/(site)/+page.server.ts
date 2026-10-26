@@ -1,4 +1,5 @@
 import { contentApi } from '#lib/server/api.js';
+import { siteLayout } from '#lib/server/site-layout.js';
 import { sessionToken } from '#lib/server/session-cookie.js';
 import { entryActions, entryPage } from '#lib/server/content-page.js';
 import { notFoundFrom } from '#lib/server/errors.js';
@@ -23,13 +24,19 @@ export const load: PageServerLoad = async (event) => {
   // Block data is public: it never uses the visitor's session.
   const publicApi = contentApi(fetch);
   const page = pageParam(url);
-  const reading = await api.reading().catch(() => null);
+  const search = url.searchParams.has('q');
+  const slots = search ? loadSlots(api, { path: url.pathname }) : null;
+  // The request's shared layout: reading settings without waiting for the whole parent load
+  // (error-page data, toolbar); loadTemplateData reuses this same promise.
+  const theme = siteLayout(event);
+  const { reading } = await theme;
   const pageSize = reading?.postsPerPage ?? 10;
-  if (url.searchParams.has('q')) {
+  if (search) {
     const query = (url.searchParams.get('q') ?? '').trim().slice(0, 200);
     const [posts, loaded] = await Promise.all([
       query ? listPosts(api, url, { search: query }, pageSize) : null,
-      loadSlots(api, { path: url.pathname }),
+      slots!,
+      theme,
     ]);
     return withTemplateData(publicApi, event, {
       kind: 'search' as const,
@@ -40,9 +47,12 @@ export const load: PageServerLoad = async (event) => {
   }
   if (reading?.frontPagePath && !url.searchParams.has('type')) {
     const types = api.contentTypes().catch(() => []);
-    const { content } = await api
-      .resolvePath(reading.frontPagePath, unlockProofs(cookies))
-      .catch(notFoundFrom);
+    const [{ content }] = await Promise.all([
+      api
+        .resolvePath(reading.frontPagePath, unlockProofs(cookies))
+        .catch(notFoundFrom),
+      theme,
+    ]);
     return entryPage(
       api,
       event,
@@ -62,6 +72,7 @@ export const load: PageServerLoad = async (event) => {
       pageSize,
     ),
     loadSlots(api, { path: url.pathname }),
+    theme,
   ]);
   return withTemplateData(publicApi, event, {
     kind: 'home' as const,

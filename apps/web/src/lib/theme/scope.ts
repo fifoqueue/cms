@@ -1,6 +1,6 @@
 import { getContext, setContext } from 'svelte';
 import type { RouteId } from '$app/types';
-import type { ArchivePathsState, SlotMap } from '@cms/sdk';
+import type { ArchivePathsState, Block, SlotMap } from '@cms/sdk';
 import type { CommentSection } from '#lib/server/comments.js';
 import type { BlockData } from '#lib/server/theme-queries.js';
 import type {
@@ -32,7 +32,9 @@ export interface SiteScope {
   authors: BlockData['authors'];
   calendar: BlockData['calendar'];
   listedTypes: BlockData['listedTypes'];
-  theme: ThemeView;
+  theme: Omit<ThemeView, 'templates' | 'parts' | 'css'> &
+    Partial<Pick<ThemeView, 'templates' | 'parts'>>;
+  parts: ThemeView['parts'];
   site: SiteView;
   reading: ReadingView;
   menus: { primary: MenuItemView[] | null; footer: MenuItemView[] | null };
@@ -79,6 +81,8 @@ export type ScopeData = Pick<
     >
   > & {
     slots?: SlotMap;
+    template?: Block[];
+    parts?: ThemeView['parts'];
     toolbar?: unknown;
   };
 

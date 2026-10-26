@@ -21,7 +21,7 @@
   const part = $derived(
     trail.includes(slug)
       ? undefined
-      : scope().theme.parts.find((entry) => entry.slug === slug),
+      : scope().parts.find((entry) => entry.slug === slug),
   );
   const slots = $derived(scope().slots);
 </script>

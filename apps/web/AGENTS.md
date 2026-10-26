@@ -21,7 +21,7 @@
 `apps/web`(그리고 앞으로 만들 모든 프론트엔드/테마)가 지켜야 할 규칙입니다.
 
 1. **API로만 통신**: `@cms/sdk/client`의 클라이언트만 사용합니다. DB, `@cms/api`, 플러그인 코드 import 금지.
-2. **서버에서만 호출**: API 호출은 `+page.server.ts`/`+layout.server.ts`/form action/`hooks.server.ts`에서만 합니다. 브라우저는 API 주소나 토큰을 모릅니다.
+2. **서버에서만 호출**: API 호출은 `+page.server.ts`/`+layout.server.ts`/`+server.ts` 엔드포인트/form action/`hooks.server.ts`에서만 합니다. 브라우저는 API 주소나 토큰을 모릅니다.
 3. **세션**: 로그인 시 받은 토큰을 HTTPS에서는 host-bound httpOnly 쿠키(`__Host-cms_session`), 평문 HTTP(로컬 개발 포함)에서는 별도 이름 `cms_session`에 저장하고 `Authorization: Bearer`로 전달합니다. HTTPS는 이전 이름을 인증이나 마이그레이션에 사용하지 않으므로 전환 뒤 한 번 다시 로그인해야 합니다. 진행 중인 로그인(모든 방식의 단계·초대 링크 설정·2단계 인증 등록·SSO 연결)은 쿠키 하나(`#lib/server/sso-cookie.js`, HTTPS는 `__Host-cms_sso`만, HTTP는 `cms_sso`)에 두며 트랜잭션 핸들은 페이지 데이터에 넣지 않습니다. 로그인 화면·초대 링크 화면은 API가 준 방식 설명을 그대로 그리며 플러그인 id로 분기하지 않습니다([로그인](../../docs/auth/sign-in.md#웹)). `/admin` 보호는 `hooks.server.ts` 한 곳에서 합니다. 로그인 화면은 관리자 설정의 공개 경로(기본 `/login`)에서 직접 렌더링·제출하며 `/admin/login`은 존재하지 않습니다. 로그인 링크를 숨기면 로그아웃 상태의 보호된 관리자 요청은 캐시 불가능한 404가 되고, 알 수 없는 `/admin/*` 주소도 인증 리디렉션으로 바뀌지 않습니다. 링크가 보일 때만 보호된 관리자 GET을 공개 로그인 경로로 보냅니다. 로그인 후 `returnPath`(`#lib/server/return-path.js`)는 정규화된 같은 사이트의 공개/관리 경로만 허용하고 인증 경로·외부 주소는 대시보드로 바꿉니다. 비밀번호와 SSO 로그인이 같은 목적지를 사용합니다.
 4. **슬롯 렌더링 의무**: 모든 테마는 `SLOT_NAMES`의 **모든 슬롯**을 정해진 위치에 렌더링해야 합니다 — `head`(문서 head), `site.header`(헤더 끝), `site.footer`(푸터), `content.before`/`content.after`(본문 앞/뒤), `comments.before`/`comments.after`(댓글 영역 앞/뒤, 댓글 영역이 있을 때). 블록 테마에서는 코어 렌더러가 위치를 보장합니다: `site.header`/`site.footer`는 header/footer 영역 템플릿 파트 뒤(템플릿에 없으면 페이지 처음/끝), `content.*`는 `post-content` 블록, `comments.*`는 `comments` 블록이 출력합니다. `GET /api/v1/slots?path=&contentId=`로 받고 `SlotOutlet`으로 출력합니다. 슬롯 조회 실패는 빈 슬롯으로 처리합니다(`loadSlots`). 슬롯은 페이지마다 다르므로 각 페이지 load가 받습니다. `contentId`를 생략하면 API가 `path`의 현재 주소 콘텐츠를 찾으므로, 콘텐츠 페이지는 주소 조회와 슬롯을 함께 요청합니다. 공개 레이아웃 load는 `url`·`route`를 읽지 않습니다(읽으면 클라이언트 이동·링크 미리 로드 때마다 레이아웃 API 호출이 모두 다시 실행됩니다). 오류 페이지에는 슬롯이 없습니다.
 5. **플러그인을 모름**: 프론트는 특정 플러그인의 존재를 가정하지 않습니다. 플러그인 효과는 슬롯 HTML, 필터된 콘텐츠(`html`, `meta`), 위젯 HTML, 관리자 화면의 범용 설정 폼과 블록 기반 플러그인 페이지로만 나타납니다. `meta`는 어떤 형태든 견딥니다.
@@ -44,6 +44,8 @@
 
 ## 공개·관리자 DTO 경계
 
+- 공개 레이아웃의 `theme`은 템플릿/파트를 직렬화하지 않습니다. 페이지는 요청별 `siteLayout` 캐시에서 템플릿을 선택하고 `template`과 전이적으로 참조하는 `parts`만 반환합니다. 별도 load가 없는 오류 페이지를 위해 레이아웃에는 오류 템플릿과 블록 데이터를 유지합니다. 사이트 편집기는 자체 전체 테마와 `previewBlocks`를 사용합니다.
+
 - `PublicContent`와 `PublicContentListQuery`는 `ContentEntry`, `ContentListQuery`와 별개의 계약입니다. 공개 응답은 에디터 문서, 작성자 ID, 초안 상태, 생성 시각을 제외합니다. 공개 목록은 추가 쿼리 파라미터가 주어져도 항상 발행된 콘텐츠만 선택합니다. 로그인한 상태의 정식 단일 항목 읽기는 `authorize(actor, 'content.readPrivate')` 이후에 비공개 콘텐츠도 반환할 수 있으며, 이때도 같은 공개 프로젝션과 `private, no-store` 캐시 정책을 씁니다.
 - 목록에는 본문을 싣지 않습니다. `GET /api/v1/content`는 본문을 가져오지 않는 프로젝션으로 읽은 `PublicContentSummary`(`html`이 없는 `PublicContent`)를 반환하며 `content.publicSummary` 필터를 거칩니다. 관리자 목록은 `AdminContentSummary`(`document`/`html` 없음)를 반환합니다. 단일 읽기는 전체 DTO를 유지합니다. 플러그인 `content.list`는 여전히 `html`이 있는 `PublicContent`를 반환합니다.
 - 공개 분류 DTO는 발행된 콘텐츠 개수만 노출합니다. 관리자 분류 DTO는 편집 시각과 발행 상태 전체에 걸친 개수를 포함합니다. 콘텐츠에는 전체 분류 레코드가 아니라 `TermSummary`(`id`, `name`, `slug`)만 포함합니다.
@@ -57,6 +59,8 @@
 - 계층 구조를 반복해서 훑지 마세요. 자식을 한 번 색인하고 방문 집합(visited set)으로 순회합니다. 제공자가 없는 슬롯 렌더링은 콘텐츠/설정을 읽지 않으며, 콘텐츠 페이지는 자기 콘텐츠 컨텍스트 슬롯만 가져옵니다. 요청 간에 권한 판정이나 개인화된 플러그인 HTML을 캐시해 최적화하지 마세요.
 
 ## HTML·CSS·JS minify
+
+공개 테마 CSS는 `/preview/theme/style.css?v=<SHA-256>`에서 scoped CSS로 제공합니다. `/preview/` 아래 두 세그먼트를 사용하므로 예약된 고유주소 및 `/preview/[token]`과 충돌하지 않으며 `/api/` 프록시에도 영향받지 않습니다. 공개 레이아웃은 CSS 대신 해시만 전달합니다. 현재 CSS와 일치하는 해시는 1년 immutable, 불일치는 no-cache이며 테마 미리보기 쿠키가 있거나 미리보기 테마이면 private, no-store입니다. 관리자 사이트 편집기는 실시간 편집을 위해 계속 인라인 `ThemeStylesheet`를 사용합니다.
 
 압축은 빌드 때만 합니다. 브라우저 JS·CSS는 Vite의 Oxc·Lightning CSS가, 컴포넌트 마크업은 Svelte 컴파일러가 공백을 줄입니다. SSR HTML은 요청마다 렌더링되므로 런타임 minify를 하지 않습니다(요청별 CPU 비용, 스트리밍 차단). 본문 HTML·JSON-LD 같은 동적 출력은 압축되지 않으며, 전송 크기는 gzip/brotli(리버스 프록시)로 줄입니다.
 

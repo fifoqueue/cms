@@ -5,12 +5,12 @@
   import SlotOutlet from '#lib/theme/SlotOutlet.svelte';
   import { provideBlockPath, provideScope } from '#lib/theme/scope.js';
   import type { ScopeData } from '#lib/theme/scope.js';
+  import type { ThemePage } from '#lib/theme/template.js';
   import {
     isFrontPage,
     pickTemplate,
     templateCandidates,
   } from '#lib/theme/template.js';
-  import type { ThemePage } from '#lib/theme/template.js';
 
   interface Props {
     /** Layout data plus the page's own data (`page.data`). */
@@ -40,6 +40,7 @@
     calendar: data.calendar ?? null,
     listedTypes: data.listedTypes ?? null,
     theme: data.theme,
+    parts,
     site: data.site,
     reading: data.reading,
     menus: data.menus,
@@ -55,18 +56,22 @@
 
   const blocks = $derived(
     previewBlocks ??
-      pickTemplate(
-        data.theme.templates,
-        templateCandidates(page, isFrontPage(page)),
-      ),
+      data.template ??
+      (data.theme.templates
+        ? pickTemplate(
+            data.theme.templates,
+            templateCandidates(page, isFrontPage(page)),
+          )
+        : []),
   );
+  const parts = $derived(data.parts ?? data.theme.parts ?? []);
 
   // Header and footer slots follow the header/footer template parts; templates without them
   // still render every slot (AGENTS.md 6.4).
   const areas = $derived(
     [...walkBlocks(blocks)].map((block) =>
       block.name === 'template-part'
-        ? data.theme.parts.find((part) => part.slug === block.attrs.slug)?.area
+        ? parts.find((part) => part.slug === block.attrs.slug)?.area
         : undefined,
     ),
   );

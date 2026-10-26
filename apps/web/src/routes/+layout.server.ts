@@ -1,4 +1,4 @@
-import { contentApi } from '#lib/server/api.js';
+import { siteLayout } from '#lib/server/site-layout.js';
 import { themeView } from '#lib/server/public-view.js';
 import { bodyFont } from '#lib/theme/style.js';
 import type { LayoutServerLoad } from './$types';
@@ -8,15 +8,10 @@ import type { LayoutServerLoad } from './$types';
  * nor `route` keeps navigation from re-running it; without a site (setup, an outage) screens
  * keep their own font.
  */
-export const load: LayoutServerLoad = async ({ fetch }) => {
-  const api = contentApi(fetch);
-  const [theme, site] = await Promise.all([
-    api
-      .layout()
-      .then((layout) => themeView(layout.theme))
-      .catch(() => null),
-    api.site().catch(() => null),
-  ]);
+export const load: LayoutServerLoad = async (event) => {
+  const layout = await siteLayout(event).catch(() => null);
+  const theme = layout ? themeView(layout.theme) : null;
+  const site = layout?.site;
   return {
     uiFont: theme ? { family: bodyFont(theme), fonts: theme.fonts } : null,
     /** The site icon (Settings → General) for screens without site data: admin, sign-in, errors. */
