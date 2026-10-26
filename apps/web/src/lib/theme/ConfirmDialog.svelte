@@ -43,9 +43,9 @@
     />
     <AlertDialog.Content
       interactOutsideBehavior={dismissible ? 'close' : 'ignore'}
-      class="fixed top-1/2 left-1/2 z-50 grid w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 gap-5 rounded-xl border bg-background p-6 text-foreground shadow-xl duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+      class="fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 grid-cols-1 gap-5 overflow-y-auto rounded-xl border bg-background p-6 text-foreground shadow-xl duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
     >
-      <div class="flex gap-4">
+      <div class="flex min-w-0 gap-4">
         <span
           class={cn(
             'flex size-10 shrink-0 items-center justify-center rounded-full',
@@ -64,7 +64,7 @@
             >{title}</AlertDialog.Title
           >
           <AlertDialog.Description
-            class="text-sm leading-relaxed text-muted-foreground"
+            class="text-sm leading-relaxed text-muted-foreground [overflow-wrap:anywhere]"
             >{description}</AlertDialog.Description
           >
         </div>
