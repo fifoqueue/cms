@@ -1,5 +1,6 @@
 // The `/<slug>.md` alternate: footnotes become Markdown footnotes without escaping gaps.
 import { expect, test } from 'bun:test';
+import { renderDocument } from '@cms/content/render';
 import { htmlToMarkdown } from '#lib/server/markdown.js';
 
 const BASE = 'https://example.com/post';
@@ -26,6 +27,24 @@ test('labels stay unique across pages because numbering restarts per page', () =
   expect(htmlToMarkdown(html, BASE)).toBe(
     'A[^1]\n\nB[^p2-1]\n\n[^1]: Page one\n[^p2-1]: Page two',
   );
+});
+
+test('named references share one Markdown definition without leaking back-link labels', () => {
+  const html = renderDocument({
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'A' },
+          { type: 'footnote', attrs: { name: '이름', text: '' } },
+          { type: 'text', text: ' B' },
+          { type: 'footnote', attrs: { name: '이름', text: '내용' } },
+        ],
+      },
+    ],
+  });
+  expect(htmlToMarkdown(html, BASE)).toBe('A[^1] B[^1]\n\n[^1]: 내용');
 });
 
 test('footnote text cannot inject links, raw HTML or block markup', () => {

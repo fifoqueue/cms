@@ -35,9 +35,11 @@
     pasteEmbed,
   } from '#lib/admin/editor/embed-paste.js';
   import {
-    footnoteView,
+    footnotePages,
     publishedDocument,
-  } from '#lib/admin/editor/FootnoteView.js';
+  } from '#lib/admin/editor/footnote-notes.js';
+  import FootnotePreview from '#lib/admin/editor/FootnotePreview.svelte';
+  import { footnoteView } from '#lib/admin/editor/FootnoteView.js';
   import { outsideRender } from '#lib/admin/editor/outside-render.svelte.js';
   import { tocView } from '#lib/admin/editor/TocView.js';
   import {
@@ -89,6 +91,11 @@
   let editor = $state.raw<Editor | null>(null);
   // Bumped on every transaction so toolbar state re-renders.
   let revision = $state(0);
+  /** The footnote list as the published entry shows it, shared with the footnote views. */
+  const notePages = $derived.by(() => {
+    void revision;
+    return editor ? footnotePages(editor.state.doc).pages : [];
+  });
 
   /** Image node attributes for a library file at the chosen size. */
   const imageNode = (media: AdminMedia, choice: MediaChoice) => ({
@@ -201,12 +208,13 @@
                     open: m.footnoteOpenHint,
                     placeholder: m.footnotePlaceholder,
                     hint: m.footnoteHint,
+                    syntax: m.footnoteSyntax,
                     remove: m.footnoteDelete,
                     empty: m.footnoteEmpty,
                   }),
-                  (numbers) =>
-                    (footnoteNotices = numbers.map((number) =>
-                      m.footnoteShortened(number),
+                  (labels) =>
+                    (footnoteNotices = labels.map((label) =>
+                      m.footnoteShortened(label),
                     )),
                 )
               : extension,
@@ -266,7 +274,8 @@
           marker.to = transaction.mapping.map(marker.to);
         }
       },
-      // What the form and autosave get: never a blank footnote, even one whose field is open.
+      // What the form and autosave get: never a blank numbered footnote, even one whose field
+      // is open; named references keep reusing their note.
       onUpdate: ({ editor: current }) =>
         (value = publishedDocument(current.getJSON()) as ContentDocument),
     });
@@ -849,6 +858,8 @@
         class="min-h-80 w-full resize-y rounded-md border bg-transparent p-3 font-mono text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
       ></textarea>
     </div>
+  {:else}
+    <FootnotePreview pages={notePages} />
   {/if}
   {#if uploading || uploadErrors.length || footnoteNotices.length}
     <div class="border-t p-2 text-xs" aria-live="polite">

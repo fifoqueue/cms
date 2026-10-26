@@ -2255,23 +2255,28 @@ export const en = {
   themeTocShow: 'Show table of contents',
   themeTocClose: 'Close table of contents',
   themeFootnotes: 'Footnotes',
-  themeFootnoteRef: (number: number) => `Footnote ${number}`,
-  themeFootnoteBack: (number: number) => `Back to reference ${number}`,
-  themeFootnoteJump: (number: number) => `Go to footnote ${number} in the list`,
+  themeFootnoteRef: (label: number | string) => `Footnote ${label}`,
+  themeFootnoteBack: (label: number | string) => `Back to reference ${label}`,
+  themeFootnoteJump: (label: number | string) =>
+    `Go to footnote ${label} in the list`,
   contentMoreBreak: '— More — (the text above is the teaser in lists)',
   contentPageBreak: '— Page break —',
   editorFootnote: 'Footnote',
-  footnoteNumber: (number: number) => `Footnote ${number}`,
-  footnoteLabel: (number: number, text: string) =>
-    `Footnote ${number}: ${text}`,
+  footnoteNumber: (label: number | string) => `Footnote ${label}`,
+  footnoteLabel: (label: number | string, text: string) =>
+    `Footnote ${label}: ${text}`,
   footnoteOpenHint:
     'Click, or select it with the arrow keys and press Enter, to edit',
-  footnoteShortened: (number: number) =>
-    `Footnote ${number} was longer than 2000 characters and was shortened to 2000.`,
+  footnoteShortened: (label: number | string) =>
+    `Footnote ${label} was longer than 2000 characters and was shortened to 2000.`,
   footnotePlaceholder: 'Footnote text',
   footnoteHint: 'Enter saves · Shift+Enter new line · Esc cancels',
+  footnoteSyntax:
+    'In the text, type [* note] for a numbered footnote, [*name note] to name one and [*name] to reuse it.',
   footnoteDelete: 'Delete',
   footnoteEmpty: 'Empty footnote',
+  footnotePreview: 'Footnotes',
+  footnotePreviewPage: (page: number) => `Page ${page}`,
   contentSyncedPattern: (title: string) =>
     title ? `Synced pattern: ${title}` : 'Synced pattern',
   patternsTitle: 'Patterns',

@@ -2,6 +2,8 @@ import { Extension, Node } from '@tiptap/core';
 import type { Extensions, JSONContent } from '@tiptap/core';
 import type { Node as ProseNode } from '@tiptap/pm/model';
 import { renderToHTMLString } from '@tiptap/static-renderer/pm/html-string';
+import { collectFootnotes } from '@cms/sdk/footnotes';
+import type { FootnoteGroup, FootnoteSource } from '@cms/sdk/footnotes';
 import { PAGE_BREAK_HTML } from '#content/breaks';
 
 export const headingAnchorPattern = /^[\p{L}][\p{L}\p{N}\p{M}_:.-]{0,99}$/u;
@@ -269,6 +271,52 @@ export const TableOfContents = Node.create({
   ],
 });
 
+interface FootnotePage {
+  groups: FootnoteGroup[];
+  /** Each reference's 1-based group number and 0-based place among the group's references. */
+  references: { number: number; order: number }[];
+}
+
+/**
+ * Notes per page, as each page lists its own: names group references within a page, and a
+ * named note always shows its name's first nonblank text in the whole document.
+ */
+function footnotePages(document: ProseNode): FootnotePage[] {
+  const pages: FootnoteSource[][] = [[]];
+  const definitions = new Map<string, string>();
+  document.descendants((node) => {
+    if (node.type.name === 'pageBreak') pages.push([]);
+    if (node.type.name !== 'footnote') return;
+    const name = String(node.attrs.name ?? '');
+    const text = String(node.attrs.text ?? '');
+    if (name && text && !definitions.has(name)) definitions.set(name, text);
+    pages.at(-1)!.push({ name, text });
+  });
+  return pages.map((sources) => {
+    const groups = collectFootnotes(sources);
+    const references: FootnotePage['references'] = [];
+    groups.forEach((group, offset) => {
+      const name = sources[group.references[0]!]!.name;
+      if (name) group.text = definitions.get(name) ?? '';
+      group.references.forEach((source, order) => {
+        references[source] = { number: offset + 1, order };
+      });
+    });
+    return { groups, references };
+  });
+}
+
+/** Numeric, never the raw name; a reused note numbers each of its references. */
+const referenceId = (
+  page: number,
+  number: number,
+  group: FootnoteGroup,
+  order: number,
+) =>
+  group.references.length === 1
+    ? `fn-ref-${page}-${number}`
+    : `fn-ref-${page}-${number}-${order + 1}`;
+
 export type TocRenderOptions = NonNullable<
   Parameters<typeof renderToHTMLString>[0]['options']
 >;
@@ -313,17 +361,37 @@ export function renderWithToc(
   };
   let index = 0;
   let page = 1;
-  let notes: string[] = [];
+  const notes = footnotePages(document);
+  let reference = 0;
+  const back = (id: string, label: string, text: string) =>
+    `<a data-footnote-back data-footnote-label="${escape(label)}" href="#${id}" aria-label="Back to reference ${escape(label)}">${escape(text)}</a>`;
   const footnotes = () => {
-    if (!notes.length) return '';
-    const html = `<section class="cms-footnotes"><ol>${notes
-      .map(
-        (text, number) =>
-          `<li id="fn-${page}-${number + 1}"><span>${escape(text)}</span> <a href="#fn-ref-${page}-${number + 1}" aria-label="Back to reference ${number + 1}">↩</a></li>`,
-      )
+    const { groups } = notes[page - 1]!;
+    if (!groups.length) return '';
+    return `<section class="cms-footnotes"><ol>${groups
+      .map((group, offset) => {
+        const number = offset + 1;
+        const label = escape(group.label);
+        const backs =
+          group.references.length === 1
+            ? back(
+                referenceId(page, number, group, 0),
+                group.label,
+                `[${group.label}]`,
+              )
+            : `<span data-footnote-group>[${label}]</span> ${group.references
+                .map((_, order) => {
+                  const text = `${number}.${order + 1}`;
+                  return back(
+                    referenceId(page, number, group, order),
+                    text,
+                    text,
+                  );
+                })
+                .join(' ')}`;
+        return `<li id="fn-${page}-${number}" data-footnote-label="${label}"><span>${escape(group.text)}</span> ${backs}</li>`;
+      })
       .join('')}</ol></section>`;
-    notes = [];
-    return html;
   };
   const prefix = autoToc?.position === 'top' ? insert(1) : '';
   return (
@@ -335,10 +403,12 @@ export function renderWithToc(
         ...options,
         nodeMapping: {
           ...options.nodeMapping,
-          footnote: ({ node }) => {
-            notes.push(String(node.attrs.text));
-            const number = notes.length;
-            return `<sup id="fn-ref-${page}-${number}"><a data-footnote-ref href="#fn-${page}-${number}" aria-label="Footnote ${number}">${number}</a></sup>`;
+          footnote: () => {
+            const { groups, references } = notes[page - 1]!;
+            const { number, order } = references[reference++]!;
+            const group = groups[number - 1]!;
+            const label = escape(group.label);
+            return `<sup id="${referenceId(page, number, group, order)}"><a data-footnote-ref data-footnote-label="${label}" href="#fn-${page}-${number}" aria-label="Footnote ${label}">${label}</a></sup>`;
           },
           heading: ({ node, children }) => {
             const heading = byPosition.get(positions[index++]);
@@ -358,6 +428,7 @@ export function renderWithToc(
           pageBreak: () => {
             const list = footnotes();
             page++;
+            reference = 0;
             return (
               list +
               PAGE_BREAK_HTML +

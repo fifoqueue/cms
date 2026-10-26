@@ -1,9 +1,14 @@
 import { contentExtensions } from '@cms/content';
-import type { JSONContent, Node } from '@tiptap/core';
+import type { FootnoteGroup } from '@cms/sdk/footnotes';
+import type { Node } from '@tiptap/core';
 import { closeHistory } from '@tiptap/pm/history';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
+import {
+  footnotePages,
+  footnoteSource,
+} from '#lib/admin/editor/footnote-notes.js';
 import { buttonVariants } from '#lib/components/ui/button/index.js';
 import '#lib/admin/editor/editor.css';
 
@@ -17,20 +22,23 @@ declare module '@tiptap/core' {
 }
 
 export interface FootnoteLabels {
-  number: (number: number) => string;
-  /** Accessible name of a footnote: its number and text. */
-  label: (number: number, text: string) => string;
+  /** A footnote by its label: its page-local number or its name. */
+  number: (label: string) => string;
+  /** Accessible name of a footnote: its label and (resolved) text. */
+  label: (label: string, text: string) => string;
   /** How to open the field: click, or select it with the arrow keys and press Enter. */
   open: string;
   placeholder: string;
   hint: string;
+  /** The `[* note]`, `[*name note]` and `[*name]` shortcuts, shown for a new footnote. */
+  syntax: string;
   remove: string;
   empty: string;
 }
 
 /** The `Textarea` component's look, for the field built outside Svelte. */
 const TEXTAREA_CLASS =
-  'border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 rounded-md border bg-background px-2.5 py-2 text-sm shadow-xs outline-none focus-visible:ring-3 field-sizing-content min-h-16 max-h-60 w-full resize-none placeholder:text-muted-foreground';
+  'border-input dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/50 rounded-md border bg-background px-2.5 py-2 text-base shadow-xs outline-none focus-visible:ring-3 field-sizing-content min-h-16 max-h-60 w-full resize-none placeholder:text-muted-foreground';
 
 const Footnote = contentExtensions.find(
   (extension) => extension.name === 'footnote',
@@ -39,91 +47,61 @@ const Footnote = contentExtensions.find(
 /** Meta naming the position of a footnote whose field opens with this transaction. */
 const OPEN = 'footnoteOpen';
 
-const numbering = new WeakMap<ProseMirrorNode, Map<number, number>>();
 /**
- * Footnote numbers by position, counted as the renderer does: in document order, starting
- * again after each top-level page break. Computed once per document for all footnotes.
- */
-const footnoteNumbers = (doc: ProseMirrorNode) => {
-  const cached = numbering.get(doc);
-  if (cached) return cached;
-  const numbers = new Map<number, number>();
-  let count = 0;
-  doc.descendants((node, pos, parent) => {
-    if (parent === doc && node.type.name === 'pageBreak') count = 0;
-    else if (node.type.name === 'footnote') numbers.set(pos, ++count);
-  });
-  numbering.set(doc, numbers);
-  return numbers;
-};
-
-/** Stored text the API accepts: trimmed, nonblank, at most 2000 characters ('' = remove). */
-const validText = (text: unknown) =>
-  typeof text === 'string' ? text.trim().slice(0, 2000) : '';
-
-/**
- * A transaction that trims footnote texts and removes blank footnotes, wherever they came
- * from (HTML mode, paste, loaded content), except those at `kept` (open fields, which store
- * or remove their own footnote). Null when every footnote is already valid.
+ * A transaction that trims footnote texts, drops names the API would refuse and removes blank
+ * numbered footnotes, wherever they came from (HTML mode, paste, loaded content), except those
+ * at `kept` (open fields, which store or remove their own footnote). Named references without
+ * text stay. Null when every footnote is already valid.
  */
 const repairFootnotes = (
   state: EditorState,
   kept: ReadonlySet<number>,
-  shortened?: (numbers: number[]) => void,
+  shortened?: (labels: string[]) => void,
 ) => {
-  const invalid: { pos: number; node: ProseMirrorNode }[] = [];
+  const invalid: {
+    pos: number;
+    node: ProseMirrorNode;
+    repaired: { name: unknown; text: string } | null;
+  }[] = [];
+  let anonymous: unknown;
   state.doc.descendants((node, pos) => {
+    if (node.type.name !== 'footnote' || kept.has(pos)) return;
+    const source = footnoteSource(node.attrs);
+    // The schema's default name marks a numbered note.
+    if (source && source.name === undefined)
+      anonymous ??= node.type.create().attrs.name;
+    const repaired = source && {
+      name: source.name ?? anonymous,
+      text: source.text,
+    };
     if (
-      node.type.name === 'footnote' &&
-      !kept.has(pos) &&
-      (!validText(node.attrs.text) ||
-        validText(node.attrs.text) !== node.attrs.text)
+      !repaired ||
+      repaired.text !== node.attrs.text ||
+      repaired.name !== node.attrs.name
     )
-      invalid.push({ pos, node });
+      invalid.push({ pos, node, repaired });
   });
   if (!invalid.length) return null;
   const tr = state.tr;
   const cut: number[] = [];
   // From the end, so earlier positions stay valid.
-  for (const { pos, node } of invalid.reverse()) {
-    const text = validText(node.attrs.text);
-    if (text) tr.setNodeMarkup(pos, undefined, { ...node.attrs, text });
+  for (const { pos, node, repaired } of invalid.reverse()) {
+    if (repaired)
+      tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...repaired });
     else tr.delete(pos, pos + node.nodeSize);
-    if (text && text !== String(node.attrs.text).trim()) cut.push(pos);
+    if (repaired && repaired.text !== String(node.attrs.text).trim())
+      cut.push(pos);
   }
-  // Numbered as they show once repaired.
+  // Labeled as they show once repaired.
   if (cut.length && shortened) {
-    const numbers = footnoteNumbers(tr.doc);
+    const { notes } = footnotePages(tr.doc);
     shortened(
       cut
         .reverse()
-        .map((pos) => numbers.get(tr.mapping.map(pos)) ?? 0)
-        .filter(Boolean),
+        .flatMap((pos) => notes.get(tr.mapping.map(pos))?.label ?? []),
     );
   }
   return tr;
-};
-
-/**
- * The document as it may be published (form value, autosave): footnote texts valid and blank
- * footnotes left out — including one whose field is still open, which the live editor keeps.
- * An open field's unsaved text is not part of it; the last stored text is.
- */
-export const publishedDocument = <T extends JSONContent>(document: T): T => {
-  const clean = (node: JSONContent): JSONContent | null => {
-    if (node.type === 'footnote') {
-      const text = validText(node.attrs?.text);
-      return text ? { ...node, attrs: { ...node.attrs, text } } : null;
-    }
-    if (!node.content) return node;
-    return {
-      ...node,
-      content: node.content
-        .map(clean)
-        .filter((child): child is JSONContent => child !== null),
-    };
-  };
-  return clean(document) as T;
 };
 
 let panels = 0;
@@ -134,24 +112,28 @@ interface FootnoteStorage {
 }
 
 /**
- * The shared `footnote` node shown with its live page-local number; hovering or selecting it
- * shows the text, and clicking it (or Enter while selected) opens a field to edit or delete
- * it. Enter or leaving the field stores the text, Escape cancels. An empty footnote is never
- * kept, and never enters the undo history: a new one is added outside it and stored on its
- * first text as a fresh insertion. Footnotes from any other source are kept valid too: their
- * text is trimmed and blank ones are removed, so the document always passes the API's check.
- * Only the display changes; schema and HTML stay shared.
+ * The shared `footnote` node shown with its live page-local label (number, or the name a
+ * `[*name …]` note defines); hovering or selecting it shows the note's text — for a named
+ * reference without text of its own, the text its name defines. Clicking it (or Enter while
+ * selected) opens a field to edit its own text or delete it. Enter or leaving the field stores
+ * the text, Escape cancels. An empty numbered footnote is never kept, and never enters the
+ * undo history: a new one is added outside it and stored on its first text as a fresh
+ * insertion; a named one may be emptied and stays a reference. Footnotes from any other source
+ * are kept valid too: their text is trimmed and blank numbered ones are removed, so the
+ * document always passes the API's check. Only the display changes; schema, shortcuts and HTML
+ * stay shared.
  */
 export const footnoteView = (
   labels: () => FootnoteLabels,
-  /** Footnotes (by number) whose text had to be cut to 2000 characters. */
-  shortened: (numbers: number[]) => void,
+  /** Footnotes (by label) whose text had to be cut to 2000 characters. */
+  shortened: (labels: string[]) => void,
 ) =>
   Footnote.extend<Record<string, never>, FootnoteStorage>({
     addStorage() {
       return { open: new Set() };
     },
-    onCreate() {
+    onCreate(event) {
+      this.parent?.(event);
       // Loaded content; outside the history, so undo cannot bring blank footnotes back.
       const tr = repairFootnotes(this.editor.state, new Set(), shortened);
       if (tr) this.editor.view.dispatch(tr.setMeta('addToHistory', false));
@@ -229,7 +211,8 @@ export const footnoteView = (
       return ({ node, editor, view, getPos }) => {
         let current: ProseMirrorNode = node;
         let editing = false;
-        let number = 0;
+        /** The note this footnote shows: its label and resolved text. */
+        let note: FootnoteGroup | undefined;
         const position = () => getPos();
         const dom = document.createElement('span');
         dom.className = 'cms-editor-footnote';
@@ -260,34 +243,44 @@ export const footnoteView = (
         field.maxLength = 2000;
         field.rows = 3;
         field.className = TEXTAREA_CLASS;
+        const syntax = document.createElement('span');
+        syntax.className = 'text-sm text-muted-foreground';
         const footer = document.createElement('span');
         footer.className = 'flex items-center justify-between gap-2';
         const hint = document.createElement('span');
-        hint.className = 'text-xs text-muted-foreground';
+        hint.className = 'text-sm text-muted-foreground';
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = buttonVariants({
           variant: 'destructive',
-          size: 'xs',
+          size: 'sm',
         });
         footer.append(hint, remove);
-        panel.append(heading, field, footer);
+        panel.append(heading, field, syntax, footer);
 
+        /** Its own stored text; a named reference may have none. */
         const text = () =>
           typeof current.attrs.text === 'string' ? current.attrs.text : '';
+        /** The name it defines or reuses; undefined for a numbered note. */
+        const name = () => footnoteSource(current.attrs)?.name;
+        const label = () => note?.label ?? '*';
+        const resolved = () => note?.text || text();
         const render = () => {
-          const { label, empty, open: how } = labels();
-          mark.textContent = number ? String(number) : '*';
-          mark.setAttribute('aria-label', label(number, text() || empty));
+          const { label: describe, empty, open: how } = labels();
+          mark.textContent = label();
+          mark.setAttribute(
+            'aria-label',
+            describe(label(), resolved() || empty),
+          );
           mark.setAttribute('aria-description', how);
-          tipText.textContent = text() || empty;
+          tipText.textContent = resolved() || empty;
           tipHint.textContent = how;
-          dom.toggleAttribute('data-empty', !text());
+          dom.toggleAttribute('data-empty', !resolved());
         };
         const renumber = () => {
           const pos = getPos();
           if (typeof pos !== 'number') return;
-          number = footnoteNumbers(view.state.doc).get(pos) ?? 0;
+          note = footnotePages(view.state.doc).notes.get(pos);
           render();
         };
         /** The field shows the stored text. */
@@ -309,12 +302,21 @@ export const footnoteView = (
           if (!editing) {
             editing = true;
             open.add(position);
-            const { number: title, placeholder, hint: help } = labels();
-            heading.textContent = title(number);
-            panel.setAttribute('aria-label', title(number));
+            const {
+              number: title,
+              placeholder,
+              hint: help,
+              syntax: shortcuts,
+            } = labels();
+            const named = name() !== undefined;
+            heading.textContent = title(label());
+            panel.setAttribute('aria-label', title(label()));
             mark.setAttribute('aria-expanded', 'true');
-            field.placeholder = placeholder;
-            field.setAttribute('aria-label', title(number));
+            // A reference without text of its own shows the note it reuses.
+            field.placeholder = (named && !text() && note?.text) || placeholder;
+            field.setAttribute('aria-label', title(label()));
+            syntax.textContent = shortcuts;
+            syntax.hidden = named || text() !== '';
             hint.textContent = help;
             remove.textContent = labels().remove;
             reset();
@@ -341,8 +343,9 @@ export const footnoteView = (
         };
         const removeAt = (pos: number, leaving: boolean) => {
           const tr = view.state.tr.delete(pos, pos + current.nodeSize);
-          // An empty note was never in the history, so removing it stays out of it too.
-          if (!text()) tr.setMeta('addToHistory', false);
+          // An empty new note was never in the history, so removing it stays out of it too.
+          if (!text() && name() === undefined)
+            tr.setMeta('addToHistory', false);
           else closeHistory(tr);
           finish(tr, leaving ? null : pos);
         };
@@ -353,12 +356,14 @@ export const footnoteView = (
           const pos = getPos();
           if (typeof pos !== 'number') return;
           const caret = leaving ? null : pos + current.nodeSize;
-          if (!value) return removeAt(pos, leaving);
+          const named = name() !== undefined;
+          // Emptied, a named note stays a reference to its name; a numbered one goes.
+          if (!value && !named) return removeAt(pos, leaving);
           if (value === stored) {
             if (caret !== null) finish(view.state.tr, caret);
             return;
           }
-          if (stored) {
+          if (stored || named) {
             finish(
               closeHistory(
                 view.state.tr.setNodeMarkup(pos, undefined, {

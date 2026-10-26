@@ -2204,22 +2204,28 @@ export const ko: Messages = {
   themeTocShow: '목차 보기',
   themeTocClose: '목차 닫기',
   themeFootnotes: '각주',
-  themeFootnoteRef: (number: number) => `각주 ${number}`,
-  themeFootnoteBack: (number: number) =>
-    `본문의 각주 ${number} 위치로 돌아가기`,
-  themeFootnoteJump: (number: number) => `각주 목록의 ${number}번으로 이동`,
+  themeFootnoteRef: (label: number | string) => `각주 ${label}`,
+  themeFootnoteBack: (label: number | string) =>
+    `본문의 각주 ${label} 위치로 돌아가기`,
+  themeFootnoteJump: (label: number | string) =>
+    `각주 목록의 ${label} 항목으로 이동`,
   contentMoreBreak: '— 더 보기 — (위 내용이 목록의 요약이 됩니다)',
   contentPageBreak: '— 페이지 나누기 —',
   editorFootnote: '각주',
-  footnoteNumber: (number: number) => `각주 ${number}`,
-  footnoteLabel: (number: number, text: string) => `각주 ${number}: ${text}`,
+  footnoteNumber: (label: number | string) => `각주 ${label}`,
+  footnoteLabel: (label: number | string, text: string) =>
+    `각주 ${label}: ${text}`,
   footnoteOpenHint: '클릭하거나, 방향키로 선택한 뒤 Enter를 눌러 편집',
-  footnoteShortened: (number: number) =>
-    `각주 ${number}의 내용이 2000자를 넘어 2000자로 줄였습니다.`,
+  footnoteShortened: (label: number | string) =>
+    `각주 ${label}의 내용이 2000자를 넘어 2000자로 줄였습니다.`,
   footnotePlaceholder: '각주 내용',
   footnoteHint: 'Enter 저장 · Shift+Enter 줄바꿈 · Esc 취소',
+  footnoteSyntax:
+    '본문에 [* 내용]을 입력하면 번호 각주, [*이름 내용]은 이름 붙은 각주가 되고 [*이름]으로 다시 참조합니다.',
   footnoteDelete: '삭제',
   footnoteEmpty: '빈 각주',
+  footnotePreview: '각주',
+  footnotePreviewPage: (page: number) => `${page}페이지`,
   contentSyncedPattern: (title: string) =>
     title ? `동기화 패턴: ${title}` : '동기화 패턴',
   patternsTitle: '패턴',

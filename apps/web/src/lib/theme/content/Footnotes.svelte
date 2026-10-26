@@ -9,6 +9,10 @@
    * its reference on hover (mouse), keyboard focus or tap. A tap opens the popover instead of
    * jumping; a second tap, or the popover's link, still jumps to the list. Without this, refs
    * and back-links are plain fragment links. `html` re-runs this when the entry changes.
+   *
+   * The renderer already grouped named notes: every ref and back-link carries its
+   * `data-footnote-label`, and refs of one name point at the same list item, whose direct child
+   * `span` holds the shared text. Nothing is regrouped or renumbered here.
    */
   let {
     container,
@@ -19,12 +23,15 @@
   type Open = {
     ref: HTMLAnchorElement;
     href: string;
-    number: number;
+    label: string;
     text: string;
     via: Via;
   };
 
   const REF = 'a[data-footnote-ref]';
+  const BACK = 'a[data-footnote-back]';
+  /** A short highlight on the element a footnote link landed on (footnotes.css). */
+  const FLASH = 'data-footnote-flash';
   /** Space between the ref and the popover, and the popover and the viewport edges. */
   const GAP = 6;
   const EDGE = 8;
@@ -43,11 +50,40 @@
   /** Set while focus returns to a ref programmatically, so that focus does not reopen it. */
   let quiet = false;
 
-  const numberOf = (href: string) => Number(/-(\d+)$/.exec(href)?.[1] ?? 0);
+  const labelOf = (link: HTMLElement) => link.dataset.footnoteLabel ?? '';
   const noteText = (href: string, root: HTMLElement) =>
     fragmentTarget(href, root)?.querySelector(':scope > span') ?? null;
 
   const cancel = () => clearTimeout(timer);
+
+  /** Restarts the highlight, so landing on the same note twice still shows it. */
+  const flash = (element: HTMLElement) => {
+    const view = element.ownerDocument.defaultView!;
+    if (!view.matchMedia('(prefers-reduced-motion: no-preference)').matches)
+      return;
+    element.removeAttribute(FLASH);
+    void element.offsetWidth;
+    element.setAttribute(FLASH, '');
+    element.addEventListener(
+      'animationend',
+      () => element.removeAttribute(FLASH),
+      { once: true },
+    );
+  };
+
+  /**
+   * Focus follows a footnote jump (the link scrolls natively; scroll-margin clears sticky
+   * headers). Landing on a reference focuses its link without reopening its popover.
+   */
+  const land = (target: HTMLElement) => {
+    const ref = target.querySelector<HTMLAnchorElement>(REF);
+    if (ref) {
+      quiet = true;
+      ref.focus({ preventScroll: true });
+      quiet = false;
+    } else focusHeading(target);
+    flash(ref ?? target);
+  };
 
   const hide = () => {
     cancel();
@@ -90,7 +126,7 @@
     }
     ref.setAttribute('aria-expanded', 'true');
     ref.setAttribute('aria-controls', popoverId);
-    active = { ref, href, number: numberOf(href), text, via };
+    active = { ref, href, label: labelOf(ref), text, via };
   };
 
   /**
@@ -154,7 +190,7 @@
 
     for (const ref of refs) {
       const href = ref.getAttribute('href') ?? '';
-      ref.setAttribute('aria-label', m.themeFootnoteRef(numberOf(href)));
+      ref.setAttribute('aria-label', m.themeFootnoteRef(labelOf(ref)));
       ref.setAttribute('aria-expanded', 'false');
       const text = noteText(href, element);
       const note = text?.parentElement;
@@ -169,13 +205,8 @@
       title.textContent = m.themeFootnotes;
       section.prepend(title);
       section.setAttribute('aria-labelledby', title.id);
-      for (const back of section.querySelectorAll<HTMLAnchorElement>(
-        'li > a[href^="#fn-ref-"]',
-      ))
-        back.setAttribute(
-          'aria-label',
-          m.themeFootnoteBack(numberOf(back.getAttribute('href') ?? '')),
-        );
+      for (const back of section.querySelectorAll<HTMLAnchorElement>(BACK))
+        back.setAttribute('aria-label', m.themeFootnoteBack(labelOf(back)));
       return title;
     });
 
@@ -242,9 +273,8 @@
         }
         hide();
       } else if (!link.closest('.cms-footnotes')) return;
-      // The link scrolls natively (scroll-margin clears sticky headers); focus follows it.
       const target = fragmentTarget(href, element);
-      if (target) focusHeading(target);
+      if (target) land(target);
     };
 
     element.addEventListener('pointerdown', pointerdown);
@@ -349,7 +379,7 @@
     )
       return;
     const target = fragmentTarget(href, root);
-    if (target) focusHeading(target);
+    if (target) land(target);
   };
 </script>
 
@@ -358,7 +388,7 @@
     bind:this={popover}
     id={popoverId}
     role="note"
-    aria-label={m.themeFootnoteRef(active.number)}
+    aria-label={m.themeFootnoteRef(active.label)}
     class="cms-footnote-popover"
     data-side={place.side}
     style:top="{place.top}px"
@@ -367,10 +397,14 @@
     onpointerleave={leave}
     onfocusout={focusout}
   >
-    <p>{active.text}</p>
+    <p>
+      <span class="cms-footnote-popover-label" aria-hidden="true"
+        >[{active.label}]</span
+      >
+      {active.text}
+    </p>
     <!-- eslint-disable svelte/no-navigation-without-resolve -- the page-local "#fn-…" fragment of the ref -->
-    <a href={active.href} onclick={jump}>{m.themeFootnoteJump(active.number)}</a
-    >
+    <a href={active.href} onclick={jump}>{m.themeFootnoteJump(active.label)}</a>
     <!-- eslint-enable svelte/no-navigation-without-resolve -->
   </div>
 {/if}

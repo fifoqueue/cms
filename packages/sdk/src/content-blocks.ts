@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { calloutAttributesSchema } from '#sdk/callout';
 import { codeBlockAttributesSchema } from '#sdk/code-block';
+import { FOOTNOTE_MAX_LENGTH, isFootnoteName } from '#sdk/footnotes';
 import { tocAttrsSchema } from '#sdk/toc';
 
 export const CONTENT_ALIGNMENTS = [
@@ -35,13 +36,18 @@ const cell = {
 
 /** Attribute allowlists for the shared editor schema. URL schemes are sanitized by its renderer. */
 export const contentAttributeSchemas = {
-  footnote: z.strictObject({
-    text: z
-      .string()
-      .min(1)
-      .max(2000)
-      .refine((value) => value.trim().length > 0),
-  }),
+  /** Anonymous notes need text; a named one may be blank to reuse its name's definition. */
+  footnote: z
+    .strictObject({
+      text: z.string().max(FOOTNOTE_MAX_LENGTH).optional(),
+      name: z
+        .string()
+        .refine((value) => value === '' || isFootnoteName(value))
+        .optional(),
+    })
+    .refine(({ text = '', name = '' }) =>
+      text === '' ? name !== '' : text.trim() !== '',
+    ),
   tableOfContents: tocAttrsSchema,
   image: z
     .strictObject({

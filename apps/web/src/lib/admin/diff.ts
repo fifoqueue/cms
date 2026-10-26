@@ -81,7 +81,7 @@ const inline = (node: Node): string =>
   typeof node.text === 'string'
     ? node.text
     : node.type === 'footnote'
-      ? `[* ${String(node.attrs?.text ?? '')}]`
+      ? `[*${String(node.attrs?.name ?? '')}${node.attrs?.text ? ` ${String(node.attrs.text)}` : ''}]`
       : node.type === 'hardBreak'
         ? ' '
         : Array.isArray(node.content)

@@ -12,10 +12,22 @@
   border-radius: calc(var(--radius) - 4px);
   background: none;
   color: var(--primary);
+  font-variant-numeric: tabular-nums;
   font-weight: 600;
+  max-inline-size: 100%;
   line-height: 1.2;
   text-align: center;
   text-decoration: none;
+  /* Long names (up to 2000 characters) wrap inside the column instead of overflowing it. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* `[label]`, matching the list's back-links and the popover; the label itself is plain text. */
+.cms-prose sup > a[data-footnote-ref]::before {
+  content: '[';
+}
+.cms-prose sup > a[data-footnote-ref]::after {
+  content: ']';
 }
 .cms-prose sup > a[data-footnote-ref]:hover,
 .cms-prose sup > a[data-footnote-ref][aria-expanded='true'] {
@@ -26,44 +38,72 @@
   border-top: 1px solid var(--border);
   padding-top: 0.75em;
   color: var(--muted-foreground);
-  font-size: 0.875em;
+  font-size: 0.95em;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
 }
 .cms-prose .cms-footnotes-title {
   margin: 0 0 0.5em;
   color: var(--muted-foreground);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   line-height: 1.5;
   text-transform: uppercase;
 }
+/* The rendered back-links (`[label]`, or the label and `2.1 2.2 …`) are the list's markers. */
 .cms-prose .cms-footnotes ol {
   margin: 0;
-  padding-inline-start: 1.5em;
-  list-style: decimal;
+  padding: 0;
+  list-style: none;
 }
 .cms-prose .cms-footnotes li {
-  margin-block: 0.375em;
-  padding-inline-start: 0.25em;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.375em;
+  margin-block: 0.25em;
+  padding: 0.125em 0.375em;
   border-radius: calc(var(--radius) - 2px);
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
-.cms-prose .cms-footnotes li::marker {
+/* The note's text follows its markers whatever their source order, and wraps under itself. */
+.cms-prose .cms-footnotes li > span:first-of-type {
+  flex: 1 1 16em;
+  order: 1;
+  min-width: 0;
   color: var(--muted-foreground);
+  font-variant-numeric: normal;
+  font-weight: 400;
+  white-space: pre-wrap;
 }
 .cms-prose .cms-footnotes li:target {
   background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.cms-prose .cms-footnotes li:target > span:first-of-type {
   color: var(--foreground);
 }
-.cms-prose .cms-footnotes li > a[href^='#fn-ref-'] {
-  padding-inline: 0.25em;
+.cms-prose .cms-footnotes a[data-footnote-back] {
+  display: inline-block;
+  min-width: 1.5em;
+  max-inline-size: 100%;
+  padding: 0.0625em 0.25em;
+  border-radius: calc(var(--radius) - 4px);
   background: none;
-  color: var(--muted-foreground);
-  font-family: system-ui, sans-serif;
-  font-variant-emoji: text;
+  color: var(--primary);
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
   text-decoration: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
-.cms-prose .cms-footnotes li > a[href^='#fn-ref-']:hover {
-  color: var(--foreground);
+.cms-prose .cms-footnotes a[data-footnote-back]:hover {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .cms-prose :is(a[data-footnote-ref], .cms-footnotes a):focus-visible,
 .cms-prose :is(sup[id^='fn-ref-'], .cms-footnotes li):focus-visible {
@@ -83,32 +123,38 @@
   z-index: 50;
   box-sizing: border-box;
   width: max-content;
-  max-width: min(22rem, calc(100vw - 1rem));
+  max-width: min(26rem, calc(100vw - 1rem));
   /* `--cms-footnote-room` (Footnotes.svelte): the space on the chosen side of the ref. */
-  max-height: min(18rem, 50dvh, var(--cms-footnote-room, 100dvh));
+  max-height: min(20rem, 60dvh, var(--cms-footnote-room, 100dvh));
   overflow-y: auto;
   overscroll-behavior: contain;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.625rem 0.875rem;
+  padding: 0.75rem 1rem;
   background: var(--card);
   color: var(--card-foreground);
   box-shadow:
     0 10px 15px -3px rgb(0 0 0 / 0.1),
     0 4px 6px -4px rgb(0 0 0 / 0.1);
-  font-size: 0.875rem;
-  line-height: 1.5;
+  font-size: 1rem;
+  line-height: 1.6;
   overflow-wrap: anywhere;
 }
 .cms-footnote-popover p {
   margin: 0;
+  white-space: pre-wrap;
+}
+.cms-footnote-popover-label {
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 .cms-footnote-popover a {
   display: inline-block;
-  margin-top: 0.375rem;
+  margin-top: 0.5rem;
   border-radius: calc(var(--radius) - 4px);
   color: var(--muted-foreground);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -132,6 +178,15 @@
 }
 .cms-footnote-popover[data-side='below'] {
   --cms-footnote-shift: -4px;
+}
+/* Where a footnote link landed (Footnotes.svelte sets it only without reduced motion). */
+.cms-prose [data-footnote-flash] {
+  animation: cms-footnote-flash 1.2s ease-out;
+}
+@keyframes cms-footnote-flash {
+  from {
+    background-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  }
 }
 @media print {
   .cms-footnote-popover {
