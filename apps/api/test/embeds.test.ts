@@ -42,7 +42,7 @@ describe('default embed presets', () => {
   test('YouTube keeps a 16:9 player with the media permissions', async () => {
     const html = await expand('https://youtu.be/aqz-KE-bpKQ');
     expect(html).toBe(
-      '<figure class="embed"><iframe src="https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ" title="YouTube video" loading="lazy" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="aspect-ratio: 16 / 9; width: 100%; border: 0"></iframe></figure>',
+      '<figure class="embed"><iframe src="https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ" title="YouTube video" loading="lazy" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="aspect-ratio: 16 / 9; width: 100%; display: block; margin-inline: auto; border: 0"></iframe></figure>',
     );
   });
 
@@ -71,14 +71,14 @@ describe('default embed presets', () => {
     expect(await srcOf('https://x.com/jack/status/abc')).toBeNull();
   });
 
-  test('X and Instagram start at a fixed height the page script can resize', async () => {
+  test('X and Instagram start at a fixed height the page script can resize, capped at their natural width', async () => {
     expect(await expand('https://x.com/jack/status/20')).toBe(
-      '<figure class="embed"><iframe src="https://platform.twitter.com/embed/Tweet.html?id=20&amp;dnt=true" title="X post" loading="lazy" data-embed-height-path="/twttr.embed/params/0/height" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="height: 600px; width: 100%; border: 0"></iframe></figure>',
+      '<figure class="embed"><iframe src="https://platform.twitter.com/embed/Tweet.html?id=20&amp;dnt=true" title="X post" loading="lazy" data-embed-height-path="/twttr.embed/params/0/height" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="height: 600px; width: 100%; max-width: 550px; display: block; margin-inline: auto; border: 0"></iframe></figure>',
     );
     const instagram = await expand('https://www.instagram.com/p/C1a2b3/');
     expect(instagram).toContain('data-embed-height-path="/details/height"');
     expect(instagram).toContain(
-      'style="height: 700px; width: 100%; border: 0"',
+      'style="height: 700px; width: 100%; max-width: 540px; display: block; margin-inline: auto; border: 0"',
     );
   });
 

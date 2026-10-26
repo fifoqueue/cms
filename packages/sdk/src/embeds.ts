@@ -68,6 +68,11 @@ export const embedProviderSchema = z
           .max(500)
           .regex(/^(?:\/(?:[^~/]|~[01])*)*$/)
           .optional(),
+        /**
+         * The provider's natural width in px; the frame narrows with its container below it.
+         * `null` is no limit; absent only in settings saved before this field existed.
+         */
+        maxWidth: z.number().int().min(1).max(4096).nullable().optional(),
       }),
     ]),
   })
@@ -149,6 +154,7 @@ export const DEFAULT_EMBED_PROVIDERS: EmbedProviderSettings[] = [
       kind: 'height',
       height: 600,
       heightMessagePath: '/twttr.embed/params/0/height',
+      maxWidth: 550,
     },
   },
   {
@@ -164,6 +170,7 @@ export const DEFAULT_EMBED_PROVIDERS: EmbedProviderSettings[] = [
       kind: 'height',
       height: 700,
       heightMessagePath: '/details/height',
+      maxWidth: 540,
     },
   },
 ];

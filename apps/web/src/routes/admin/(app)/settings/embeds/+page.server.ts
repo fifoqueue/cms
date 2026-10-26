@@ -24,6 +24,7 @@ export const load: PageServerLoad = async (event) => {
                   kind: sizing.kind,
                   height: sizing.height,
                   heightMessagePath: sizing.heightMessagePath,
+                  maxWidth: sizing.maxWidth,
                 },
         }),
       ),

@@ -2,7 +2,7 @@
 
 ## 임베드 제공자
 
-- `GET /api/v1/admin/embeds`, `PUT /api/v1/admin/embeds`: `settings.manage` 권한이 필요합니다. `{ providers: [{ id, label, enabled, urlPattern, src, title, allow, sizing }] }`를 조회·저장합니다. `sizing`은 `{ kind: 'ratio', ratio }` 또는 `{ kind: 'height', height, heightMessagePath? }`입니다.
+- `GET /api/v1/admin/embeds`, `PUT /api/v1/admin/embeds`: `settings.manage` 권한이 필요합니다. `{ providers: [{ id, label, enabled, urlPattern, src, title, allow, sizing }] }`를 조회·저장합니다. `sizing`은 `{ kind: 'ratio', ratio }` 또는 `{ kind: 'height', height, heightMessagePath?, maxWidth? }`입니다. `maxWidth`(px)는 게시물 카드의 본래 너비로, 프레임은 가운데 정렬되고 그보다 좁은 본문에서만 줄어듭니다. `null`은 너비 제한 없음이며, 저장할 때 비운 값은 `null`로 저장됩니다. 이 값이 생기기 전에 저장된 기본 제공자(같은 `id`·`src`)는 기본 너비를 이어받습니다.
 - `GET /api/v1/embeds/providers`: 활성 제공자의 `[{ id, label, urlPattern }]`만 공개하며 iframe 템플릿은 노출하지 않습니다.
 - 웹 `GET /admin/content/embed-providers`: 로그인한 편집자(`content.create`)에게 같은 공개 목록을 JSON으로 반환합니다.
 - SDK: `admin.embeds.get()`, `admin.embeds.update(input)`, `content.embedProviders()`.

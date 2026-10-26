@@ -476,6 +476,7 @@ export const ko: Messages = {
   embedsRatio: '화면 비율',
   embedsHeight: '높이 (px)',
   embedsHeightPath: '높이 메시지 JSON Pointer (선택)',
+  embedsMaxWidth: '최대 너비 (px, 선택)',
   embedsRestore: '기본값 복원',
   embedsAdd: '제공자 추가',
   embedsUp: '위로 이동',

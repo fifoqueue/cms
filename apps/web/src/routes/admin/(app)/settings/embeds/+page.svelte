@@ -237,6 +237,21 @@
                 {problem(index, 'sizing.height')}
               </p>{/if}
           </div>
+          <div class="grid gap-2">
+            <Label for={`width-${index}`}>{m.embedsMaxWidth}</Label>
+            <Input
+              id={`width-${index}`}
+              type="number"
+              min="1"
+              max="4096"
+              bind:value={provider.sizing.maxWidth}
+            />
+            {#if problem(index, 'sizing.maxWidth')}<p
+                class="text-xs text-destructive"
+              >
+                {problem(index, 'sizing.maxWidth')}
+              </p>{/if}
+          </div>
           <div class="grid gap-2 sm:col-span-2">
             <Label for={`path-${index}`}>{m.embedsHeightPath}</Label>
             <Input

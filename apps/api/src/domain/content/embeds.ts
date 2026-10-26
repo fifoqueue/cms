@@ -53,6 +53,8 @@ export type EmbedPreset = {
        * the iframe from it.
        */
       heightMessagePath?: string;
+      /** The page's natural width in px; the frame fills narrower containers. `null` is no limit. */
+      maxWidth?: number | null;
     }
 );
 
@@ -67,9 +69,10 @@ const frame = (src: string, preset: EmbedPreset) => {
       : '';
   const size =
     'ratio' in preset
-      ? `aspect-ratio: ${preset.ratio}`
-      : `height: ${preset.height}px`;
-  return `<figure class="embed"><iframe src="${escapeAttribute(src)}" title="${escapeAttribute(preset.title)}" loading="lazy"${allow}${heightPath} allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="${escapeAttribute(`${size}; width: 100%; border: 0`)}"></iframe></figure>`;
+      ? `aspect-ratio: ${preset.ratio}; width: 100%`
+      : `height: ${preset.height}px; width: 100%${typeof preset.maxWidth === 'number' ? `; max-width: ${preset.maxWidth}px` : ''}`;
+  // Centred: a capped frame sits in the middle of the column; a full-width one is unaffected.
+  return `<figure class="embed"><iframe src="${escapeAttribute(src)}" title="${escapeAttribute(preset.title)}" loading="lazy"${allow}${heightPath} allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="${escapeAttribute(`${size}; display: block; margin-inline: auto; border: 0`)}"></iframe></figure>`;
 };
 
 /** A value inserted as captured stays inside one path segment or query value. */
@@ -146,6 +149,7 @@ export const DEFAULT_EMBED_PRESETS: readonly EmbedPreset[] = [
     title: 'X post',
     height: 600,
     heightMessagePath: '/twttr.embed/params/0/height',
+    maxWidth: 550,
   },
   {
     id: 'instagram',
@@ -155,6 +159,7 @@ export const DEFAULT_EMBED_PRESETS: readonly EmbedPreset[] = [
     title: 'Instagram post',
     height: 700,
     heightMessagePath: '/details/height',
+    maxWidth: 540,
   },
 ];
 

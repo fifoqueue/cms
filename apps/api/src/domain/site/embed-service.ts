@@ -1,5 +1,13 @@
-import { embedSettingsSchema, publicEmbedProviderSchema } from '@cms/sdk';
-import type { EmbedSettings, PublicEmbedProvider } from '@cms/sdk';
+import {
+  DEFAULT_EMBED_PROVIDERS,
+  embedSettingsSchema,
+  publicEmbedProviderSchema,
+} from '@cms/sdk';
+import type {
+  EmbedProviderSettings,
+  EmbedSettings,
+  PublicEmbedProvider,
+} from '@cms/sdk';
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import type { HookDispatcher } from '#api/domain/ports';
 import { parseInput } from '#api/shared/validation';
@@ -7,6 +15,34 @@ import { presetProvider } from '#api/domain/content/embeds';
 import type { EmbedProvider } from '#api/domain/content/embeds';
 
 const KEY = 'embeds';
+
+/** A cleared width is stored as `null` (no limit), so only settings older than the field lack it. */
+const withExplicitWidth = (
+  provider: EmbedProviderSettings,
+): EmbedProviderSettings =>
+  provider.sizing.kind === 'height' && provider.sizing.maxWidth === undefined
+    ? { ...provider, sizing: { ...provider.sizing, maxWidth: null } }
+    : provider;
+
+/** A core provider saved before `maxWidth` existed keeps its page's natural width. */
+const withNaturalWidth = (
+  provider: EmbedProviderSettings,
+): EmbedProviderSettings => {
+  const core = DEFAULT_EMBED_PROVIDERS.find(
+    ({ id, src }) => id === provider.id && src === provider.src,
+  );
+  if (
+    provider.sizing.kind !== 'height' ||
+    provider.sizing.maxWidth !== undefined ||
+    core?.sizing.kind !== 'height' ||
+    core.sizing.maxWidth === undefined
+  )
+    return provider;
+  return {
+    ...provider,
+    sizing: { ...provider.sizing, maxWidth: core.sizing.maxWidth },
+  };
+};
 
 export class EmbedService {
   constructor(
@@ -16,7 +52,9 @@ export class EmbedService {
 
   async get(): Promise<EmbedSettings> {
     const result = embedSettingsSchema.safeParse(await this.settings.get(KEY));
-    return result.success ? result.data : embedSettingsSchema.parse({});
+    return result.success
+      ? { providers: result.data.providers.map(withNaturalWidth) }
+      : embedSettingsSchema.parse({});
   }
 
   async providers(): Promise<readonly EmbedProvider[]> {
@@ -40,7 +78,11 @@ export class EmbedService {
   }
 
   async update(input: unknown): Promise<EmbedSettings> {
-    const settings = parseInput(embedSettingsSchema, input);
+    const settings = {
+      providers: parseInput(embedSettingsSchema, input).providers.map(
+        withExplicitWidth,
+      ),
+    };
     await this.settings.set(KEY, settings);
     void this.hooks?.emit('settings.updated', { section: KEY, settings });
     return settings;

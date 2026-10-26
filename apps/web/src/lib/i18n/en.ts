@@ -475,6 +475,7 @@ export const en = {
   embedsRatio: 'Aspect ratio',
   embedsHeight: 'Height (px)',
   embedsHeightPath: 'Height message JSON Pointer (optional)',
+  embedsMaxWidth: 'Maximum width (px, optional)',
   embedsRestore: 'Restore defaults',
   embedsAdd: 'Add provider',
   embedsUp: 'Move up',
