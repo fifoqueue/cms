@@ -1,3 +1,4 @@
+import type { PublicCache } from '#api/domain/site/public-cache';
 import type { Awaitable } from '@cms/sdk';
 import type {
   ActionHandler,
@@ -40,6 +41,7 @@ const snapshot = (
 };
 
 export interface HookBusOptions {
+  publicCache?: Pick<PublicCache, 'invalidate'>;
   timeoutMs: number;
   logger: Logger;
 }
@@ -90,7 +92,10 @@ export class HookBus implements HookDispatcher {
     name: K,
     payload: ActionHookMap[K],
   ): Promise<void> {
-    const dispatched = this.dispatch(name, payload);
+    this.options.publicCache?.invalidate();
+    const dispatched = this.dispatch(name, payload).finally(() =>
+      this.options.publicCache?.invalidate(),
+    );
     dispatched.catch(() => {});
     return dispatched;
   }

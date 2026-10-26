@@ -1,3 +1,4 @@
+import type { PublicCache } from '#api/domain/site/public-cache';
 import type { PrivacyService } from '#api/domain/privacy/privacy-service';
 import type { SeoFilterGateway } from '#api/http/seo-filter-gateway';
 import type { ArchivePathsService } from '#api/domain/permalinks/archive-paths';
@@ -63,6 +64,7 @@ import type { ClientResolver } from '#api/http/client-identity';
  * so route files under `routes/api` read them from the handler context (`({ site }) => ...`).
  */
 export type ApiServices = {
+  publicCache?: PublicCache;
   privacy: PrivacyService;
   auth: AuthService;
   recovery: RecoveryService;

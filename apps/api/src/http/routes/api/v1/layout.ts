@@ -17,25 +17,38 @@ export const routes = (app: ApiApp) =>
       widgets,
       archivePaths,
       query,
+      publicCache,
     }) => {
-      const [siteData, seoData, theme, readingData, menuData, widgetData] =
-        await Promise.all([
+      const load = async () => {
+        const [siteData, seoData, theme, readingData] = await Promise.all([
           site.getPublic(),
-          seo.getPublic(),
-          themePreviews
-            .resolve(query.preview)
-            .then((preview) => preview ?? themes.getPublic()),
+          seo.getCore(),
+          themes.getCore(),
           reading.getPublic(),
-          menus.publicLocations(),
-          widgets.getPublic(),
         ]);
+        return {
+          archives: await archivePaths.get(),
+          privacy: await privacy.publicSettings(),
+          site: siteData,
+          seo: seoData,
+          theme,
+          reading: readingData,
+        };
+      };
+      const cache = query.preview === undefined ? publicCache : undefined;
+      const data = !cache ? await load() : await cache.get('layout', load);
+      const [seoData, menuData, widgetData, theme] = await Promise.all([
+        seo.present(data.seo),
+        menus.publicLocations(),
+        widgets.getPublic(cache),
+        themePreviews
+          .resolve(query.preview)
+          .then((preview) => preview ?? themes.present(data.theme)),
+      ]);
       return json({
-        archives: await archivePaths.get(),
-        privacy: await privacy.publicSettings(),
-        site: siteData,
-        seo: seoData,
+        ...data,
         theme,
-        reading: readingData,
+        seo: seoData,
         menus: menuData,
         widgets: widgetData,
       });

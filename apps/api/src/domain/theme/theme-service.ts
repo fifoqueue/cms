@@ -227,19 +227,27 @@ export class ThemeService {
 
   /** The active theme; the default built-in when nothing (valid) is configured. */
   async getPublic(): Promise<PublicTheme> {
+    return this.present(await this.getCore());
+  }
+
+  async getCore() {
     const [state, fonts] = await Promise.all([
       this.state.load(),
       this.siteFonts.load(),
     ]);
 
-    return this.contributed(
-      toPublic(
+    return {
+      theme: toPublic(
         this.require(state, state.active),
         state.customizations[state.active],
         fonts,
       ),
-      state.customizations[state.active],
-    );
+      custom: state.customizations[state.active],
+    };
+  }
+
+  present(core: Awaited<ReturnType<ThemeService['getCore']>>) {
+    return this.contributed(core.theme, core.custom);
   }
 
   /** Any installed or built-in theme by id, as the public site would show it. */

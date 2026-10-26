@@ -1,3 +1,5 @@
+import { invalidatingStore } from '#api/infra/invalidating-store';
+import { MemoryPublicCache } from '#api/infra/public-cache';
 import { ArchivePathsService } from '#api/domain/permalinks/archive-paths';
 import { VisibleContentRepository } from '#api/domain/content/visible-content';
 import { PermalinkTokenRegistry } from '#api/domain/permalinks/token-registry';
@@ -320,7 +322,8 @@ export const createContainer = async (
   const timeoutMs = config.PLUGIN_TIMEOUT_MS;
   const db = createDatabase(config.DATABASE_URL);
 
-  const hooks = new HookBus({ timeoutMs, logger });
+  const publicCache = new MemoryPublicCache();
+  const hooks = new HookBus({ timeoutMs, logger, publicCache });
   const healthChecks = new HealthChecks(timeoutMs);
   const slotRegistry = new SlotRegistry({ timeoutMs, logger });
   const widgetRegistry = new WidgetRegistry({ timeoutMs, logger });
@@ -339,8 +342,13 @@ export const createContainer = async (
   ]);
 
   const permalinkTokens = new PermalinkTokenRegistry(config.PLUGIN_TIMEOUT_MS);
-  const contentRepository = new PrismaContentRepository(db, permalinkTokens);
-  const settingsRepository = new PrismaSettingsRepository(db);
+  const wrap = <T extends object>(store: T, writes: readonly (keyof T)[]) =>
+    invalidatingStore(store, writes, publicCache);
+  const contentRepository = wrap(
+    new PrismaContentRepository(db, permalinkTokens),
+    ['insert', 'update', 'delete', 'setTrashed', 'publishDue'],
+  );
+  const settingsRepository = wrap(new PrismaSettingsRepository(db), ['set']);
   const embedSettings = new EmbedService(settingsRepository, hooks);
   const blockRegistry = new BlockRegistry({ timeoutMs, logger });
   const patternContributions = new ProviderRegistry<null, PatternContributions>(
@@ -351,17 +359,20 @@ export const createContainer = async (
     contributions: patternContributions,
     hooks,
     settings: settingsRepository,
-    transactions: new PrismaSettingsTransactions(db),
+    transactions: wrap(new PrismaSettingsTransactions(db), ['run']),
     catalog: new PrismaPatternCatalog(db),
     renderer: tiptapRenderer,
     ids: uuidV7,
     clock: systemClock,
     blocks: blockRegistry,
   });
-  const taxonomyRepository = new PrismaTaxonomyRepository(
-    db,
-    () => void scheduler.runNow('core:permalink-regeneration'),
-    permalinkTokens,
+  const taxonomyRepository = wrap(
+    new PrismaTaxonomyRepository(
+      db,
+      () => void scheduler.runNow('core:permalink-regeneration'),
+      permalinkTokens,
+    ),
+    ['insert', 'update', 'delete'],
   );
   const taxonomyRegistry = new DefinitionRegistry(
     taxonomyDefinitionSchema,
@@ -382,7 +393,11 @@ export const createContainer = async (
     clock: systemClock,
   });
   const rawPublishedRepository = new PrismaPublishedContentRepository(db);
-  const mediaRepository = new PrismaMediaRepository(db);
+  const mediaRepository = wrap(new PrismaMediaRepository(db), [
+    'insert',
+    'update',
+    'delete',
+  ]);
   const contentTypeRegistry = new ContentTypeRegistry(BUILTIN_TYPES);
   const contentTypes = new ContentTypeService(
     settingsRepository,
@@ -476,11 +491,14 @@ export const createContainer = async (
       verify: (input) => coreCaptcha.verify(input),
     });
   const privacyErasers = new EraserRegistry({ timeoutMs, logger });
-  const privacyRepository = new PrismaPrivacyRepository(
-    db,
-    secrets,
-    () => void scheduler.runNow('core:permalink-regeneration'),
-    permalinkTokens,
+  const privacyRepository = wrap(
+    new PrismaPrivacyRepository(
+      db,
+      secrets,
+      () => void scheduler.runNow('core:permalink-regeneration'),
+      permalinkTokens,
+    ),
+    ['erase'],
   );
   privacyErasers.registerCore('personal-data', {
     erase: async (request) => {
@@ -529,12 +547,13 @@ export const createContainer = async (
     searchLookup,
     (id) => permalinkRepository.pathsFor(id),
   );
-  const permalinkRepository = new PrismaPermalinkRepository(
-    db,
-    permalinkTokens,
-    logger,
+  const permalinkRepository = wrap(
+    new PrismaPermalinkRepository(db, permalinkTokens, logger),
+    ['addRedirect', 'saveSettings', 'resume'],
   );
-  const archivePaths = new ArchivePathsService(new PrismaArchivePaths(db));
+  const archivePaths = new ArchivePathsService(
+    wrap(new PrismaArchivePaths(db), ['save']),
+  );
   const permalinks = new PermalinkService(permalinkRepository, hooks);
   const permalinkResolver = new PermalinkResolver(
     permalinkRepository,
@@ -544,7 +563,7 @@ export const createContainer = async (
     settingsRepository,
     hooks,
     (ids) => mediaRepository.publicImages(ids),
-    new PrismaSiteSettingsWriter(db),
+    wrap(new PrismaSiteSettingsWriter(db), ['save']),
   );
   const reading = new ReadingService(
     settingsRepository,
@@ -706,11 +725,14 @@ export const createContainer = async (
   });
   const roleDefaults = new RoleRegistry();
   const profileFields = new ProfileFields();
-  const directory = new PrismaUserDirectory(
-    db,
-    (key) => roleDefaults.has(key),
-    () => void scheduler.runNow('core:permalink-regeneration'),
-    permalinkTokens,
+  const directory = wrap(
+    new PrismaUserDirectory(
+      db,
+      (key) => roleDefaults.has(key),
+      () => void scheduler.runNow('core:permalink-regeneration'),
+      permalinkTokens,
+    ),
+    ['insert', 'update', 'updateProfile', 'delete'],
   );
   const capabilities = new CapabilityRegistry();
   const roles = new RoleService(
@@ -781,7 +803,7 @@ export const createContainer = async (
   const mediaStorageSettings = new StorageSettings({
     drivers: storageDrivers,
     settings: settingsRepository,
-    transactions: new PrismaSettingsTransactions(db),
+    transactions: wrap(new PrismaSettingsTransactions(db), ['run']),
     secrets,
     test: async ({ driver, s3, pluginSettings }) => {
       if (driver === 's3' && s3)
@@ -814,16 +836,19 @@ export const createContainer = async (
     if (!s3) throw new Error(Errors.MediaStorageSecret);
     return new S3MediaStorage(s3, egressFetch('media-storage'));
   };
-  const reconciler = new MediaReconciler(
-    db,
-    mediaStorageSettings,
-    config.MEDIA_DIR,
-    egressFetch('media-storage'),
+  const reconciler = wrap(
+    new MediaReconciler(
+      db,
+      mediaStorageSettings,
+      config.MEDIA_DIR,
+      egressFetch('media-storage'),
+    ),
+    ['run'],
   );
   const mediaCleanup = new MediaCleanup({
     catalog: new PrismaCleanupCatalog(db),
     settings: settingsRepository,
-    transactions: new PrismaSettingsTransactions(db),
+    transactions: wrap(new PrismaSettingsTransactions(db), ['run']),
     queue: jobQueue,
     logger,
     storage: async (driver) => {
@@ -843,7 +868,7 @@ export const createContainer = async (
   storageDrivers.onRegistered = (driver) => mediaCleanup.recover(driver);
   const storageResync = new StorageResync({
     settings: settingsRepository,
-    transactions: new PrismaSettingsTransactions(db),
+    transactions: wrap(new PrismaSettingsTransactions(db), ['run']),
     queue: jobQueue,
     leases: taskLeases,
     clock: systemClock,
@@ -984,7 +1009,13 @@ export const createContainer = async (
     },
   });
 
-  const commentRepository = new PrismaCommentRepository(db);
+  const commentRepository = wrap(new PrismaCommentRepository(db), [
+    'insert',
+    'update',
+    'setStatus',
+    'delete',
+    'purge',
+  ]);
   const commentCheckers = new CommentCheckers(timeoutMs);
   const commentSite = async () => {
     const [{ siteUrl }, settings, publicSite] = await Promise.all([
@@ -1000,7 +1031,7 @@ export const createContainer = async (
     subscriptions: new PrismaPushSubscriptionRepository(db),
     outbox: new PrismaNoticeOutbox(db, uuidV7),
     keys: new VapidKeys({
-      transactions: new PrismaSettingsTransactions(db),
+      transactions: wrap(new PrismaSettingsTransactions(db), ['run']),
       secrets,
       generate: generateVapidKeys,
     }),
@@ -1148,7 +1179,7 @@ export const createContainer = async (
   const authentication = new SignInRegistry({ timeoutMs, logger });
   const signInSettings = new SignInSettingsService({
     settings: settingsRepository,
-    transactions: new PrismaSettingsTransactions(db),
+    transactions: wrap(new PrismaSettingsTransactions(db), ['run']),
     registry: authentication,
     passwordForced: config.CMS_ALLOW_PASSWORD_LOGIN,
     logger,
@@ -1228,6 +1259,7 @@ export const createContainer = async (
   });
   const pluginSettings = new PluginSettings(pluginData);
   const plugins = new PluginHost({
+    publicCache,
     hooks,
     state: new PrismaPluginStateRepository(db),
     packages: new FsPluginPackageStore(config.PLUGINS_DIR),
@@ -1362,6 +1394,7 @@ export const createContainer = async (
   const app = await createApiApp({
     logger,
     services: {
+      publicCache,
       privacy,
       auth,
       recovery,

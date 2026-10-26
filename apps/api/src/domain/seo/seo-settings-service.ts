@@ -38,7 +38,14 @@ export class SeoSettingsService {
   ) {}
 
   async getPublic(): Promise<PublicSeoSettings> {
-    const dto = toPublicSettings(await this.getAdmin());
+    return this.present(await this.getCore());
+  }
+
+  async getCore(): Promise<PublicSeoSettings> {
+    return toPublicSettings(await this.getAdmin());
+  }
+
+  async present(dto: PublicSeoSettings): Promise<PublicSeoSettings> {
     const filtered = await this.hooks?.applyFilter(
       'seo.public',
       dto,

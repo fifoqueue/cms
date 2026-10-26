@@ -72,6 +72,35 @@
 - 콘텐츠 쓰기(저장·휴지통·예약 발행·삭제)는 같은 트랜잭션에서 `search_outbox`에 기록합니다. 분류 수정/삭제와 작성자 콘텐츠 일괄 삭제는 `content_id = NULL`(전체 재색인)을 기록합니다. 트리거는 쓰지 않습니다(바이너리 로그가 켜진 MariaDB에서 권한 문제가 생깁니다).
 - 플러그인을 위한 테이블/컬럼 추가 금지. 플러그인 데이터는 `plugin_data`(settings/kv)만 씁니다.
 
+## Public read cache
+
+`MemoryPublicCache` implements the domain `PublicCache` port, wired only in
+`container.ts`. Core layout, site and reading data are cached in-process for
+30 seconds. Layout preview queries bypass the cache entirely. No sessions,
+permissions or personalised responses are cached. Snapshots are copied for each
+reader, failed fills are evicted, and invalidated in-flight fills cannot repopulate
+the cache.
+
+Persistence decorators wired in `container.ts` invalidate before write promises
+settle, including failures after partial commits. They cover settings writes and
+settings transactions, site/archive/permalink saves, content writes and scheduled
+publishing, taxonomy, media (including reconciliation), comments, user deletion/profile changes and privacy
+erasure. Themes, templates, menus and widgets use the settings store. HTTP
+method/status plays no role: read-only POSTs and unmatched requests do not evict.
+Every dispatched domain action also invalidates before and after
+dispatch, covering background publishing and plugin actions. Direct database
+changes, silent plugin state changes and writes in other API processes are bounded
+by the 30-second TTL; this is not a distributed cache. Time-dependent visibility
+also refreshes within that TTL even without a publishing event.
+
+SEO filters, theme contributions and plugin widget providers run on every request. Stored widget
+settings and core widgets (recent posts, terms, archives and comments included)
+are cached; menu widgets and menus remain uncached because their recursive
+resolution interleaves plugin providers and filters. No plugin output is cached.
+Plugin activation and registration disposal invalidate too, including reconciliation
+with changes in another process. A generation counter rejects fills invalidated
+while loading, including synchronous invalidation.
+
 ## 테스트
 
 - 도메인·플러그인 런타임은 `apps/api/test/support`의 인메모리 어댑터와 `createRuntime()`으로 DB 없이 테스트합니다. 새 포트를 만들면 인메모리 구현도 같은 계약으로 추가합니다.

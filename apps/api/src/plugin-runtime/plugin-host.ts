@@ -1,3 +1,4 @@
+import type { PublicCache } from '#api/domain/site/public-cache';
 import { pluginUpdateManifestSchema } from '@cms/sdk';
 import { serialQueue } from '#api/shared/serial-queue';
 import type { HookDispatcher } from '#api/domain/ports';
@@ -35,6 +36,7 @@ import type {
 } from '#api/plugin-runtime/ports';
 
 export interface PluginHostDeps {
+  publicCache?: Pick<PublicCache, 'invalidate'>;
   hooks?: HookDispatcher;
   state: PluginStateRepository;
   packages: PluginPackageStore;
@@ -391,10 +393,12 @@ export class PluginHost {
     );
     if (!result.ok) {
       scope.dispose();
+      this.deps.publicCache?.invalidate();
       this.fail(installed, result.error);
       return;
     }
     Object.assign(installed, { scope, status: 'active', error: null });
+    this.deps.publicCache?.invalidate();
     this.deps.logger.info(`Activated plugin "${installed.id}"`);
   }
 
@@ -407,6 +411,7 @@ export class PluginHost {
     // Release registrations first, so nothing of the plugin runs while it shuts down.
     installed.scope = null;
     scope.dispose();
+    this.deps.publicCache?.invalidate();
     Object.assign(installed, { status: 'inactive', error: null });
     if (plugin?.definition.deactivate) {
       const deactivate = plugin.definition.deactivate.bind(plugin.definition);

@@ -1,3 +1,4 @@
+import type { PublicCache } from '#api/domain/site/public-cache';
 import {
   CORE_WIDGETS,
   LINK,
@@ -126,16 +127,26 @@ export class WidgetService {
   }
 
   /** Both areas ready to display. A widget whose data cannot be read is left out. */
-  async getPublic(): Promise<PublicWidgets> {
-    const settings = await this.stored();
+  async getPublic(cache?: PublicCache): Promise<PublicWidgets> {
+    const settings = await (cache?.get('widgets:settings', () =>
+      this.stored(),
+    ) ?? this.stored());
     const once = readCache();
     const [sidebar, footer] = await Promise.all(
       WIDGET_AREAS.map(async (area) =>
         (
           await Promise.all(
-            settings[area].map((widget) =>
-              this.present(widget, once).catch(() => null),
-            ),
+            settings[area].map((widget) => {
+              const load = () => this.present(widget, once);
+              const core =
+                widget.type !== 'menu' &&
+                (CORE_WIDGETS as readonly string[]).includes(widget.type);
+              return (
+                core && cache
+                  ? cache.get(`widget:${area}:${widget.id}`, load)
+                  : load()
+              ).catch(() => null);
+            }),
           )
         ).filter((widget) => widget !== null),
       ),
