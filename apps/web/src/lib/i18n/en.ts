@@ -2252,6 +2252,13 @@ export const en = {
   // editor-media wave 4
   themePages: 'Pages:',
   themeCalloutDismiss: 'Dismiss',
+  themeLightboxTitle: 'Image viewer',
+  themeLightboxOpen: 'View larger',
+  themeLightboxClose: 'Close',
+  themeLightboxPrevious: 'Previous image',
+  themeLightboxNext: 'Next image',
+  themeLightboxPosition: (current: number, total: number) =>
+    `${current} / ${total}`,
   themeTocShow: 'Show table of contents',
   themeTocClose: 'Close table of contents',
   themeFootnotes: 'Footnotes',

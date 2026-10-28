@@ -3,6 +3,8 @@
   import Blocks from '#lib/theme/blocks/Blocks.svelte';
   import { linkOptions } from '#lib/route-link.js';
   import { useScope } from '#lib/theme/scope.js';
+  import { useI18n } from '#lib/i18n/index.js';
+  import Lightbox from '#lib/theme/Lightbox.svelte';
 
   /** Image, Cover and Media & Text: media-library images only (`MEDIA_IMAGE`). */
   let {
@@ -10,6 +12,21 @@
   }: { block: Extract<Block, { name: 'image' | 'cover' | 'media-text' }> } =
     $props();
   const scope = useScope();
+  const i18n = useI18n();
+  const m = $derived(i18n.m);
+  /** Image and Media & Text pictures open in a lightbox unless the Image block has a link. */
+  let zoomed = $state(false);
+  const zoom = $derived(
+    block.name !== 'cover' && block.attrs.src
+      ? {
+          src: block.attrs.src,
+          alt: block.attrs.alt,
+          caption: block.name === 'image' ? block.attrs.caption : '',
+        }
+      : null,
+  );
+  const ZOOM_BUTTON =
+    'block w-full cursor-zoom-in rounded-[var(--radius)] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none';
 
   const ALIGN = {
     left: 'mr-auto',
@@ -50,7 +67,13 @@
           >{@render image()}</a
         >
       {:else}
-        {@render image()}
+        <button
+          type="button"
+          class={ZOOM_BUTTON}
+          aria-haspopup="dialog"
+          aria-label={a.alt ? undefined : m.themeLightboxOpen}
+          onclick={() => (zoomed = true)}>{@render image()}</button
+        >
       {/if}
       {#if a.caption}
         <figcaption class="text-center text-sm text-muted-foreground">
@@ -98,17 +121,27 @@
   >
     <figure class={a.mediaPosition === 'right' ? '@min-[48rem]:order-2' : ''}>
       {#if a.src}
-        <img
-          src={a.src}
-          alt={a.alt}
-          loading="lazy"
-          decoding="async"
-          class="h-auto w-full rounded-[var(--radius)]"
-        />
+        <button
+          type="button"
+          class={ZOOM_BUTTON}
+          aria-haspopup="dialog"
+          aria-label={a.alt ? undefined : m.themeLightboxOpen}
+          onclick={() => (zoomed = true)}
+          ><img
+            src={a.src}
+            alt={a.alt}
+            loading="lazy"
+            decoding="async"
+            class="h-auto w-full rounded-[var(--radius)]"
+          /></button
+        >
       {/if}
     </figure>
     <div class="flex flex-col gap-4">
       <Blocks blocks={block.children} />
     </div>
   </div>
+{/if}
+{#if zoom}
+  <Lightbox items={[zoom]} bind:open={zoomed} />
 {/if}

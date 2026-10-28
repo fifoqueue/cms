@@ -2201,6 +2201,13 @@ export const ko: Messages = {
   // editor-media wave 4
   themePages: '페이지:',
   themeCalloutDismiss: '닫기',
+  themeLightboxTitle: '이미지 보기',
+  themeLightboxOpen: '크게 보기',
+  themeLightboxClose: '닫기',
+  themeLightboxPrevious: '이전 이미지',
+  themeLightboxNext: '다음 이미지',
+  themeLightboxPosition: (current: number, total: number) =>
+    `${current} / ${total}`,
   themeTocShow: '목차 보기',
   themeTocClose: '목차 닫기',
   themeFootnotes: '각주',

@@ -89,6 +89,14 @@ body:has(.cms-site[data-theme]) .cms-admin-bar {
   max-width: 100%;
   height: auto;
 }
+/* Body images that open in the lightbox (MediaLightbox.svelte). */
+.cms-prose img.cms-zoomable {
+  cursor: zoom-in;
+}
+.cms-prose img.cms-zoomable:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
 :is(.cms-prose, .tiptap) :is(figcaption, caption) {
   margin-block: 0.5rem;
   color: var(--muted-foreground);
