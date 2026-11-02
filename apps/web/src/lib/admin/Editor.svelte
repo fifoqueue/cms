@@ -408,9 +408,12 @@
       ),
     );
 
-  /** Swaps the selected image's file, keeping its caption, alignment and link. */
+  /** Swaps the selected image's file, keeping its alignment and link; the caption field starts from the current one. */
   const replaceImage = (media: AdminMedia, choice: MediaChoice) =>
-    setImage(imageNode(media, choice).attrs);
+    setImage({
+      ...imageNode(media, choice).attrs,
+      caption: choice.caption ?? '',
+    });
 
   // RAW HTML mode: the document's HTML, one top-level block per line. Every edit is applied to
   // the editor at once, so the form's hidden field always holds what the text area shows.
@@ -838,7 +841,8 @@
           type="button"
           size="sm"
           variant="outline"
-          onclick={() => replacePicker.open()}>{m.mediaChoose}</Button
+          onclick={() => replacePicker.open({ caption: image.caption ?? '' })}
+          >{m.mediaChoose}</Button
         >
       </div>
     {/if}
@@ -875,7 +879,7 @@
 <input type="hidden" {name} value={JSON.stringify(value)} />
 
 <MediaPicker bind:this={picker} sizes captions onpickmany={insertImages} />
-<MediaPicker bind:this={replacePicker} sizes onpick={replaceImage} />
+<MediaPicker bind:this={replacePicker} sizes captions onpick={replaceImage} />
 <MediaPicker
   kind="audio"
   bind:this={audioPicker}

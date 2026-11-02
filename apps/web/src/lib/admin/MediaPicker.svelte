@@ -125,8 +125,12 @@
     total = result.total;
   };
 
+  /** A caption the picked file starts with instead of its library caption (replacing keeps the body's). */
+  let presetCaption: string | undefined;
+
   /** Opens the picker on the newest media. */
-  export const open = () => {
+  export const open = (preset?: { caption?: string }) => {
+    presetCaption = preset?.caption;
     errors = [];
     selection = [];
     focusedId = null;
@@ -140,7 +144,7 @@
       const entry: Selection = {
         media,
         alt: media.alt,
-        caption: media.caption,
+        caption: presetCaption ?? media.caption,
         localOnly: false,
         size: media.variants.some((variant) => variant.name === 'large')
           ? 'large'
