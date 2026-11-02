@@ -93,7 +93,6 @@ plugins/
 - 현재 의도적인 예외 (해제 조건이 충족되면 즉시 올리세요):
   - `typescript` 6.x — TS 7(네이티브)은 `typescript-eslint`, `svelte-check`, `@sveltejs/kit`의 peer 범위 밖입니다.
   - `prisma`/`@prisma/*` 7.10.x — npm `latest` 태그가 8.0.0-rc(프리릴리스)를 가리킵니다. 8 정식 릴리스 후 올립니다.
-  - `happy-dom` 20.x — `@tiptap/html`(서버 HTML→문서 변환)의 peer 범위가 `^20`입니다. tiptap이 21을 허용하면 올립니다.
 - 워크스페이스 내부 의존성은 `workspace:*` 입니다.
 
 ## 테스트

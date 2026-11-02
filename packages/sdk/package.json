@@ -26,7 +26,7 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
-    "re2js": "2.9.0",
+    "re2js": "2.9.1",
     "zod": "^4.6.7"
   }
 }
