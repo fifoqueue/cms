@@ -109,6 +109,9 @@ import { PrismaPasswordTokenRepository } from '#api/infra/prisma/password-tokens
 import { PrismaCredentialRepository } from '#api/infra/prisma/credentials';
 import { PrismaRateLimitStore } from '#api/infra/prisma/rate-limit-store';
 import { PrismaTaskLeases } from '#api/infra/prisma/task-leases';
+import { DatabaseCleanupService } from '#api/domain/tools/database-cleanup';
+import { PrismaDatabaseCleanupStore } from '#api/infra/prisma/database-cleanup';
+import { PrismaExpiredCleanup } from '#api/infra/prisma/expired-cleanup';
 import { aesSecretBox, secretKey } from '#api/infra/secret-box';
 import { createSmtpMailer } from '#api/infra/smtp-mailer';
 import { emailEndpoint } from '#api/infra/http-mailer';
@@ -1391,9 +1394,22 @@ export const createContainer = async (
     protection,
   });
 
+  const expiredCleanup = new PrismaExpiredCleanup(db);
+  const databaseCleanup = new DatabaseCleanupService({
+    store: new PrismaDatabaseCleanupStore(db, {
+      content: (id, actor) => content.remove(id, actor, true),
+      comment: (id, status, actor) => comments.remove(id, actor, status),
+      expired: (now, limit) => expiredCleanup.batch(now, limit),
+      expiredCount: (now) => expiredCleanup.count(now),
+    }),
+    leases: taskLeases,
+    clock: systemClock,
+    ids: uuidV7,
+  });
   const app = await createApiApp({
     logger,
     services: {
+      databaseCleanup,
       publicCache,
       privacy,
       auth,

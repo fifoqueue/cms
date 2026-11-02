@@ -321,13 +321,18 @@ export class PrismaContentRepository implements ContentRepository {
     });
   }
 
-  async delete(id: string) {
+  async delete(id: string, trashedOnly = false) {
     await this.db.$transaction(async (tx) => {
       // The entry before its comments, the order every comment writer uses.
-      await deleteEntries(
-        tx,
-        await lockPermalinks(tx, false, Prisma.sql`id = ${id}`),
-      );
+      const ids = await lockPermalinks(tx, false, Prisma.sql`id = ${id}`);
+      if (trashedOnly) {
+        const current = await tx.content.findUnique({
+          where: { id },
+          select: { trashedAt: true },
+        });
+        if (!current?.trashedAt) throw conflict(Errors.ContentChanged);
+      }
+      await deleteEntries(tx, ids);
       await refreshContentPaths(tx, { type: 'page' }, this.tokens);
       await tx.searchOutbox.create({ data: { contentId: id } });
     });

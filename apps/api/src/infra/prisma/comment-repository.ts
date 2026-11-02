@@ -2,6 +2,7 @@ import type { CommentStatus } from '@cms/sdk';
 import type {
   CommentChanges,
   CommentCriteria,
+  CleanupStatus,
   CommentPosition,
   CommentRecord,
   CommentRepository,
@@ -341,8 +342,9 @@ export class PrismaCommentRepository implements CommentRepository {
     });
   }
 
-  async delete(ids: readonly string[]) {
+  async delete(ids: readonly string[], expected?: CleanupStatus) {
     return this.moderate(ids, async (tx, doomed) => {
+      if (expected) doomed = doomed.filter((row) => row.status === expected);
       if (!doomed.length) return [];
       const deleted = new Set(doomed.map((row) => row.id));
       const doomedIds = Prisma.join([...deleted]);

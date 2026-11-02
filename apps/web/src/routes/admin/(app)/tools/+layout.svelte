@@ -24,6 +24,10 @@
       route: '/admin/(app)/tools/webhooks',
       label: (m: Messages) => m.toolsWebhooks,
     },
+    {
+      route: '/admin/(app)/tools/database',
+      label: (m: Messages) => m.toolsDatabase,
+    },
   ] as const;
 </script>
 

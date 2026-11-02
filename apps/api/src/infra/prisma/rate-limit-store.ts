@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { purgeExpired } from '#api/infra/prisma/expired-cleanup';
 import type { RateRule } from '@cms/sdk';
 import type { RateLimitStore } from '#api/domain/security/ports';
 import type { Database } from '#api/infra/prisma/client';
@@ -57,8 +58,8 @@ export class PrismaRateLimitStore implements RateLimitStore {
   }
 
   async purge(now: Date) {
-    await this.db.rateLimitBucket.deleteMany({
-      where: { expiresAt: { lt: now } },
-    });
+    while (await purgeExpired(this.db, now, 'rateLimits')) {
+      /* bounded batches */
+    }
   }
 }

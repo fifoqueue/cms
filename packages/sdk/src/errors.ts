@@ -4,6 +4,8 @@
  * a message leaves out travel as `issues[].params` (named in the comment).
  */
 export const Errors = {
+  DatabaseCleanupDuplicate: 'Select each cleanup category only once.',
+  DatabaseCleanupBusy: 'Database cleanup is already running.',
   EmbedPattern: 'Enter a valid regular expression.',
   EmbedAllow: 'Choose only supported iframe permissions, without origin lists.',
   EmbedSource: 'Use an HTTPS template with a fixed origin.',

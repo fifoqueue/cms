@@ -1,10 +1,18 @@
 import { describe, expect, test } from 'bun:test';
+import { DatabaseCleanupService } from '#api/domain/tools/database-cleanup';
+import { MemoryDatabaseCleanupStore } from '#test/support/memory-database-cleanup';
+import { MemoryTaskLeases } from '#test/support/memory-jobs';
 import { DashboardPreferencesService } from '#api/domain/dashboard/dashboard-preferences';
 import { createApiApp } from '#api/http/app';
 import type { ApiServices } from '#api/http/services';
 import { ClientResolver } from '#api/http/client-identity';
 import { conflict, expiredSignIn } from '#api/shared/errors';
-import { MemorySettings, profile } from '#test/support/memory';
+import {
+  MemorySettings,
+  profile,
+  fixedClock,
+  sequentialIds,
+} from '#test/support/memory';
 
 const TOKEN = 'admin-token';
 const user = profile({ id: 'u1', email: 'a@example.com', name: 'Admin' });
@@ -32,6 +40,41 @@ const auth = {
 
 const calls: unknown[][] = [];
 
+test('database cleanup routes require tools.manage and reject invalid retention', async () => {
+  for (const method of ['GET', 'POST']) {
+    const body =
+      method === 'POST'
+        ? JSON.stringify({ categories: ['expired'] })
+        : undefined;
+    expect(
+      (await call(method, '/api/v1/admin/database-cleanup', { body })).status,
+    ).toBe(401);
+    expect(
+      (
+        await call(method, '/api/v1/admin/database-cleanup', {
+          token: WRITER,
+          body,
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await call(method, '/api/v1/admin/database-cleanup', {
+          token: TOKEN,
+          body,
+        })
+      ).status,
+    ).toBe(200);
+  }
+  expect(
+    (
+      await call('GET', '/api/v1/admin/database-cleanup?keepLatest=-1', {
+        token: TOKEN,
+      })
+    ).status,
+  ).toBe(400);
+});
+
 const record =
   (name: string, result: unknown = { ok: true }) =>
   async (...args: unknown[]) => {
@@ -44,6 +87,12 @@ const errors: unknown[][] = [];
 
 const app = await createApiApp({
   services: {
+    databaseCleanup: new DatabaseCleanupService({
+      store: new MemoryDatabaseCleanupStore(),
+      leases: new MemoryTaskLeases(),
+      clock: fixedClock(),
+      ids: sequentialIds(),
+    }),
     privacy: {
       publicSettings: async () => ({ policy: null, commentCookies: true }),
     } as ApiServices['privacy'],

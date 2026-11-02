@@ -183,7 +183,7 @@ export interface ContentRepository {
     guard?: ContentWriteGuard,
   ): Promise<ContentRecord>;
   /** Also removes its term assignments, paths and revisions. */
-  delete(id: string): Promise<void>;
+  delete(id: string, trashedOnly?: boolean): Promise<void>;
   /** Moves the entry to the trash (`at`) or back out of it (null). */
   setTrashed(
     id: string,

@@ -5,6 +5,7 @@ import type {
   UserRepository,
 } from '#api/domain/auth/ports';
 import { unauthorized, Errors } from '#api/shared/errors';
+import { purgeExpired } from '#api/infra/prisma/expired-cleanup';
 import { guardUnique } from '#api/infra/prisma/client';
 import type { Database } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
@@ -74,7 +75,7 @@ export class PrismaUserRepository implements UserRepository {
 
 export class PrismaSessionRepository implements SessionRepository {
   constructor(
-    private readonly db: Pick<Database, 'session'> & {
+    private readonly db: Pick<Database, 'session' | '$executeRaw'> & {
       $transaction(
         work: (tx: Pick<Database, 'session' | 'recoveryCode'>) => Promise<void>,
       ): Promise<void>;
@@ -118,7 +119,9 @@ export class PrismaSessionRepository implements SessionRepository {
   }
 
   async deleteExpired(now: Date) {
-    await this.db.session.deleteMany({ where: { expiresAt: { lte: now } } });
+    while (await purgeExpired(this.db, now, 'sessions')) {
+      /* bounded batches */
+    }
   }
 
   listForUser(userId: string, now: Date) {

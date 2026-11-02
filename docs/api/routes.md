@@ -1,5 +1,24 @@
 # HTTP API 라우트
 
+## Database cleanup
+
+- `GET /api/v1/admin/database-cleanup?keepLatest=N`: `tools.manage`; read-only
+  preview `{ counts, tables, options: { keepLatest } }`. Omitted retention is 0.
+- `POST /api/v1/admin/database-cleanup`: `tools.manage`; body
+  `{ categories, options?: { keepLatest?: number } }`. Categories are
+  `revisions`, `autosaves`, `trashedContent`, `spamComments`, `trashedComments`,
+  `expired`, `optimize`; select each at most once. Retention is a nonnegative integer.
+- Result: `{ deleted, optimization: null | { before, after } }`.
+  Counts have all seven category keys. Unselected categories and `deleted.optimize`
+  are zero; preview `counts.optimize` is the number of CMS tables.
+  Tables are `{ table, dataBytes, indexBytes, freeBytes }`.
+- SDK: `admin.databaseCleanup.preview({ keepLatest? })` and
+  `admin.databaseCleanup.run(input)`. Schemas/types are exported by `@cms/sdk`
+  from `packages/sdk/src/database-cleanup.ts`.
+- Concurrent runs return 409 `conflict`. Operations are synchronous and not an
+  all-or-nothing transaction: completed batches remain committed if a later batch
+  fails. Refresh the preview before retrying.
+
 ## 임베드 제공자
 
 - `GET /api/v1/admin/embeds`, `PUT /api/v1/admin/embeds`: `settings.manage` 권한이 필요합니다. `{ providers: [{ id, label, enabled, urlPattern, src, title, allow, sizing }] }`를 조회·저장합니다. `sizing`은 `{ kind: 'ratio', ratio }` 또는 `{ kind: 'height', height, heightMessagePath?, maxWidth? }`입니다. `maxWidth`(px)는 게시물 카드의 본래 너비로, 프레임은 가운데 정렬되고 그보다 좁은 본문에서만 줄어듭니다. `null`은 너비 제한 없음이며, 저장할 때 비운 값은 `null`로 저장됩니다. 이 값이 생기기 전에 저장된 기본 제공자(같은 `id`·`src`)는 기본 너비를 이어받습니다.

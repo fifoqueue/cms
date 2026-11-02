@@ -10,7 +10,8 @@ import type { IdGenerator } from '#api/domain/ports';
 import type { Database } from '#api/infra/prisma/client';
 import { lockSetting } from '#api/infra/prisma/client';
 import { erasedSubjects, insertJob } from '#api/infra/prisma/job-queue';
-import type { Prisma } from '#api/infra/prisma/generated/client';
+import { Prisma } from '#api/infra/prisma/generated/client';
+import { staleNotices } from '#api/infra/prisma/expired-cleanup';
 
 /** Job rows are written under the lock personal-data erasure scans them with. */
 const JOBS_LOCK = 'privacy.jobs';
@@ -179,9 +180,13 @@ export class PrismaNoticeOutbox implements NoticeOutbox {
   }
 
   async purge(before: Date) {
-    await this.db.noticeWindow.deleteMany({
-      where: { windowEnd: { lt: before }, deferred: 0 },
-    });
+    while (
+      await this.db.$executeRaw(
+        Prisma.sql`DELETE ${staleNotices(before)} LIMIT 100`,
+      )
+    ) {
+      /* bounded batches */
+    }
     await this.db.noticeDispatch.deleteMany({
       where: { createdAt: { lt: before } },
     });

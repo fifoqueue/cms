@@ -362,8 +362,12 @@ export class MemoryContentRepository implements ContentRepository {
     return this.toRecord(record);
   }
 
-  delete(id: string) {
-    return this.exclusive(() => this.erase(id));
+  delete(id: string, trashedOnly = false) {
+    return this.exclusive(() => {
+      if (trashedOnly && !this.trashed.has(id))
+        throw conflict(Errors.ContentChanged);
+      return this.erase(id);
+    });
   }
 
   /** Shared rollback boundary for content writes and user-deletion cascades. */

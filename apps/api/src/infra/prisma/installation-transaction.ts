@@ -31,6 +31,7 @@ export const initializeSite = (
         users: new PrismaUserRepository(transaction),
         sessions: new PrismaSessionRepository({
           session: transaction.session,
+          $executeRaw: transaction.$executeRaw.bind(transaction),
           $transaction: (work) => work(transaction),
         }),
         settings: new PrismaSettingsRepository(transaction),

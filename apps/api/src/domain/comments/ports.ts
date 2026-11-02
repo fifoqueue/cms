@@ -1,5 +1,8 @@
 import type { CommentStatus, FeedComment } from '@cms/sdk';
 
+/** Statuses a database cleanup may permanently delete. */
+export type CleanupStatus = Extract<CommentStatus, 'spam' | 'trash'>;
+
 export interface CommentRecord {
   id: string;
   contentId: string;
@@ -123,8 +126,14 @@ export interface CommentRepository {
     status: CommentStatus,
     at: Date,
   ): Promise<CommentRecord[]>;
-  /** Deletes the comments among `ids`; their replies move up to the deleted comment's parent. */
-  delete(ids: readonly string[]): Promise<CommentRecord[]>;
+  /**
+   * Deletes the comments among `ids`; their replies move up to the deleted comment's parent.
+   * With `expected` (cleanup), only comments still in that status when locked are deleted.
+   */
+  delete(
+    ids: readonly string[],
+    expected?: CleanupStatus,
+  ): Promise<CommentRecord[]>;
   /** Whether this email has an approved comment. */
   hasApproved(email: string): Promise<boolean>;
   /** Newest approved comments on public entries. */

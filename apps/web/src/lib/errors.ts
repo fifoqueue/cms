@@ -17,6 +17,9 @@ export const Errors = {
   ProfileNumberInvalid: 'Enter a number.',
   PluginBundleRequired: 'Choose a plugin bundle (.js)',
   ImportFileRequired: 'Choose a WordPress export file (.xml)',
+  DatabaseCleanupNothingSelected: 'Select at least one cleanup task.',
+  DatabaseCleanupConfirmRequired:
+    'Confirm that the selected data will be deleted permanently.',
   ThemeFileRequired: 'Choose a theme archive (.zip)',
   BlocksInvalid: 'The blocks could not be read',
   TemplateNameInvalid: 'Use lowercase letters, numbers and dashes for the slug',

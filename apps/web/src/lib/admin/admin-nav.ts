@@ -383,6 +383,12 @@ export const adminSections = ({
           capability: 'tools.manage',
           keywords: ['hooks', 'integrations', '훅', '연동'],
         },
+        {
+          href: resolve('/admin/(app)/tools/database'),
+          label: (m) => m.toolsDatabase,
+          capability: 'tools.manage',
+          keywords: ['optimize', 'revisions', 'cleanup', '최적화', '리비전'],
+        },
       ],
     },
     {

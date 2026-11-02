@@ -25,6 +25,8 @@ const emailFailure = (reason: unknown) => {
 
 /** Text for every SDK error, by its `Errors` key; read through `ko.apiError`. */
 export const apiErrors: ApiErrorCatalog = {
+  DatabaseCleanupDuplicate: '각 정리 항목은 한 번만 선택하세요.',
+  DatabaseCleanupBusy: '데이터베이스 정리가 이미 실행 중입니다.',
   EmbedPattern: '^로 시작하는 올바른 정규식을 입력하세요.',
   EmbedAllow: '출처 목록 없이 지원하는 iframe 권한만 선택하세요.',
   EmbedSource: '출처가 고정된 HTTPS 템플릿을 사용하세요.',
@@ -442,6 +444,9 @@ export const webErrors: WebErrorCatalog = {
   ProfileNumberInvalid: '숫자를 입력하세요.',
   PluginBundleRequired: '플러그인 번들(.js)을 선택하세요.',
   ImportFileRequired: 'WordPress 내보내기 파일(.xml)을 선택하세요.',
+  DatabaseCleanupNothingSelected: '정리할 항목을 하나 이상 선택하세요.',
+  DatabaseCleanupConfirmRequired:
+    '선택한 데이터가 영구적으로 삭제된다는 것을 확인하세요.',
   ThemeFileRequired: '테마 압축 파일(.zip)을 선택하세요.',
   BlocksInvalid: '블록을 읽을 수 없습니다.',
   TemplateNameInvalid: '슬러그에는 영문 소문자, 숫자, 대시만 쓰세요.',
@@ -1094,6 +1099,55 @@ export const ko: Messages = {
   webhookSecretHelp:
     '수신 측은 이 비밀 키로 X-CMS-Signature 헤더(t=…,v1=“t.본문”의 HMAC-SHA256)를 확인합니다.',
   webhookPingQueued: '테스트 전송을 예약했습니다.',
+
+  // Tools: database cleanup
+  toolsDatabase: '데이터베이스 정리',
+  databaseCleanupHelp:
+    '사이트에 더 이상 필요 없는 데이터를 지우고 데이터베이스 테이블의 사용하지 않는 공간을 되찾습니다.',
+  databaseSize: '데이터베이스 크기',
+  databaseSizeSummary: (total: string, tables: number, free: string) =>
+    `테이블 ${tables}개, ${total}. 사용하지 않는 공간 ${free}.`,
+  databaseCleanupTasks: '정리 작업',
+  databaseCleanupRevisions: '리비전',
+  databaseCleanupRevisionsHelp:
+    '글과 페이지의 이전 저장본입니다. 현재 내용에는 영향이 없습니다.',
+  databaseCleanupAutosaves: '자동 저장본',
+  databaseCleanupAutosavesHelp: (days: number) =>
+    `저장하지 않은 편집 내용의 자동 백업입니다. 최근 ${days}일 동안의 자동 저장본은 유지합니다.`,
+  databaseCleanupTrashedContent: '휴지통의 콘텐츠',
+  databaseCleanupTrashedContentHelp:
+    '휴지통에 있는 글과 페이지를 리비전과 함께 영구적으로 삭제합니다.',
+  databaseCleanupSpamComments: '스팸 댓글',
+  databaseCleanupSpamCommentsHelp: '스팸으로 표시한 댓글입니다.',
+  databaseCleanupTrashedComments: '휴지통의 댓글',
+  databaseCleanupTrashedCommentsHelp: '휴지통으로 옮긴 댓글입니다.',
+  databaseCleanupExpired: '만료된 기록',
+  databaseCleanupExpiredHelp:
+    '오래된 로그인 세션, 일회용 링크처럼 만료일이 지난 임시 기록입니다.',
+  databaseCleanupOptimize: '테이블 최적화',
+  databaseCleanupOptimizeHelp:
+    '테이블을 다시 정리해 사용하지 않는 공간을 되찾습니다. 아무것도 삭제하지 않습니다.',
+  databaseCleanupItems: (count: number) => `${count}개`,
+  databaseCleanupTables: (count: number) => `테이블 ${count}개`,
+  databaseCleanupKeepLatest: '항목별로 유지할 리비전 수',
+  databaseCleanupKeepLatestHelp:
+    '글이나 페이지마다 최신 리비전을 이 개수만큼 유지합니다. 0을 입력하면 모든 리비전을 지웁니다.',
+  databaseCleanupRefresh: '개수 업데이트',
+  databaseCleanupWarning:
+    '삭제한 데이터는 되돌릴 수 없습니다. 시작하기 전에 데이터베이스를 백업하세요.',
+  databaseCleanupConfirm:
+    '선택한 데이터가 영구적으로 삭제된다는 것을 이해했습니다.',
+  databaseCleanupRun: '데이터베이스 정리',
+  databaseCleanupRunning: '정리하는 중…',
+  databaseCleanupDone: '데이터베이스 정리를 마쳤습니다.',
+  databaseCleanupResults: '결과',
+  databaseCleanupDeleted: (count: number) => `${count}개 삭제됨`,
+  databaseCleanupSizeChange: (before: string, after: string) =>
+    `전체 크기: 정리 전 ${before}, 정리 후 ${after}.`,
+  databaseCleanupTable: '테이블',
+  databaseCleanupBefore: '정리 전',
+  databaseCleanupAfter: '정리 후',
+  databaseCleanupFree: '사용하지 않는 공간',
 
   // Dashboard
   dashboard: '대시보드',

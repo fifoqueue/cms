@@ -10,6 +10,7 @@ import type {
 import { guardUnique, lockSetting } from '#api/infra/prisma/client';
 import { PrismaSettingsRepository } from '#api/infra/prisma/settings-repository';
 import { Errors } from '#api/shared/errors';
+import { purgeExpired } from '#api/infra/prisma/expired-cleanup';
 import type { Database } from '#api/infra/prisma/client';
 
 const encoder = new TextEncoder();
@@ -176,9 +177,9 @@ export class PrismaSsoTransactionRepository implements SsoTransactionRepository 
       // An atomic upsert, so even the very first concurrent admissions queue on the same row lock.
       // It is the transaction's first statement: the counts below read after the lock is held.
       await tx.$executeRaw`INSERT INTO settings (\`key\`, value) VALUES (${ADMISSION_LOCK}, 'true') ON DUPLICATE KEY UPDATE value = 'true'`;
-      await tx.ssoTransaction.deleteMany({
-        where: { expiresAt: { lte: now } },
-      });
+      while (await purgeExpired(tx, now, 'sso')) {
+        /* bounded batches */
+      }
 
       if ((await tx.ssoTransaction.count()) >= total) return false;
 

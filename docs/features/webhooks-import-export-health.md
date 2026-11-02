@@ -1,5 +1,34 @@
 # 웹훅·가져오기/내보내기·사이트 상태·캐시
 
+## Database cleanup and optimization
+
+The core database tool requires `tools.manage`, including preview. Preview performs
+only reads; sizes are MariaDB information_schema estimates for the schema whitelist,
+not exact reclaimable disk space. Free bytes can describe shared tablespace space.
+
+Saved revisions retain the newest `keepLatest` per content item (timestamp descending,
+then ID descending); the default is zero. Autosaves are separate and only those
+strictly older than seven days are removed. History deletion never changes content
+or its durable text-save watermark.
+
+Trash deletion uses the content domain's permanent-delete path, including paths,
+media relations, search outbox, cache invalidation and deletion hooks/webhooks.
+Comment cleanup uses the normal deletion path, preserving replies and notification
+cascades. Content restored from trash before the locked delete is refused.
+
+Expired cleanup removes expired sessions, password/API tokens and SSO transactions,
+failed jobs older than 30 days, expired rate-limit buckets and notice windows older
+than 30 days with no deferred notices. Used password/SSO tokens and completed jobs
+are already deleted by their normal consumers. Pending jobs and deferred notices
+are not cleanup candidates. Maintenance and manual cleanup share expiry predicates.
+
+Deletes use batches of at most 100 directly targeted rows. Cascading rows are not
+included in the reported counts. A renewable cross-process task lease serializes
+runs. Optimization runs sequentially, after deletion, only for explicitly
+whitelisted Prisma tables; it can take time, requires database privileges and can
+lock tables. It does not guarantee that physical disk space will shrink.
+There is no new scheduled cleanup or plugin extension point.
+
 항목의 출처 정보는 개인정보입니다. 내보내기에는 해당 행위자가 대상인 경우에 한해 생성/수정 IP와 사용자 에이전트, 그리고 대상의 리비전/자동 저장 출처가 포함됩니다. 개인정보 삭제 처리와 사용자 삭제는 이러한 출처와 행위자 참조를 지우며, 대상이 작성한 항목에 대한 다른 행위자의 출처 정보는 지우지 않습니다. 그 외의 경우에는 이러한 값을 해당 항목/리비전이 삭제될 때까지 보관합니다. WXR과 웹훅 페이로드에는 출처 데이터가 포함되지 않습니다.
 
 상위 문서: [AGENTS.md](../../AGENTS.md)

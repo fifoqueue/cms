@@ -1,4 +1,7 @@
 import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
+import { DatabaseCleanupService } from '#api/domain/tools/database-cleanup';
+import { PrismaDatabaseCleanupStore } from '#api/infra/prisma/database-cleanup';
+import { PrismaExpiredCleanup } from '#api/infra/prisma/expired-cleanup';
 import { PrivacyService } from '#api/domain/privacy/privacy-service';
 import { readSiteSettings } from '#api/domain/site/site-service';
 import { EmailService } from '#api/domain/email/email-service';
@@ -66,6 +69,109 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
   }, SLOW);
 
   afterAll(() => drop(), SLOW);
+
+  test(
+    'database cleanup retains revisions and watermarks, removes trash paths and enqueues search deletion',
+    async () => {
+      const { content } = services();
+      const entries = [];
+      for (const title of ['Cleanup one', 'Cleanup two']) {
+        const entry = await content.create(
+          {
+            type: 'post',
+            title,
+            status: 'published',
+            document: textDocument('Body'),
+          },
+          ADMIN,
+        );
+        entries.push(entry);
+        await db.contentRevision.deleteMany({ where: { contentId: entry.id } });
+        for (let index = 0; index < 4; index++)
+          await db.contentRevision.create({
+            data: {
+              id: uuidV7.next(),
+              contentId: entry.id,
+              authorId: ADMIN.id,
+              kind: 'revision',
+              title: `${index}`,
+              excerpt: '',
+              document: JSON.stringify(textDocument('History')),
+              createdAt: new Date(1000 + index),
+            },
+          });
+      }
+      const original = await db.content.findMany({
+        where: { id: { in: entries.map((entry) => entry.id) } },
+        orderBy: { id: 'asc' },
+      });
+      const expired = new PrismaExpiredCleanup(db);
+      const store = new PrismaDatabaseCleanupStore(db, {
+        content: (id, actor) => content.remove(id, actor, true),
+        comment: async () => {
+          throw new Error('Unexpected comment deletion');
+        },
+        expired: (now, limit) => expired.batch(now, limit),
+        expiredCount: (now) => expired.count(now),
+      });
+      const cleanup = new DatabaseCleanupService({
+        store,
+        leases: new PrismaTaskLeases(db),
+        clock: systemClock,
+        ids: uuidV7,
+      });
+      const actor = {
+        id: ADMIN.id,
+        role: 'custom',
+        capabilities: ['tools.manage'] as const,
+      };
+      const preview = await cleanup.preview({ keepLatest: 2 }, actor);
+      expect(preview.counts.revisions).toBe(4);
+      const result = await cleanup.run(
+        { categories: ['revisions'], options: { keepLatest: 2 } },
+        actor,
+      );
+      expect(result.deleted.revisions).toBe(4);
+      for (const entry of entries)
+        expect(
+          (
+            await db.contentRevision.findMany({
+              where: { contentId: entry.id },
+              orderBy: { createdAt: 'asc' },
+            })
+          ).map((row) => row.title),
+        ).toEqual(['2', '3']);
+      expect(
+        await db.content.findMany({
+          where: { id: { in: entries.map((entry) => entry.id) } },
+          orderBy: { id: 'asc' },
+        }),
+      ).toEqual(original);
+      await content.trash(entries[0]!.id, ADMIN);
+      const outbox = await db.searchOutbox.count({
+        where: { contentId: entries[0]!.id },
+      });
+      expect(
+        (await cleanup.run({ categories: ['trashedContent'] }, actor)).deleted
+          .trashedContent,
+      ).toBe(1);
+      expect(
+        await db.contentPath.count({ where: { contentId: entries[0]!.id } }),
+      ).toBe(0);
+      expect(
+        await db.searchOutbox.count({ where: { contentId: entries[0]!.id } }),
+      ).toBe(outbox + 1);
+      await store.optimize('contents');
+      await expect(store.optimize('foreign_table')).rejects.toMatchObject({
+        code: 'invalid_input',
+      });
+      expect(
+        (await store.tables()).some((row) => row.table === 'contents'),
+      ).toBe(true);
+      await content.remove(entries[1]!.id, ADMIN);
+    },
+    SLOW,
+  );
 
   const services = (repository = new PrismaContentRepository(db)) => {
     const settings = new PrismaSettingsRepository(db);

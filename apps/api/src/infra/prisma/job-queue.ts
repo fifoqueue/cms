@@ -1,4 +1,5 @@
 import { Errors } from '#api/shared/errors';
+import { failedJobs } from '#api/infra/prisma/expired-cleanup';
 import { createHash } from 'node:crypto';
 import { sealJob, openJob } from '#api/domain/jobs/payload';
 import type { SecretBox } from '#api/domain/ports';
@@ -310,9 +311,13 @@ export class PrismaJobQueue implements JobQueue {
   }
 
   async purge(before: Date) {
-    const { count } = await this.db.job.deleteMany({
-      where: { failedAt: { lt: before } },
-    });
-    return count;
+    let total = 0;
+    for (;;) {
+      const count = await this.db.$executeRaw(
+        Prisma.sql`DELETE ${failedJobs(before)} LIMIT 100`,
+      );
+      total += count;
+      if (!count) return total;
+    }
   }
 }

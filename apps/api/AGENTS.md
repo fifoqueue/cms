@@ -103,6 +103,14 @@ while loading, including synchronous invalidation.
 
 ## 테스트
 
+- Database cleanup uses the `tools.database-cleanup` TaskLeases name. Preview must
+  never create a lease or write. Revision batches recheck retention and the
+  content snapshot under the permalink/content lock without changing textSavedAt.
+  Cleanup-only content deletion checks trash again under that lock; comment
+  deletion checks spam/trash under the moderation lock. Keep the table whitelist
+  in `infra/prisma/database-cleanup.ts` synchronized with Prisma `@@map` names.
+  Expiry predicates in `infra/prisma/expired-cleanup.ts` are shared with maintenance.
+
 - 도메인·플러그인 런타임은 `apps/api/test/support`의 인메모리 어댑터와 `createRuntime()`으로 DB 없이 테스트합니다. 새 포트를 만들면 인메모리 구현도 같은 계약으로 추가합니다.
 - 플러그인 관련 변경은 **비활성화·삭제·실패 시 코어가 원래대로 동작함**을 검증하는 테스트를 반드시 포함합니다(`plugin-host.test.ts` 참고).
 - 인메모리 어댑터는 `memory*.ts`(콘텐츠·공개 콘텐츠·분류·사용자·작업·보안·리비전·미디어·댓글·검색)에 있습니다. 검색은 `MemorySearchEngine`/`MemorySearchSource`로 폴백 보장을 검증하고, WXR은 내보내기→가져오기 왕복으로 검증합니다.

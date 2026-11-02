@@ -283,11 +283,14 @@ export class ContentService {
   }
 
   /** Deletes the entry for good, with its paths, assignments and revisions. */
-  async remove(id: string, actor: Actor): Promise<void> {
+  async remove(id: string, actor: Actor, cleanup = false): Promise<void> {
     const current = await this.require(id);
-    this.assertEditable(actor, current);
+    if (cleanup) {
+      authorize(actor, 'tools.manage');
+      if (!current.trashedAt) throw conflict(Errors.ContentChanged);
+    } else this.assertEditable(actor, current);
     if (!(await this.allowed('content.deleteAllowed'))) throw forbidden();
-    await this.deps.repository.delete(id);
+    await this.deps.repository.delete(id, cleanup);
     void this.deps.hooks.emit('content.deleted', toEntry(current));
   }
 

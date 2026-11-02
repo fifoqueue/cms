@@ -1,4 +1,14 @@
 import { z } from 'zod';
+import {
+  databaseCleanupPreviewSchema,
+  databaseCleanupResultSchema,
+} from '#sdk/database-cleanup';
+import type {
+  DatabaseCleanupInput,
+  DatabaseCleanupOptions,
+  DatabaseCleanupPreview,
+  DatabaseCleanupResult,
+} from '#sdk/database-cleanup';
 import { siteHealthSchema, wxrImportResultSchema } from '#sdk/health';
 import type {
   SiteHealth,
@@ -18,6 +28,28 @@ export const toolsAdminClient = (request: Request) => {
   const hookPath = (id: string) =>
     `/api/v1/admin/webhooks/${encodeURIComponent(id)}`;
   return {
+    databaseCleanup: {
+      preview: (options: DatabaseCleanupOptions = {}) =>
+        request<DatabaseCleanupPreview>(
+          'GET',
+          '/api/v1/admin/database-cleanup',
+          {
+            query: {
+              keepLatest:
+                options.keepLatest === undefined
+                  ? undefined
+                  : String(options.keepLatest),
+            },
+            response: databaseCleanupPreviewSchema,
+          },
+        ),
+      run: (input: DatabaseCleanupInput) =>
+        request<DatabaseCleanupResult>(
+          'POST',
+          '/api/v1/admin/database-cleanup',
+          { json: input, response: databaseCleanupResultSchema },
+        ),
+    },
     /** The whole site as a WordPress export (WXR) document. */
     exportWxr: () =>
       request<Response>('GET', '/api/v1/admin/export', { raw: true }),

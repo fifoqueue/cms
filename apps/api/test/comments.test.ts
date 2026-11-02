@@ -642,7 +642,8 @@ describe('CommentService', () => {
       (await comments.publicPage(other.id, 1, [], null, first.pendingProof!))
         .ownPending,
     ).toBeNull();
-    await comments.bulk({ ids: [own.ownPending!.id], action: 'spam' }, ADMIN);
+    const spammed = own.ownPending!.id;
+    await comments.bulk({ ids: [spammed], action: 'spam' }, ADMIN);
     expect(
       (await comments.publicPage(entry.id, 1, [], null, first.pendingProof!))
         .ownPending,
@@ -650,6 +651,9 @@ describe('CommentService', () => {
     expect([...store.rows.values()].some((row) => row.status === 'spam')).toBe(
       true,
     );
+    // A cleanup only deletes comments still in the status it selected.
+    expect(await comments.remove(spammed, ADMIN, 'trash')).toBe(false);
+    expect(store.rows.get(spammed)?.status).toBe('spam');
     clock.set('2026-01-03T00:00:00.000Z');
     expect(
       (await comments.publicPage(entry.id, 1, [], null, second.pendingProof!))

@@ -31,6 +31,8 @@ const emailFailure = (reason: unknown) => {
 
 /** Text for every SDK error, by its `Errors` key; read through `en.apiError`. */
 export const apiErrors: ApiErrorCatalog = {
+  DatabaseCleanupDuplicate: 'Select each cleanup category only once.',
+  DatabaseCleanupBusy: 'Database cleanup is already running.',
   EmbedPattern: 'Enter a valid regular expression starting with ^.',
   EmbedAllow: 'Choose only supported iframe permissions, without origin lists.',
   EmbedSource: 'Use an HTTPS template with a fixed origin.',
@@ -441,6 +443,9 @@ export const webErrors: WebErrorCatalog = {
   ProfileNumberInvalid: 'Enter a number.',
   PluginBundleRequired: 'Choose a plugin bundle (.js)',
   ImportFileRequired: 'Choose a WordPress export file (.xml)',
+  DatabaseCleanupNothingSelected: 'Select at least one cleanup task.',
+  DatabaseCleanupConfirmRequired:
+    'Confirm that the selected data will be deleted permanently.',
   ThemeFileRequired: 'Choose a theme archive (.zip)',
   BlocksInvalid: 'The blocks could not be read',
   TemplateNameInvalid: 'Use lowercase letters, numbers and dashes for the slug',
@@ -1120,6 +1125,57 @@ export const en = {
   webhookSecretHelp:
     'Receivers check the X-CMS-Signature header (t=…,v1=HMAC-SHA256 of “t.body”) with this secret.',
   webhookPingQueued: 'Test delivery queued.',
+
+  // Tools: database cleanup
+  toolsDatabase: 'Database cleanup',
+  databaseCleanupHelp:
+    'Remove data the site no longer needs and reclaim unused space in the database tables.',
+  databaseSize: 'Database size',
+  databaseSizeSummary: (total: string, tables: number, free: string) =>
+    `${total} in ${tables} tables; ${free} of unused space.`,
+  databaseCleanupTasks: 'Cleanup tasks',
+  databaseCleanupRevisions: 'Revisions',
+  databaseCleanupRevisionsHelp:
+    'Earlier saved versions of posts and pages. The current content is not affected.',
+  databaseCleanupAutosaves: 'Autosaves',
+  databaseCleanupAutosavesHelp: (days: number) =>
+    `Automatic backups of unsaved edits. Autosaves from the last ${days} days are kept.`,
+  databaseCleanupTrashedContent: 'Content in the trash',
+  databaseCleanupTrashedContentHelp:
+    'Posts and pages in the trash, deleted for good together with their revisions.',
+  databaseCleanupSpamComments: 'Spam comments',
+  databaseCleanupSpamCommentsHelp: 'Comments marked as spam.',
+  databaseCleanupTrashedComments: 'Comments in the trash',
+  databaseCleanupTrashedCommentsHelp: 'Comments moved to the trash.',
+  databaseCleanupExpired: 'Expired records',
+  databaseCleanupExpiredHelp:
+    'Temporary records past their expiry date, such as old sign-in sessions and one-time links.',
+  databaseCleanupOptimize: 'Optimize tables',
+  databaseCleanupOptimizeHelp:
+    'Rebuild the tables to reclaim unused space. Nothing is deleted.',
+  databaseCleanupItems: (count: number) =>
+    count === 1 ? '1 item' : `${count} items`,
+  databaseCleanupTables: (count: number) =>
+    count === 1 ? '1 table' : `${count} tables`,
+  databaseCleanupKeepLatest: 'Revisions to keep per item',
+  databaseCleanupKeepLatestHelp:
+    'The newest revisions of each post or page are kept. Enter 0 to remove all revisions.',
+  databaseCleanupRefresh: 'Update count',
+  databaseCleanupWarning:
+    'Deleted data cannot be recovered. Back up the database before you start.',
+  databaseCleanupConfirm:
+    'I understand that the selected data will be deleted permanently.',
+  databaseCleanupRun: 'Clean up database',
+  databaseCleanupRunning: 'Cleaning up…',
+  databaseCleanupDone: 'Database cleanup finished.',
+  databaseCleanupResults: 'Results',
+  databaseCleanupDeleted: (count: number) => `${count} deleted`,
+  databaseCleanupSizeChange: (before: string, after: string) =>
+    `Total size: ${before} before, ${after} after.`,
+  databaseCleanupTable: 'Table',
+  databaseCleanupBefore: 'Before',
+  databaseCleanupAfter: 'After',
+  databaseCleanupFree: 'Unused space',
 
   // Dashboard
   dashboard: 'Dashboard',

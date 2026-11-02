@@ -3,6 +3,7 @@ import type {
   PasswordTokenRepository,
 } from '#api/domain/auth/ports';
 import type { Database } from '#api/infra/prisma/client';
+import { purgeExpired } from '#api/infra/prisma/expired-cleanup';
 
 export class PrismaPasswordTokenRepository implements PasswordTokenRepository {
   constructor(private readonly db: Database) {}
@@ -17,8 +18,8 @@ export class PrismaPasswordTokenRepository implements PasswordTokenRepository {
   }
 
   async purge(now: Date) {
-    await this.db.passwordToken.deleteMany({
-      where: { expiresAt: { lte: now } },
-    });
+    while (await purgeExpired(this.db, now, 'passwords')) {
+      /* bounded batches */
+    }
   }
 }

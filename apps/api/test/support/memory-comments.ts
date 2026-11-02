@@ -2,6 +2,7 @@ import type { CommentStatus } from '@cms/sdk';
 import type {
   CommentChanges,
   CommentCriteria,
+  CleanupStatus,
   CommentPosition,
   CommentRecord,
   CommentRepository,
@@ -168,10 +169,10 @@ export class MemoryCommentRepository implements CommentRepository {
     return before;
   }
 
-  async delete(ids: readonly string[]) {
+  async delete(ids: readonly string[], expected?: CleanupStatus) {
     const doomed = ids.flatMap((id) => {
       const row = this.rows.get(id);
-      return row ? [row] : [];
+      return row && (!expected || row.status === expected) ? [row] : [];
     });
     const deleted = new Set(doomed.map((row) => row.id));
     const survivor = (id: string | null): string | null =>

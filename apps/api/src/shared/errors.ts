@@ -96,6 +96,7 @@ export const ServerErrors = {
  * SDK's fixed text, so readers' catalogs can key on it; its values travel as `issues[].params`.
  */
 export const Errors = {
+  DatabaseCleanupBusy: SdkErrors.DatabaseCleanupBusy,
   PrivacyPolicyInvalid: SdkErrors.PrivacyPolicyInvalid,
   PrivacyConfirmationInvalid: SdkErrors.PrivacyConfirmationInvalid,
   PrivacyRequestMissing: SdkErrors.PrivacyRequestMissing,

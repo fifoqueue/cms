@@ -26,6 +26,7 @@ import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
 import type {
   CommentOrigin,
+  CleanupStatus,
   CommentPosition,
   CommentRecord,
   CommentRepository,
@@ -573,11 +574,20 @@ export class CommentService {
       await this.deps.notifier.claim({ ...before, status });
   }
 
-  async remove(id: string, actor: Actor) {
-    authorize(actor, 'comments.moderate');
-    const [deleted] = await this.deps.repository.delete([id]);
-    if (!deleted) throw notFound(Errors.CommentNotFound);
+  /** Resolves whether it deleted; a cleanup (`expected`) skips a comment whose status changed meanwhile. */
+  async remove(
+    id: string,
+    actor: Actor,
+    expected?: CleanupStatus,
+  ): Promise<boolean> {
+    authorize(actor, expected ? 'tools.manage' : 'comments.moderate');
+    const [deleted] = await this.deps.repository.delete([id], expected);
+    if (!deleted) {
+      if (expected) return false;
+      throw notFound(Errors.CommentNotFound);
+    }
     void this.deps.hooks.emit('comment.deleted', toPlugin(deleted));
+    return true;
   }
 
   /** Deletes spam and trash older than `COMMENT_PURGE_DAYS`. */
