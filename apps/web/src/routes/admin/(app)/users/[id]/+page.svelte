@@ -90,7 +90,7 @@
 
 <Card>
   <CardHeader><CardTitle>{m.usersAccountManagement}</CardTitle></CardHeader>
-  <CardContent class="flex flex-wrap gap-2">
+  <CardContent class="flex flex-row flex-wrap gap-2">
     <form method="POST" action="?/reset" use:enhance>
       <Button type="submit" variant="outline"
         >{data.passwordAllowed

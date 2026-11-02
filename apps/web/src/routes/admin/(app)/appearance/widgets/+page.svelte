@@ -128,7 +128,7 @@
 
   <Card>
     <CardHeader><CardTitle>{m.widgetAdd}</CardTitle></CardHeader>
-    <CardContent class="flex flex-wrap items-end gap-3">
+    <CardContent class="flex flex-row flex-wrap items-end gap-3">
       <div class="grid gap-2">
         <Label for="widget-type">{m.widgetType}</Label>
         <NativeSelect id="widget-type" bind:value={type}>

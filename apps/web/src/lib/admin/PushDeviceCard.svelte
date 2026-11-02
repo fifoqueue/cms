@@ -57,7 +57,9 @@
 {#if subscribed !== null}
   <Card>
     <CardHeader><CardTitle>{m.pushTitle}</CardTitle></CardHeader>
-    <CardContent class="flex flex-wrap items-center justify-between gap-3">
+    <CardContent
+      class="flex flex-row flex-wrap items-center justify-between gap-3"
+    >
       <p class="text-sm text-muted-foreground">
         {subscribed ? m.pushOn : m.pushOff}
       </p>
