@@ -324,7 +324,7 @@
 
   {#if current}
     <Card>
-      <CardHeader class="flex flex-row items-center justify-between gap-3">
+      <CardHeader class="flex flex-row items-end justify-between gap-3">
         <div class="grid flex-1 gap-2">
           <Label for="menu-name">{m.menuName}</Label>
           <Input
@@ -334,7 +334,7 @@
             bind:value={current.name}
           />
         </div>
-        <Button type="button" variant="ghost" onclick={deleteMenu}
+        <Button type="button" variant="destructive" onclick={deleteMenu}
           >{m.menuDelete}</Button
         >
       </CardHeader>
