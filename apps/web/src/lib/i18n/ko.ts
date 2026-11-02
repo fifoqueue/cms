@@ -1830,6 +1830,10 @@ export const ko: Messages = {
     '이번 삽입에만 사용됩니다. 이 파일의 라이브러리 대체 텍스트는 바꿀 수 없습니다.',
   mediaAltNotSaved: (reason: string) =>
     `대체 텍스트를 라이브러리에 저장하지 못했습니다(${reason}). 여기에서만 쓰려면 버튼을 다시 누르세요.`,
+  mediaSelectedCount: (count: number) => `파일 ${count}개 선택됨`,
+  mediaDeselect: '선택 해제',
+  mediaDeleteFailed: (name: string, reason: string) =>
+    `${name}을(를) 삭제하지 못했습니다(${reason}).`,
   seoTabs: '검색 엔진 최적화 설정',
   // site-theme
   contentPluginBlockInactive:

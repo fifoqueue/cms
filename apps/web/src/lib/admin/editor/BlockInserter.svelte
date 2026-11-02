@@ -5,6 +5,7 @@
   import { default as Plus } from '@lucide/svelte/icons/plus';
   import { onMount, tick } from 'svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
+  import type { MediaPick } from '#lib/admin/MediaPicker.svelte';
   import BlockOptions from '#lib/admin/editor/BlockOptions.svelte';
   import { mediaNode } from '#lib/admin/editor/blocks.js';
   import { outsideRender } from '#lib/admin/editor/outside-render.svelte.js';
@@ -37,8 +38,8 @@
   let search = $state('');
   let revision = $state(0);
   let picker: ReturnType<typeof MediaPicker>;
+  let galleryPicker: ReturnType<typeof MediaPicker>;
   let mediaKind = $state<MediaKind>('image');
-  let pending = $state('image');
   /** How the menu was opened, and whether it ended in a choice or Escape (decides where focus goes). */
   let slashed = false;
   let chosen = false;
@@ -190,7 +191,15 @@
   const pick = (media: AdminMedia) => {
     if (media.kind !== mediaKind) return;
     const node = mediaNode(media);
-    insert(pending === 'gallery' ? { type: 'gallery', content: [node] } : node);
+    insert(node);
+  };
+  /** A new gallery takes every picked image, in pick order, up to its 100-image limit. */
+  const pickGallery = (picks: MediaPick[]) => {
+    const content = picks
+      .filter(({ media }) => media.kind === 'image')
+      .slice(0, 100)
+      .map(({ media }) => mediaNode(media));
+    if (content.length) insert({ type: 'gallery', content });
   };
 
   const choose = async (type: string) => {
@@ -199,7 +208,6 @@
     open = false;
     search = '';
     if (['image', 'audio', 'video', 'file', 'gallery'].includes(type)) {
-      pending = type;
       mediaKind =
         type === 'file'
           ? 'document'
@@ -209,7 +217,7 @@
               ? 'video'
               : 'image';
       await tick();
-      picker.open();
+      (type === 'gallery' ? galleryPicker : picker).open();
       return;
     }
     if (type.startsWith('plugin:')) {
@@ -388,3 +396,4 @@
   {#if editor && !disabled}<BlockOptions {editor} {revision} />{/if}
 </div>
 <MediaPicker bind:this={picker} kind={mediaKind} onpick={pick} />
+<MediaPicker bind:this={galleryPicker} onpickmany={pickGallery} />

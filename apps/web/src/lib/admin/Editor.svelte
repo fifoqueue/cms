@@ -53,7 +53,7 @@
   } from '#lib/admin/editor/plugin-blocks.js';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import { sizeLabel } from '#lib/admin/image-sizes.js';
-  import type { MediaChoice } from '#lib/admin/MediaPicker.svelte';
+  import type { MediaChoice, MediaPick } from '#lib/admin/MediaPicker.svelte';
   import { uploadFile } from '#lib/admin/upload.js';
   import { Button } from '#lib/components/ui/button/index.js';
   import { Input } from '#lib/components/ui/input/index.js';
@@ -80,6 +80,8 @@
   const m = $derived(i18n.m);
   let audioPicker: ReturnType<typeof MediaPicker>;
   let picker: ReturnType<typeof MediaPicker>;
+  /** Swaps the selected image's file; always a single pick. */
+  let replacePicker: ReturnType<typeof MediaPicker>;
   let linkDialog: HTMLDialogElement;
   let linkUrl = $state('');
   let uploading = $state(0);
@@ -106,6 +108,7 @@
       mediaId: media.id,
       width: choice.variant?.width ?? media.width,
       height: choice.variant?.height ?? media.height,
+      ...(choice.caption ? { caption: choice.caption } : {}),
     },
   });
 
@@ -397,17 +400,17 @@
     );
   };
 
-  /** Whether the picker swaps the selected image's file instead of inserting one. */
-  let replacing = false;
+  /** Inserts library images in the order they were picked; the media id keeps usage tracking accurate. */
+  const insertImages = (picks: MediaPick[]) =>
+    run((chain) =>
+      chain.insertContent(
+        picks.map(({ media, choice }) => imageNode(media, choice)),
+      ),
+    );
 
-  /** Inserts a library image; the media id keeps usage tracking accurate. */
-  const insertImage = (media: AdminMedia, choice: MediaChoice) => {
-    const node = imageNode(media, choice);
-    // Replacing keeps the caption, alignment and link of the selected image.
-    if (replacing) setImage(node.attrs);
-    else run((chain) => chain.insertContent(node));
-    replacing = false;
-  };
+  /** Swaps the selected image's file, keeping its caption, alignment and link. */
+  const replaceImage = (media: AdminMedia, choice: MediaChoice) =>
+    setImage(imageNode(media, choice).attrs);
 
   // RAW HTML mode: the document's HTML, one top-level block per line. Every edit is applied to
   // the editor at once, so the form's hidden field always holds what the text area shows.
@@ -636,10 +639,7 @@
     {
       label: m.editorImage,
       icon: Image,
-      action: () => {
-        replacing = false;
-        picker.open();
-      },
+      action: () => picker.open(),
     },
     { label: m.mediaAudio, icon: Music, action: () => audioPicker.open() },
     {
@@ -838,10 +838,7 @@
           type="button"
           size="sm"
           variant="outline"
-          onclick={() => {
-            replacing = true;
-            picker.open();
-          }}>{m.mediaChoose}</Button
+          onclick={() => replacePicker.open()}>{m.mediaChoose}</Button
         >
       </div>
     {/if}
@@ -877,16 +874,19 @@
 </div>
 <input type="hidden" {name} value={JSON.stringify(value)} />
 
-<MediaPicker bind:this={picker} sizes onpick={insertImage} />
+<MediaPicker bind:this={picker} sizes captions onpickmany={insertImages} />
+<MediaPicker bind:this={replacePicker} sizes onpick={replaceImage} />
 <MediaPicker
   kind="audio"
   bind:this={audioPicker}
-  onpick={(media) =>
+  onpickmany={(picks) =>
     run((chain) =>
-      chain.insertContent({
-        type: 'audio',
-        attrs: { src: media.url, mediaId: media.id },
-      }),
+      chain.insertContent(
+        picks.map(({ media }) => ({
+          type: 'audio',
+          attrs: { src: media.url, mediaId: media.id },
+        })),
+      ),
     )}
 />
 

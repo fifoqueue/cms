@@ -6,6 +6,7 @@
   import { Popover } from 'bits-ui';
   import { onMount, tick } from 'svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
+  import type { MediaPick } from '#lib/admin/MediaPicker.svelte';
   import CodeBlockOptions from '#lib/admin/editor/CodeBlockOptions.svelte';
   import CalloutOptions from '#lib/admin/editor/CalloutOptions.svelte';
   import TocOptions from '#lib/admin/editor/TocOptions.svelte';
@@ -32,6 +33,7 @@
   const targets = $derived(revision >= 0 ? blockTargets(editor) : []);
   type Target = ReturnType<typeof blockTargets>[number];
   let picker: ReturnType<typeof MediaPicker>;
+  let galleryPicker: ReturnType<typeof MediaPicker>;
   let mediaKind = $state<MediaKind>('image');
   let mediaTarget = $state<{ pos: number; type: string } | null>(null);
   const text = (target: Target, key: string) =>
@@ -56,7 +58,25 @@
       type === 'file' ? 'document' : type === 'video' ? 'video' : 'image';
     mediaTarget = { pos: target.pos, type };
     await tick();
-    picker.open();
+    (type === 'gallery' ? galleryPicker : picker).open();
+  };
+
+  /** Appends the picked images to the gallery in pick order, up to its 100-image limit. */
+  const pickedMany = (picks: MediaPick[]) => {
+    if (mediaTarget?.type !== 'gallery') return;
+    const node = editor.state.doc.nodeAt(mediaTarget.pos);
+    if (node?.type.name === 'gallery') {
+      const items = picks
+        .filter(({ media }) => media.kind === 'image')
+        .slice(0, Math.max(0, 100 - node.childCount))
+        .map(({ media }) => mediaNode(media));
+      if (items.length)
+        editor.commands.insertContentAt(
+          mediaTarget.pos + node.nodeSize - 1,
+          items,
+        );
+    }
+    mediaTarget = null;
   };
 
   const picked = (media: AdminMedia) => {
@@ -64,19 +84,12 @@
     const node = editor.state.doc.nodeAt(mediaTarget.pos);
     if (node?.type.name !== mediaTarget.type) return;
     const item = mediaNode(media);
-    if (mediaTarget.type === 'gallery') {
-      if (node.childCount < 100)
-        editor.commands.insertContentAt(
-          mediaTarget.pos + node.nodeSize - 1,
-          item,
-        );
-    } else
-      editor.view.dispatch(
-        editor.state.tr.setNodeMarkup(mediaTarget.pos, undefined, {
-          ...node.attrs,
-          ...item.attrs,
-        }),
-      );
+    editor.view.dispatch(
+      editor.state.tr.setNodeMarkup(mediaTarget.pos, undefined, {
+        ...node.attrs,
+        ...item.attrs,
+      }),
+    );
     mediaTarget = null;
   };
 </script>
@@ -428,3 +441,4 @@
   </Popover.Root>
 {/each}
 <MediaPicker bind:this={picker} kind={mediaKind} onpick={picked} />
+<MediaPicker bind:this={galleryPicker} onpickmany={pickedMany} />

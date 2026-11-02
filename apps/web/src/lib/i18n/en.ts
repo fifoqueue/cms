@@ -1862,6 +1862,11 @@ export const en = {
     'Used for this insertion only. You cannot change the library text of this file.',
   mediaAltNotSaved: (reason: string) =>
     `The alternative text could not be saved to the library (${reason}). Press the button again to use it here only.`,
+  mediaSelectedCount: (count: number) =>
+    count === 1 ? '1 file selected' : `${count} files selected`,
+  mediaDeselect: 'Deselect',
+  mediaDeleteFailed: (name: string, reason: string) =>
+    `${name} could not be deleted (${reason}).`,
   seoTabs: 'SEO settings',
   // site-theme
   contentPluginBlockInactive:
