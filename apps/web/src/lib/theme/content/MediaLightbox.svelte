@@ -53,8 +53,7 @@
       open = true;
     };
     const target = (event: Event) =>
-      event.target instanceof HTMLImageElement &&
-      images.includes(event.target)
+      event.target instanceof HTMLImageElement && images.includes(event.target)
         ? event.target
         : null;
     const onClick = (event: MouseEvent) => {

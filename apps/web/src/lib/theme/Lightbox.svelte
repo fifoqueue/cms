@@ -61,7 +61,9 @@
       <Dialog.Title class="sr-only">{m.themeLightboxTitle}</Dialog.Title>
       {#if item}
         {#key index}
-          <figure class="flex max-h-full max-w-full flex-col items-center gap-3">
+          <figure
+            class="flex max-h-full max-w-full flex-col items-center gap-3"
+          >
             <img
               src={item.src}
               srcset={item.srcset}
@@ -97,8 +99,9 @@
           {m.themeLightboxPosition(index + 1, items.length)}
         </p>
       {/if}
-      <Dialog.Close class="{control} top-3 right-3" aria-label={m.themeLightboxClose}
-        ><X class="size-5" /></Dialog.Close
+      <Dialog.Close
+        class="{control} top-3 right-3"
+        aria-label={m.themeLightboxClose}><X class="size-5" /></Dialog.Close
       >
     </Dialog.Content>
   </Dialog.Portal>
