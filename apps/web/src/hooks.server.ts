@@ -80,15 +80,19 @@ const requestSize: Handle = async ({ event, resolve }) => {
 
 /**
  * Admin responses (sign-in redirects included) and error responses are never indexed. Public
- * entries get their robots meta from the page itself. Headers are copied because a returned
- * response may have immutable headers.
+ * entries get their robots meta from the page itself. Admin responses are never framed; public
+ * pages only by the site itself (the admin site editor previews them), and pages share no
+ * browsing context group with other origins. Headers are copied because a returned response may
+ * have immutable headers.
  */
 const responseSecurity: Handle = async ({ event, resolve }) => {
   const response = await resolve(event);
   const admin = isAdmin(event.url.pathname);
   const origins = event.locals.captchaOrigins;
+  const page = response.headers.get('content-type')?.startsWith('text/html');
   if (
     !admin &&
+    !page &&
     response.status < 400 &&
     !(origins && response.headers.has('content-security-policy'))
   )
@@ -98,10 +102,16 @@ const responseSecurity: Handle = async ({ event, resolve }) => {
     headers.set('x-robots-tag', 'noindex, nofollow');
     headers.set('cache-control', 'private, no-store');
   }
-  if (admin) {
-    headers.append('content-security-policy', "frame-ancestors 'none'");
-    headers.set('x-frame-options', 'DENY');
+  if (admin || page) {
+    // Sign-in responses already carry their own `frame-ancestors`; one is enough.
+    if (!headers.get('content-security-policy')?.includes('frame-ancestors'))
+      headers.append(
+        'content-security-policy',
+        admin ? "frame-ancestors 'none'" : "frame-ancestors 'self'",
+      );
+    headers.set('x-frame-options', admin ? 'DENY' : 'SAMEORIGIN');
   }
+  if (page) headers.set('cross-origin-opener-policy', 'same-origin');
   // Only pages that render the captcha widget admit its origins, in every policy they send.
   const policy = headers.get('content-security-policy');
   if (origins && policy)

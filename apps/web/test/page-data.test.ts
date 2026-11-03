@@ -757,7 +757,13 @@ const handleSignedOut = (
     route = '/(site)',
     method = 'GET',
     status,
-  }: { route?: string; method?: string; status: number },
+    headers,
+  }: {
+    route?: string;
+    method?: string;
+    status: number;
+    headers?: Record<string, string>;
+  },
 ) => {
   const event = Object.assign(publicEvent(path, {}, route), {
     request: new Request(`http://web.test${path}`, { method }),
@@ -766,10 +772,40 @@ const handleSignedOut = (
   return with_request_store({ event, state: {} as never }, () =>
     handleRequest({
       event,
-      resolve: async () => new Response(null, { status }),
+      resolve: async () => new Response(null, { status, headers }),
     }),
   );
 };
+
+test('pages are framed only by the site, admin never, and keep their own opener group', async () => {
+  override = ({ url }) =>
+    url.pathname === '/api/v1/install/status'
+      ? json({ databaseConfigured: true, setupRequired: false })
+      : undefined;
+  const html = { 'content-type': 'text/html; charset=utf-8' };
+  const site = await handleSignedOut('/hello', { status: 200, headers: html });
+  expect(site.headers.get('content-security-policy')).toBe(
+    "frame-ancestors 'self'",
+  );
+  expect(site.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+  expect(site.headers.get('cross-origin-opener-policy')).toBe('same-origin');
+
+  const signIn = await handleSignedOut('/admin/sign-in', {
+    route: '/admin/sign-in',
+    status: 200,
+    headers: { ...html, 'content-security-policy': "frame-ancestors 'none'" },
+  });
+  expect(signIn.headers.get('content-security-policy')).toBe(
+    "frame-ancestors 'none'",
+  );
+  expect(signIn.headers.get('x-frame-options')).toBe('DENY');
+
+  const feed = await handleSignedOut('/feed.xml', {
+    status: 200,
+    headers: { 'content-type': 'application/rss+xml' },
+  });
+  expect(feed.headers.has('x-frame-options')).toBe(false);
+});
 
 test('hidden login masks protected admin screens while visible login uses the configured path', async () => {
   for (const showLogin of [false, true]) {
