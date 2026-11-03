@@ -5,7 +5,7 @@
   import { default as Plus } from '@lucide/svelte/icons/plus';
   import { onMount, tick } from 'svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
-  import type { MediaPick } from '#lib/admin/MediaPicker.svelte';
+  import type { MediaChoice, MediaPick } from '#lib/admin/MediaPicker.svelte';
   import BlockOptions from '#lib/admin/editor/BlockOptions.svelte';
   import { mediaNode } from '#lib/admin/editor/blocks.js';
   import { outsideRender } from '#lib/admin/editor/outside-render.svelte.js';
@@ -188,17 +188,16 @@
 
   const insert = (content: JSONContent | JSONContent[]) =>
     editor?.chain().focus().insertContent(content).run();
-  const pick = (media: AdminMedia) => {
+  const pick = (media: AdminMedia, choice: MediaChoice) => {
     if (media.kind !== mediaKind) return;
-    const node = mediaNode(media);
-    insert(node);
+    insert(mediaNode(media, choice));
   };
   /** A new gallery takes every picked image, in pick order, up to its 100-image limit. */
   const pickGallery = (picks: MediaPick[]) => {
     const content = picks
       .filter(({ media }) => media.kind === 'image')
       .slice(0, 100)
-      .map(({ media }) => mediaNode(media));
+      .map(({ media, choice }) => mediaNode(media, choice));
     if (content.length) insert({ type: 'gallery', content });
   };
 
@@ -395,5 +394,10 @@
   </Popover.Root>
   {#if editor && !disabled}<BlockOptions {editor} {revision} />{/if}
 </div>
-<MediaPicker bind:this={picker} kind={mediaKind} onpick={pick} />
-<MediaPicker bind:this={galleryPicker} onpickmany={pickGallery} />
+<MediaPicker bind:this={picker} kind={mediaKind} sizes captions onpick={pick} />
+<MediaPicker
+  bind:this={galleryPicker}
+  sizes
+  captions
+  onpickmany={pickGallery}
+/>

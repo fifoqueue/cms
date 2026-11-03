@@ -1,24 +1,41 @@
 import type { Editor, JSONContent } from '@tiptap/core';
 import type { AdminMedia } from '@cms/sdk';
+import type { MediaChoice } from '#lib/admin/MediaPicker.svelte';
 
-export const mediaNode = (media: AdminMedia): JSONContent => ({
-  type: media.kind === 'document' ? 'file' : media.kind,
+/** An image node for a library file at the size, alt text and caption chosen for it. */
+export const imageNode = (
+  media: AdminMedia,
+  choice: MediaChoice,
+): JSONContent => ({
+  type: 'image',
   attrs: {
-    src:
-      media.kind === 'image'
-        ? (media.variants.find((item) => item.name === 'large')?.url ??
-          media.url)
-        : media.url,
+    src: choice.variant?.url ?? media.url,
+    alt: choice.alt,
     mediaId: media.id,
-    ...(media.kind === 'image' && {
-      alt: media.alt,
-      width: media.width,
-      height: media.height,
-      caption: media.caption,
-    }),
-    ...(media.kind === 'document' && { name: media.filename, download: true }),
+    width: choice.variant?.width ?? media.width,
+    height: choice.variant?.height ?? media.height,
+    ...(choice.caption ? { caption: choice.caption } : {}),
   },
 });
+
+/** A body node for a library file; every insertion path builds images the same way. */
+export const mediaNode = (
+  media: AdminMedia,
+  choice: MediaChoice,
+): JSONContent =>
+  media.kind === 'image'
+    ? imageNode(media, choice)
+    : {
+        type: media.kind === 'document' ? 'file' : media.kind,
+        attrs: {
+          src: media.url,
+          mediaId: media.id,
+          ...(media.kind === 'document' && {
+            name: media.filename,
+            download: true,
+          }),
+        },
+      };
 
 const configurable = new Set([
   'paragraph',

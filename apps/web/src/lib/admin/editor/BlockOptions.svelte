@@ -6,7 +6,7 @@
   import { Popover } from 'bits-ui';
   import { onMount, tick } from 'svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
-  import type { MediaPick } from '#lib/admin/MediaPicker.svelte';
+  import type { MediaChoice, MediaPick } from '#lib/admin/MediaPicker.svelte';
   import CodeBlockOptions from '#lib/admin/editor/CodeBlockOptions.svelte';
   import CalloutOptions from '#lib/admin/editor/CalloutOptions.svelte';
   import TocOptions from '#lib/admin/editor/TocOptions.svelte';
@@ -69,7 +69,7 @@
       const items = picks
         .filter(({ media }) => media.kind === 'image')
         .slice(0, Math.max(0, 100 - node.childCount))
-        .map(({ media }) => mediaNode(media));
+        .map(({ media, choice }) => mediaNode(media, choice));
       if (items.length)
         editor.commands.insertContentAt(
           mediaTarget.pos + node.nodeSize - 1,
@@ -79,11 +79,11 @@
     mediaTarget = null;
   };
 
-  const picked = (media: AdminMedia) => {
+  const picked = (media: AdminMedia, choice: MediaChoice) => {
     if (!mediaTarget || media.kind !== mediaKind) return;
     const node = editor.state.doc.nodeAt(mediaTarget.pos);
     if (node?.type.name !== mediaTarget.type) return;
-    const item = mediaNode(media);
+    const item = mediaNode(media, choice);
     editor.view.dispatch(
       editor.state.tr.setNodeMarkup(mediaTarget.pos, undefined, {
         ...node.attrs,
@@ -440,5 +440,11 @@
     </Popover.Portal>
   </Popover.Root>
 {/each}
-<MediaPicker bind:this={picker} kind={mediaKind} onpick={picked} />
-<MediaPicker bind:this={galleryPicker} onpickmany={pickedMany} />
+<MediaPicker
+  bind:this={picker}
+  kind={mediaKind}
+  sizes
+  captions
+  onpick={picked}
+/>
+<MediaPicker bind:this={galleryPicker} sizes captions onpickmany={pickedMany} />

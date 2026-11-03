@@ -51,6 +51,7 @@
     loadPluginBlocks,
     pluginBlockView,
   } from '#lib/admin/editor/plugin-blocks.js';
+  import { imageNode } from '#lib/admin/editor/blocks.js';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import { sizeLabel } from '#lib/admin/image-sizes.js';
   import type { MediaChoice, MediaPick } from '#lib/admin/MediaPicker.svelte';
@@ -97,19 +98,6 @@
   const notePages = $derived.by(() => {
     void revision;
     return editor ? footnotePages(editor.state.doc).pages : [];
-  });
-
-  /** Image node attributes for a library file at the chosen size. */
-  const imageNode = (media: AdminMedia, choice: MediaChoice) => ({
-    type: 'image',
-    attrs: {
-      src: choice.variant?.url ?? media.url,
-      alt: choice.alt,
-      mediaId: media.id,
-      width: choice.variant?.width ?? media.width,
-      height: choice.variant?.height ?? media.height,
-      ...(choice.caption ? { caption: choice.caption } : {}),
-    },
   });
 
   const isImage = (file: File) => file.type.startsWith('image/');
