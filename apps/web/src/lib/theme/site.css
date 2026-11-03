@@ -1,18 +1,4 @@
-@import 'tailwindcss' source(none);
-@import 'tw-animate-css';
-@import './base.css';
-@import './content/toc.css';
-
-@plugin '@tailwindcss/typography';
-@source '../../routes/(site)';
-@source '.';
-@source '../seo/Breadcrumbs.svelte';
-@source '../security/Captcha.svelte';
-@source '../components/NavigationProgress.svelte';
-@source '../components/Toasts.svelte';
-@source '../components/ErrorView.svelte';
-@source '../components/ui/button';
-@source '../components/ui/sonner';
+/* Plain rules, no Tailwind: public pages get it through `public.css`. */
 
 /* Article typography also follows these tokens in the admin site's preview canvas. */
 .cms-site .prose {

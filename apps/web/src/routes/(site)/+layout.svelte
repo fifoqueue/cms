@@ -1,5 +1,5 @@
 <script lang="ts">
-  import '#lib/theme/site.css';
+  import '#lib/theme/public.css';
   import { routeLink } from '#lib/route-link.js';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';

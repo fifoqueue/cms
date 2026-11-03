@@ -1,0 +1,21 @@
+/*
+ * Public pages' own Tailwind build. Admin screens import `site.css` alone: a second Tailwind
+ * build there shares the admin's layer names and its base utilities (`.hidden`) override
+ * the admin's responsive ones (`md:flex`).
+ */
+@import 'tailwindcss' source(none);
+@import 'tw-animate-css';
+@import './base.css';
+@import './content/toc.css';
+@import './site.css';
+
+@plugin '@tailwindcss/typography';
+@source '../../routes/(site)';
+@source '.';
+@source '../seo/Breadcrumbs.svelte';
+@source '../security/Captcha.svelte';
+@source '../components/NavigationProgress.svelte';
+@source '../components/Toasts.svelte';
+@source '../components/ErrorView.svelte';
+@source '../components/ui/button';
+@source '../components/ui/sonner';
