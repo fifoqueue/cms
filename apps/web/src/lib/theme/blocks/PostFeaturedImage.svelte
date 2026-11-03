@@ -3,12 +3,13 @@
   import { resolve } from '$app/paths';
   import type { Block } from '@cms/sdk';
   import ResponsiveImage from '#lib/theme/ResponsiveImage.svelte';
-  import { useCurrentPost } from '#lib/theme/scope.js';
+  import { useCurrentPost, useLeadPost } from '#lib/theme/scope.js';
 
   let { block }: { block: Extract<Block, { name: 'post-featured-image' }> } =
     $props();
 
   const current = useCurrentPost();
+  const lead = useLeadPost();
   const ASPECT = {
     auto: 'h-auto',
     wide: 'aspect-video object-cover',
@@ -35,6 +36,7 @@
           image={post.featuredImage}
           sizes="(min-width: 64rem) 40rem, 100vw"
           class="{classes} transition duration-300 hover:scale-[1.02]"
+          eager={lead()}
         />
       </a>
     {:else}

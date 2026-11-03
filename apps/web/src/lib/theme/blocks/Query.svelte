@@ -69,13 +69,18 @@
               ? `grid grid-cols-1 ${GRID[a.columns]} ${GAP[a.gap]}`
               : `flex flex-col ${a.divider ? 'divide-y' : GAP[a.gap]}`}"
           >
-            {#each posts.items as post (post.id)}
+            {#each posts.items as post, position (post.id)}
               <li
                 class={a.layout === 'grid'
                   ? 'flex flex-col gap-3 overflow-hidden rounded-[var(--radius)] border bg-card p-5 text-card-foreground shadow-xs transition hover:shadow-md'
                   : `flex flex-col gap-3 ${a.divider ? 'py-8 first:pt-0 last:pb-0' : ''}`}
               >
-                <PostScope {post} blocks={child.children} within={index} />
+                <PostScope
+                  {post}
+                  blocks={child.children}
+                  within={index}
+                  lead={!!block.attrs.inherit && position === 0}
+                />
               </li>
             {/each}
           </ul>

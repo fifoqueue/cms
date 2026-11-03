@@ -88,6 +88,7 @@ export type ScopeData = Pick<
 
 const SCOPE = Symbol('site-scope');
 const POST = Symbol('post');
+const LEAD = Symbol('lead-post');
 const PARTS = Symbol('template-parts');
 const PATH = Symbol('block-path');
 
@@ -110,6 +111,12 @@ export const providePost = (post: () => PostSummary) => setContext(POST, post);
 
 export const useLoopPost = () =>
   getContext<(() => PostSummary) | undefined>(POST);
+
+/** Marks the first post of the page's main query, whose image is usually the largest paint. */
+export const provideLeadPost = (lead: () => boolean) => setContext(LEAD, lead);
+
+export const useLeadPost = () =>
+  getContext<(() => boolean) | undefined>(LEAD) ?? (() => false);
 
 /** Template parts being rendered, outermost first, so a part cannot include itself. */
 export const provideParts = (trail: string[]) => setContext(PARTS, trail);

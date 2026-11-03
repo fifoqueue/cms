@@ -10,6 +10,7 @@
     /** CSS `sizes` hint for choosing a candidate. */
     sizes?: string;
     class?: string;
+    /** The likely largest paint (LCP): loaded at once and fetched before other images. */
     eager?: boolean;
   }
 
@@ -33,6 +34,7 @@
   width={image.width ?? undefined}
   height={image.height ?? undefined}
   loading={eager ? 'eager' : 'lazy'}
+  fetchpriority={eager ? 'high' : undefined}
   decoding="async"
   class={className}
 />
