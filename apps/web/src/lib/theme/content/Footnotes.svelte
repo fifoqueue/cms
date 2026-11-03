@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import { focusHeading, fragmentTarget } from '#lib/theme/content/toc.js';
   import '#lib/theme/content/footnotes.css';
 

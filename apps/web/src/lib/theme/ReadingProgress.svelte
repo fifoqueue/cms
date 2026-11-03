@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { afterNavigate } from '$app/navigation';
   import { default as ChevronUp } from '@lucide/svelte/icons/chevron-up';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
 
   /**
    * Back-to-top button for entry pages. Its ring shows reading progress

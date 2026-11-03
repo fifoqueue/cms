@@ -4,7 +4,7 @@
   import { Label } from '#lib/components/ui/label/index.js';
   import PasswordInput from '#lib/security/PasswordInput.svelte';
   import type { FieldView } from '#lib/server/sign-in-view.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import { fieldLabel } from '#lib/sign-in-labels.js';
 
   /** The inputs a sign-in method or step declares, whatever provides it. */

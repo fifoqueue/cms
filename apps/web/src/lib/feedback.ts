@@ -5,7 +5,7 @@ import type { Path } from '$app/types';
 import { getContext, setContext } from 'svelte';
 import { toast } from 'svelte-sonner';
 import { errorMessage } from '#lib/admin/form-errors.js';
-import type { FormError } from '#lib/admin/form-errors.js';
+import type { FormError, FormMessages } from '#lib/admin/form-errors.js';
 import type { Messages } from '#lib/i18n/index.js';
 
 /**
@@ -58,7 +58,7 @@ export interface ActionData extends FormError {
 
 /** A notice's text: its catalog entry (counted with `count`), else the notice as given. */
 export const noticeText = (
-  m: Messages,
+  m: object,
   data: Pick<ActionData, 'notice' | 'count'>,
 ) => {
   const { notice, count } = data;
@@ -120,7 +120,7 @@ export const announceBulk = (
  * toast, a refusal's message as an error toast. Field issues stay with the form.
  */
 export const announceResult = (
-  i18n: { m: Messages; language: string },
+  i18n: { m: FormMessages; language: string },
   data: ActionData | null | undefined,
   action?: ToastAction,
 ) => {

@@ -12,7 +12,7 @@
   import { default as X } from '@lucide/svelte/icons/x';
   import { default as ChevronLeft } from '@lucide/svelte/icons/chevron-left';
   import { default as ChevronRight } from '@lucide/svelte/icons/chevron-right';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
 
   /**
    * A full-screen image viewer, inside the site wrapper so the theme's variables apply. A larger

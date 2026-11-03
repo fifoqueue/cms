@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import type { CommentOrigin } from '#lib/server/comments.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
 
   interface Props {
     /** The tooltip's element id. */

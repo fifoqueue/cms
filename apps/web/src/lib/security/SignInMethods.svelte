@@ -2,7 +2,7 @@
   import type { PublicCaptcha } from '@cms/sdk';
   import type { Snippet } from 'svelte';
   import { Separator } from '#lib/components/ui/separator/index.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import AuthForm from '#lib/security/AuthForm.svelte';
   import Captcha from '#lib/security/Captcha.svelte';
   import SignInFields from '#lib/security/SignInFields.svelte';

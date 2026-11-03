@@ -1,5 +1,4 @@
 <script lang="ts">
-  import '#web/routes/layout.css';
   import favicon from '#lib/assets/favicon.svg';
   import SiteFonts from '#lib/theme/SiteFonts.svelte';
   import type { LayoutProps } from './$types';

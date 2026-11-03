@@ -2,10 +2,10 @@
   import type { Path } from '$app/types';
   import { afterNavigate } from '$app/navigation';
   import { resolve } from '$app/paths';
-  import { archivePath } from '@cms/sdk';
+  import { archivePath } from '@cms/sdk/archive-links';
   import { default as Search } from '@lucide/svelte/icons/search';
   import { default as X } from '@lucide/svelte/icons/x';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import { modal } from '#lib/theme/modal.js';
   import { useScope } from '#lib/theme/scope.js';
 

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { errorMessage } from '#lib/admin/form-errors.js';
   import { Button } from '#lib/components/ui/button/index.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import AuthShell from '#lib/security/AuthShell.svelte';
   import type { PageProps } from './$types';
 

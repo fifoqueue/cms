@@ -11,7 +11,7 @@
   import { default as LoaderCircle } from '@lucide/svelte/icons/loader-circle';
   import { onMount, tick } from 'svelte';
   import { Button } from '#lib/components/ui/button/index.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
 
   /**
    * Runs the WebAuthn ceremony the step asks for in the browser and posts its result as

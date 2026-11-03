@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { walkBlocks } from '@cms/sdk';
+  import { walkBlocks } from '@cms/sdk/block-tree';
   import type { Block } from '@cms/sdk';
   import Blocks from '#lib/theme/blocks/Blocks.svelte';
   import SlotOutlet from '#lib/theme/SlotOutlet.svelte';

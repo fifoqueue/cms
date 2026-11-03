@@ -9,6 +9,7 @@ import {
   type WebErrorKey,
 } from '#lib/i18n/api-errors.js';
 import { templateLabels } from '#lib/i18n/template-label.js';
+import { siteFunctions } from '#lib/i18n/site-functions/en.js';
 
 /** Comment form fields a visitor can have remembered. */
 export type CommenterField = 'name' | 'email' | 'website';
@@ -453,10 +454,7 @@ export const webErrors: WebErrorCatalog = {
     'A plugin provides this. Choose Customize before saving your changes.',
   BulkItemFailed: 'This item could not be changed. Try again later.',
   BulkItemInvalid: 'This selection is not valid.',
-  BulkTooMany: ({ limit }) =>
-    limit === undefined
-      ? 'Too many items are selected; nothing was changed.'
-      : `Select at most ${limit} items at a time; nothing was changed.`,
+  BulkTooMany: siteFunctions.bulkTooMany,
   PluginActivationFailed: 'The plugin could not be activated.',
   ReassignToDeleted:
     'Choose someone who is not being deleted to receive the content.',
@@ -598,7 +596,7 @@ export const en = {
   // Sign-in and password recovery
   signInTitle: 'Sign in',
   signIn: 'Sign in',
-  signInWith: (provider: string) => `Sign in with ${provider}`,
+  signInWith: siteFunctions.signInWith,
   or: 'or',
   forgotPassword: 'Forgot your password?',
   forgotTitle: 'Reset your password',
@@ -822,7 +820,7 @@ export const en = {
   protectedTitle: 'This content is password protected.',
   protectedHelp: 'Enter the password to read it.',
   unlock: 'Read',
-  authorArchive: (name: string) => `Posts by ${name}`,
+  authorArchive: siteFunctions.authorArchive,
   noPosts: 'Nothing has been published yet.',
   previewNotice:
     'Preview: this is how the entry will look. It is not public yet.',
@@ -932,7 +930,7 @@ export const en = {
   // Public theme: navigation and widgets
   search: 'Search',
   searchPlaceholder: 'Search…',
-  commentOn: (author: string) => `${author} on`,
+  commentOn: siteFunctions.commentOn,
   sidebar: 'Sidebar',
   primaryNavigation: 'Main',
   footerNavigation: 'Footer',
@@ -1001,17 +999,12 @@ export const en = {
   widgetEmpty: 'No widgets in this area.',
 
   // Public theme: comments
-  commentCount: (count: number) =>
-    count === 0
-      ? 'No comments yet'
-      : count === 1
-        ? '1 comment'
-        : `${count} comments`,
+  commentCount: siteFunctions.commentCount,
   commentAwaitingModeration: 'Thanks! Your comment is waiting for review.',
   commentRepliesLimited: 'More replies exist. View another page to continue.',
   commentByAuthor: 'Author',
   commentReply: 'Reply',
-  commentReplyTo: (name: string) => `Reply to ${name}`,
+  commentReplyTo: siteFunctions.commentReplyTo,
   commentLeave: 'Leave a comment',
   commentName: 'Name',
   commentEmail: 'Email',
@@ -1222,8 +1215,7 @@ export const en = {
 
   // Appearance: theme preview
   themePreview: 'Preview',
-  themePreviewing: (name: string) =>
-    `Previewing the ${name} theme. Visitors still see the active theme.`,
+  themePreviewing: siteFunctions.themePreviewing,
   themePreviewExit: 'End preview',
 
   // Tools: import and export
@@ -1247,16 +1239,15 @@ export const en = {
   themePosts: 'Posts',
   themeArticles: 'Articles',
   themeSearch: 'Search',
-  themeSearchTitle: (query: string) => `Search: ${query}`,
-  themeSearchResults: (query: string) => `Search results for “${query}”`,
-  themeResults: (count: number) =>
-    count === 1 ? '1 result' : `${count} results`,
+  themeSearchTitle: siteFunctions.themeSearchTitle,
+  themeSearchResults: siteFunctions.themeSearchResults,
+  themeResults: siteFunctions.themeResults,
   themeSearchEmpty: 'Nothing matched your search. Try different words.',
   themeSearchPrompt: 'Enter words to search the site.',
   themeCategory: 'Category',
   themeTag: 'Tag',
   themeTags: 'Tags',
-  themePaged: (title: string, page: number) => `${title} – Page ${page}`,
+  themePaged: siteFunctions.themePaged,
   themeContentTypes: 'Content types',
   themeNotFound: 'Page not found',
   errorPageNotFoundHelp:
@@ -1272,8 +1263,7 @@ export const en = {
   errorPageBack: 'Go back',
 
   // Public theme: archives
-  themePostCount: (count: number) =>
-    count === 1 ? '1 post' : `${count} posts`,
+  themePostCount: siteFunctions.themePostCount,
   // Admin: SEO settings
   seoIntro: 'How search engines, social networks and AI tools see the site.',
   seoSetup: 'Setup',
@@ -1557,7 +1547,7 @@ export const en = {
   adminBarCustomize: 'Edit site',
   adminBarNew: 'New',
   adminBarEdit: 'Edit',
-  adminBarHowdy: (name: string) => `Hello, ${name}`,
+  adminBarHowdy: siteFunctions.adminBarHowdy,
 
   // Admin: block themes and site editor
   blockName: (key: string) =>
@@ -1749,7 +1739,7 @@ export const en = {
         github: 'GitHub',
       }) as Record<string, string>
     )[key] ?? key,
-  templateLabel: templateLabels({
+  templateLabel: /* @__PURE__ */ templateLabels({
     index: 'Index (fallback for every page)',
     home: 'Blog home',
     'front-page': 'Front page',
@@ -1927,7 +1917,7 @@ export const en = {
   // site-theme
   contentPluginBlockInactive:
     'This block requires a plugin that is not active.',
-  oembedEmbedded: (site: string) => `Embedded from ${site}`,
+  oembedEmbedded: siteFunctions.oembedEmbedded,
   importAuthors: 'Assign authors',
   importAuthorsHelp:
     'Authors are matched to existing users by email address or login. For authors without a match:',
@@ -1976,8 +1966,8 @@ export const en = {
   themeSkipToContent: 'Skip to content',
   themeBackToTop: 'Back to top',
   themeWrittenBy: 'Written by',
-  themeAuthorPosts: (name: string) => `View all posts by ${name}`,
-  themeFeedTitle: (site: string, name: string) => `${site} » ${name} feed`,
+  themeAuthorPosts: siteFunctions.themeAuthorPosts,
+  themeFeedTitle: siteFunctions.themeFeedTitle,
   siteIcon: 'Site icon',
   siteIconHelp:
     'Shown in browser tabs and as the app icon on phones. Use a square image of at least 512 × 512 pixels.',
@@ -2028,14 +2018,10 @@ export const en = {
   menuNoResults: 'No results',
   // core-comments
   commentLoginRequired: 'Log in to leave a comment.',
-  commentSignedIn: (name: string) => `Logged in as ${name}.`,
-  commentRemember: (fields: CommenterField[]) =>
-    `Save my ${new Intl.ListFormat('en', { type: 'conjunction' }).format(
-      fields,
-    )} in a cookie in this browser for one year to fill in my next comment.`,
+  commentSignedIn: siteFunctions.commentSignedIn,
+  commentRemember: siteFunctions.commentRemember,
   commentLinkLeave: 'Open external link?',
-  commentLinkLeaveAsk: (address: string) =>
-    `This link from a comment leads to another site: ${address}`,
+  commentLinkLeaveAsk: siteFunctions.commentLinkLeaveAsk,
   commentLinkOpen: 'Open link',
   discussionRequireLogin: 'Users must be registered and logged in to comment',
   discussionFields: 'Comment form fields',
@@ -2066,13 +2052,11 @@ export const en = {
   commentsAllEntries: 'All entries',
   commentStatusPending: 'Awaiting approval',
   commentBulkManage: 'Bulk manage',
-  commentBulkSelected: (count: number) => `${count} selected`,
-  commentBulkAsk: (count: number) =>
-    `Apply this action to ${count} selected ${count === 1 ? 'comment' : 'comments'}?`,
-  commentBulkDeleteAsk: (count: number) =>
-    `Delete ${count} selected ${count === 1 ? 'comment' : 'comments'} permanently? Their replies move up a level. This cannot be undone.`,
-  commentSelect: (name: string) => `Select the comment by ${name}`,
-  commentModerationFor: (name: string) => `Moderate the comment by ${name}`,
+  commentBulkSelected: siteFunctions.commentBulkSelected,
+  commentBulkAsk: siteFunctions.commentBulkAsk,
+  commentBulkDeleteAsk: siteFunctions.commentBulkDeleteAsk,
+  commentSelect: siteFunctions.commentSelect,
+  commentModerationFor: siteFunctions.commentModerationFor,
   commentModerating: 'Working…',
   moderationRefreshFailed:
     'The change was saved, but the comments could not be refreshed. Reload the page to see the current list.',
@@ -2194,19 +2178,7 @@ export const en = {
   contentDetailsOpen: 'Open by default',
   contentCitation: 'Citation',
   contentCalloutVariant: 'Style',
-  contentCalloutVariantName: (variant: string) =>
-    (
-      ({
-        primary: 'Primary',
-        secondary: 'Secondary',
-        success: 'Success',
-        danger: 'Danger',
-        warning: 'Warning',
-        info: 'Info',
-        light: 'Light',
-        dark: 'Dark',
-      }) as Record<string, string>
-    )[variant] ?? variant,
+  contentCalloutVariantName: siteFunctions.contentCalloutVariantName,
   contentCalloutDismissible: 'Visitors can dismiss',
   contentSpacerHeight: 'Height (px)',
   contentHeaderRow: 'Toggle header row',
@@ -2318,15 +2290,13 @@ export const en = {
   themeLightboxClose: 'Close',
   themeLightboxPrevious: 'Previous image',
   themeLightboxNext: 'Next image',
-  themeLightboxPosition: (current: number, total: number) =>
-    `${current} / ${total}`,
+  themeLightboxPosition: siteFunctions.themeLightboxPosition,
   themeTocShow: 'Show table of contents',
   themeTocClose: 'Close table of contents',
   themeFootnotes: 'Footnotes',
-  themeFootnoteRef: (label: number | string) => `Footnote ${label}`,
-  themeFootnoteBack: (label: number | string) => `Back to reference ${label}`,
-  themeFootnoteJump: (label: number | string) =>
-    `Go to footnote ${label} in the list`,
+  themeFootnoteRef: siteFunctions.themeFootnoteRef,
+  themeFootnoteBack: siteFunctions.themeFootnoteBack,
+  themeFootnoteJump: siteFunctions.themeFootnoteJump,
   contentMoreBreak: '— More — (the text above is the teaser in lists)',
   contentPageBreak: '— Page break —',
   editorFootnote: 'Footnote',
@@ -2479,22 +2449,14 @@ export const en = {
 
   // completion feedback (toasts)
   notifications: 'Notifications',
-  commentsApproved: (count: number) =>
-    count === 1 ? 'Comment approved.' : `${count} comments approved.`,
-  commentsUnapproved: (count: number) =>
-    count === 1 ? 'Comment unapproved.' : `${count} comments unapproved.`,
+  commentsApproved: siteFunctions.commentsApproved,
+  commentsUnapproved: siteFunctions.commentsUnapproved,
   commentsSpammed: (count: number) =>
     count === 1
       ? 'Comment marked as spam.'
       : `${count} comments marked as spam.`,
-  commentsTrashed: (count: number) =>
-    count === 1
-      ? 'Comment moved to the Trash.'
-      : `${count} comments moved to the Trash.`,
-  commentsDeleted: (count: number) =>
-    count === 1
-      ? 'Comment deleted permanently.'
-      : `${count} comments deleted permanently.`,
+  commentsTrashed: siteFunctions.commentsTrashed,
+  commentsDeleted: siteFunctions.commentsDeleted,
   mediaUploadedFile: (name: string) => `Uploaded ${name}.`,
   mediaEditedCopy: 'The edited image was saved as a new file.',
   // Media storage and resync

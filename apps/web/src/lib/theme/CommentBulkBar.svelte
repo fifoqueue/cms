@@ -3,7 +3,7 @@
   import { default as LoaderCircle } from '@lucide/svelte/icons/loader-circle';
   import { buttonVariants } from '#lib/components/ui/button/button.svelte';
   import { notifyFailure } from '#lib/feedback.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import {
     BULK_OPERATIONS,
     operationLabel,

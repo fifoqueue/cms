@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Block } from '@cms/sdk';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import Pagination from '#lib/theme/Pagination.svelte';
   import { termTarget } from '#lib/theme/pagination.js';
   import type { ListingTarget } from '#lib/theme/pagination.js';

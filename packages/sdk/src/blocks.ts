@@ -537,10 +537,4 @@ export const isIndependentQuery = (block: Block) =>
   (block.name === 'query' && !block.attrs.inherit) ||
   block.name === 'latest-posts';
 
-/** Every block in a tree, depth first. */
-export function* walkBlocks(blocks: readonly Block[]): Generator<Block> {
-  for (const block of blocks) {
-    yield block;
-    yield* walkBlocks(block.children);
-  }
-}
+export { walkBlocks } from '#sdk/block-tree';

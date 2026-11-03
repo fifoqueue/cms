@@ -3,7 +3,7 @@
   import { resolve } from '$app/paths';
   import { lastPageOf, pageQuery, pageWindow } from '#lib/theme/pagination.js';
   import type { ListingTarget } from '#lib/theme/pagination.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
 
   interface Props {
     target: ListingTarget;

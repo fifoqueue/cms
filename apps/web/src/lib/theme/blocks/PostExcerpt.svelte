@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Path } from '$app/types';
   import { resolve } from '$app/paths';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import { useCurrentPost } from '#lib/theme/scope.js';
 
   let { moreLink, length = 0 }: { moreLink: boolean; length?: number } =

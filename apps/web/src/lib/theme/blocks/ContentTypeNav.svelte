@@ -1,6 +1,6 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import { HOME_LIST_TYPES } from '#lib/theme/pagination.js';
   import { useScope } from '#lib/theme/scope.js';
 

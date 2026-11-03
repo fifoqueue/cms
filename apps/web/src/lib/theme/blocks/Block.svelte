@@ -6,7 +6,7 @@
   import Breadcrumbs from '#lib/seo/Breadcrumbs.svelte';
   import { crumbs } from '#lib/seo/head.js';
   import type { SitePage } from '#lib/seo/head.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import WidgetArea from '#lib/theme/WidgetArea.svelte';
   import type { Path } from '$app/types';
   import BlockList from '#lib/theme/blocks/BlockList.svelte';

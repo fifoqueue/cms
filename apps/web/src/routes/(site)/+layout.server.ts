@@ -12,6 +12,7 @@ import {
 } from '#lib/server/public-view.js';
 import { siteLayout } from '#lib/server/site-layout.js';
 import { themeCss } from '#lib/server/theme-css.js';
+import { siteCatalog } from '#lib/i18n/site.server.js';
 import type { LayoutServerLoad } from './$types';
 
 /**
@@ -44,6 +45,7 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
     themeLinks(layout.theme),
   ]);
   return {
+    siteCatalog: siteCatalog(site.locale),
     linkRoutes,
     privacy: layout.privacy,
     archives: layout.archives,

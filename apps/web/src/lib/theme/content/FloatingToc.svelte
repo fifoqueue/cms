@@ -2,7 +2,7 @@
   import { tick } from 'svelte';
   import { default as TableOfContents } from '@lucide/svelte/icons/table-of-contents';
   import { default as X } from '@lucide/svelte/icons/x';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import { focusHeading, fragmentTarget } from '#lib/theme/content/toc.js';
 
   /**

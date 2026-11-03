@@ -3,7 +3,7 @@
   import { default as EyeOff } from '@lucide/svelte/icons/eye-off';
   import type { HTMLInputAttributes } from 'svelte/elements';
   import { Input } from '#lib/components/ui/input/index.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import { authMessages } from '#lib/i18n/auth.js';
 
   /** A password field whose toggle shows what was typed, instead of asking for it twice. */

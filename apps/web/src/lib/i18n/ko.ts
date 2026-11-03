@@ -6,6 +6,7 @@ import {
 } from '#lib/i18n/api-errors.js';
 import type { Messages } from '#lib/i18n/messages.js';
 import { templateLabels } from '#lib/i18n/template-label.js';
+import { siteFunctions } from '#lib/i18n/site-functions/ko.js';
 
 /** Why a test send failed, by `EmailSendFailed`'s `reason` (SDK `EMAIL_FAILURE_REASONS`). */
 const emailFailure = (reason: unknown) => {
@@ -454,10 +455,7 @@ export const webErrors: WebErrorCatalog = {
     '플러그인이 제공하는 항목입니다. 변경을 저장하려면 먼저 사용자 지정을 선택하세요.',
   BulkItemFailed: '이 항목을 바꾸지 못했습니다. 나중에 다시 시도하세요.',
   BulkItemInvalid: '올바르지 않은 선택입니다.',
-  BulkTooMany: ({ limit }) =>
-    limit === undefined
-      ? '선택한 항목이 너무 많습니다. 아무것도 바뀌지 않았습니다.'
-      : `한 번에 최대 ${limit}개까지 선택할 수 있습니다. 아무것도 바뀌지 않았습니다.`,
+  BulkTooMany: siteFunctions.bulkTooMany,
   PluginActivationFailed: '플러그인을 켜지 못했습니다.',
   ReassignToDeleted:
     '삭제되지 않는 사람을 콘텐츠를 넘겨받을 사람으로 선택하세요.',
@@ -591,7 +589,7 @@ export const ko: Messages = {
 
   signInTitle: '로그인',
   signIn: '로그인',
-  signInWith: (provider) => `${provider} 계정으로 로그인`,
+  signInWith: siteFunctions.signInWith,
   or: '또는',
   forgotPassword: '비밀번호를 잊으셨나요?',
   forgotTitle: '비밀번호 재설정',
@@ -808,7 +806,7 @@ export const ko: Messages = {
   protectedTitle: '비밀번호로 보호된 글입니다.',
   protectedHelp: '읽으려면 비밀번호를 입력하세요.',
   unlock: '읽기',
-  authorArchive: (name) => `${name}의 글`,
+  authorArchive: siteFunctions.authorArchive,
   noPosts: '아직 발행된 글이 없습니다.',
   previewNotice: '미리보기: 발행 후 보일 모습입니다. 아직 공개되지 않았습니다.',
   newer: '← 최신 글',
@@ -914,7 +912,7 @@ export const ko: Messages = {
   // Public theme: navigation and widgets
   search: '검색',
   searchPlaceholder: '검색…',
-  commentOn: (author: string) => `${author}님:`,
+  commentOn: siteFunctions.commentOn,
   sidebar: '사이드바',
   primaryNavigation: '주 메뉴',
   footerNavigation: '바닥글 메뉴',
@@ -983,13 +981,12 @@ export const ko: Messages = {
   widgetEmpty: '이 영역에 위젯이 없습니다.',
 
   // Public theme: comments
-  commentCount: (count: number) =>
-    count === 0 ? '아직 댓글이 없습니다' : `댓글 ${count}개`,
+  commentCount: siteFunctions.commentCount,
   commentAwaitingModeration: '감사합니다. 댓글이 검토를 기다리고 있습니다.',
   commentRepliesLimited: '답글이 더 있습니다. 다른 페이지에서 계속 확인하세요.',
   commentByAuthor: '글쓴이',
   commentReply: '답글',
-  commentReplyTo: (name: string) => `${name}님에게 답글`,
+  commentReplyTo: siteFunctions.commentReplyTo,
   commentLeave: '댓글 남기기',
   commentName: '이름',
   commentEmail: '이메일',
@@ -1194,8 +1191,7 @@ export const ko: Messages = {
 
   // Appearance: theme preview
   themePreview: '미리보기',
-  themePreviewing: (name: string) =>
-    `${name} 테마를 미리 보는 중입니다. 방문자에게는 현재 테마가 보입니다.`,
+  themePreviewing: siteFunctions.themePreviewing,
   themePreviewExit: '미리보기 종료',
 
   // Tools: import and export
@@ -1219,15 +1215,15 @@ export const ko: Messages = {
   themePosts: '글',
   themeArticles: '아티클',
   themeSearch: '검색',
-  themeSearchTitle: (query: string) => `검색: ${query}`,
-  themeSearchResults: (query: string) => `“${query}” 검색 결과`,
-  themeResults: (count: number) => `결과 ${count}개`,
+  themeSearchTitle: siteFunctions.themeSearchTitle,
+  themeSearchResults: siteFunctions.themeSearchResults,
+  themeResults: siteFunctions.themeResults,
   themeSearchEmpty: '검색 결과가 없습니다. 다른 단어로 찾아보세요.',
   themeSearchPrompt: '사이트에서 찾을 단어를 입력하세요.',
   themeCategory: '카테고리',
   themeTag: '태그',
   themeTags: '태그',
-  themePaged: (title: string, page: number) => `${title} – ${page}쪽`,
+  themePaged: siteFunctions.themePaged,
   themeContentTypes: '콘텐츠 유형',
   themeNotFound: '페이지를 찾을 수 없습니다',
   errorPageNotFoundHelp:
@@ -1243,7 +1239,7 @@ export const ko: Messages = {
   errorPageBack: '이전 페이지',
 
   // Public theme: archives
-  themePostCount: (count: number) => `글 ${count}개`,
+  themePostCount: siteFunctions.themePostCount,
   // Admin: SEO settings
   seoIntro:
     '검색엔진, 소셜 네트워크, AI 도구에 사이트가 어떻게 보이는지 관리합니다.',
@@ -1526,7 +1522,7 @@ export const ko: Messages = {
   adminBarCustomize: '사이트 편집',
   adminBarNew: '새로 만들기',
   adminBarEdit: '편집',
-  adminBarHowdy: (name: string) => `${name}님, 안녕하세요`,
+  adminBarHowdy: siteFunctions.adminBarHowdy,
 
   // Admin: block themes and site editor
   blockName: (key: string) =>
@@ -1718,7 +1714,7 @@ export const ko: Messages = {
         github: 'GitHub',
       }) as Record<string, string>
     )[key] ?? key,
-  templateLabel: templateLabels({
+  templateLabel: /* @__PURE__ */ templateLabels({
     index: '기본(모든 페이지의 대체)',
     home: '블로그 홈',
     'front-page': '첫 페이지',
@@ -1892,7 +1888,7 @@ export const ko: Messages = {
   // site-theme
   contentPluginBlockInactive:
     '이 블록을 쓰려면 비활성화된 플러그인을 켜야 합니다.',
-  oembedEmbedded: (site: string) => `${site}에서 가져옴`,
+  oembedEmbedded: siteFunctions.oembedEmbedded,
   importAuthors: '글쓴이 지정',
   importAuthorsHelp:
     '글쓴이는 이메일 주소나 로그인 이름으로 기존 사용자와 연결합니다. 일치하는 사용자가 없으면:',
@@ -1937,8 +1933,8 @@ export const ko: Messages = {
   themeSkipToContent: '본문으로 건너뛰기',
   themeBackToTop: '맨 위로',
   themeWrittenBy: '글쓴이',
-  themeAuthorPosts: (name: string) => `${name}님의 글 모두 보기`,
-  themeFeedTitle: (site: string, name: string) => `${site} » ${name} 피드`,
+  themeAuthorPosts: siteFunctions.themeAuthorPosts,
+  themeFeedTitle: siteFunctions.themeFeedTitle,
   siteIcon: '사이트 아이콘',
   siteIconHelp:
     '브라우저 탭과 휴대폰의 앱 아이콘으로 표시됩니다. 가로세로 512픽셀 이상의 정사각형 이미지를 사용하세요.',
@@ -1987,16 +1983,10 @@ export const ko: Messages = {
   menuNoResults: '결과 없음',
   // core-comments
   commentLoginRequired: '로그인하고 댓글을 남겨 주세요.',
-  commentSignedIn: (name: string) => `${name}님으로 로그인했습니다.`,
-  commentRemember: (fields) => {
-    const names = { name: '이름', email: '이메일', website: '웹사이트' };
-    // 웹사이트 ends in a vowel; 이름 and 이메일 take 을.
-    const object = fields.at(-1) === 'website' ? '를' : '을';
-    return `다음 댓글에 자동으로 채워지도록 ${fields.map((field) => names[field]).join(', ')}${object} 이 브라우저의 쿠키에 1년 동안 저장합니다.`;
-  },
+  commentSignedIn: siteFunctions.commentSignedIn,
+  commentRemember: siteFunctions.commentRemember,
   commentLinkLeave: '외부 링크를 열까요?',
-  commentLinkLeaveAsk: (address) =>
-    `댓글에 포함된 이 링크는 다른 사이트로 연결됩니다: ${address}`,
+  commentLinkLeaveAsk: siteFunctions.commentLinkLeaveAsk,
   commentLinkOpen: '링크 열기',
   discussionFields: '댓글 입력 항목',
   discussionShowName: '이름 입력받기',
@@ -2028,13 +2018,11 @@ export const ko: Messages = {
   commentsAllEntries: '모든 글',
   commentStatusPending: '승인 대기',
   commentBulkManage: '일괄 관리',
-  commentBulkSelected: (count: number) => `${count}개 선택됨`,
-  commentBulkAsk: (count: number) =>
-    `선택한 댓글 ${count}개에 이 작업을 적용할까요?`,
-  commentBulkDeleteAsk: (count: number) =>
-    `선택한 댓글 ${count}개를 영구 삭제할까요? 답글은 한 단계 위로 이동하며 되돌릴 수 없습니다.`,
-  commentSelect: (name: string) => `${name}님의 댓글 선택`,
-  commentModerationFor: (name: string) => `${name}님의 댓글 관리`,
+  commentBulkSelected: siteFunctions.commentBulkSelected,
+  commentBulkAsk: siteFunctions.commentBulkAsk,
+  commentBulkDeleteAsk: siteFunctions.commentBulkDeleteAsk,
+  commentSelect: siteFunctions.commentSelect,
+  commentModerationFor: siteFunctions.commentModerationFor,
   commentModerating: '처리 중…',
   moderationRefreshFailed:
     '변경 사항은 저장했지만 댓글 목록을 새로 불러오지 못했습니다. 페이지를 새로 고쳐 현재 목록을 확인하세요.',
@@ -2143,19 +2131,7 @@ export const ko: Messages = {
   contentDetailsOpen: '기본으로 펼치기',
   contentCitation: '출처',
   contentCalloutVariant: '스타일',
-  contentCalloutVariantName: (variant: string) =>
-    (
-      ({
-        primary: '기본',
-        secondary: '보조',
-        success: '성공',
-        danger: '위험',
-        warning: '경고',
-        info: '정보',
-        light: '밝게',
-        dark: '어둡게',
-      }) as Record<string, string>
-    )[variant] ?? variant,
+  contentCalloutVariantName: siteFunctions.contentCalloutVariantName,
   contentCalloutDismissible: '방문자가 닫을 수 있음',
   contentSpacerHeight: '높이(px)',
   contentHeaderRow: '머리글 행 전환',
@@ -2264,16 +2240,13 @@ export const ko: Messages = {
   themeLightboxClose: '닫기',
   themeLightboxPrevious: '이전 이미지',
   themeLightboxNext: '다음 이미지',
-  themeLightboxPosition: (current: number, total: number) =>
-    `${current} / ${total}`,
+  themeLightboxPosition: siteFunctions.themeLightboxPosition,
   themeTocShow: '목차 보기',
   themeTocClose: '목차 닫기',
   themeFootnotes: '각주',
-  themeFootnoteRef: (label: number | string) => `각주 ${label}`,
-  themeFootnoteBack: (label: number | string) =>
-    `본문의 각주 ${label} 위치로 돌아가기`,
-  themeFootnoteJump: (label: number | string) =>
-    `각주 목록의 ${label} 항목으로 이동`,
+  themeFootnoteRef: siteFunctions.themeFootnoteRef,
+  themeFootnoteBack: siteFunctions.themeFootnoteBack,
+  themeFootnoteJump: siteFunctions.themeFootnoteJump,
   contentMoreBreak: '— 더 보기 — (위 내용이 목록의 요약이 됩니다)',
   contentPageBreak: '— 페이지 나누기 —',
   editorFootnote: '각주',
@@ -2422,24 +2395,14 @@ export const ko: Messages = {
 
   // completion feedback (toasts)
   notifications: '알림',
-  commentsApproved: (count) =>
-    count === 1 ? '댓글을 승인했습니다.' : `댓글 ${count}개를 승인했습니다.`,
-  commentsUnapproved: (count) =>
-    count === 1
-      ? '댓글 승인을 취소했습니다.'
-      : `댓글 ${count}개의 승인을 취소했습니다.`,
+  commentsApproved: siteFunctions.commentsApproved,
+  commentsUnapproved: siteFunctions.commentsUnapproved,
   commentsSpammed: (count) =>
     count === 1
       ? '댓글을 스팸으로 표시했습니다.'
       : `댓글 ${count}개를 스팸으로 표시했습니다.`,
-  commentsTrashed: (count) =>
-    count === 1
-      ? '댓글을 휴지통으로 옮겼습니다.'
-      : `댓글 ${count}개를 휴지통으로 옮겼습니다.`,
-  commentsDeleted: (count) =>
-    count === 1
-      ? '댓글을 영구 삭제했습니다.'
-      : `댓글 ${count}개를 영구 삭제했습니다.`,
+  commentsTrashed: siteFunctions.commentsTrashed,
+  commentsDeleted: siteFunctions.commentsDeleted,
   mediaUploadedFile: (name) => `${name} 파일을 올렸습니다.`,
   mediaEditedCopy: '편집한 이미지를 새 파일로 저장했습니다.',
   settingsMediaStorage: '미디어 저장소',

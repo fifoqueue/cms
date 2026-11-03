@@ -3,6 +3,7 @@ import { Errors as WebErrors } from '#lib/errors.js';
 import type {
   ApiErrorKey,
   ApiErrorParams,
+  ErrorLookup,
   WebErrorKey,
 } from '#lib/i18n/api-errors.js';
 import type { Messages } from '#lib/i18n/index.js';
@@ -24,7 +25,7 @@ for (const key of Object.keys(WebErrors) as WebErrorKey[])
  * is itself a known message (`PermalinkPathInvalid`'s `reason`) reads in that language too.
  */
 const localized = (
-  m: Messages,
+  m: ErrorLookup,
   message: string,
   params?: ApiErrorParams,
 ): string | undefined => {
@@ -44,7 +45,7 @@ const localized = (
 };
 
 /** Catalog keys for the API's error codes. */
-const CODES: Record<string, keyof Messages> = {
+const CODES = {
   invalid_input: 'errorInvalidInput',
   unauthorized: 'errorUnauthorized',
   forbidden: 'errorForbidden',
@@ -54,10 +55,10 @@ const CODES: Record<string, keyof Messages> = {
   payload_too_large: 'errorTooLarge',
   captcha_required: 'errorCaptchaRequired',
   destination_blocked: 'destinationBlocked',
-};
+} as const satisfies Record<string, keyof Messages>;
 
 /** Catalog keys for the first segment of an issue path (`seo.title` → SEO). */
-const FIELDS: Record<string, keyof Messages> = {
+const FIELDS = {
   title: 'fieldTitle',
   slug: 'fieldSlug',
   excerpt: 'fieldExcerpt',
@@ -78,9 +79,16 @@ const FIELDS: Record<string, keyof Messages> = {
   alt: 'mediaAlt',
   caption: 'mediaCaption',
   seo: 'seoTabs',
-};
+} as const satisfies Record<string, keyof Messages>;
 
-const text = (m: Messages, key: keyof Messages | undefined) => {
+export type FormMessages = ErrorLookup &
+  Pick<
+    Messages,
+    (typeof CODES)[keyof typeof CODES] | 'errorGeneric' | 'errorFieldInvalid'
+  > &
+  Partial<Pick<Messages, (typeof FIELDS)[keyof typeof FIELDS]>>;
+
+const text = (m: FormMessages, key: keyof FormMessages | undefined) => {
   const value = key && m[key];
   return typeof value === 'string' ? value : undefined;
 };
@@ -105,7 +113,11 @@ const ownIssue = (issue: { path: string; message: string }, message: string) =>
  * specific) text; other languages get catalog text by error code, so no untranslated English
  * reaches them.
  */
-export const errorMessage = (m: Messages, language: string, error: FormError) =>
+export const errorMessage = (
+  m: FormMessages,
+  language: string,
+  error: FormError,
+) =>
   (error.message
     ? localized(
         m,
@@ -118,12 +130,14 @@ export const errorMessage = (m: Messages, language: string, error: FormError) =>
     : undefined) ??
   (language === 'en' && error.message
     ? error.message
-    : (text(m, error.code ? CODES[error.code] : undefined) ??
-      (error.issues?.length ? m.errorInvalidInput : m.errorGeneric)));
+    : (text(
+        m,
+        error.code ? CODES[error.code as keyof typeof CODES] : undefined,
+      ) ?? (error.issues?.length ? m.errorInvalidInput : m.errorGeneric)));
 
 /** Catalog text for a known API or web message, in any language; `undefined` for others. */
 export const catalogMessage = (
-  m: Messages,
+  m: ErrorLookup,
   message: string,
   params?: ApiErrorParams,
 ) => localized(m, message, params);
@@ -133,7 +147,7 @@ export const catalogMessage = (
  * (`{ message, params }`) or a string holding a known message; other text as given.
  */
 export const statusLine = (
-  m: Messages,
+  m: ErrorLookup,
   line: string | { message: string; params?: ApiErrorParams },
 ) => {
   const { message, params } =
@@ -143,7 +157,7 @@ export const statusLine = (
 
 /** A field issue's message in the reader's language: catalog text when known. */
 export const issueText = (
-  m: Messages,
+  m: FormMessages,
   language: string,
   message: string,
   params?: ApiErrorParams,
@@ -156,7 +170,7 @@ export const issueText = (
  * (empty path, same message as `refusal`) is its headline's values, not a line.
  */
 export const issueLines = (
-  m: Messages,
+  m: FormMessages,
   language: string,
   issues: { path: string; message: string; params?: ApiErrorParams }[],
   refusal?: string,
@@ -164,7 +178,10 @@ export const issueLines = (
   issues
     .filter((issue) => refusal === undefined || !ownIssue(issue, refusal))
     .map(({ path, message, params }) => {
-      const label = text(m, FIELDS[path.split('.')[0] ?? '']);
+      const label = text(
+        m,
+        FIELDS[(path.split('.')[0] ?? '') as keyof typeof FIELDS],
+      );
       const detail = issueText(m, language, message, params);
       return label
         ? `${label}: ${detail}`

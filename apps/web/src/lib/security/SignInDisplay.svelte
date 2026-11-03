@@ -1,6 +1,6 @@
 <script lang="ts">
   import CopyButton from '#lib/admin/CopyButton.svelte';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import type { DisplayView } from '#lib/server/sign-in-view.js';
 
   /** What a step shows besides its fields: text, a code to copy, or a QR code drawn on the server. */

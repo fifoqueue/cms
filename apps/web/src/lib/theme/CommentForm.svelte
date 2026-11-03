@@ -14,7 +14,7 @@
   import { buttonVariants } from '#lib/components/ui/button/button.svelte';
   import { errorMessage } from '#lib/admin/form-errors.js';
   import Captcha from '#lib/security/Captcha.svelte';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import type { CommenterField } from '#lib/i18n/en.js';
   import type {
     CommentActionResult,

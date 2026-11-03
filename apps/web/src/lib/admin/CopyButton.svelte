@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { Button } from '#lib/components/ui/button/index.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
 
   /** Copies `text` to the clipboard. It needs scripts, so it appears once they run. */
   let { text, label }: { text: string; label: string } = $props();

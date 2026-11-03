@@ -5,7 +5,7 @@
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Input } from '#lib/components/ui/input/index.js';
   import { Label } from '#lib/components/ui/label/index.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import AuthForm from '#lib/security/AuthForm.svelte';
   import AuthShell from '#lib/security/AuthShell.svelte';
   import Captcha from '#lib/security/Captcha.svelte';

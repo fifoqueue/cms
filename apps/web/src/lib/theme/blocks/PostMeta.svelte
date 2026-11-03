@@ -4,7 +4,7 @@
   import type { Block } from '@cms/sdk';
   import { default as MessageCircle } from '@lucide/svelte/icons/message-circle';
   import { isArticle } from '#lib/seo/head.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import { useDateFormat } from '#lib/theme/format.js';
   import { useCurrentPost } from '#lib/theme/scope.js';
 

@@ -1,3 +1,40 @@
+@import 'tailwindcss' source(none);
+@import 'tw-animate-css';
+@import './base.css';
+@import './content/toc.css';
+
+@plugin '@tailwindcss/typography';
+@source '../../routes/(site)';
+@source '.';
+@source '../seo/Breadcrumbs.svelte';
+@source '../security/Captcha.svelte';
+@source '../components/NavigationProgress.svelte';
+@source '../components/Toasts.svelte';
+@source '../components/ErrorView.svelte';
+@source '../components/ui/button';
+@source '../components/ui/sonner';
+
+/* Article typography also follows these tokens in the admin site's preview canvas. */
+.cms-site .prose {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-lead: var(--muted-foreground);
+  --tw-prose-links: var(--primary);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: var(--muted-foreground);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--foreground);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-kbd: var(--foreground);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-pre-code: var(--foreground);
+  --tw-prose-pre-bg: var(--card);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+}
+
 /* Public site base styles; theme values arrive as custom properties on `.cms-site` (style.ts). */
 .cms-site {
   container-type: inline-size;
@@ -252,19 +289,7 @@ body:has(.cms-site[data-theme]) .cms-admin-bar {
 :is(.cms-prose, .tiptap) .cms-text-justify {
   text-align: justify;
 }
-.tiptap .cms-column {
-  border: 1px dashed var(--border);
-  padding: 0.5rem;
-}
-.tiptap .cms-spacer {
-  background: color-mix(in srgb, var(--muted) 50%, transparent);
-}
-.tiptap .ProseMirror-selectednode {
-  outline: 2px solid var(--ring);
-  outline-offset: 3px;
-}
-/* Narrow layouts: published content follows the `.cms-site` container (so the site editor's
-   canvas matches the real site); the admin content editor has no container and follows the viewport. */
+/* Published content follows the `.cms-site` container, including the site editor's canvas. */
 @container (max-width: 640px) {
   .cms-prose .cms-columns[data-stack='true'] {
     grid-template-columns: minmax(0, 1fr);
@@ -276,22 +301,6 @@ body:has(.cms-site[data-theme]) .cms-admin-bar {
     );
   }
   .cms-prose :is(.cms-align-left, .cms-align-right) {
-    float: none;
-    max-width: 100%;
-    margin-inline: 0;
-  }
-}
-@media (max-width: 640px) {
-  .tiptap .cms-columns[data-stack='true'] {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .tiptap .cms-gallery-grid {
-    grid-template-columns: repeat(
-      min(2, var(--cms-gallery-columns, 3)),
-      minmax(0, 1fr)
-    );
-  }
-  .tiptap :is(.cms-align-left, .cms-align-right) {
     float: none;
     max-width: 100%;
     margin-inline: 0;

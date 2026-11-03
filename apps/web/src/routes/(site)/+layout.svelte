@@ -4,7 +4,7 @@
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import type { SlotMap } from '@cms/sdk';
-  import { buildHead, sitePage } from '#lib/seo/head.js';
+  import { buildSiteHead, sitePage } from '#lib/seo/head.js';
   import type { SeoMeta } from '#lib/seo/head.js';
   import SeoHead from '#lib/seo/SeoHead.svelte';
   import Toasts from '#lib/components/Toasts.svelte';
@@ -22,7 +22,7 @@
     siteScheme,
     themeStyle,
   } from '#lib/theme/style.js';
-  import { provideI18n } from '#lib/i18n/index.js';
+  import { provideSiteI18n } from '#lib/i18n/site.js';
   import { provideDateStyle } from '#lib/theme/format.js';
   import { resyncPush } from '#lib/push-client.js';
   import { onMount } from 'svelte';
@@ -31,7 +31,10 @@
   /** The page shell: theme variables and stylesheet, head, toolbar. Templates draw the rest. */
   let { data, children }: LayoutProps = $props();
 
-  const i18n = provideI18n(() => data.site.locale);
+  const i18n = provideSiteI18n(
+    () => data.site.locale,
+    () => data.messages,
+  );
   provideDateStyle(() => ({
     locale: data.site.locale,
     dateFormat: data.reading.dateFormat,
@@ -40,7 +43,8 @@
 
   // One metadata set per page, from this layout's settings and the page's projected data.
   const head = $derived(
-    buildHead({
+    buildSiteHead({
+      messages: i18n.m,
       site: data.site,
       settings: data.seo,
       page: sitePage(page.data),

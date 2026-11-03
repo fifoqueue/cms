@@ -2,7 +2,7 @@
   import { resolve } from '$app/paths';
   import { default as ArrowRight } from '@lucide/svelte/icons/arrow-right';
   import type { Block } from '@cms/sdk';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import { useCurrentPost, useScope } from '#lib/theme/scope.js';
 
   /** The author of the current entry; the avatar and bio come with a single entry's page. */

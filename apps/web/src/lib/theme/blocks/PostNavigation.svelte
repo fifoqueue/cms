@@ -2,7 +2,7 @@
   import type { Path } from '$app/types';
   import { resolve } from '$app/paths';
   import type { Block } from '@cms/sdk';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import { useScope } from '#lib/theme/scope.js';
 
   /** WordPress post navigation: the older and newer entry of the same type. */

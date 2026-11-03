@@ -3,7 +3,7 @@
   import ErrorView from '#lib/components/ErrorView.svelte';
   import { errorCopy } from '#lib/error-copy.js';
   import { termLabel } from '#lib/seo/head.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import { formatMonth } from '#lib/theme/format.js';
   import { useScope } from '#lib/theme/scope.js';
 

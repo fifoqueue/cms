@@ -1,5 +1,5 @@
 import { catalogMessage } from '#lib/admin/form-errors.js';
-import type { Messages } from '#lib/i18n/messages.js';
+import type { ErrorMessages } from '#lib/i18n/messages.js';
 
 /**
  * The title and hint of an error screen, by status. Only catalog messages are shown: unexpected
@@ -7,7 +7,7 @@ import type { Messages } from '#lib/i18n/messages.js';
  * offers a search box (theme templates), so a missing page suggests searching.
  */
 export const errorCopy = (
-  m: Messages,
+  m: ErrorMessages,
   status: number,
   message: string,
   search = false,

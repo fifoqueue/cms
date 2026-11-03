@@ -5,7 +5,7 @@
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Alert, AlertTitle } from '#lib/components/ui/alert/index.js';
   import { Button } from '#lib/components/ui/button/index.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import AuthShell from '#lib/security/AuthShell.svelte';
 
   /** What a provider's redirect back ended in when it did not lead anywhere else. */

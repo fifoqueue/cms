@@ -1,5 +1,5 @@
 <script module lang="ts">
-  import type { Messages } from '#lib/i18n/index.js';
+  import type { SiteMessages as Messages } from '#lib/i18n/site.js';
   import type { CommentManagement } from '#lib/server/comments.js';
   import type { ModerationActionResult } from '#lib/server/comment-moderation.js';
 
@@ -50,7 +50,7 @@
   import { default as Trash2 } from '@lucide/svelte/icons/trash-2';
   import { default as Undo2 } from '@lucide/svelte/icons/undo-2';
   import { buttonVariants } from '#lib/components/ui/button/button.svelte';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import ConfirmDialog from '#lib/theme/ConfirmDialog.svelte';
   import ModerationForm from '#lib/theme/ModerationForm.svelte';
 

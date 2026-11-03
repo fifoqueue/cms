@@ -11,7 +11,7 @@
   import { default as UserRound } from '@lucide/svelte/icons/user-round';
   import type { Capability, Role } from '@cms/sdk';
   import { can } from '@cms/sdk/capabilities';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
 
   interface Props {
     user: {

@@ -191,7 +191,3 @@ p.cms-toc {
   outline: 2px solid var(--ring);
   outline-offset: -2px;
 }
-.cms-toc-preview.ProseMirror-selectednode {
-  outline: 2px solid currentColor;
-  outline-offset: 3px;
-}

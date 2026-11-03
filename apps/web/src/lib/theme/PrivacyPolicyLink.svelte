@@ -1,7 +1,7 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import type { Path } from '$app/types';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   let { policy }: { policy?: { title: string; path: string } | null } =
     $props();
   const i18n = useI18n();

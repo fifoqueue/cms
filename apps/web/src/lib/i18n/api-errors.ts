@@ -10,6 +10,12 @@ export type WebErrorKey = keyof typeof WebErrors;
 /** The values an error reports beside its message (`issues[].params`). */
 export type ApiErrorParams = Record<string, string | number>;
 
+/** A catalog may omit translations outside the screen's scope. */
+export interface ErrorLookup {
+  apiError(key: ApiErrorKey, params?: ApiErrorParams): string | undefined;
+  webError(key: WebErrorKey, params?: ApiErrorParams): string | undefined;
+}
+
 /**
  * One language's text for every SDK error, so a new SDK message without text fails to compile.
  * Text that names values is a function of the error's params; it still reads without them.

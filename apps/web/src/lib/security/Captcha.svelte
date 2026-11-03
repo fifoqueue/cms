@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PublicCaptcha } from '@cms/sdk';
   import { onMount } from 'svelte';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import {
     CAPTCHA_TOKEN_FIELD,
     mountWidget,

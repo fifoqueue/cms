@@ -1,10 +1,10 @@
 <script lang="ts">
   import type { Path } from '$app/types';
-  import { archivePath } from '@cms/sdk';
+  import { archivePath } from '@cms/sdk/archive-links';
   import { useScope } from '#lib/theme/scope.js';
   import { resolve } from '$app/paths';
   import type { WidgetView } from '#lib/server/public-view.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import { formatMonth, useDateFormat } from '#lib/theme/format.js';
   import MenuList from '#lib/theme/MenuList.svelte';
   import { hrefOptions } from '#lib/route-link.js';

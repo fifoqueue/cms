@@ -2,7 +2,7 @@
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
   import { errorMessage } from '#lib/admin/form-errors.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import type {
     Moderated,
     ModerationOperation,

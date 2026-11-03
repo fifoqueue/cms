@@ -1,5 +1,5 @@
 import type { CORE_SECOND_FACTORS, CORE_SIGN_IN_METHODS } from '@cms/sdk';
-import type { Messages } from '#lib/i18n/index.js';
+import type { SiteMessages as Messages } from '#lib/i18n/site.js';
 
 /**
  * Core method, factor and field ids are fixed contract constants, so their labels come from the

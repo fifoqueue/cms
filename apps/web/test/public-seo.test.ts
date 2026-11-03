@@ -6,7 +6,8 @@ import {
   toPublicEntrySeo,
 } from '@cms/sdk';
 import type { PublicContent } from '@cms/sdk';
-import { buildHead } from '#lib/seo/head.js';
+import { buildSiteHead } from '#lib/seo/head.js';
+import { messagesFor } from '#lib/i18n/admin.js';
 import type { Head, SitePage } from '#lib/seo/head.js';
 import { contentView, seoSettingsView } from '#lib/server/public-view.js';
 
@@ -48,7 +49,8 @@ const graph = (head: Head) =>
 
 test('content text cannot end the JSON-LD script element', () => {
   const title = '</script><script>alert(1)</script><!--';
-  const head = buildHead({
+  const head = buildSiteHead({
+    messages: messagesFor(site.locale),
     site,
     settings: settings(),
     page: entry({ title, seo: { ...seo, authorName: '</SCRIPT>' } }),

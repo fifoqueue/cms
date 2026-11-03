@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { archivePath } from '#sdk/archive-links';
+export { archivePath } from '#sdk/archive-links';
 import { Errors } from '#sdk/errors';
 import {
   canonicalPermalinkPath,
@@ -75,13 +77,6 @@ export const archivePathsStateSchema = z.object({
 });
 
 export type ArchivePathsState = z.output<typeof archivePathsStateSchema>;
-
-/** Archive slugs occupy one encoded segment beneath their configured base. */
-export const archivePath = (
-  bases: ArchiveBases,
-  taxonomy: 'category' | 'tag',
-  slug: string,
-) => `${bases[taxonomy]}/${encodeURIComponent(slug)}`;
 
 /** Current routes take precedence over every historical address. */
 export const resolveArchivePath = (state: ArchivePathsState, path: string) => {

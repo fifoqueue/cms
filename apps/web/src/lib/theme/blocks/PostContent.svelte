@@ -4,7 +4,7 @@
   import { enhance } from '$app/forms';
   import { page } from '$app/state';
   import { catalogMessage } from '#lib/admin/form-errors.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import SlotOutlet from '#lib/theme/SlotOutlet.svelte';
   import { codeCopy } from '#lib/theme/content/code-copy.js';
   import { enhanceToc } from '#lib/theme/content/toc.js';

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import '#web/routes/layout.css';
   import { applyColorMode, colorModeScript } from '#lib/admin/color-mode.js';
   import NavigationProgress from '#lib/components/NavigationProgress.svelte';
   import { provideI18n } from '#lib/i18n/index.js';

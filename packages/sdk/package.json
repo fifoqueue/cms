@@ -16,6 +16,8 @@
     "./format": "./src/format.ts",
     "./footnotes": "./src/footnotes.ts",
     "./tree": "./src/tree.ts",
+    "./block-tree": "./src/block-tree.ts",
+    "./archive-links": "./src/archive-links.ts",
     "./capabilities": "./src/capabilities.ts",
     "./locales": "./src/locales.ts",
     "./media-paths": "./src/media-paths.ts",

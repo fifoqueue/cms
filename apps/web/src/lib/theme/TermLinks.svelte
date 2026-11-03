@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { Path } from '$app/types';
   import { resolve } from '$app/paths';
-  import { archivePath } from '@cms/sdk';
+  import { archivePath } from '@cms/sdk/archive-links';
   import { useScope } from '#lib/theme/scope.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
 
   interface TermLink {
     id: string;

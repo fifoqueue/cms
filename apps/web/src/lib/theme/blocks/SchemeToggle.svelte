@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { default as Moon } from '@lucide/svelte/icons/moon';
   import { default as Sun } from '@lucide/svelte/icons/sun';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import { useScope } from '#lib/theme/scope.js';
   import {
     alternateScheme,

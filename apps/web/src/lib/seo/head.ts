@@ -12,9 +12,7 @@ import type {
   SiteView,
   TermArchiveView,
 } from '#lib/server/public-view.js';
-import { messagesFor } from '#lib/i18n/index.js';
-import type { Messages } from '#lib/i18n/index.js';
-import { en } from '#lib/i18n/en.js';
+import type { SiteMessages } from '#lib/i18n/site.js';
 import { jsonLdScript } from '#lib/seo/json-ld.js';
 import {
   FEED_PATH,
@@ -99,7 +97,7 @@ export const schemaType = ({ type, seo }: Entry) =>
 /** Articles show a byline and dates, and only they are marked up as Article/BlogPosting. */
 export const isArticle = (entry: Entry) => schemaType(entry) !== 'WebPage';
 
-export const termLabel = (taxonomy: TaxonomyType, m: Messages = en) =>
+export const termLabel = (taxonomy: TaxonomyType, m: SiteMessages) =>
   taxonomy === 'category'
     ? m.themeCategory
     : taxonomy === 'tag'
@@ -112,7 +110,7 @@ export interface Crumb {
 }
 
 /** The visible breadcrumb trail; the JSON-LD BreadcrumbList uses the same list. */
-export const crumbs = (page: SitePage | null, m: Messages = en): Crumb[] => {
+export const crumbs = (page: SitePage | null, m: SiteMessages): Crumb[] => {
   const home: Crumb = { name: m.themeHome, target: { kind: 'home' } };
   if (page?.kind === 'term')
     return [
@@ -195,7 +193,7 @@ interface Facts {
   next?: string;
 }
 
-const pagedIn = (m: Messages) => (title: string, page: number) =>
+const pagedIn = (m: SiteMessages) => (title: string, page: number) =>
   page > 1 ? m.themePaged(title, page) : title;
 
 const pagination = (target: ListingTarget, posts: PostList) => {
@@ -216,8 +214,8 @@ const describe = (
   settings: SeoSettingsView,
   page: SitePage | null,
   absolute: (path: string) => string,
+  m: SiteMessages,
 ): Facts => {
-  const m = messagesFor(site.locale);
   const paged = pagedIn(m);
   const format = (title: string) =>
     formatSeoTitle(title, site.title, settings.titleTemplate);
@@ -376,6 +374,7 @@ const describe = (
           settings,
           { kind: 'content', content: page.content },
           absolute,
+          m,
         ),
         canonical: '',
         index: false,
@@ -568,17 +567,22 @@ const applyMeta = (parts: HeadParts, filtered: SeoMeta): HeadParts => {
 };
 
 /** The `seo.meta` filter value of a page, for the server to submit. */
-export const headMeta = (input: HeadInput) => seoMetaOf(headParts(input));
+export const headMeta = (input: HeadInput, messages: SiteMessages) =>
+  seoMetaOf(headParts(input, messages));
 
 /**
  * The page's head. `filtered` is the page's `seo.meta` filter result (page data `seoMeta`,
  * set by the server only when a plugin changed something).
  */
-export const buildHead = ({
+export const buildSiteHead = ({
+  messages,
   filtered,
   ...input
-}: HeadInput & { filtered?: SeoMeta | null }): Head => {
-  const parts = headParts(input);
+}: HeadInput & {
+  messages: SiteMessages;
+  filtered?: SeoMeta | null;
+}): Head => {
+  const parts = headParts(input, messages);
   const { title, meta, links, graph } = filtered
     ? applyMeta(parts, filtered)
     : parts;
@@ -590,11 +594,14 @@ export const buildHead = ({
   };
 };
 
-const headParts = ({ site, settings, page }: HeadInput): HeadParts => {
+const headParts = (
+  { site, settings, page }: HeadInput,
+  m: SiteMessages,
+): HeadParts => {
   const absolute = (path: string) =>
     settings.siteUrl ? `${settings.siteUrl}${path}` : '';
   const href = (path: string) => absolute(path) || path;
-  const facts = describe(site, settings, page, absolute);
+  const facts = describe(site, settings, page, absolute, m);
   const content = page?.kind === 'content' ? page.content : null;
   const article = content && isArticle(content) ? content : null;
   const index = settings.indexingEnabled && facts.index;
@@ -675,10 +682,7 @@ const headParts = ({ site, settings, page }: HeadInput): HeadParts => {
       links.push({
         rel: 'alternate',
         type: 'application/rss+xml',
-        title: messagesFor(site.locale).themeFeedTitle(
-          site.title,
-          followed.name,
-        ),
+        title: m.themeFeedTitle(site.title, followed.name),
         href: href(feedPath({ kind: followed.kind, slug: followed.slug })),
       });
   }
@@ -721,7 +725,7 @@ const headParts = ({ site, settings, page }: HeadInput): HeadParts => {
   const publisher = identityName ? ref(identityId) : undefined;
   const websiteId = id('/', 'website');
   const pageId = facts.path === null ? '_:webpage' : id(facts.path, 'webpage');
-  const trail = crumbs(page, messagesFor(site.locale));
+  const trail = crumbs(page, m);
   const breadcrumbId = id(facts.path ?? '/', 'breadcrumb');
   const breadcrumb =
     settings.siteUrl && trail.length > 1

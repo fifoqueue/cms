@@ -8,7 +8,7 @@
   } from '#lib/components/ui/alert/index.js';
   import { announceResult, noticeText, useToasts } from '#lib/feedback.js';
   import type { ActionData, ToastAction } from '#lib/feedback.js';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
 
   interface Issue {
     path: string;

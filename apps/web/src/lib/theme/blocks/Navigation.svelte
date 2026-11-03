@@ -3,7 +3,7 @@
   import { default as Menu } from '@lucide/svelte/icons/menu';
   import { default as X } from '@lucide/svelte/icons/x';
   import type { Block } from '@cms/sdk';
-  import { useI18n } from '#lib/i18n/index.js';
+  import { useI18n } from '#lib/i18n/context.js';
   import type { MenuItemView } from '#lib/server/public-view.js';
   import NavigationItems from '#lib/theme/blocks/NavigationItems.svelte';
   import SchemeToggle from '#lib/theme/blocks/SchemeToggle.svelte';
