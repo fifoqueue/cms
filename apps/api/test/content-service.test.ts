@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { DEFAULT_PERMALINK_SETTINGS } from '@cms/sdk';
+import { DEFAULT_ENTRY_SEO, DEFAULT_PERMALINK_SETTINGS } from '@cms/sdk';
 import type { ContentInput } from '@cms/sdk';
 import { checkContentParent } from '#api/domain/content/hierarchy';
 import {
@@ -163,6 +163,62 @@ describe('ContentService', () => {
     });
     expect(await publicContent.getBySlug(created.slug)).not.toHaveProperty(
       'origin',
+    );
+  });
+  test('the focus keyword paragraph is the meta description only, never the keyword or the excerpt', async () => {
+    const { service, publicContent } = setup();
+    const paragraph = (text: string) => ({
+      type: 'paragraph',
+      content: [{ type: 'text', text }],
+    });
+    const keyword = 'Apple Inc. 는 미국의 기업이다. 유래는 과일 "사과"가 맞다.';
+    const document = {
+      type: 'doc',
+      content: [paragraph('첫 문단.'), paragraph(keyword)],
+    } as ContentInput['document'];
+    const seo = DEFAULT_ENTRY_SEO;
+    const entry = await service.create(
+      input({
+        document,
+        status: 'published',
+        seo: { ...seo, focusKeyword: '사과' },
+      }),
+      ADMIN,
+    );
+    const shown = await publicContent.getBySlug(entry.slug);
+    expect(shown.metaDescription).toBe(keyword);
+    expect(shown.seo.description).toBe('');
+    expect(shown.excerpt).toBe(`첫 문단. ${keyword}`);
+    expect(JSON.stringify(shown)).not.toContain('focusKeyword');
+    expect(
+      (await publicContent.list({})).items.find(({ id }) => id === entry.id),
+    ).not.toHaveProperty('metaDescription');
+
+    await service.update(
+      entry.id,
+      input({
+        document,
+        status: 'published',
+        excerpt: 'Manual',
+        seo: { ...seo, focusKeyword: '사과' },
+      }),
+      ADMIN,
+    );
+    expect((await publicContent.getBySlug(entry.slug)).metaDescription).toBe(
+      '',
+    );
+    await service.update(
+      entry.id,
+      input({
+        document,
+        status: 'published',
+        password: 'secret',
+        seo: { ...seo, focusKeyword: '사과' },
+      }),
+      ADMIN,
+    );
+    expect((await publicContent.getBySlug(entry.slug)).metaDescription).toBe(
+      '',
     );
   });
   test('private site reads require resolved capabilities and never expose drafts or admin fields', async () => {

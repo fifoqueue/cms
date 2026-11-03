@@ -128,6 +128,11 @@ export const toPublic = (
   publicContentSchema.parse({
     ...publicFields(record, unlocked),
     html: record.protected && !unlocked ? '' : record.html,
+    // A manual excerpt still wins over the keyword paragraph (the page falls back to it).
+    metaDescription:
+      (record.protected && !unlocked) || record.excerpt
+        ? ''
+        : record.keywordSummary,
     // Filled with the public fields by `PublicContentService`.
     fields: {},
   });

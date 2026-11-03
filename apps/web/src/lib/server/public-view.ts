@@ -160,6 +160,8 @@ export const contentView = (content: PublicContent) => ({
   pages: { current: 1, total: 1 },
   updatedAt: content.updatedAt,
   seo: entrySeoView(content.seo),
+  /** The automatic meta description; never shown on the page itself. */
+  metaDescription: content.metaDescription,
 });
 
 export const listView = ({

@@ -27,6 +27,7 @@ type Row = Pick<
   | 'updatedAt'
   | 'commentCount'
   | 'summary'
+  | 'keywordSummary'
   | 'tocOverride'
 > &
   Omit<
@@ -85,6 +86,7 @@ const summary = (row: Row, terms: { term: Term }[]): PublishedSummaryRecord => {
     protected: Boolean(row.protected),
     commentCount: row.commentCount,
     summary: row.summary,
+    keywordSummary: row.keywordSummary,
     categories: termSummaries(terms, 'category'),
     tags: termSummaries(terms, 'tag'),
     extraTerms: extraTerms(terms),
@@ -125,7 +127,8 @@ export async function projectContent(
   visibility: Visibility = 'published',
 ): Promise<PublishedSummaryRecord[]> {
   const rows = await db.$queryRaw<Row[]>(Prisma.sql`
-    SELECT c.id, c.type, c.slug, c.title, c.excerpt, c.summary, c.sticky,
+    SELECT c.id, c.type, c.slug, c.title, c.excerpt, c.summary,
+      c.keyword_summary AS keywordSummary, c.sticky,
       c.toc_override AS tocOverride,
       c.published_at AS publishedAt, c.updated_at AS updatedAt,
       c.comment_count AS commentCount, c.password_hash IS NOT NULL AS protected,

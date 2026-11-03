@@ -373,6 +373,12 @@ export const publicContentSchema = z.strictObject({
   fields: z.record(z.string(), z.unknown()),
   seo: z.strictObject(publicEntrySeoSchema.shape),
   /**
+   * Automatic meta description: the first paragraph with the editor's focus keyword (never the
+   * keyword itself). Empty with a manual excerpt, without a match and while protected; pages use
+   * it after `seo.description` and before `excerpt`, for the meta description only.
+   */
+  metaDescription: z.string().default(''),
+  /**
    * Data added by plugins through the `content.public` filter. Values must be JSON data
    * (`isJsonValue`); otherwise the filter result is discarded. Frontends must tolerate any shape.
    */
@@ -388,6 +394,7 @@ export type PublicContent = z.output<typeof publicContentSchema>;
 export const publicContentSummarySchema = publicContentSchema.omit({
   html: true,
   fields: true,
+  metaDescription: true,
 });
 
 export type PublicContentSummary = z.output<typeof publicContentSummarySchema>;

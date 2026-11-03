@@ -1,5 +1,6 @@
 import { publicContentSchema } from '@cms/sdk';
 import type { ContentDocument, PreviewToken, PublicContent } from '@cms/sdk';
+import { keywordParagraph } from '@cms/content/plain-text';
 import { toPublicEntrySeo } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
 import type { ContentService } from '#api/domain/content/content-service';
@@ -92,6 +93,9 @@ export class PreviewService {
       featuredImage: record.featuredImage,
       fields: await this.deps.fields.present(record.type, record.fields),
       seo: toPublicEntrySeo(record.seo),
+      metaDescription: text.excerpt
+        ? ''
+        : keywordParagraph(text.document, record.seo.focusKeyword),
       meta: {},
     });
   }

@@ -52,6 +52,8 @@ export interface ContentRecord {
   passwordHash: string | null;
   /** Generated from the body; public lists show it when `excerpt` is empty. */
   summary: string;
+  /** The first paragraph with the SEO focus keyword; empty without one or while protected. */
+  keywordSummary: string;
   featuredMediaId: string | null;
   /** Custom field values by key, as validated when saved. */
   fields: Record<string, unknown>;

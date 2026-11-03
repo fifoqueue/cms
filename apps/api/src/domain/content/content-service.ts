@@ -26,7 +26,12 @@ import type {
   ContentWriteGuard,
   DocumentRenderer,
 } from '#api/domain/content/content-repository';
-import { plainText, summarize, teaserOf } from '@cms/content/plain-text';
+import {
+  keywordParagraph,
+  plainText,
+  summarize,
+  teaserOf,
+} from '@cms/content/plain-text';
 import { mediaIdsOf } from '#api/domain/content/plain-text';
 import type { RevisionSave } from '#api/domain/content/revisions';
 import type { ContentTypeService } from '#api/domain/content/content-types';
@@ -347,6 +352,12 @@ export class ContentService {
       html: this.deps.renderer.render(data.document),
       searchText: locked ? '' : text,
       summary: locked ? '' : (teaserOf(data.document) ?? summarize(text)),
+      keywordSummary: locked
+        ? ''
+        : keywordParagraph(
+            data.document,
+            (data.seo ?? current?.seo)?.focusKeyword ?? '',
+          ),
       status: data.status,
       sticky: data.sticky,
       allowComments: data.allowComments,

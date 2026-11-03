@@ -36,6 +36,8 @@ export interface PublishedRecord {
   protected: boolean;
   /** Generated excerpt, used when `excerpt` is empty. */
   summary: string;
+  /** The meta description without a manual one or an excerpt; never reveals the keyword itself. */
+  keywordSummary: string;
   featuredImage: PublicImage | null;
   /** Stored custom field values, public or not; filter before serving. */
   fields: Record<string, unknown>;

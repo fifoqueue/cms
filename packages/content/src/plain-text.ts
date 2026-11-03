@@ -59,6 +59,38 @@ export const summarize = (text: string, words = 55): string => {
 };
 
 /**
+ * The first paragraph, in document order, whose text contains `keyword` ignoring case, at most
+ * 300 characters (Rank Math's automatic meta description); empty without a keyword or match.
+ */
+export const keywordParagraph = (
+  document: ContentDocument,
+  keyword: string,
+): string => {
+  const fold = (value: string) => value.normalize('NFKC').toLowerCase();
+  const needle = fold(keyword.trim());
+  if (!needle) return '';
+  const find = (node: unknown): string | null => {
+    if (typeof node !== 'object' || node === null) return null;
+    const { type, content } = node as { type?: unknown; content?: unknown };
+    if (type === 'paragraph') {
+      const text = plainText({
+        ...document,
+        content: [node] as ContentDocument['content'],
+      });
+      return fold(text).includes(needle) ? text : null;
+    }
+    if (!Array.isArray(content)) return null;
+    for (const child of content) {
+      const found = find(child);
+      if (found !== null) return found;
+    }
+    return null;
+  };
+  const text = find(document) ?? '';
+  return text.length > 300 ? `${text.slice(0, 299).trimEnd()}…` : text;
+};
+
+/**
  * The text before a top-level "more" break (WordPress `<!--more-->`), the entry's teaser in
  * lists; null without one. At most 1000 characters.
  */

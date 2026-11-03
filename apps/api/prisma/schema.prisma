@@ -204,6 +204,8 @@ model Content {
   searchText           String            @map("search_text") @db.LongText
   /// Generated from the body; shown when `excerpt` is empty.
   summary              String            @default("") @db.Text
+  /// The first paragraph with the SEO focus keyword: the meta description without a manual one or an excerpt.
+  keywordSummary       String            @default("") @map("keyword_summary") @db.Text
   /// Set while in the trash; trashed entries are never public.
   trashedAt            DateTime?         @map("trashed_at") @db.DateTime(3)
   sticky               Boolean           @default(false)

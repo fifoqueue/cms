@@ -407,7 +407,10 @@ const describe = (
         part > 1 ? `${content.path}?page=${part}` : content.path;
       const base = paged(content.seo.title || content.title, current);
       const description =
-        content.seo.description || content.excerpt || site.description;
+        content.seo.description ||
+        content.metaDescription ||
+        content.excerpt ||
+        site.description;
       // An explicit SEO image wins; otherwise the featured image, when the site has an address.
       const featured =
         content.featuredImage && absolute(content.featuredImage.url)

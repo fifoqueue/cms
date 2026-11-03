@@ -490,6 +490,7 @@ export class MemoryContentRepository implements ContentRepository {
       commentCount: this.commentCounts.get(row.id) ?? 0,
       passwordHash: row.passwordHash,
       summary: row.summary,
+      keywordSummary: row.keywordSummary,
       featuredMediaId: row.featuredMediaId,
       fields: structuredClone(row.fields),
       // The media table lives elsewhere in tests; featured images are not resolved.

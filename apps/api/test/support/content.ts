@@ -45,6 +45,7 @@ export const publicEntry = (
   protected: false,
   featuredImage: null,
   fields: {},
+  metaDescription: '',
   meta: {},
   ...overrides,
 });

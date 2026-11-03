@@ -22,7 +22,12 @@
   } from '@cms/sdk';
   import { permalinkPatternFor } from '@cms/sdk';
   import type { AuthorOption } from '@cms/sdk/client';
-  import { plainText, summarize, teaserOf } from '@cms/content/plain-text';
+  import {
+    keywordParagraph,
+    plainText,
+    summarize,
+    teaserOf,
+  } from '@cms/content/plain-text';
   import { default as X } from '@lucide/svelte/icons/x';
   import { onDestroy, onMount, untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
@@ -945,6 +950,11 @@
       source={{
         title,
         description: excerpt.trim() || summary,
+        // Protected entries publish no keyword paragraph (see `ContentService`).
+        keywordDescription: (keyword) =>
+          excerpt.trim() || visibility === 'password'
+            ? ''
+            : keywordParagraph(body, keyword),
         slug: slug.trim() || (entry?.slug ?? ''),
         body: bodyText,
         path,

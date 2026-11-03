@@ -37,6 +37,8 @@
     title: string;
     /** Excerpt (else the automatic summary) or term description: the fallback meta description. */
     description: string;
+    /** The paragraph with `keyword` that comes before `description` (content without an excerpt). */
+    keywordDescription?: (keyword: string) => string;
     slug: string;
     /** Plain body text the keyword checks and reading facts look at. */
     body: string;
@@ -91,10 +93,14 @@
       context.titleTemplate,
     ),
   );
+  const keyword = $derived(seo.focusKeyword.trim());
+  /** What the site uses without a manual meta description, as the API derives it. */
+  const fallbackDescription = $derived(
+    (keyword && source.keywordDescription?.(keyword)) ||
+      source.description.trim(),
+  );
   const description = $derived(
-    seo.description.trim() ||
-      source.description.trim() ||
-      context.siteDescription,
+    seo.description.trim() || fallbackDescription || context.siteDescription,
   );
   const url = $derived(
     seo.canonicalUrl.trim() ||
@@ -153,7 +159,6 @@
     detail?: string;
   }
 
-  const keyword = $derived(seo.focusKeyword.trim());
   const checks = $derived.by((): Check[] => {
     if (!keyword) return [];
     const slugWords = keywordSlug(keyword);
@@ -309,7 +314,7 @@
           name={seoField('description')}
           maxlength={500}
           rows={3}
-          placeholder={source.description ||
+          placeholder={fallbackDescription ||
             context.siteDescription ||
             (kind === 'content' ? m.seoUsesExcerpt : m.seoUsesDescription)}
           bind:value={seo.description}

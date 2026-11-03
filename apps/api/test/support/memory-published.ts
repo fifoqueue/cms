@@ -166,5 +166,6 @@ const project = (record: ContentSummaryRecord): PublishedSummaryRecord => ({
   protected: record.passwordHash !== null,
   featuredImage: record.featuredImage,
   summary: record.summary,
+  keywordSummary: record.keywordSummary,
   seo: toPublicSeo(record.seo),
 });
