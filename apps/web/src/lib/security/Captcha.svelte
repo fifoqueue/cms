@@ -5,12 +5,11 @@
   import {
     CAPTCHA_TOKEN_FIELD,
     mountWidget,
-    widgetAttributes,
     type MountedWidget,
   } from '#lib/security/captcha-widget.js';
 
   /**
-   * The captcha widget the API describes, core or plugin alike: its script, a container with
+   * The captcha widget the API describes, core or plugin alike: its script, an element with
    * its `data-*` attributes, how it renders (`mountWidget`) and the field its token arrives in.
    * The token is submitted as `CAPTCHA_TOKEN_FIELD`. Without a widget nothing renders.
    */
@@ -22,6 +21,7 @@
     onchange?: (ready: boolean) => void;
   } = $props();
   const i18n = useI18n();
+  let frame = $state<HTMLDivElement>();
   let element = $state<HTMLDivElement>();
   let tokenInput = $state<HTMLInputElement>();
   let mounted: MountedWidget | undefined;
@@ -29,33 +29,33 @@
   let failed = $state(false);
 
   const widget = $derived(captcha.provider === 'none' ? null : captcha.widget);
-  const attributes = $derived(
-    widget ? widgetAttributes(widget.attributes) : {},
-  );
 
   const set = (value: string) => {
     token = value;
-    // Synchronously too: a submit handler reads the form before the next render.
+    // The field holds the new value before the next render.
     if (tokenInput) tokenInput.value = value;
     if (value) failed = false;
     onchange?.(!!value);
   };
 
-  /** Captcha tokens are single-use, including attempts rejected for another reason. */
+  /** Clears the token and the widget; call after every submission attempt. */
   export function reset() {
     set('');
     mounted?.reset();
   }
 
   onMount(() => {
-    if (!widget || !element) return;
+    if (!widget || !frame || !element) return;
+
     mounted = mountWidget(element, widget, captcha.siteKey, {
+      frame,
       onToken: set,
       onError: () => {
         set('');
         failed = true;
       },
     });
+
     return () => {
       mounted?.destroy();
       mounted = undefined;
@@ -74,8 +74,14 @@
       value={token}
     />
   {/if}
-  <!-- Never wider than the form; a narrow one gets the compact widget (`mountWidget`). -->
-  <div bind:this={element} {...attributes} class="max-w-full min-w-0"></div>
+  <!-- Never wider than the form: a narrower one scales the widget down (`mountWidget`). The
+       ring marks focus inside the widget, which the frame clips. -->
+  <div
+    bind:this={frame}
+    class="max-w-full min-w-0 overflow-hidden rounded-sm focus-within:ring-3 focus-within:ring-ring/50"
+  >
+    <div bind:this={element}></div>
+  </div>
   {#if failed}<p role="alert" class="text-sm text-destructive">
       {i18n.m.errorCaptchaRequired}
     </p>{/if}
