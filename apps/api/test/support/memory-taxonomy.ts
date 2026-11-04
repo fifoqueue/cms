@@ -1,11 +1,13 @@
 // In-memory taxonomy adapter for tests, honouring the same port contract as the Prisma adapter.
 import type { TaxonomyType } from '@cms/sdk';
-import { checkParent, compareTerms } from '#api/domain/taxonomy/hierarchy';
+import { checkParent, sortTerms } from '#api/domain/taxonomy/hierarchy';
 import type {
   CountedTermRecord,
   TaxonomyRepository,
   TaxonomyTermRecord,
   TermCountScope,
+  TermListFilter,
+  TermMediaLinks,
 } from '#api/domain/taxonomy/taxonomy-repository';
 import { conflict } from '#api/shared/errors';
 import type { MemoryContentRepository } from '#test/support/memory';
@@ -18,11 +20,27 @@ export class MemoryTaxonomyRepository implements TaxonomyRepository {
     return this.content.terms;
   }
 
-  async list(taxonomy: TaxonomyType, scope: TermCountScope) {
-    return [...this.terms.values()]
-      .filter((term) => term.taxonomy === taxonomy)
-      .sort(compareTerms)
-      .map((term) => this.counted(term, scope));
+  async list(
+    taxonomy: TaxonomyType,
+    scope: TermCountScope,
+    filter: TermListFilter = {},
+  ) {
+    const search = filter.search?.toLowerCase();
+    return sortTerms(
+      [...this.terms.values()]
+        .filter(
+          (term) =>
+            term.taxonomy === taxonomy &&
+            (filter.parentId === undefined ||
+              term.parentId === filter.parentId) &&
+            (!search ||
+              term.name.toLowerCase().includes(search) ||
+              term.slug.includes(search)),
+        )
+        .map((term) => this.counted(term, scope))
+        .filter((term) => !filter.hideEmpty || term.count > 0),
+      filter,
+    );
   }
 
   async findById(id: string, scope: TermCountScope) {
@@ -51,17 +69,30 @@ export class MemoryTaxonomyRepository implements TaxonomyRepository {
     );
   }
 
-  async insert(record: TaxonomyTermRecord) {
+  /** Media linked by each term's image fields, standing in for `term_media` (no existence check). */
+  readonly media = new Map<string, string[]>();
+
+  async insert(record: TaxonomyTermRecord, mediaIds: readonly string[] = []) {
     await this.check(record);
     this.terms.set(record.id, structuredClone(record));
+    this.media.set(record.id, [...new Set(mediaIds)]);
   }
 
-  async update(record: TaxonomyTermRecord) {
+  async update(record: TaxonomyTermRecord, media?: TermMediaLinks) {
     const current = this.terms.get(record.id);
     if (!current) return;
     const next = { ...structuredClone(record), taxonomy: current.taxonomy };
     await this.check(next);
     this.terms.set(record.id, next);
+    if (media)
+      this.media.set(record.id, [
+        ...new Set([
+          ...(this.media.get(record.id) ?? []).filter((id) =>
+            media.retain.includes(id),
+          ),
+          ...media.ids,
+        ]),
+      ]);
   }
 
   async delete(id: string) {
@@ -84,6 +115,7 @@ export class MemoryTaxonomyRepository implements TaxonomyRepository {
       row.extraTermIds = row.extraTermIds?.filter((other) => other !== id);
     }
     this.terms.delete(id);
+    this.media.delete(id);
     return affected;
   }
 

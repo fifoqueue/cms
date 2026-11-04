@@ -12,6 +12,8 @@ import type {
   PublicContentType,
 } from '#sdk/content-types';
 import type { Request } from '#sdk/transport';
+import { contentDefaultsSchema } from '#sdk/content';
+import type { ContentDefaults } from '#sdk/content';
 
 export const publicTypesClient = (request: Request) => ({
   contentTypes: () =>
@@ -27,6 +29,11 @@ export const contentModelClient = (request: Request) => {
   const fieldPath = (key: string) =>
     `/api/v1/admin/fields/${encodeURIComponent(key)}`;
   return {
+    defaults: (type: string) =>
+      request<ContentDefaults>('GET', '/api/v1/admin/content/defaults', {
+        query: { type },
+        response: contentDefaultsSchema,
+      }),
     model: () =>
       request<{ types: ContentTypeDefinition[]; fields: FieldDefinition[] }>(
         'GET',

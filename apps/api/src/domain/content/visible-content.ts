@@ -37,6 +37,13 @@ export class VisibleContentRepository implements PublishedContentRepository {
     );
   }
 
+  async excerptBodies(ids: readonly string[], types?: readonly string[]) {
+    const active = (await this.types()).filter(
+      (type) => !types || types.includes(type),
+    );
+    return this.source.excerptBodies(ids, active);
+  }
+
   private async criteria(criteria: PublishedCriteria) {
     const types = (await this.types()).filter(
       (type) =>

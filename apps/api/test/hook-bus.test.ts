@@ -5,6 +5,45 @@ import { HookBus } from '#api/plugin-runtime/hook-bus';
 import { recordingLogger } from '#test/support/memory';
 
 describe('HookBus', () => {
+  test('rejected trusted mutations restore values without cloning context bytes', async () => {
+    for (const throws of [false, true]) {
+      const bus = new HookBus({
+        timeoutMs: 100,
+        logger: recordingLogger().logger,
+      });
+      const hooks = bus.registrar('functions:site', { trusted: true });
+      const bytes = new Uint8Array([1, 2, 3]);
+      const input = {
+        url: '/original',
+        key: 'original',
+        driver: 'local',
+        variant: null,
+      };
+      let borrowed: unknown;
+      hooks.filter('media.url', (value, context) => {
+        borrowed = context;
+        value.url = 'javascript:alert(1)';
+        value.key = 'changed';
+        if (throws) throw new Error('failed after mutation');
+        return value;
+      });
+      const result = await bus.applyFilter(
+        'media.url',
+        input,
+        (value) => (value as typeof input).url === '/original',
+        undefined,
+        [bytes],
+      );
+      expect(result).toEqual({
+        url: '/original',
+        key: 'original',
+        driver: 'local',
+        variant: null,
+      });
+      expect(borrowed).toBe(bytes);
+    }
+  });
+
   test('shared memory cannot cross plugin input or result boundaries', async () => {
     const { logger } = recordingLogger();
     const bus = new HookBus({ timeoutMs: 100, logger });
@@ -342,7 +381,7 @@ describe('HookBus', () => {
     });
     hooks.filter('user.signInAllowed', () => null as never);
     hooks.filter('user.signInAllowed', (value) => {
-      expect(value).toBe(input);
+      expect(value).toEqual(input);
       return { ...value, allowed: true };
     });
     const result = await bus.applyFilter(

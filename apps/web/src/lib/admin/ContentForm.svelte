@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { thumbnailUrl } from '#lib/admin/media-thumbnail.js';
   import { localTime } from '#lib/admin/local-time.js';
   import type { Path } from '$app/types';
   import { resolve } from '$app/paths';
@@ -33,6 +32,7 @@
   import { SvelteSet } from 'svelte/reactivity';
   import type { ContentFormValues } from '#lib/admin/content-form-values.js';
   import ClientOrigin from '#lib/admin/ClientOrigin.svelte';
+  import CustomFields from '#lib/admin/CustomFields.svelte';
   import Editor from '#lib/admin/Editor.svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import SeoEditor from '#lib/admin/SeoEditor.svelte';
@@ -103,7 +103,12 @@
     /** Thumbnail addresses of the saved image fields, by field key. */
     fieldImages?: Record<string, string>;
     /** Settings → Writing: what a new entry starts with. */
-    defaults?: { categoryId: string | null; status: 'draft' | 'pending' };
+    defaults?: {
+      categoryId: string | null;
+      status: 'draft' | 'pending';
+      title?: string;
+      document?: ContentDocument;
+    };
     /** Saved versions of the entry, for the "Browse" link. */
     revisionCount?: number;
     /** Status a new entry was just created with (shown as the save result). */
@@ -172,7 +177,8 @@
   // Initial values only; the form owns the state afterwards.
   const initial = untrack(() => ({
     type: values?.type ?? entry?.type ?? type,
-    title: values?.title ?? draft?.title ?? entry?.title ?? '',
+    title:
+      values?.title ?? draft?.title ?? entry?.title ?? defaults?.title ?? '',
     slug: values?.slug ?? entry?.slug ?? '',
     excerpt: values?.excerpt ?? draft?.excerpt ?? entry?.excerpt ?? '',
     status: (values?.status ??
@@ -192,6 +198,7 @@
       contentDocumentSchema.safeParse(values?.document).data ??
       draft?.document ??
       entry?.document ??
+      defaults?.document ??
       EMPTY,
     categoryIds: new Set(
       values?.categoryIds ??
@@ -306,27 +313,6 @@
   const typeFields = $derived(
     model.fields.filter((field) => field.contentTypes.includes(contentType)),
   );
-  /** Image field values (media ids) chosen in this form, by field key. */
-  let imageFields = $state<Record<string, { id: string; url: string } | null>>(
-    untrack(() =>
-      Object.fromEntries(
-        model.fields
-          .filter((field) => field.type === 'image')
-          .map((field) => {
-            const id = initial.fields[field.key];
-            return [
-              field.key,
-              typeof id === 'string'
-                ? { id, url: fieldImages[field.key] ?? '' }
-                : null,
-            ];
-          }),
-      ),
-    ),
-  );
-  let fieldPicker = $state<ReturnType<typeof MediaPicker>>();
-  let pickingField = '';
-  const fieldValue = (key: string) => initial.fields[key];
   // Saved entries preview their address; new ones get theirs on save.
   const path = $derived(
     entry
@@ -832,116 +818,12 @@
       </p>
     </div>
 
-    {#if typeFields.length}
-      <fieldset class="grid gap-4 rounded-md border p-4 sm:grid-cols-2">
-        <legend class="px-1 text-sm font-medium">{m.customFields}</legend>
-        {#each typeFields as field (field.key)}
-          {@const id = `field-${field.key}`}
-          {@const name = `field.${field.key}`}
-          {@const value = fieldValue(field.key)}
-          <div
-            class="grid gap-2 {field.type === 'textarea'
-              ? 'sm:col-span-2'
-              : ''}"
-          >
-            {#if field.type === 'boolean'}
-              <label class="flex items-center gap-2 text-sm">
-                <input type="checkbox" {name} checked={value === true} />
-                {field.label}
-              </label>
-            {:else}
-              <Label for={id}>{field.label}{field.required ? ' *' : ''}</Label>
-              {#if field.type === 'textarea'}
-                <Textarea
-                  {id}
-                  {name}
-                  rows={4}
-                  maxlength={20000}
-                  required={field.required}
-                  value={typeof value === 'string' ? value : ''}
-                />
-              {:else if field.type === 'select'}
-                <NativeSelect
-                  class="w-full"
-                  {id}
-                  {name}
-                  required={field.required}
-                  value={typeof value === 'string' ? value : ''}
-                >
-                  <NativeSelectOption value="">{m.noChoice}</NativeSelectOption>
-                  {#each field.options as option (option)}
-                    <NativeSelectOption value={option}
-                      >{option}</NativeSelectOption
-                    >
-                  {/each}
-                </NativeSelect>
-              {:else if field.type === 'image'}
-                {@const chosen = imageFields[field.key]}
-                <input type="hidden" {name} value={chosen?.id ?? ''} />
-                {#if chosen?.url}
-                  <img
-                    src={chosen.url}
-                    alt=""
-                    class="aspect-video w-48 rounded-md border object-cover"
-                  />
-                {/if}
-                <div class="flex gap-2">
-                  <Button
-                    {id}
-                    variant="outline"
-                    size="sm"
-                    onclick={() => {
-                      pickingField = field.key;
-                      fieldPicker?.open();
-                    }}>{m.mediaChoose}</Button
-                  >
-                  {#if chosen}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onclick={() => {
-                        imageFields[field.key] = null;
-                        touch();
-                      }}>{m.mediaRemoveFeatured}</Button
-                    >
-                  {/if}
-                </div>
-              {:else}
-                <Input
-                  {id}
-                  {name}
-                  type={field.type === 'number'
-                    ? 'number'
-                    : field.type === 'date'
-                      ? 'date'
-                      : field.type === 'url'
-                        ? 'url'
-                        : 'text'}
-                  step={field.type === 'number' ? 'any' : undefined}
-                  required={field.required}
-                  value={value === undefined || value === null
-                    ? ''
-                    : String(value)}
-                />
-              {/if}
-            {/if}
-            {#if field.help}<p class="text-xs text-muted-foreground">
-                {field.help}
-              </p>{/if}
-          </div>
-        {/each}
-      </fieldset>
-      <MediaPicker
-        bind:this={fieldPicker}
-        onpick={(media) => {
-          imageFields[pickingField] = {
-            id: media.id,
-            url: thumbnailUrl(media),
-          };
-          touch();
-        }}
-      />
-    {/if}
+    <CustomFields
+      fields={typeFields}
+      values={initial.fields}
+      images={fieldImages}
+      onchange={touch}
+    />
 
     <SeoEditor
       kind="content"

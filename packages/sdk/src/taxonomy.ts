@@ -1,24 +1,21 @@
 import { z } from 'zod';
-import { CONTENT_SLUG, KEBAB_CASE } from '#sdk/common';
+import { CONTENT_SLUG } from '#sdk/common';
+import { fieldValuesSchema } from '#sdk/field-values';
 import {
   adminEntrySeoSchema,
   publicEntrySeoSchema,
   seoInputSchema,
 } from '#sdk/seo';
+import {
+  customTaxonomyKeySchema,
+  taxonomyTypeSchema,
+} from '#sdk/taxonomy-keys';
+
+export { taxonomyTypeSchema } from '#sdk/taxonomy-keys';
+export type { TaxonomyType } from '#sdk/taxonomy-keys';
 
 /** Categories are hierarchical, tags are flat (WordPress semantics). */
 export const TAXONOMY_TYPES = ['category', 'tag'] as const;
-
-const customTaxonomyKeySchema = z.string().min(1).max(32).regex(KEBAB_CASE);
-export const taxonomyTypeSchema = z.union([
-  customTaxonomyKeySchema,
-  z
-    .string()
-    .max(136)
-    .regex(/^plugin:[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/),
-]);
-
-export type TaxonomyType = z.output<typeof taxonomyTypeSchema>;
 
 export const taxonomyDefinitionSchema = z.object({
   key: taxonomyTypeSchema,
@@ -65,6 +62,8 @@ const termShape = {
 export const publicTaxonomyTermSchema = z.object({
   ...termShape,
   seo: publicEntrySeoSchema,
+  /** Public term fields of the taxonomy by key (image fields as `PublicImage`). */
+  fields: z.record(z.string(), z.unknown()).default({}),
 });
 
 export type PublicTaxonomyTerm = z.output<typeof publicTaxonomyTermSchema>;
@@ -75,6 +74,8 @@ export const adminTaxonomyTermSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   seo: adminEntrySeoSchema,
+  /** Stored term field values by key, including those of fields no longer declared. */
+  fields: z.record(z.string(), z.unknown()).default({}),
 });
 
 export type AdminTaxonomyTerm = z.output<typeof adminTaxonomyTermSchema>;
@@ -98,8 +99,30 @@ export const taxonomyInputSchema = z.object({
   parentId: z.string().trim().min(1).max(36).nullable().default(null),
   /** Omission preserves existing SEO on update. */
   seo: seoInputSchema.optional(),
+  /** Term field values, validated against the taxonomy's fields. Omission keeps them on update. */
+  fields: fieldValuesSchema.optional(),
 });
 
 export type TaxonomyInput = z.input<typeof taxonomyInputSchema>;
 /** Validated term input, with defaults applied. */
 export type TaxonomyData = z.output<typeof taxonomyInputSchema>;
+
+export const TERM_ORDERS = ['name', 'slug', 'count', 'createdAt'] as const;
+
+/**
+ * Arguments of a term list (WordPress `get_terms` args). Omitted keys keep the defaults: every
+ * term of the taxonomy, empty ones included, by name ascending (ties by id).
+ */
+export const termQuerySchema = z.object({
+  taxonomy: taxonomyTypeSchema,
+  /** Direct children of this term only; null lists top-level terms only. */
+  parentId: z.string().trim().min(1).max(36).nullable().optional(),
+  /** Terms whose name or slug contains the text, compared as the store compares text. */
+  search: z.string().trim().max(191).optional(),
+  /** Leaves out terms without content in the list's count scope. */
+  hideEmpty: z.boolean().optional(),
+  orderBy: z.enum(TERM_ORDERS).optional(),
+  order: z.enum(['asc', 'desc']).optional(),
+});
+
+export type TermQuery = z.output<typeof termQuerySchema>;

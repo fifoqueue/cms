@@ -12,6 +12,7 @@ export interface PublicContentById {
     id: string,
     proofs?: readonly string[],
     actor?: Actor | null,
+    context?: 'single' | 'feed',
   ): Promise<PublicContent | null>;
 }
 
@@ -37,7 +38,7 @@ export class PermalinkResolver {
     proofs: readonly string[] = [],
     actor: Actor | null = null,
   ): Promise<ResolvedPath> {
-    const { path } = parseInput(resolvePathQuerySchema, query);
+    const { path, context } = parseInput(resolvePathQuerySchema, query);
     const canonical = canonicalPermalinkPath(path);
     const owner =
       canonical &&
@@ -46,7 +47,8 @@ export class PermalinkResolver {
           canonical.endsWith('/') ? canonical.slice(0, -1) : `${canonical}/`,
         )));
     const content =
-      owner && (await this.content.getById(owner.contentId, proofs, actor));
+      owner &&
+      (await this.content.getById(owner.contentId, proofs, actor, context));
 
     if (!owner || !content) throw notFound(Errors.ContentNotFound);
 

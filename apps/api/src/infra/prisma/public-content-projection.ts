@@ -14,6 +14,7 @@ import { Prisma } from '#api/infra/prisma/generated/client';
 import { decodePath } from '#api/infra/prisma/permalink-repository';
 import { fromPublicSeoColumns } from '#api/infra/prisma/seo-mapper';
 import { Errors } from '#api/shared/errors';
+import type { HookDispatcher } from '#api/domain/ports';
 
 type Visibility = 'published' | 'private';
 type Row = Pick<
@@ -39,6 +40,7 @@ type Row = Pick<
     authorName: string | null;
     authorSlug: string | null;
     storageKey: string | null;
+    storageDriver: string | null;
     publicUrl: string | null;
     alt: string | null;
     width: number | null;
@@ -53,7 +55,11 @@ type Row = Pick<
   };
 type Term = TermSummary & { taxonomy: TaxonomyType };
 
-const summary = (row: Row, terms: { term: Term }[]): PublishedSummaryRecord => {
+const summary = async (
+  row: Row,
+  terms: { term: Term }[],
+  hooks?: HookDispatcher,
+): Promise<PublishedSummaryRecord> => {
   if (!row.path) throw new Error(Errors.ContentPathMissing);
   return {
     id: row.id,
@@ -69,17 +75,19 @@ const summary = (row: Row, terms: { term: Term }[]): PublishedSummaryRecord => {
       row.authorName === null
         ? null
         : { name: row.authorName, slug: row.authorSlug! },
-    featuredImage: featuredImageOf(
+    featuredImage: await featuredImageOf(
       row.storageKey === null
         ? null
         : {
             storageKey: row.storageKey,
+            storageDriver: row.storageDriver ?? 'local',
             publicUrl: row.publicUrl,
             alt: row.alt!,
             width: row.width,
             height: row.height,
             variants: row.variants!,
           },
+      hooks,
     ),
     sticky: Boolean(row.sticky),
     tocOverride: row.tocOverride ?? 'default',
@@ -112,12 +120,14 @@ export function projectContent(
   where: Prisma.Sql,
   body: true,
   visibility?: Visibility,
+  hooks?: HookDispatcher,
 ): Promise<PublishedRecord[]>;
 export function projectContent(
   db: Database,
   where: Prisma.Sql,
   body: false,
   visibility?: Visibility,
+  hooks?: HookDispatcher,
 ): Promise<PublishedSummaryRecord[]>;
 /** Fixed public projection, with a separate term batch to avoid JSON aggregate size limits. */
 export async function projectContent(
@@ -125,6 +135,7 @@ export async function projectContent(
   where: Prisma.Sql,
   body: boolean,
   visibility: Visibility = 'published',
+  hooks?: HookDispatcher,
 ): Promise<PublishedSummaryRecord[]> {
   const rows = await db.$queryRaw<Row[]>(Prisma.sql`
     SELECT c.id, c.type, c.slug, c.title, c.excerpt, c.summary,
@@ -135,7 +146,7 @@ export async function projectContent(
       p.path, u.name AS authorName, u.slug AS authorSlug,
       CASE WHEN parent.status = 'published' AND parent.trashed_at IS NULL
         AND parent.password_hash IS NULL THEN c.parent_id ELSE NULL END AS parentId,
-      m.storage_key AS storageKey, m.public_url AS publicUrl, m.alt, m.width, m.height, m.variants,
+      m.storage_key AS storageKey, m.storage_driver AS storageDriver, m.public_url AS publicUrl, m.alt, m.width, m.height, m.variants,
       c.seo_title AS seoTitle, c.seo_description AS seoDescription,
       c.seo_canonical_url AS seoCanonicalUrl, c.seo_no_index AS seoNoIndex,
       c.seo_no_follow AS seoNoFollow, c.seo_image_url AS seoImageUrl,
@@ -165,10 +176,12 @@ export async function projectContent(
     assigned.push({ term: { id, name, slug, taxonomy } });
     terms.set(contentId, assigned);
   }
-  return rows.map((row) => {
-    const item = summary(row, terms.get(row.id) ?? []);
-    return body
-      ? { ...item, html: row.html!, fields: parseFields(row.fields!) }
-      : item;
-  });
+  return Promise.all(
+    rows.map(async (row) => {
+      const item = await summary(row, terms.get(row.id) ?? [], hooks);
+      return body
+        ? { ...item, html: row.html!, fields: parseFields(row.fields!) }
+        : item;
+    }),
+  );
 }

@@ -49,6 +49,36 @@ SDK `createAdminClient(...).functions`는 `read/status/validate/write`를 제공
 
 ## 테마 함수
 
+### 업로드를 SHA-256 이름으로 저장하기
+
+다음 코드는 원본 업로드 바이트의 SHA-256을 표시 이름과 실제 저장 키에 사용합니다.
+이미지 정리·재인코딩 후 바이트의 해시가 아니라 업로드 입력의 해시입니다.
+같은 콘텐츠를 다시 업로드하면 `-1`, `-2` 접미사로 구분합니다.
+`media.filename`만으로는 실제 URL이 바뀌지 않습니다.
+
+```ts
+import { createHash } from 'node:crypto';
+import { defineFunctions } from '@cms/sdk/functions';
+
+export const functions = defineFunctions({
+  api(ctx) {
+    ctx.hooks.filter('media.filename', (_name, { bytes }) =>
+      createHash('sha256').update(bytes).digest('hex'),
+    );
+    ctx.hooks.filter('media.storageKey', (value, { bytes }) => ({
+      ...value,
+      basename: createHash('sha256').update(bytes).digest('hex'),
+    }));
+  },
+});
+```
+
+파일 확장자는 바이트에서 식별한 MIME에 맞게 코어가 고정합니다. 키는 상대 경로이며
+각 세그먼트는 영숫자로 시작하고 영숫자·점·밑줄·하이픈만 허용합니다.
+`..`, 역슬래시, 절대 경로는 허용하지 않습니다. 전체 255자, 세그먼트 128자 제한과
+파생 이미지·충돌 접미사 공간을 검사합니다. 잘못된 반환값은 무시하고 이전 키를 유지합니다.
+파생 이미지도 선택된 기본 이름을 사용합니다. 이미 저장된 파일은 이름을 바꾸지 않습니다.
+
 관리자가 설치하는 테마 ZIP 루트에 선택 파일 `functions.ts`를 넣습니다. 하나의
 최상위 폴더로 감싼 ZIP도 지원합니다. UTF-8 256KiB 이하이며 설치 전에 TypeScript
 transpile 문법 검사를 합니다. 위와 같은 `export const functions = defineFunctions(...)`

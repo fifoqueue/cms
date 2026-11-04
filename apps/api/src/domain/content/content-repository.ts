@@ -99,6 +99,8 @@ export interface ContentWrite extends Omit<
 > {
   /** Media the entry shows (body images and featured image); rebuilt on every save. */
   mediaIds: string[];
+  /** Values of inactive fields: existing media links to them stay on save, none are added. */
+  retainedMediaIds?: string[];
   /** Plain text of the document (`plainText`), searched instead of the HTML. */
   searchText: string;
   /** Distinct ids of `category` terms. */

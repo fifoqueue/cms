@@ -16,7 +16,7 @@ import type {
 import { can } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
-import { toAdminMedia } from '#api/domain/media/media-mapper';
+import { toAdminMedia, projectMedia } from '#api/domain/media/media-mapper';
 import type {
   ImageProcessor,
   MediaWrite,
@@ -43,6 +43,8 @@ import { ImageSizes } from '#api/domain/media/image-sizes';
 import type { StorageSettings } from '#api/domain/media/storage-settings';
 import type { JobQueue } from '#api/domain/jobs/ports';
 import type { MediaCleanup } from '#api/domain/media/media-cleanup';
+import { z } from 'zod';
+import { safeMediaKey, storageKeyOf } from '#api/domain/media/storage-key';
 
 export interface MediaServiceDeps {
   cleanup?: MediaCleanup;
@@ -132,12 +134,23 @@ export class MediaService {
       page,
       pageSize,
     });
-    return { items: items.map(toAdminMedia), total, page, pageSize };
+    return {
+      items: await Promise.all(
+        items.map(async (item) =>
+          toAdminMedia(await projectMedia(item, this.deps.hooks)),
+        ),
+      ),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   async get(id: string, actor: Actor): Promise<AdminMedia> {
     authorize(actor, 'media.upload');
-    return toAdminMedia(await this.require(id));
+    return toAdminMedia(
+      await projectMedia(await this.require(id), this.deps.hooks),
+    );
   }
 
   /** Previous/next files for the details screen and the entries that show this one. */
@@ -186,9 +199,25 @@ export class MediaService {
       );
     const mime = sniffMediaType(bytes);
     if (!mime) throw invalidInput(Errors.MediaTypeUnsupported);
-    if (mime === 'image/svg+xml' && limits.allowSvg !== true)
+    const types = Object.keys(MEDIA_TYPES) as MediaType[];
+    const admitted = await this.deps.hooks.applyFilter(
+      'media.allowedTypes',
+      types.filter((type) => type !== 'image/svg+xml' || limits.allowSvg),
+      (value) =>
+        Array.isArray(value) &&
+        value.length <= types.length &&
+        new Set(value).size === value.length &&
+        value.every((type) => types.includes(type)),
+    );
+    if (!admitted.includes(mime))
       throw invalidInput(Errors.MediaTypeUnsupported);
 
+    const context = Object.freeze({
+      bytes,
+      mime,
+      size: bytes.byteLength,
+      originalName: filename,
+    });
     let allowed = true;
     await this.deps.hooks.applyFilter(
       'media.uploadAllowed',
@@ -211,6 +240,8 @@ export class MediaService {
         allowed = result.allowed;
         return true;
       },
+      undefined,
+      [context],
     );
     if (!allowed) throw forbidden(Errors.MediaUploadRefused);
     const name = await this.deps.hooks.applyFilter(
@@ -220,11 +251,67 @@ export class MediaService {
         typeof value === 'string' &&
         value.length > 0 &&
         value === displayName(value),
+      undefined,
+      [context],
     );
     const id = this.deps.ids.next();
     const now = this.deps.clock.now();
-    const base = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}`;
-    const storageKey = `${base}.${MEDIA_TYPES[mime]}`;
+    const directory = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+    const extension = MEDIA_TYPES[mime];
+    const initialKey = `${directory}/${id}.${extension}`;
+    const registeredSizes = (this.deps.sizes ?? new ImageSizes()).list();
+    const keySchema = z
+      .object({
+        key: z.string(),
+        directory: z.string(),
+        basename: z.string(),
+        extension: z.string(),
+      })
+      .strict();
+    const acceptKey = (value: unknown) => {
+      const parsed = keySchema.safeParse(value);
+      if (!parsed.success) return false;
+      const candidate = parsed.data;
+      if (
+        candidate.extension !== extension ||
+        !candidate.key.endsWith(`.${extension}`) ||
+        !safeMediaKey(candidate.key) ||
+        (candidate.directory !== '' && !safeMediaKey(candidate.directory)) ||
+        !safeMediaKey(candidate.basename) ||
+        candidate.basename.includes('/')
+      )
+        return false;
+      const key = storageKeyOf(candidate, initialKey, extension);
+      const base = key.slice(0, -extension.length - 1);
+      return (
+        safeMediaKey(key) &&
+        registeredSizes.every(({ name }) =>
+          safeMediaKey(`${base}-10000-${name}.webp`),
+        )
+      );
+    };
+    const selected = await this.deps.hooks.applyFilter(
+      'media.storageKey',
+      { key: initialKey, directory, basename: id, extension },
+      acceptKey,
+      undefined,
+      [
+        {
+          id,
+          mime,
+          bytes,
+          size: bytes.byteLength,
+          uploadedAt: now.toISOString(),
+          filename: name,
+        },
+      ],
+    );
+    const requestedKey = acceptKey(selected)
+      ? storageKeyOf(selected, initialKey, extension)
+      : initialKey;
+    const requestedBase = requestedKey.slice(0, -extension.length - 1);
+    const base = requestedBase;
+    let storageKey = requestedKey;
     const destination = await this.storage();
     const isImage = mime.startsWith('image/');
 
@@ -246,8 +333,42 @@ export class MediaService {
           original = await this.processors.process(bytes, mime);
         if (original.byteLength > this.deps.maxBytes)
           original = await this.deps.images.clean(bytes, mime);
-        size = await this.deps.images.dimensions(original);
-        for (const definition of (this.deps.sizes ?? new ImageSizes()).list()) {
+        const dimensions = await this.deps.images.dimensions(original);
+        size = dimensions;
+        const registered = registeredSizes;
+        const plan = await this.deps.hooks.applyFilter(
+          'media.imageSizes',
+          { mime, ...dimensions, sizes: registered },
+          (value) =>
+            z
+              .object({
+                mime: z.literal(mime),
+                width: z.literal(size!.width!),
+                height: z.literal(size!.height!),
+                quality: z.number().int().min(1).max(100).optional(),
+                sizes: z
+                  .array(
+                    z.object({
+                      name: z
+                        .string()
+                        .refine((name) =>
+                          registered.some((item) => item.name === name),
+                        ),
+                      width: z.number().int().min(1).max(8192),
+                      height: z.number().int().min(1).max(8192).optional(),
+                      crop: z.boolean().optional(),
+                    }),
+                  )
+                  .max(32)
+                  .refine(
+                    (items) =>
+                      new Set(items.map((item) => item.name)).size ===
+                      items.length,
+                  ),
+              })
+              .safeParse(value).success,
+        );
+        for (const definition of plan.sizes) {
           const { name, width, height, crop } = definition;
           if (
             size.width === null ||
@@ -260,6 +381,7 @@ export class MediaService {
             width,
             height,
             crop,
+            plan.quality,
           );
           const key = `${base}-${name}.webp`;
           files.push({ key, bytes: resized.bytes });
@@ -276,21 +398,68 @@ export class MediaService {
         }
       }
       files.push({ key: storageKey, bytes: original });
+      for (let suffix = 0; ; suffix++) {
+        if (suffix > 10000) throw conflict(Errors.MediaStorageBusy);
+        const candidateBase = requestedBase + (suffix ? `-${suffix}` : '');
+        const keys = files.map(
+          ({ key }) => candidateBase + key.slice(requestedBase.length),
+        );
+        if (!keys.every(safeMediaKey))
+          throw invalidInput(Errors.MediaKeyInvalid);
+        if (!(await this.deps.repository.reserveKeys(id, keys))) continue;
+        const occupied = await Promise.all(
+          keys.map(async (key) => {
+            const file = await destination.storage.read(key);
+            if (!file) return false;
+            await file.body.cancel();
+            return true;
+          }),
+        );
+        if (occupied.some(Boolean)) continue;
+        for (let index = 0; index < files.length; index++)
+          files[index]!.key = keys[index]!;
+        for (const [name, variant] of Object.entries(variants)) {
+          if (!variant) continue;
+          const key = `${candidateBase}-${name}.webp`;
+          variant.key = key;
+          variant.storageKey = key;
+          variant.publicUrl = destination.url(key);
+        }
+        storageKey = `${candidateBase}.${extension}`;
+        break;
+      }
       written.push(...files.map(({ key }) => key));
       const freeBytes = limits.freeSpaceMb * 1024 * 1024;
       const stored = await destination.storage.commit(files, freeBytes);
       if (stored === 'low_space') throw conflict(Errors.MediaStorageLow);
       if (stored === 'busy') throw conflict(Errors.MediaStorageBusy);
+      const metadata = await this.deps.hooks.applyFilter(
+        'media.beforeInsert',
+        { filename: name, alt: '', caption: '' },
+        (value) =>
+          z
+            .object({
+              filename: z
+                .string()
+                .min(1)
+                .max(255)
+                .refine((value) => value === displayName(value)),
+              alt: z.string().max(2000),
+              caption: z.string().max(2000),
+              title: z.string().max(255).optional(),
+              description: z.string().max(10000).optional(),
+            })
+            .strict()
+            .safeParse(value).success,
+      );
       const record: MediaWrite = {
         id,
         uploaderId: actor.id,
-        filename: name,
+        ...metadata,
         mime,
         size: original.byteLength,
         width: size?.width ?? null,
         height: size?.height ?? null,
-        alt: '',
-        caption: '',
         storageKey,
         storageDriver: destination.driver,
         publicUrl: destination.url(storageKey),
@@ -312,7 +481,9 @@ export class MediaService {
       else if (written.length) await destination.storage.remove(written);
       throw error;
     }
-    const media = toAdminMedia(await this.require(id));
+    const media = toAdminMedia(
+      await projectMedia(await this.require(id), this.deps.hooks),
+    );
     void this.deps.hooks.emit('media.uploaded', media);
     return media;
   }
@@ -327,7 +498,9 @@ export class MediaService {
       ),
     );
     await this.deps.repository.update(media.id, changes);
-    const updated = toAdminMedia(await this.require(id));
+    const updated = toAdminMedia(
+      await projectMedia(await this.require(id), this.deps.hooks),
+    );
     void this.deps.hooks.emit('media.updated', updated);
     return updated;
   }
@@ -401,7 +574,14 @@ export class MediaService {
   /** Deletes the file. Files still shown by entries need `force`. */
   async remove(id: string, force: boolean, actor: Actor): Promise<void> {
     const media = await this.editable(id, actor);
-    if (media.usageCount > 0 && !force)
+    const allowed = await this.deps.hooks.applyFilter(
+      'media.deleteAllowed',
+      media.usageCount === 0 || force,
+      (value) => typeof value === 'boolean',
+      undefined,
+      [{ media: toAdminMedia(await projectMedia(media, this.deps.hooks)) }],
+    );
+    if (!allowed)
       throw conflict(
         Errors.MediaInUse,
         withParams(Errors.MediaInUse, { count: media.usageCount }),
@@ -447,17 +627,16 @@ export class MediaService {
     const media = await this.deps.repository.get(id);
     if (!media) return;
     await this.deps.repository.delete(id);
-    void this.deps.hooks.emit('media.deleted', toAdminMedia(media));
+    void this.deps.hooks.emit(
+      'media.deleted',
+      toAdminMedia(await projectMedia(media, this.deps.hooks)),
+    );
   }
 
   /** A stored file for serving; keys are opaque and unguessable per upload. */
   async file(key: string, range?: { start: number; end?: number }) {
-    const match =
-      /^\d{4}\/\d{2}\/([0-9a-f-]{36})(?:-[a-z][a-z0-9-]{0,63})?\.[a-z0-9]+$/.exec(
-        key,
-      );
-    if (!match) return null;
-    const media = await this.deps.repository.get(match[1]!);
+    if (!safeMediaKey(key)) return null;
+    const media = await this.deps.repository.getByKey(key);
     if (!media) return null;
     const variant = Object.values(media.variants).find(
       (item) => item?.key === key,

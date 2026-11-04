@@ -11,7 +11,8 @@ import type {
 import type { RevisionRepository } from '#api/domain/content/revisions';
 import type { HtmlExpander } from '#api/domain/content/embeds';
 import type { FieldService } from '#api/domain/content/fields';
-import type { Clock, Signer } from '#api/domain/ports';
+import type { Clock, Signer, HookDispatcher } from '#api/domain/ports';
+import { filterHtml } from '#api/domain/content/html-filter';
 import { notFound, Errors } from '#api/shared/errors';
 
 const LIFETIME_MS = 60 * 60 * 1000;
@@ -23,6 +24,7 @@ const LIFETIME_MS = 60 * 60 * 1000;
 export class PreviewService {
   constructor(
     private readonly deps: {
+      hooks?: HookDispatcher;
       content: ContentService;
       revisions: RevisionRepository;
       renderer: DocumentRenderer;
@@ -74,9 +76,20 @@ export class PreviewService {
       title: text.title,
       excerpt: text.excerpt || record.summary,
       html: await this.deps.embeds.expand(
-        this.deps.renderBody
-          ? await this.deps.renderBody(text.document, record)
-          : this.deps.renderer.render(text.document),
+        await filterHtml(
+          this.deps.hooks,
+          this.deps.renderBody
+            ? await this.deps.renderBody(text.document, record)
+            : this.deps.renderer.render(text.document),
+          {
+            id: record.id,
+            type: record.type,
+            slug: record.slug,
+            path: record.path,
+            title: text.title,
+          },
+          'preview',
+        ),
       ),
       publishedAt: (record.publishedAt ?? record.updatedAt).toISOString(),
       updatedAt: record.updatedAt.toISOString(),

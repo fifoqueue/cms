@@ -12,10 +12,16 @@ import { aesSecretBox } from '#api/infra/secret-box';
 import { hmacSigner } from '#api/infra/hmac-signer';
 import { randomTokenIssuer } from '#api/infra/system';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { DEFAULT_RATE_RULES, DEFAULT_ENTRY_SEO } from '@cms/sdk';
+import {
+  DEFAULT_RATE_RULES,
+  DEFAULT_ENTRY_SEO,
+  fieldDefinitionSchema,
+} from '@cms/sdk';
+import type { FieldDefinition } from '@cms/sdk';
 import { ContentService } from '#api/domain/content/content-service';
 import { ContentTypeService } from '#api/domain/content/content-types';
 import { FieldService } from '#api/domain/content/fields';
+import { DefinitionRegistry } from '#api/domain/content/definition-registry';
 import { PublishedContentReader } from '#api/domain/content/public-content';
 import { RevisionService, inputOf } from '#api/domain/content/revision-service';
 import { ArchivePathsService } from '#api/domain/permalinks/archive-paths';
@@ -39,6 +45,10 @@ import { PrismaSettingsRepository } from '#api/infra/prisma/settings-repository'
 import { PrismaSiteSettingsWriter } from '#api/infra/prisma/site-settings';
 import { PrismaTaskLeases } from '#api/infra/prisma/task-leases';
 import { PrismaTaxonomyRepository } from '#api/infra/prisma/taxonomy-repository';
+import { PrismaMediaRepository } from '#api/infra/prisma/media-repository';
+import { MediaService } from '#api/domain/media/media-service';
+import { MemoryMediaStorage, fakeImages } from '#test/support/memory-media';
+import { MemoryRateLimitStore } from '#test/support/memory-security';
 import { tiptapRenderer, uuidV7, systemClock } from '#api/infra/system';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
 import {
@@ -173,9 +183,17 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     SLOW,
   );
 
-  const services = (repository = new PrismaContentRepository(db)) => {
+  const services = (
+    repository = new PrismaContentRepository(db),
+    registry?: DefinitionRegistry<FieldDefinition>,
+  ) => {
     const settings = new PrismaSettingsRepository(db);
     const types = new ContentTypeService(settings, async () => false);
+    const fields = new FieldService({
+      settings,
+      registry,
+      images: async () => new Map(),
+    });
     const content = new ContentService({
       repository,
       renderer: tiptapRenderer,
@@ -186,7 +204,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
 
       hasher: plainHasher,
       types,
-      fields: new FieldService({ settings, images: async () => new Map() }),
+      fields,
     });
     const revisions = new PrismaRevisionRepository(db);
     const terms = new PrismaTaxonomyRepository(db);
@@ -238,6 +256,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         clock: systemClock,
       }),
       terms,
+      fields,
       taxonomy: new TaxonomyService({
         repository: terms,
         ids: uuidV7,
@@ -247,6 +266,266 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       source: new PrismaSearchSource(db),
     };
   };
+
+  test(
+    'term lists honor query filters in SQL and term fields round-trip',
+    async () => {
+      const { content, terms } = services();
+      const record = (
+        name: string,
+        parentId: string | null = null,
+        fields: Record<string, unknown> = {},
+      ) => ({
+        id: uuidV7.next(),
+        taxonomy: 'category',
+        name,
+        slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        description: '',
+        parentId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        seo: { ...DEFAULT_ENTRY_SEO },
+        fields,
+      });
+      const root = record('Zq Root', null, { 'plugin:demo:color': 'blue' });
+      const child = record('Zq 50% Child', root.id);
+      const other = record('Zq Other');
+      for (const term of [root, child, other]) await terms.insert(term);
+      for (const [status, categoryIds] of [
+        ['published', [child.id]],
+        ['draft', [child.id, other.id]],
+      ] as const)
+        await content.create(
+          {
+            type: 'post',
+            title: `Zq ${status}`,
+            status,
+            document: textDocument('Body'),
+            categoryIds: [...categoryIds],
+          },
+          ADMIN,
+        );
+      const names = async (
+        scope: 'all' | 'published',
+        filter: Parameters<typeof terms.list>[2],
+      ) =>
+        (await terms.list('category', scope, { search: 'zq', ...filter })).map(
+          (term) => term.name,
+        );
+
+      expect(await names('all', {})).toEqual([
+        'Zq 50% Child',
+        'Zq Other',
+        'Zq Root',
+      ]);
+      expect(await names('all', { search: '50%' })).toEqual(['Zq 50% Child']);
+      // LIKE wildcards in the search text match literally.
+      expect(await names('all', { search: '_' })).toEqual([]);
+      expect(await names('all', { parentId: root.id })).toEqual([
+        'Zq 50% Child',
+      ]);
+      expect(await names('all', { parentId: null })).toEqual([
+        'Zq Other',
+        'Zq Root',
+      ]);
+      expect(await names('published', { hideEmpty: true })).toEqual([
+        'Zq 50% Child',
+      ]);
+      expect(
+        await names('all', {
+          hideEmpty: true,
+          orderBy: 'count',
+          order: 'desc',
+        }),
+      ).toEqual(['Zq 50% Child', 'Zq Other']);
+
+      expect((await terms.findById(root.id, 'all'))?.fields).toEqual(
+        root.fields,
+      );
+      await terms.update({ ...root, fields: { rank: 2 } });
+      expect((await terms.findById(root.id, 'all'))?.fields).toEqual({
+        rank: 2,
+      });
+    },
+    SLOW,
+  );
+
+  test(
+    'term image fields count as media usage, protect the file from deletion and leave with the term',
+    async () => {
+      const { settings, terms } = services();
+      const media = new PrismaMediaRepository(db);
+      const mediaId = uuidV7.next();
+      await db.media.create({
+        data: {
+          id: mediaId,
+          uploaderId: ADMIN.id,
+          filename: 'term-cover.webp',
+          mime: 'image/webp',
+          size: 100,
+          storageKey: `2026/05/${mediaId}.webp`,
+          createdAt: systemClock.now(),
+        },
+      });
+      await settings.set('contentFields', [
+        { key: 'cover', label: 'Cover', type: 'image', taxonomies: ['tag'] },
+      ]);
+      const hooks = new HookBus({
+        timeoutMs: 50,
+        logger: recordingLogger().logger,
+      });
+      const taxonomy = new TaxonomyService({
+        repository: terms,
+        fields: new FieldService({ settings, images: async () => new Map() }),
+        ids: uuidV7,
+        clock: systemClock,
+      });
+      const library = new MediaService({
+        repository: media,
+        storage: new MemoryMediaStorage(),
+        images: fakeImages,
+        ids: uuidV7,
+        clock: systemClock,
+        hooks,
+        limiter: new MemoryRateLimitStore(),
+        maxBytes: 1024,
+        limits: async () => ({
+          uploadsPerHour: 60,
+          freeSpaceMb: 0,
+          allowSvg: false,
+        }),
+      });
+      const unattached = async () =>
+        (
+          await media.list({ unattached: true, page: 1, pageSize: 100 })
+        ).items.some((item) => item.id === mediaId);
+
+      // Ids of missing files are not linked.
+      const term = await taxonomy.create('tag', {
+        name: 'Zq Covered',
+        fields: { cover: mediaId },
+      });
+      await taxonomy.create('tag', {
+        name: 'Zq Missing cover',
+        fields: { cover: uuidV7.next() },
+      });
+      expect((await media.get(mediaId))?.usageCount).toBe(1);
+      expect(await unattached()).toBe(false);
+      expect(await media.usedIn(mediaId, 50, true)).toEqual([
+        { id: term.id, title: 'Zq Covered', type: 'tag', kind: 'term' },
+      ]);
+      await expect(library.remove(mediaId, false, ADMIN)).rejects.toMatchObject(
+        { code: 'conflict' },
+      );
+
+      // Omitted fields keep the link; replaced values rebuild it; deletion removes it.
+      await taxonomy.update('tag', term.id, { name: 'Zq Covered' });
+      expect((await media.get(mediaId))?.usageCount).toBe(1);
+      await taxonomy.update('tag', term.id, { name: 'Zq Covered', fields: {} });
+      expect((await media.get(mediaId))?.usageCount).toBe(0);
+      await taxonomy.update('tag', term.id, {
+        name: 'Zq Covered',
+        fields: { cover: mediaId },
+      });
+      await taxonomy.remove('tag', term.id);
+      expect((await media.get(mediaId))?.usageCount).toBe(0);
+      expect(await unattached()).toBe(true);
+      await settings.set('contentFields', []);
+    },
+    SLOW,
+  );
+
+  test(
+    'saves keep media links of image fields whose plugin is inactive while the value stays',
+    async () => {
+      const registry = new DefinitionRegistry(fieldDefinitionSchema);
+      const { content, terms, fields } = services(undefined, registry);
+      const taxonomy = new TaxonomyService({
+        repository: terms,
+        fields,
+        ids: uuidV7,
+        clock: systemClock,
+      });
+      const mediaId = uuidV7.next();
+      await db.media.create({
+        data: {
+          id: mediaId,
+          uploaderId: ADMIN.id,
+          filename: 'inactive-cover.webp',
+          mime: 'image/webp',
+          size: 100,
+          storageKey: `2026/05/${mediaId}.webp`,
+          createdAt: systemClock.now(),
+        },
+      });
+      const cover = 'plugin:demo:cover';
+      const unregister = registry.register('demo', 'cover', {
+        label: 'Cover',
+        type: 'image',
+        contentTypes: ['post'],
+        taxonomies: ['tag'],
+      });
+      const term = await taxonomy.create('tag', {
+        name: 'Zq Inactive cover',
+        fields: { [cover]: mediaId },
+      });
+      let entry = await content.create(
+        {
+          type: 'post',
+          title: 'Inactive cover',
+          document: textDocument('Body'),
+          fields: { [cover]: mediaId },
+        },
+        ADMIN,
+      );
+      const termLinks = async () =>
+        (
+          await db.termMedia.findMany({
+            where: { termId: term.id },
+            select: { mediaId: true },
+          })
+        ).map((link) => link.mediaId);
+      const contentLinks = async () =>
+        (
+          await db.contentMedia.findMany({
+            where: { contentId: entry.id },
+            select: { mediaId: true },
+          })
+        ).map((link) => link.mediaId);
+      expect(await termLinks()).toEqual([mediaId]);
+      expect(await contentLinks()).toEqual([mediaId]);
+
+      // The plugin goes away: the stored id stays, and so does its protection.
+      unregister();
+      const saved = await taxonomy.update('tag', term.id, {
+        name: 'Zq Inactive cover',
+        fields: {},
+      });
+      expect(saved.fields).toEqual({ [cover]: mediaId });
+      expect(await termLinks()).toEqual([mediaId]);
+      entry = await content.update(entry.id, inputOf(entry), ADMIN);
+      expect(entry.fields).toEqual({ [cover]: mediaId });
+      expect(await contentLinks()).toEqual([mediaId]);
+      entry = await content.update(
+        entry.id,
+        { ...inputOf(entry), fields: undefined },
+        ADMIN,
+      );
+      expect(await contentLinks()).toEqual([mediaId]);
+
+      // A removed value drops its link.
+      entry = await content.update(
+        entry.id,
+        { ...inputOf(entry), fields: {} },
+        ADMIN,
+      );
+      expect(entry.fields).toEqual({});
+      expect(await contentLinks()).toEqual([]);
+      await taxonomy.remove('tag', term.id);
+      expect(await termLinks()).toEqual([]);
+    },
+    SLOW,
+  );
 
   test(
     'revision mutations share the content lock, reject stale ownership and source rows, and preserve later autosaves',
@@ -537,6 +816,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           id: mediaId,
           uploaderId: ADMIN.id,
           filename: 'projection.webp',
+          storageDriver: 'plugin:test:images',
           mime: 'image/webp',
           size: 100,
           width: 1200,
@@ -575,6 +855,29 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         },
         ADMIN,
       );
+      const imageHooks = new HookBus({
+        timeoutMs: 100,
+        logger: recordingLogger().logger,
+      });
+      const imageDrivers: string[] = [];
+      imageHooks
+        .registrar('functions:site', { trusted: true })
+        .filter('media.url', (value) => {
+          imageDrivers.push(value.driver);
+          return { ...value, url: `https://cdn.example/${value.key}` };
+        });
+      const adminProjection = await new PrismaContentRepository(
+        db,
+        undefined,
+        imageHooks,
+      ).findById(child.id);
+      expect(adminProjection?.featuredImage?.url).toBe(
+        `https://cdn.example/2026/04/${mediaId}.webp`,
+      );
+      expect(imageDrivers).toEqual([
+        'plugin:test:images',
+        'plugin:test:images',
+      ]);
       await db.content.update({
         where: { id: child.id },
         data: {
@@ -603,6 +906,17 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       );
       const repository = new PrismaPublishedContentRepository(db);
       const reader = new PublishedContentReader(repository);
+      expect(
+        await repository.excerptBodies([
+          parent.id,
+          child.id,
+          locked.id,
+          draft.id,
+        ]),
+      ).toEqual(new Map([[child.id, '<p>Visible child</p>']]));
+      expect(await repository.excerptBodies([child.id], ['post'])).toEqual(
+        new Map(),
+      );
       const item = await reader.getById(child.id);
       expect(item).toMatchObject({
         path: child.path,
@@ -652,6 +966,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       });
       expect((await reader.getById(child.id))?.parentId).toBeNull();
       expect(await repository.byId(parent.id)).toBeNull();
+      expect(await repository.excerptBodies([parent.id])).toEqual(new Map());
       await db.content.update({
         where: { id: parent.id },
         data: { trashedAt: null },

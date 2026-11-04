@@ -4,7 +4,12 @@ import type { TaxonomyType, TermSummary } from '@cms/sdk';
 import type { ContentCriteria } from '#api/domain/content/content-repository';
 import { compareTerms } from '#api/domain/taxonomy/hierarchy';
 import type { Database } from '#api/infra/prisma/client';
-import { parseVariants, toPublicImage } from '#api/domain/media/media-mapper';
+import {
+  parseVariants,
+  toPublicImage,
+  projectMedia,
+} from '#api/domain/media/media-mapper';
+import type { HookDispatcher } from '#api/domain/ports';
 import { Prisma } from '#api/infra/prisma/generated/client';
 
 export type ContentFilters = Pick<
@@ -41,6 +46,7 @@ export const contentRelations = {
   featuredMedia: {
     select: {
       storageKey: true,
+      storageDriver: true,
       publicUrl: true,
       alt: true,
       width: true,
@@ -159,17 +165,25 @@ export const termSummaries = (
     .map(({ id, name, slug }) => ({ id, name, slug }));
 
 /** The featured image of a row as the site shows it. */
-export const featuredImageOf = (
+export const featuredImageOf = async (
   media: {
     storageKey: string;
+    storageDriver?: string;
     publicUrl?: string | null;
     alt: string;
     width: number | null;
     height: number | null;
     variants: string;
   } | null,
+  hooks?: HookDispatcher,
 ) =>
-  media && toPublicImage({ ...media, variants: parseVariants(media.variants) });
+  media &&
+  toPublicImage(
+    await projectMedia(
+      { ...media, variants: parseVariants(media.variants) },
+      hooks,
+    ),
+  );
 
 /** Stored custom field values; damaged JSON counts as none. */
 export const parseFields = (raw: string): Record<string, unknown> => {

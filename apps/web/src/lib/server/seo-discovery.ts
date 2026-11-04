@@ -258,7 +258,7 @@ export const loadBodies = async (
     await mapLimit(
       items.filter((item) => !item.protected),
       async (item) => {
-        const html = await api.resolvePath(item.path).then(
+        const html = await api.resolvePath(item.path, undefined, 'feed').then(
           ({ content }) => content.html,
           () => '',
         );

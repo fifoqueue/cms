@@ -21,8 +21,15 @@ export const load: PageServerLoad = async (event) => {
     adminFor(event).writing.get(),
     editorPushKey(event),
   ]);
+  const type =
+    model.types.find(
+      (option) => option.key === event.url.searchParams.get('type'),
+    )?.key ?? 'post';
+  const initial = await adminFor(event).contentModel.defaults(type);
   return {
     defaults: {
+      title: initial.title,
+      document: initial.document,
       categoryId: writing.defaultCategoryId,
       status: writing.defaultStatus,
     },

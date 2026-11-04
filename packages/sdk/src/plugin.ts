@@ -113,6 +113,8 @@ import type { SearchActionHooks, SearchFilterHooks } from '#sdk/hooks/search';
 import type { SeoActionHooks, SeoFilterHooks } from '#sdk/hooks/seo';
 import type { UserActionHooks, UserFilterHooks } from '#sdk/hooks/users';
 import type { MediaActionHooks, MediaFilterHooks } from '#sdk/hooks/media';
+import type { MediaFilterArgs } from '#sdk/hooks/media';
+export type { MediaUploadContext } from '#sdk/hooks/media';
 import type { MediaProcessorRegistrar } from '#sdk/hooks/media';
 import type { ImageSizeRegistrar } from '#sdk/hooks/media';
 export type { ImageSize, ImageSizeRegistrar } from '#sdk/hooks/media';
@@ -125,7 +127,12 @@ import type {
 import type {
   ContentActionHooks,
   ContentFilterHooks,
+  ContentFilterArgs,
 } from '#sdk/hooks/content';
+import type {
+  TaxonomyFilterArgs,
+  TaxonomyFilterHooks,
+} from '#sdk/hooks/taxonomy';
 import type { Awaitable, Paginated } from '#sdk/common';
 import type {
   ContentEntry,
@@ -208,7 +215,7 @@ interface CoreActionHooks {
     change: 'enrolled' | 'removed';
   };
   'content.created': ContentEntry;
-  'content.updated': ContentEntry;
+  'content.updated': ContentEntry & { previous: ContentEntry };
   'content.published': ContentEntry;
   'content.deleted': ContentEntry;
   /** Moved to the trash; it is no longer public. */
@@ -263,6 +270,7 @@ export type FilterHookMap = CoreFilterHooks &
   UserFilterHooks &
   SeoFilterHooks &
   ContentFilterHooks &
+  TaxonomyFilterHooks &
   MediaFilterHooks &
   CommentFilterHooks;
 
@@ -282,7 +290,13 @@ export type ActionHandler<K extends string> = (
 ) => Awaitable<void>;
 export type FilterHandler<K extends string> = (
   value: K extends FilterName ? FilterHookMap[K] : unknown,
-  ...args: readonly unknown[]
+  ...args: K extends keyof MediaFilterArgs
+    ? MediaFilterArgs[K]
+    : K extends keyof ContentFilterArgs
+      ? ContentFilterArgs[K]
+      : K extends keyof TaxonomyFilterArgs
+        ? TaxonomyFilterArgs[K]
+        : readonly unknown[]
 ) => Awaitable<K extends FilterName ? FilterHookMap[K] : unknown>;
 
 export interface CustomHookDefinition {

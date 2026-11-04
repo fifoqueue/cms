@@ -78,6 +78,11 @@ export interface PublishedContentRepository {
   bySlug(slug: string): Promise<PublishedRecord | null>;
   /** Public entries among `ids`, without bodies; missing or unpublished ids are left out. */
   summariesByIds(ids: readonly string[]): Promise<PublishedSummaryRecord[]>;
+  /** One snapshot/query: HTML only for published, non-trashed, unprotected rows. */
+  excerptBodies(
+    ids: readonly string[],
+    types?: readonly string[],
+  ): Promise<Map<string, string>>;
   /** The password hash of a public entry, to verify unlock proofs. */
   passwordHash(id: string): Promise<string | null>;
   /** Newest `publishedAt` first, then by id; `total` counts every match. */

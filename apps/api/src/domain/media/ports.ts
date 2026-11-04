@@ -40,7 +40,7 @@ export interface MediaRecord {
   missingAt?: Date | null;
   variants: Partial<Record<ImageSizeName, StoredVariant>>;
   createdAt: Date;
-  /** Entries that show the file. */
+  /** Entries and terms (image fields) that show the file. */
   usageCount: number;
 }
 
@@ -53,13 +53,16 @@ export interface MediaCriteria {
   search?: string;
   /** Uploaded at or after `start` and before `end`. */
   uploaded?: { start: Date; end: Date };
-  /** Only files no entry shows. */
+  /** Only files no entry or term shows. */
   unattached?: boolean;
   page: number;
   pageSize: number;
 }
 
 export interface MediaRepository {
+  getByKey(key: string): Promise<MediaRecord | null>;
+  /** Atomically reserve all keys forever, including after failed writes/cleanup. */
+  reserveKeys(uploadId: string, keys: readonly string[]): Promise<boolean>;
   insert(media: MediaWrite): Promise<void>;
   get(id: string): Promise<MediaRecord | null>;
   /** Whether the media row still exists; deleted rows must never serve orphaned files. */
@@ -82,14 +85,18 @@ export interface MediaRepository {
     id: string,
   ): Promise<{ newer: string | null; older: string | null }>;
   /**
-   * Entries that show the file, newest first, at most `limit`. `publishedOnly` keeps only
-   * published entries that are not in the trash (for accounts that cannot list content).
+   * Entries, then terms (image fields), that show the file, newest first, at most `limit` in
+   * total. `publishedOnly` keeps only published entries that are not in the trash (for accounts
+   * that cannot list content); terms are public either way. Terms carry their name as `title`
+   * and their taxonomy as `type`.
    */
   usedIn(
     id: string,
     limit: number,
     publishedOnly: boolean,
-  ): Promise<{ id: string; title: string; type: string }[]>;
+  ): Promise<
+    { id: string; title: string; type: string; kind: 'content' | 'term' }[]
+  >;
   /** Public projections of the given images that exist. */
   publicImages(ids: readonly string[]): Promise<Map<string, PublicImage>>;
   /** Also removes its usage links and featured-image references. */
@@ -134,5 +141,6 @@ export interface ImageProcessor {
     width: number,
     height?: number,
     crop?: boolean,
+    quality?: number,
   ): Promise<{ bytes: Uint8Array; width: number; height: number }>;
 }

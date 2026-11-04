@@ -52,7 +52,7 @@ export const sharpImages: ImageProcessor = {
     );
     return new Uint8Array(output);
   },
-  async resize(bytes, width, height, crop = false) {
+  async resize(bytes, width, height, crop = false, quality = 82) {
     const { data, info } = await runImage(() =>
       sharp(bytes, LIMIT)
         .rotate()
@@ -62,7 +62,7 @@ export const sharpImages: ImageProcessor = {
           fit: crop ? 'cover' : 'inside',
           withoutEnlargement: true,
         })
-        .webp({ quality: 82 })
+        .webp({ quality })
         .toBuffer({ resolveWithObject: true }),
     );
     return {

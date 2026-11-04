@@ -186,12 +186,16 @@ export const createContentClient = (options: ClientOptions, token?: string) => {
     ...publicCommentsClient(request),
     ...publicEntriesClient(request),
     /** `proofs` unlock password-protected entries the visitor opened. */
-    resolvePath: (path: string, proofs?: readonly string[]) =>
+    resolvePath: (
+      path: string,
+      proofs?: readonly string[],
+      context?: 'single' | 'feed',
+    ) =>
       request<{ content: PublicContent; redirect: boolean }>(
         'GET',
         '/api/v1/resolve',
         {
-          query: { path },
+          query: { path, context },
           headers: unlockHeaders(proofs),
           response: z.strictObject({
             content: publicContentSchema,

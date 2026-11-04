@@ -1,4 +1,5 @@
 import type { PublicImage } from '@cms/sdk';
+import { conflict, Errors } from '#api/shared/errors';
 import type {
   ImageProcessor,
   MediaCriteria,
@@ -10,10 +11,34 @@ import type {
 
 /** Same contract as `PrismaMediaRepository`; `usages` stands in for `content_media`. */
 export class MemoryMediaRepository implements MediaRepository {
+  private readonly reserved = new Map<string, string>();
+  private readonly owners = new Map<string, string>();
+  async getByKey(key: string) {
+    const id = this.owners.get(key);
+    return id ? this.get(id) : null;
+  }
+  async reserveKeys(uploadId: string, keys: readonly string[]) {
+    for (const key of keys) if (this.reserved.has(key)) return false;
+    for (const key of keys) this.reserved.set(key, uploadId);
+    return true;
+  }
   readonly rows = new Map<string, MediaWrite>();
   readonly usages = new Map<string, number>();
 
   async insert(media: MediaWrite) {
+    const keys = [
+      media.storageKey,
+      ...Object.values(media.variants).flatMap((variant) =>
+        variant ? [variant.key] : [],
+      ),
+    ];
+    for (const key of keys)
+      if (this.reserved.has(key) && this.reserved.get(key) !== media.id)
+        throw conflict(Errors.MediaKeyInvalid);
+    for (const key of keys) {
+      this.reserved.set(key, media.id);
+      this.owners.set(key, media.id);
+    }
     this.rows.set(media.id, structuredClone(media));
   }
 
@@ -78,7 +103,12 @@ export class MemoryMediaRepository implements MediaRepository {
     return (this.entries.get(id) ?? [])
       .filter((entry) => !publishedOnly || entry.published)
       .slice(0, limit)
-      .map(({ id: entryId, title, type }) => ({ id: entryId, title, type }));
+      .map(({ id: entryId, title, type }) => ({
+        id: entryId,
+        title,
+        type,
+        kind: 'content' as const,
+      }));
   }
 
   async publicImages(ids: readonly string[]) {

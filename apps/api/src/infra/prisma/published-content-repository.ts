@@ -17,13 +17,31 @@ import { Prisma } from '#api/infra/prisma/generated/client';
 import { countMonth, newestMonths } from '#api/infra/prisma/month-counts';
 import type { MonthCounts } from '#api/infra/prisma/month-counts';
 import { projectContent } from '#api/infra/prisma/public-content-projection';
+import type { HookDispatcher } from '#api/domain/ports';
 
 /** Published-only reads filtered in the database, with the same criteria as the admin list. */
 export class PrismaPublishedContentRepository implements PublishedContentRepository {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly hooks?: HookDispatcher,
+  ) {}
 
   byId(id: string) {
     return this.find({ id });
+  }
+
+  async excerptBodies(ids: readonly string[], types?: readonly string[]) {
+    if (!ids.length) return new Map<string, string>();
+    const rows = await this.db.content.findMany({
+      where: {
+        ...PUBLIC_CONTENT,
+        id: { in: [...ids] },
+        passwordHash: null,
+        type: types ? { in: [...types] } : undefined,
+      },
+      select: { id: true, html: true },
+    });
+    return new Map(rows.map((row) => [row.id, row.html]));
   }
 
   async privateById(id: string) {
@@ -32,6 +50,7 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
       Prisma.sql`c.id = ${id}`,
       true,
       'private',
+      this.hooks,
     );
     return rows[0] ?? null;
   }
@@ -79,8 +98,8 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
     if (!rows.length) return { items: [], total };
     const filter = Prisma.sql`c.id IN (${Prisma.join(rows.map(({ id }) => id))})`;
     const items = body
-      ? await projectContent(this.db, filter, true)
-      : await projectContent(this.db, filter, false);
+      ? await projectContent(this.db, filter, true, undefined, this.hooks)
+      : await projectContent(this.db, filter, false, undefined, this.hooks);
     const positions = new Map(rows.map(({ id }, index) => [id, index]));
     items.sort((a, b) => positions.get(a.id)! - positions.get(b.id)!);
     return { items: items as T[], total };
@@ -92,6 +111,8 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
       this.db,
       Prisma.sql`c.id IN (${Prisma.join([...ids])})`,
       false,
+      undefined,
+      this.hooks,
     );
   }
 
@@ -311,7 +332,13 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
       'id' in where
         ? Prisma.sql`c.id = ${where.id}`
         : Prisma.sql`c.slug = ${where.slug}`;
-    const rows = await projectContent(this.db, filter, true);
+    const rows = await projectContent(
+      this.db,
+      filter,
+      true,
+      undefined,
+      this.hooks,
+    );
     return rows[0] ?? null;
   }
 }

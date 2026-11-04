@@ -4,15 +4,20 @@ import {
 } from '#api/infra/prisma/permalink-repository';
 import type { PermalinkTokenRegistry } from '#api/domain/permalinks/token-registry';
 import type { TaxonomyType } from '@cms/sdk';
-import { checkParent, compareTerms } from '#api/domain/taxonomy/hierarchy';
+import { checkParent, sortTerms } from '#api/domain/taxonomy/hierarchy';
 import type {
   CountedTermRecord,
   TaxonomyRepository,
   TaxonomyTermRecord,
   TermCountScope,
+  TermListFilter,
+  TermMediaLinks,
 } from '#api/domain/taxonomy/taxonomy-repository';
 import { guardUnique } from '#api/infra/prisma/client';
-import { PUBLIC_CONTENT } from '#api/infra/prisma/content-criteria';
+import {
+  parseFields,
+  PUBLIC_CONTENT,
+} from '#api/infra/prisma/content-criteria';
 import type { Database } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
 import type { TaxonomyTerm } from '#api/infra/prisma/generated/client';
@@ -23,11 +28,34 @@ import { Errors } from '#api/shared/errors';
 /** Row in `settings` whose lock serializes hierarchy writes, so parent checks see a stable tree. */
 const HIERARCHY_LOCK = 'taxonomy.hierarchy';
 
-const counted = (scope: TermCountScope) => {
-  const where: Prisma.ContentTermWhereInput =
-    scope === 'published' ? { content: PUBLIC_CONTENT } : {};
-  return { _count: { select: { contents: { where } } } };
-};
+/** Assignments counted toward a term in `scope`. */
+const assigned = (scope: TermCountScope): Prisma.ContentTermWhereInput =>
+  scope === 'published' ? { content: PUBLIC_CONTENT } : {};
+
+const counted = (scope: TermCountScope) => ({
+  _count: { select: { contents: { where: assigned(scope) } } },
+});
+
+/** LIKE pattern text matching `value` literally (Prisma `contains` does not escape wildcards). */
+const literal = (value: string) => value.replace(/[\\%_]/g, '\\$&');
+
+const matching = (
+  taxonomy: TaxonomyType,
+  scope: TermCountScope,
+  { parentId, search, hideEmpty }: TermListFilter,
+): Prisma.TaxonomyTermWhereInput => ({
+  taxonomy,
+  ...(parentId === undefined ? {} : { parentId }),
+  ...(search
+    ? {
+        OR: [
+          { name: { contains: literal(search) } },
+          { slug: { contains: literal(search) } },
+        ],
+      }
+    : {}),
+  ...(hideEmpty ? { contents: { some: assigned(scope) } } : {}),
+});
 
 const toRecord = ({
   _count,
@@ -36,12 +64,33 @@ const toRecord = ({
   ...row,
   count: _count.contents,
   seo: fromSeoColumns(row),
+  fields: parseFields(row.fields),
 });
 
 const toRow = ({ seo, ...record }: TaxonomyTermRecord): TaxonomyTerm => ({
   ...record,
   ...toSeoColumns(seo),
+  fields: JSON.stringify(record.fields),
 });
+
+/** Links the term to the files among `mediaIds` that exist. */
+const linkMedia = async (
+  tx: Prisma.TransactionClient,
+  termId: string,
+  mediaIds: readonly string[],
+) => {
+  if (!mediaIds.length) return;
+  const existing = await tx.media.findMany({
+    where: { id: { in: [...new Set(mediaIds)] } },
+    select: { id: true },
+  });
+  if (existing.length)
+    await tx.termMedia.createMany({
+      data: existing.map(({ id }) => ({ termId, mediaId: id })),
+      // A retained link may already point at the same file.
+      skipDuplicates: true,
+    });
+};
 
 export class PrismaTaxonomyRepository implements TaxonomyRepository {
   constructor(
@@ -50,12 +99,16 @@ export class PrismaTaxonomyRepository implements TaxonomyRepository {
     private readonly tokens?: PermalinkTokenRegistry,
   ) {}
 
-  async list(taxonomy: TaxonomyType, scope: TermCountScope) {
+  async list(
+    taxonomy: TaxonomyType,
+    scope: TermCountScope,
+    filter: TermListFilter = {},
+  ) {
     const rows = await this.db.taxonomyTerm.findMany({
-      where: { taxonomy },
+      where: matching(taxonomy, scope, filter),
       include: counted(scope),
     });
-    return rows.map(toRecord).sort(compareTerms);
+    return sortTerms(rows.map(toRecord), filter);
   }
 
   async findById(id: string, scope: TermCountScope) {
@@ -87,14 +140,15 @@ export class PrismaTaxonomyRepository implements TaxonomyRepository {
     );
   }
 
-  async insert(record: TaxonomyTermRecord) {
+  async insert(record: TaxonomyTermRecord, mediaIds: readonly string[] = []) {
     await this.write(async (tx) => {
       await this.checkParent(tx, record);
       await tx.taxonomyTerm.create({ data: toRow(record) });
+      await linkMedia(tx, record.id, mediaIds);
     });
   }
 
-  async update(record: TaxonomyTermRecord) {
+  async update(record: TaxonomyTermRecord, media?: TermMediaLinks) {
     await this.write(async (tx) => {
       // The stored taxonomy wins: a term never changes kind.
       const { taxonomy } = await tx.taxonomyTerm.findUniqueOrThrow({
@@ -104,6 +158,12 @@ export class PrismaTaxonomyRepository implements TaxonomyRepository {
       await this.checkParent(tx, { ...record, taxonomy });
       const { id, ...data } = toRow({ ...record, taxonomy });
       await tx.taxonomyTerm.update({ where: { id }, data });
+      if (media) {
+        await tx.termMedia.deleteMany({
+          where: { termId: id, mediaId: { notIn: [...media.retain] } },
+        });
+        await linkMedia(tx, id, media.ids);
+      }
       await queueContentPaths(
         tx,
         { id: { in: await this.pathIds(tx, id) } },

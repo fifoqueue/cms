@@ -54,6 +54,10 @@ import { EraserRegistry } from '#api/domain/privacy/eraser-registry';
 import { ResponsiveImages } from '#api/domain/content/responsive-images';
 import { EmbedRegistry } from '#api/plugin-runtime/embed-registry';
 import { MediaService } from '#api/domain/media/media-service';
+import {
+  PrismaMediaKeyCatchUp,
+  MEDIA_KEY_CATCH_UP,
+} from '#api/infra/prisma/media-key-catch-up';
 import { ReadingService } from '#api/domain/site/reading-service';
 import { WritingService } from '#api/domain/site/writing-service';
 import { EmbedService } from '#api/domain/site/embed-service';
@@ -355,7 +359,7 @@ export const createContainer = async (
   const wrap = <T extends object>(store: T, writes: readonly (keyof T)[]) =>
     invalidatingStore(store, writes, publicCache);
   const contentRepository = wrap(
-    new PrismaContentRepository(db, permalinkTokens),
+    new PrismaContentRepository(db, permalinkTokens, hooks),
     ['insert', 'update', 'delete', 'setTrashed', 'publishDue'],
   );
   const settingsRepository = wrap(new PrismaSettingsRepository(db), ['set']);
@@ -394,16 +398,11 @@ export const createContainer = async (
     taxonomyRepository,
     taxonomyRegistry,
   );
-  const adminTaxonomy = new TaxonomyService({
-    content: contentRepository,
+  const rawPublishedRepository = new PrismaPublishedContentRepository(
+    db,
     hooks,
-    types: taxonomyTypes,
-    repository: taxonomyRepository,
-    ids: uuidV7,
-    clock: systemClock,
-  });
-  const rawPublishedRepository = new PrismaPublishedContentRepository(db);
-  const mediaRepository = wrap(new PrismaMediaRepository(db), [
+  );
+  const mediaRepository = wrap(new PrismaMediaRepository(db, hooks), [
     'insert',
     'update',
     'delete',
@@ -420,6 +419,15 @@ export const createContainer = async (
     hooks,
     settings: settingsRepository,
     images: (ids) => mediaRepository.publicImages(ids),
+  });
+  const adminTaxonomy = new TaxonomyService({
+    content: contentRepository,
+    hooks,
+    fields,
+    types: taxonomyTypes,
+    repository: taxonomyRepository,
+    ids: uuidV7,
+    clock: systemClock,
   });
   const activeContentTypes = async () =>
     (await contentTypes.list()).map((type) => type.key);
@@ -440,6 +448,7 @@ export const createContainer = async (
   const reader = new PublishedContentReader(
     publishedRepository,
     (record, visibility) => tocRenderer.published(record, visibility),
+    hooks,
   );
   const responsiveImages = new ResponsiveImages((ids) =>
     mediaRepository.publicImages(ids),
@@ -644,6 +653,15 @@ export const createContainer = async (
     owner,
   });
   scheduler.add(jobs.task(5000));
+  const mediaKeyCatchUp = new PrismaMediaKeyCatchUp(db);
+  scheduler.add({
+    name: MEDIA_KEY_CATCH_UP,
+    intervalMs: 5000,
+    run: async () => {
+      await mediaKeyCatchUp.run();
+    },
+  });
+  await scheduler.runNow(MEDIA_KEY_CATCH_UP);
   scheduler.add({
     name: 'core:permalink-regeneration',
     intervalMs: 5000,
@@ -980,6 +998,7 @@ export const createContainer = async (
     clock: systemClock,
   });
   const previews = new PreviewService({
+    hooks,
     renderBody: (document, record) => tocRenderer.preview(document, record),
     content,
     revisions,
@@ -1492,6 +1511,7 @@ export const createContainer = async (
         taxonomyRepository,
         taxonomyTypes,
         hooks,
+        fields,
       ),
       adminContent: content,
       reading,

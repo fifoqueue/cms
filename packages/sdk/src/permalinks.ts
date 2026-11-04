@@ -297,6 +297,7 @@ export const renderPermalink = (
  * ordinary query value (so it travels encoded twice and arrives encoded once).
  */
 export const resolvePathQuerySchema = z.object({
+  context: z.enum(['single', 'feed']).optional(),
   path: z
     .string()
     .min(1)

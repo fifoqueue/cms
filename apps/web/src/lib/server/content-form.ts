@@ -26,32 +26,29 @@ const ids = (form: FormData, key: string) => [
   ),
 ];
 
+/** `CustomFields.svelte` inputs (`field.<key>`) of the given definitions, typed per field kind. */
+export const readFields = (
+  form: FormData,
+  definitions: readonly FieldDefinition[],
+) =>
+  Object.fromEntries(
+    definitions.flatMap((field): [string, unknown][] => {
+      const name = `field.${field.key}`;
+      if (field.type === 'boolean') return [[field.key, form.has(name)]];
+      const raw = text(form, name).trim();
+      if (!raw) return [];
+      if (field.type === 'number') {
+        const value = Number(raw);
+        return [[field.key, Number.isFinite(value) ? value : raw]];
+      }
+      return [[field.key, raw]];
+    }),
+  );
+
 /**
  * Reads `ContentForm.svelte` fields. Returns validated input plus the submitted values (echoed
  * back on failure so nothing typed is lost), or a 400 form failure carrying those values.
  */
-/** `field.<key>` inputs of the definitions that apply to `type`, typed per field kind. */
-const readFields = (
-  form: FormData,
-  type: string,
-  definitions: readonly FieldDefinition[],
-) =>
-  Object.fromEntries(
-    definitions
-      .filter((field) => field.contentTypes.includes(type))
-      .flatMap((field): [string, unknown][] => {
-        const name = `field.${field.key}`;
-        if (field.type === 'boolean') return [[field.key, form.has(name)]];
-        const raw = text(form, name).trim();
-        if (!raw) return [];
-        if (field.type === 'number') {
-          const value = Number(raw);
-          return [[field.key, Number.isFinite(value) ? value : raw]];
-        }
-        return [[field.key, raw]];
-      }),
-  );
-
 export const readContentForm = (
   form: FormData,
   definitions: readonly FieldDefinition[] = [],
@@ -78,7 +75,12 @@ export const readContentForm = (
     }),
     authorId: text(form, 'authorId'),
     featuredMediaId: text(form, 'featuredMediaId'),
-    fields: readFields(form, text(form, 'type'), definitions),
+    fields: readFields(
+      form,
+      definitions.filter((field) =>
+        field.contentTypes.includes(text(form, 'type')),
+      ),
+    ),
     seo: readSeoForm(form),
   };
   // The password is never echoed back; empty keeps the stored one unless removal is asked for.

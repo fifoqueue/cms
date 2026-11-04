@@ -21,7 +21,7 @@
 플러그인과 functions의 모든 핸들러가 `true` 또는 `false`를 반환할 수 있습니다.
 `content.publishAllowed`, `content.deleteAllowed`, `media.uploadAllowed`,
 `user.signInAllowed`, `user.secondFactorRequired`, `user.registrationAllowed`,
-`comment.submitAllowed`, `email.sendAllowed`에 적용됩니다.
+`comment.submitAllowed`, `email.sendAllowed`, `term.deleteAllowed`에 적용됩니다.
 회원가입 설정도 초기값만 결정합니다. 결과의 타입·구조 및 변경 불가 식별 필드 검증은 유지합니다.
 
 `hooks.remove(name, handler)`는 해당 함수의 등록을 제거합니다.
@@ -113,18 +113,112 @@ manifest의 `requires: { cms?: '<semver 범위>', plugins?: { '<id>': '<범위>'
 
 ## 콘텐츠
 
-| 확장             | API                                          | 설명                                                                                                                                                                                              |
-| ---------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 콘텐츠 액션      | `hooks.on(name, handler)`                    | `content.scheduled`(예약 생성·변경), `content.revisionRestored`(복원 저장 후): 관리자 콘텐츠 DTO. `term.created/updated/deleted`: 저장 확정 뒤 관리자 용어 DTO                                    |
-| 콘텐츠 정의 액션 | `hooks.on(name, handler)`                    | `contentType.created/updated/deleted`, `field.created/updated/deleted`: 저장 확정 뒤 정의 DTO. `permalinks.updated`: 경로 재생성 성공 뒤 설정 DTO                                                 |
-| 콘텐츠 정의 필터 | `hooks.filter(name, handler)`                | `contentType.beforeSave`, `field.beforeSave`: 검증된 입력을 받고 결과를 동일 스키마로 재검증. 수정 시 기존 key 유지                                                                               |
-| 용어 필터        | `hooks.filter(name, handler)`                | `term.beforeSave`(검증된 입력, 결과 재검증), `term.query`(관리자 목록의 분류), `term.public`(공개 단건·목록 DTO). 잘못된 결과는 무시                                                              |
-| 콘텐츠 조회 필터 | `hooks.filter('content.query', handler)`     | 권한 확인 뒤 관리자 목록 조회 인자. 결과를 동일 스키마로 다시 검증                                                                                                                                |
-| 콘텐츠 변경 액션 | `hooks.on(name, handler)`                    | `content.termsChanged`: 콘텐츠 저장 시 할당 ID 집합이 바뀐 경우 관리자 DTO. `content.revisionSaved`: 리비전이 저장된 콘텐츠 DTO. `content.autosaved`: `{ contentId, revision }` 관리자 리비전 DTO |
-| 콘텐츠 주소 필터 | `hooks.filter('content.permalink', handler)` | 공개 단건·목록의 `{ contentId, path }`. 해당 콘텐츠가 소유한 현재·별칭 경로만 허용. 잘못된 결과는 경고 후 무시. 새 경로는 고유주소 토큰으로 생성                                                  |
-| 콘텐츠 거부 필터 | `hooks.filter(name, handler)`                | `content.publishAllowed`, `content.deleteAllowed`: boolean, 코어 권한 확인 후 추가 거부만 허용. 앞선 거부를 true로 뒤집을 수 없음. 예약 발행과 휴지통 자동 정리에도 적용                          |
+`content.excerpt`는 공개 요약을 만들 때
+`{ excerpt, contentId, source: 'manual' | 'generated', length?, more? }`를
+받습니다. 두 번째 읽기 전용 인자는 `{ length: 55, more: '…' }`입니다.
+반환값의 `length`(0~1000 정수) 또는 `more`(최대 100자)를 바꾸면 생성 요약을
+발행 본문에서 다시 생성합니다. 코어의 300자 요약 상한은 유지하며 수동 요약은
+재생성하지 않습니다. ID·source 변경과 잘못된 결과는 무시합니다. 보호된 항목은
+빈 요약을 유지하며 본문을 읽지 않습니다. 핸들러가 없으면 추가 조회가 없고
+기본 생성 옵션을 유지할 때도 본문을 추가 조회하지 않습니다.
+생성 옵션이 바뀐 항목의 본문은 한 번의 일괄 조회로 가져옵니다. 같은 조회에서
+발행·휴지통·비밀번호·활성 유형 조건을 확인하므로 요약 조회 뒤 보호된 항목의
+새 본문은 노출하지 않고 빈 요약으로 처리합니다.
+
+`content.defaults`는 새 편집기의 `{ type, title, document }`를 필터링합니다.
+`GET /api/v1/admin/content/defaults?type=post`는 콘텐츠 작성 권한을 확인하고
+활성 유형의 기본값을 반환합니다. 유형은 변경할 수 없으며 문서는 저장 때와
+동일한 코어 문서 렌더러·블록 검증을 통과해야 합니다. 웹의 새 항목 load가
+이 DTO를 사용하고 실패한 폼·자동 저장·기존 항목의 텍스트가 기본값보다 우선합니다.
+별도 컨텍스트 인자는 없으며 핸들러가 없으면 필터 검증을 생략합니다.
+
+`content.publicQuery`는 검색이 아닌 공개 목록 조회의 정규화된
+`PublicContentCriteria`를 필터링합니다. HTTP의 `orderby` 별칭은 먼저
+`orderBy`로 바뀌며 반환값은 `publicContentCriteriaSchema`로 재검증합니다.
+따라서 필터는 `orderBy: 'title' | 'updatedAt' | 'id' | 'publishedAt' | 'menuOrder'`와
+`order: 'asc' | 'desc'`를 유지하거나 변경할 수 있습니다.
+`content.publicResults`는 공개 목록의 `{ ids: string[], total: number }`를
+필터링하며 순서 변경·삭제·추가를 허용합니다. 추가 ID는 공개 저장소에서 다시
+조회하여 발행 상태와 활성 콘텐츠 유형을 확인합니다. 비밀번호 보호 항목의
+본문은 목록에 노출하지 않습니다. 두 필터 모두 등록된 핸들러가 없으면
+필터용 데이터 구성과 추가 조회를 생략합니다. 별도 컨텍스트 인자는 없습니다.
+
+`content.html`은 `{ html, content: { id, type, slug, path, title }, context }`를
+받습니다. `context`는 단건 `'single'`, 피드 `'feed'`, 미리보기 `'preview'`입니다.
+본문만 변경할 수 있으며 변경된 HTML은 코어 HTML 가져오기와 동일한 문서
+스키마로 파싱한 뒤 코어 렌더러로 다시 출력합니다. 임의 스크립트·이벤트 속성은
+허용하지 않으며 스키마 밖의 마크업은 유지되지 않습니다. 그 다음 코어의 임베드
+확장 정책을 적용하고 공개 단건에서는 `content.public`으로 전달합니다.
+피드는 `resolvePath(path, undefined, 'feed')`로 피드 컨텍스트를 요청합니다.
+핸들러가 없거나 HTML이 바뀌지 않으면 기존 코어 HTML을 재파싱하지 않습니다.
+별도 컨텍스트 인자는 없습니다.
+
+`content.beforeSave`의 두 번째 인자는 읽기 전용
+`{ contentId: string | null, previous: ContentEntry | null, actorId: string }`입니다.
+신규 저장은 ID와 이전 항목이 null이며 이전 항목에도 비밀번호 해시는 없습니다.
+`content.updated`는 저장된 항목에 `previous: ContentEntry`를 추가합니다.
+`content.statusChanged`는 생성·상태 변경·휴지통 이동·복원·예약 발행 뒤
+`ContentEntry & { previousStatus }`를 전달합니다. 생성의 이전 상태는 null,
+휴지통에서 복원할 때는 `'trash'`입니다. 휴지통 여부는 항목의 `trashedAt`으로
+판단하며 저장된 `status`는 휴지통 이동으로 바뀌지 않습니다.
+
+`content.trashAllowed`는 편집 권한 확인 뒤 boolean을 필터링합니다.
+두 번째 인자는 `{ content: ContentEntry, actorId }`이며 후속 핸들러가
+앞선 false를 true로 뒤집을 수 있습니다.
+`content.slug`는 `{ slug, title, type, contentId }`에서 slug를 변경하며
+코어 입력 규칙으로 정규화하고 예약어·중복 여부를 검사합니다.
+`content.revisionsToKeep`는 `{ count, type }`를 받으며 정수 0~25만 허용합니다.
+0은 저장 이력을 남기지 않습니다.
+
+`content.title`은 공개 단건·목록의 `{ title, contentId }`를 필터링합니다.
+ID는 바꿀 수 없으며 제목은 공개 DTO 제목 스키마로 검증합니다.
+`contentType.definition`은 내장·등록·관리자 정의 유형의 최종 정의를
+필터링합니다. 코어 정의 스키마로 재검증하고 `key`와 `builtin` 변경은
+거부합니다. 두 필터는 별도 컨텍스트가 없으며 핸들러가 없으면 건너뜁니다.
+
+| 확장             | API                                          | 설명                                                                                                                                                                                                               |
+| ---------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 콘텐츠 액션      | `hooks.on(name, handler)`                    | `content.scheduled`(예약 생성·변경), `content.revisionRestored`(복원 저장 후): 관리자 콘텐츠 DTO. `term.created/updated/deleted`: 저장 확정 뒤 관리자 용어 DTO                                                     |
+| 콘텐츠 정의 액션 | `hooks.on(name, handler)`                    | `contentType.created/updated/deleted`, `field.created/updated/deleted`: 저장 확정 뒤 정의 DTO. `permalinks.updated`: 경로 재생성 성공 뒤 설정 DTO                                                                  |
+| 콘텐츠 정의 필터 | `hooks.filter(name, handler)`                | `contentType.beforeSave`, `field.beforeSave`: 검증된 입력을 받고 결과를 동일 스키마로 재검증. 수정 시 기존 key 유지                                                                                                |
+| 용어 필터        | `hooks.filter(name, handler)`                | `term.beforeSave`(검증된 입력, 결과 재검증), `term.query`(목록 인자), `term.public`(공개 DTO), `term.deleteAllowed`(삭제 허용). 잘못된 결과는 무시                                                                 |
+| 콘텐츠 조회 필터 | `hooks.filter('content.query', handler)`     | 권한 확인 뒤 관리자 목록 조회 인자. 결과를 동일 스키마로 다시 검증                                                                                                                                                 |
+| 콘텐츠 변경 액션 | `hooks.on(name, handler)`                    | `content.termsChanged`: 콘텐츠 저장 시 할당 ID 집합이 바뀐 경우 관리자 DTO. `content.revisionSaved`: 리비전이 저장된 콘텐츠 DTO. `content.autosaved`: `{ contentId, revision }` 관리자 리비전 DTO                  |
+| 콘텐츠 주소 필터 | `hooks.filter('content.permalink', handler)` | 공개 단건·목록의 `{ contentId, path }`. 해당 콘텐츠가 소유한 현재·별칭 경로만 허용. 잘못된 결과는 경고 후 무시. 새 경로는 고유주소 토큰으로 생성                                                                   |
+| 콘텐츠 거부 필터 | `hooks.filter(name, handler)`                | `content.publishAllowed`, `content.deleteAllowed`: boolean, 코어 판단은 초기값일 뿐이며 모든 핸들러가 true 또는 false를 반환할 수 있음. 앞선 거부도 허용으로 뒤집을 수 있음. 예약 발행과 휴지통 자동 정리에도 적용 |
 
 분류 용어를 삭제하면 `term.deleted`를 발행한 뒤, 영향을 받은 남은 항목마다 `content.termsChanged`를 발행합니다(관리자 DTO는 커밋 뒤에 읽음). 예약 발행과 휴지통 자동 정리는 영향을 받은 항목마다 수명주기 액션을 발행합니다.
+
+`term.query`(WordPress `get_terms_args`)는 관리자·공개 용어 목록의
+`{ taxonomy, parentId?, search?, hideEmpty?, orderBy?, order? }`를 필터링합니다.
+초기값은 URL 분류의 `{ taxonomy }`이고 두 번째 인자는 읽기 전용 `{ scope: 'admin' | 'public' }`입니다.
+`parentId`는 그 용어의 직계 자식만, `null`은 최상위 용어만 남깁니다. `search`는 이름·슬러그의
+부분 일치이며(저장소의 문자열 비교 규칙, `%`·`_`는 글자 그대로) `hideEmpty`는 목록 범위의
+개수(관리자: 모든 상태, 공개: 발행 항목)가 0인 용어를 뺍니다. `orderBy`는 `name`(기본)·`slug`·
+`count`·`createdAt`, `order`는 `asc`(기본)·`desc`이며 같은 값은 이름·ID 순입니다.
+결과는 `termQuerySchema`로 재검증하고, 다른 분류로 바꾸려면 그 분류가 존재해야 합니다.
+잘못된 결과는 무시하며 핸들러가 없으면 검증 없이 기본 목록을 조회합니다.
+
+`term.deleteAllowed`(WordPress `pre_delete_term`)는 `taxonomy.manage` 권한 확인을 통과한
+용어 삭제 직전의 boolean을 필터링합니다. 코어 초기값은 `true`이며 두 번째 인자는 읽기 전용
+`{ term: AdminTaxonomyTerm }`입니다. 모든 핸들러가 `true`·`false`를 반환할 수 있고, 최종값이
+`false`이면 `403 forbidden`으로 거부하며 아무것도 바꾸지 않습니다. 필터는 권한 검사를 대신하지 않습니다.
+
+용어 필드(WordPress term meta)는 필드 정의의 `taxonomies`(분류 키 배열, 기본 `[]`)로 지정합니다.
+`contentTypes`도 기본값이 `[]`이며 둘 중 하나 이상이 필요합니다. 플러그인은
+`fields.register(key, { label, type, taxonomies: ['category'] })`로, 관리자는 같은 정의 API로
+용어 필드를 만듭니다. 값은 `taxonomy_terms.fields`(JSON)에 저장되고 용어와 함께 삭제됩니다.
+용어 입력의 `fields`는 `term.beforeSave` 이후 해당 분류의 정의로 검증합니다. 선언되지 않은 키는
+버리고 유형·필수 여부를 검사하며 오류 경로는 `fields.<key>`입니다. 수정 시 `fields`를 생략하면
+기존 값을 그대로 유지합니다. 비활성·해제된 플러그인의 `plugin:` 필드 값은 다른 값을 저장해도
+보존되며 공개 출력에서만 빠집니다. 관리자 용어 DTO의 `fields`는 저장된 값 전체이고, 공개 용어
+DTO의 `fields`는 `public` 필드만 담습니다(이미지 필드는 `PublicImage`, 없는 이미지는 생략).
+공개 목록은 정의와 이미지를 한 번씩만 읽고, 값이 하나도 없으면 추가 조회를 하지 않습니다.
+필수 용어 필드가 있으면 그 값을 보내지 않는 용어 생성은 `invalid_input`으로 거부됩니다.
+관리자 분류 화면은 콘텐츠 편집기와 같은 필드 입력(`CustomFields.svelte`)과 서버 폼 해석을 사용하며,
+분류에 용어 필드가 없으면 `fields`를 보내지 않습니다. 이미지 필드가 가리키는 파일은 `term_media`에
+기록되어 콘텐츠와 같이 미디어 사용 수·삭제 보호·미첨부 필터·"사용 위치"(`kind: 'term'`)에 포함되며,
+`fields`를 보낼 때마다 다시 만들고 용어와 함께 삭제됩니다.
 
 `contentTypes.register(key, definition)`, `taxonomies.register(key, definition)`,
 `fields.register(key, definition)`은 `plugin:<plugin-id>:<key>` 아래에 스키마로 검증되는
@@ -154,9 +248,26 @@ manifest의 `requires: { cms?: '<semver 범위>', plugins?: { '<id>': '<범위>'
 
 `mediaProcessors.register({ process({ bytes, mime }) })`는 JPEG/PNG/WebP/AVIF 업로드의 최적화 바이트를 반환합니다. 호출은 복사·시간 제한·반환값 검증을 거치며 실패/비활성화는 이전 바이트로 진행합니다. 같은 처리 계약의 코어 재인코딩은 컴포지션 루트 전용 `registerCore`로만 등록되고(플러그인 등록 API로는 접근 불가) 마지막에 격리 없이 직접 실행되므로 메타데이터 제거를 우회하지 못합니다. 코어가 디코딩하지 못하는 플러그인 출력이나 처리된 바이트의 업로드 크기 제한 초과는 잘못된 플러그인 출력으로 보고 원본으로 코어 재인코딩합니다. 원본에 대한 코어 실패(또는 코어 미등록)는 숨기지 않고 업로드 오류로 전달합니다. SVG·GIF·문서/오디오/비디오는 아직 이 파이프라인 대상이 아닙니다.
 
-알려진 미디어 출력 확장 공백: `media.public`은 아직 연결되지 않았습니다. 공개 이미지 DTO가 콘텐츠의 공개 SQL projection과 미디어 저장소 조회에서 각각 만들어지며 동기 매퍼에 비동기 훅을 넣을 수 없습니다. 콘텐츠·테마·사이트 출력 경계의 공통 비동기 projection 계약을 연결해야 하며, 일부 경로에만 필터를 적용하지 않습니다.
+미디어 URL은 공통 비동기 projection을 거칩니다. 저장소의 원본 URL은 DB에 유지하고
+관리자 DTO, 공개 이미지, 콘텐츠 대표 이미지, 본문 이미지의 src/srcset을 만들 때
+`media.url`을 적용하므로 CDN 주소를 바꾸어도 기존 파일을 다시 저장할 필요가 없습니다.
 
-미디어·토론 추가 훅: `media.updated`(메타데이터 커밋 뒤 AdminMedia), `discussion.updated`(설정 저장 뒤 DiscussionSettings); `media.beforeSave`(메타데이터 입력 재검증), `media.filename`(저장 경로가 아닌 표시 이름), `media.uploadAllowed`(코어 업로드 검사 뒤 파일 이름·MIME·크기와 거부 전용 allowed), `discussion.beforeSave`(설정 입력 재검증).
+미디어·토론 추가 훅: `media.updated`(메타데이터 커밋 뒤 AdminMedia), `discussion.updated`(설정 저장 뒤 DiscussionSettings); `media.beforeSave`(메타데이터 입력 재검증), `discussion.beforeSave`(설정 입력 재검증). 기존 `media.uploaded/deleted` 액션도 유지됩니다.
+
+미디어 필터의 잘못된 반환값은 무시하며 이전에 검증된 값을 유지합니다. 신뢰하는 함수도
+필터 값만 호출 전에 복사하여 제자리 변경 뒤 거부·예외가 발생하면 복구합니다.
+컨텍스트 인수(업로드 바이트 포함)는 이 복구용 복사에 포함하지 않습니다.
+URL과 저장 키는 최종 사용 시에도 다시 검증합니다.
+
+- `media.filename`: 경로·제어 문자가 없는 1~255자 표시 이름입니다. 저장 키는 바꾸지 않습니다.
+- `media.storageKey`: `{ key, directory, basename, extension }`과 읽기 전용 컨텍스트 `{ id, mime, bytes, size, uploadedAt, filename }`을 받습니다. uploadedAt은 ISO 문자열입니다. key를 유지하면 directory/basename을 조합하고, key 자체를 바꾸면 그 경로를 사용합니다. 확장자는 sniff한 MIME의 코어 확장자와 같아야 합니다. 상대 경로만 허용하며 각 세그먼트는 영숫자로 시작하고 `[A-Za-z0-9._-]`만 허용합니다. `..`, 역슬래시, 제어 문자, 절대 경로를 거부하고 전체 255자·세그먼트 128자와 파생 이미지/충돌 접미사 공간을 검사합니다. 잘못된 결과는 경고 후 이전 키(초기값은 코어 키)를 유지합니다. 기존 키 또는 저장소 파일과 충돌하면 `-1`, `-2` 순서로 시도하며 최대 10000번으로 제한합니다. 파생 키는 `<base>-<size>.webp`입니다. 로컬·플러그인 저장소 모두 선택된 키를 받습니다. `media_storage_keys`의 바이너리 기본 키로 원본·실제로 생성한 파생 파일만 한 번에 예약합니다. 고유 제약이 여러 API 인스턴스의 충돌을 원자적으로 거부하며 미디어 삽입과 예약 소유권 연결은 같은 트랜잭션입니다. 파일 조회는 이 인덱스를 사용하며 전체 variants JSON을 검색하지 않습니다. 삭제 시 연결만 해제하고 실패·삭제 예약은 계속 유지하여 지연된 쓰기/정리가 재사용된 키의 새 파일을 손상시키지 못하게 합니다. `20261122000000_media_storage_keys`는 스키마만 만들고, 부팅 및 주기적인 leased catch-up이 원본·파생 키를 media 100행 단위로 이관합니다. 매 순회의 최대 ID 상한을 시작 시 고정하므로 큰 ID가 계속 삽입되어도 순회가 종료되고, 커서 뒤에 삽입된 행도 다음 순회에 처리됩니다. 원본 고유 인덱스/구버전 UUID 파생 파일의 PK 조회는 miss 시 한 행만 보완합니다. 기존 파일·URL은 변경하지 않습니다. 배포 순서와 중단 복구는 [운영 문서](../operations.md#미디어-키-인덱스의-다중-인스턴스-배포)를 참고하세요.
+- `media.url`: `{ url, key, variant, driver }`에서 url만 바꿀 수 있습니다. variant는 원본이면 null, 파생 이미지면 크기 이름입니다. HTTP(S) 절대 주소 또는 `/`로 시작하는 동일 출처 경로만 허용합니다. `//`, 역슬래시, 공백·제어 문자, 사용자 정보가 있는 주소를 거부합니다. 잘못된 결과는 이전 URL을 유지합니다. 핸들러가 없으면 훅 dispatch와 URL 변환을 생략합니다.
+- `media.uploadAllowed`: `{ allowed, filename, mime, size }`에서 `allowed`만 변경합니다. 허용과 거부 모두 가능하며 뒤의 필터가 앞의 결정을 바꿀 수 있습니다.
+- `media.filename`과 `media.uploadAllowed`의 두 번째 인수는 읽기 전용 `{ bytes, mime, size, originalName }`입니다. 신뢰하는 사이트·테마 함수에는 원본 바이트를 복사 없이 전달하므로 변경하면 안 됩니다. 플러그인은 격리된 복사본만 받습니다.
+- `media.allowedTypes`: 허용할 MIME 문자열 배열입니다. 코어가 식별할 수 있는 타입만 허용하며 중복을 거부합니다. SVG의 초기 포함 여부는 설정을 따르지만 필터가 다시 허용할 수 있습니다. SVG 정화, 바이트 식별, 업로드 크기 제한은 우회하지 못합니다.
+- `media.imageSizes`: `{ mime, width, height, sizes, quality? }`입니다. MIME·원본 치수는 고정이고 등록된 크기 이름의 부분집합만 허용합니다. 최대 32개, 이름 중복 금지, 치수는 1~8192 정수, WebP 품질은 선택적인 1~100 정수입니다. 업로드 파생 이미지 생성에 적용합니다.
+- `media.beforeInsert`: `{ filename, alt, caption, title?, description? }`를 삽입 전에 변경합니다. 파일 이름은 안전한 표시 이름 규칙을 따르고 alt/caption은 각 2000자, title은 255자, description은 10000자 이하입니다. 추가 필드는 거부합니다.
+- `media.deleteAllowed`: boolean과 두 번째 인수 `{ media: AdminMedia }`를 받습니다. 초기값은 사용 중 여부와 force로 정하며 필터는 양방향으로 변경할 수 있습니다. 사용자 권한 검사는 우회하지 못합니다.
 
 `imageSizes.register({ name, width, height?, crop? })`는 이미지 크기를 등록합니다. 코어 크기는 플러그인 API가 아니라 등록소 자체에서 선언되며 충돌 시 우선합니다. 코어 크기 이름에 대한 플러그인 등록은 경고와 함께 거부되므로 플러그인은 없는 이름만 추가할 수 있습니다. 같은 이름을 여러 플러그인이 등록하면 마지막 등록이 우선하고, 등록을 해제하면 이전 등록이 복원됩니다. 업로드 시 활성 크기가 생성되며, 플러그인을 비활성화하면 이후 생성만 멈추고 기존 파생 이미지는 삭제하지 않습니다. `POST /api/v1/admin/media/:id/derivative?name=…`(인증 필요)는 저장하지 않고 캐시할 수 없는 WebP를 반환합니다. 웹의 미디어 선택기와 에디터 이미지 크기 선택은 플러그인 크기를 포함해 미디어 DTO의 `variants`를 나열합니다(연동 완료).
 

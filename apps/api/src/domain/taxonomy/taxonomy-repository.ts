@@ -1,4 +1,9 @@
-import type { AdminEntrySeo, TaxonomyType } from '@cms/sdk';
+import type {
+  AdminEntrySeo,
+  FieldValues,
+  TaxonomyType,
+  TermQuery,
+} from '@cms/sdk';
 
 export interface TaxonomyTermRecord {
   id: string;
@@ -13,6 +18,8 @@ export interface TaxonomyTermRecord {
   createdAt: Date;
   updatedAt: Date;
   seo: AdminEntrySeo;
+  /** Term field values by key; removed with the term. */
+  fields: FieldValues;
 }
 
 export interface CountedTermRecord extends TaxonomyTermRecord {
@@ -23,6 +30,17 @@ export interface CountedTermRecord extends TaxonomyTermRecord {
 /** Content counted toward a term: every item (admin) or published items only (public). */
 export type TermCountScope = 'all' | 'published';
 
+/** Files a term's field values point at (see `TaxonomyRepository.update`). */
+export interface TermMediaLinks {
+  /** Image field values: linked when the file exists. */
+  ids: readonly string[];
+  /** Values of inactive fields: existing links stay, none are added. */
+  retain: readonly string[];
+}
+
+/** Validated list arguments besides the taxonomy; `hideEmpty` counts within the list's scope. */
+export type TermListFilter = Omit<TermQuery, 'taxonomy'>;
+
 /**
  * Terms and their hierarchy. Every implementation enforces relation integrity itself:
  * `insert`/`update` throw `conflict` when the slug is taken within the taxonomy and
@@ -30,10 +48,11 @@ export type TermCountScope = 'all' | 'published';
  * itself or one of its descendants, or when a tag has a parent.
  */
 export interface TaxonomyRepository {
-  /** Terms of one taxonomy, ordered by `compareTerms`. */
+  /** Terms of one taxonomy matching `filter`, ordered by `sortTerms` (`compareTerms` by default). */
   list(
     taxonomy: TaxonomyType,
     scope: TermCountScope,
+    filter?: TermListFilter,
   ): Promise<CountedTermRecord[]>;
   findById(
     id: string,
@@ -49,9 +68,20 @@ export interface TaxonomyRepository {
     taxonomy: TaxonomyType,
     slugs: readonly string[],
   ): Promise<Set<string>>;
-  insert(record: TaxonomyTermRecord): Promise<void>;
-  /** The taxonomy of `record` is ignored; the stored one is kept. */
-  update(record: TaxonomyTermRecord): Promise<void>;
+  /**
+   * `mediaIds` are the files the term's image fields point at, counted as media usage (ids of
+   * missing files are skipped).
+   */
+  insert(
+    record: TaxonomyTermRecord,
+    mediaIds?: readonly string[],
+  ): Promise<void>;
+  /**
+   * The taxonomy of `record` is ignored; the stored one is kept. `media` replaces the stored
+   * links with `ids`, except existing links to `retain` (values of inactive fields), which stay;
+   * omitted keeps every link.
+   */
+  update(record: TaxonomyTermRecord, media?: TermMediaLinks): Promise<void>;
   /** Unassigns the term, reparents children, and returns affected content IDs after commit. */
   delete(id: string): Promise<string[]>;
 }

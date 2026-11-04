@@ -46,7 +46,9 @@ type Row = Content & {
   terms: { term: TermSummary & { taxonomy: TaxonomyType } }[];
 };
 
-const toRecord = (
+import type { HookDispatcher } from '#api/domain/ports';
+
+const toRecord = async (
   {
     document,
     searchText: _searchText,
@@ -57,14 +59,15 @@ const toRecord = (
     ...row
   }: Row,
   path = currentPath && decodePath(currentPath.path),
-): ContentRecord => {
+  hooks?: HookDispatcher,
+): Promise<ContentRecord> => {
   if (path === null) throw new Error(Errors.ContentPathMissing);
   return {
     ...row,
     tocOverride: adminContentSchema.shape.tocOverride.parse(row.tocOverride),
     authorName: author.name,
     authorSlug: author.slug,
-    featuredImage: featuredImageOf(featuredMedia),
+    featuredImage: await featuredImageOf(featuredMedia, hooks),
     fields: parseFields(row.fields),
     path,
     document: JSON.parse(document) as ContentDocument,
@@ -78,20 +81,23 @@ const toRecord = (
 /** List rows skip the large text columns. */
 const listOmit = { document: true, html: true, searchText: true } as const;
 
-const toSummary = ({
-  terms,
-  currentPath,
-  author,
-  featuredMedia,
-  ...row
-}: Omit<Row, keyof typeof listOmit>): ContentSummaryRecord => {
+const toSummary = async (
+  {
+    terms,
+    currentPath,
+    author,
+    featuredMedia,
+    ...row
+  }: Omit<Row, keyof typeof listOmit>,
+  hooks?: HookDispatcher,
+): Promise<ContentSummaryRecord> => {
   if (!currentPath) throw new Error(Errors.ContentPathMissing);
   return {
     ...row,
     tocOverride: adminContentSchema.shape.tocOverride.parse(row.tocOverride),
     authorName: author.name,
     authorSlug: author.slug,
-    featuredImage: featuredImageOf(featuredMedia),
+    featuredImage: await featuredImageOf(featuredMedia, hooks),
     fields: parseFields(row.fields),
     path: decodePath(currentPath.path),
     extraTerms: extraTerms(terms),
@@ -109,6 +115,7 @@ const toRow = ({
   categoryIds: _categoryIds,
   tagIds: _tagIds,
   mediaIds: _mediaIds,
+  retainedMediaIds: _retainedMediaIds,
   ...record
 }: ContentWrite): Omit<
   Content,
@@ -145,6 +152,7 @@ export class PrismaContentRepository implements ContentRepository {
   constructor(
     private readonly db: Database,
     private readonly tokens?: PermalinkTokenRegistry,
+    private readonly hooks?: HookDispatcher,
   ) {}
 
   async findById(id: string) {
@@ -152,7 +160,7 @@ export class PrismaContentRepository implements ContentRepository {
       where: { id },
       include: withRelations,
     });
-    return row && toRecord(row);
+    return row && toRecord(row, undefined, this.hooks);
   }
 
   async takenSlugs(slugs: readonly string[]) {
@@ -238,7 +246,10 @@ export class PrismaContentRepository implements ContentRepository {
       skip,
       take: pageSize,
     });
-    return { items: rows.map(toSummary), total };
+    return {
+      items: await Promise.all(rows.map((row) => toSummary(row, this.hooks))),
+      total,
+    };
   }
 
   async exportPage(afterId: string | null, limit: number) {
@@ -251,7 +262,7 @@ export class PrismaContentRepository implements ContentRepository {
       orderBy: { id: 'asc' },
       take: limit,
     });
-    return rows.map((row) => toRecord(row));
+    return Promise.all(rows.map((row) => toRecord(row, undefined, this.hooks)));
   }
 
   async insert(record: ContentWrite, revision: RevisionSave) {
@@ -514,13 +525,20 @@ export class PrismaContentRepository implements ContentRepository {
                   }
                 : record;
             const row = await save(tx, next, current);
-            await tx.contentMedia.deleteMany({ where: { contentId: row.id } });
+            await tx.contentMedia.deleteMany({
+              where: {
+                contentId: row.id,
+                mediaId: { notIn: record.retainedMediaIds ?? [] },
+              },
+            });
             if (media.size)
               await tx.contentMedia.createMany({
                 data: [...media].map((mediaId) => ({
                   contentId: row.id,
                   mediaId,
                 })),
+                // A retained link may already point at the same file.
+                skipDuplicates: true,
               });
             await tx.searchOutbox.create({ data: { contentId: row.id } });
             const path = await assignContentPath(
@@ -530,7 +548,7 @@ export class PrismaContentRepository implements ContentRepository {
               this.tokens,
             );
             await saveRevisionIn(tx, row, revision);
-            return toRecord(row, path);
+            return toRecord(row, path, this.hooks);
           }),
         Errors.SlugConflict,
       );

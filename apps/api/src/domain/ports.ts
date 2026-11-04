@@ -46,7 +46,7 @@ export interface HookDispatcher {
   applyFilter<K extends FilterName>(
     name: K,
     value: FilterHookMap[K],
-    accept: (value: unknown) => boolean,
+    accept: (value: unknown) => boolean | Promise<boolean>,
     /** Core observer of validated snapshots; used for owner-attributed capability audit. */
     accepted?: (
       owner: string,

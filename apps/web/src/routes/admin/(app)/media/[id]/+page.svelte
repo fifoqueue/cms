@@ -20,6 +20,7 @@
   import { Label } from '#lib/components/ui/label/index.js';
   import { Textarea } from '#lib/components/ui/textarea/index.js';
   import { typeLabel, useI18n } from '#lib/i18n/index.js';
+  import { termLabel } from '#lib/seo/head.js';
   import type { PageProps } from './$types';
 
   let { data, form }: PageProps = $props();
@@ -187,14 +188,35 @@
         <p>{m.mediaUsed(media.usageCount)}</p>
         {#if data.context.usedIn.length}
           <ul class="list-disc pl-5">
-            {#each data.context.usedIn as entry (entry.id)}
+            {#each data.context.usedIn as entry (`${entry.kind}:${entry.id}`)}
               <li>
-                <a
-                  href={resolve('/admin/(app)/content/[id]', { id: entry.id })}
-                  class="underline">{entry.title}</a
-                >
+                {#if entry.kind !== 'term'}
+                  <a
+                    href={resolve('/admin/(app)/content/[id]', {
+                      id: entry.id,
+                    })}
+                    class="underline">{entry.title}</a
+                  >
+                {:else}
+                  <!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() plus the term to edit -->
+                  <a
+                    href={`${
+                      entry.type === 'category'
+                        ? resolve('/admin/(app)/categories')
+                        : entry.type === 'tag'
+                          ? resolve('/admin/(app)/tags')
+                          : resolve('/admin/(app)/taxonomies/[taxonomy]', {
+                              taxonomy: entry.type,
+                            })
+                    }?edit=${encodeURIComponent(entry.id)}`}
+                    class="underline">{entry.title}</a
+                  >
+                  <!-- eslint-enable svelte/no-navigation-without-resolve -->
+                {/if}
                 <span class="text-muted-foreground"
-                  >({typeLabel(m, entry.type)})</span
+                  >({entry.kind === 'term'
+                    ? termLabel(entry.type, m)
+                    : typeLabel(m, entry.type)})</span
                 >
               </li>
             {/each}

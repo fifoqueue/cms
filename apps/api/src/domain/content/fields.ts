@@ -51,6 +51,20 @@ export const fieldMediaIds = (
       : [],
   );
 
+/**
+ * String values of keys `definitions` does not declare (an inactive plugin's fields). Such a
+ * field may be an image, so existing media links to these ids are kept on save; none are added.
+ */
+export const retainedMediaIds = (
+  definitions: readonly FieldDefinition[],
+  values: FieldValues,
+) =>
+  Object.entries(values).flatMap(([key, value]) =>
+    typeof value === 'string' && !definitions.some((field) => field.key === key)
+      ? [value]
+      : [],
+  );
+
 /** Custom fields: definitions in core settings, values on each entry. */
 export class FieldService {
   constructor(
@@ -147,32 +161,7 @@ export class FieldService {
    * must match its type, and required fields must be present.
    */
   async validate(type: string, values: FieldValues): Promise<FieldValues> {
-    const fields = await this.forType(type);
-    const result = z
-      .object(
-        Object.fromEntries(
-          fields.map((field) => [field.key, valueSchema(field)]),
-        ),
-      )
-      .safeParse(values);
-    if (!result.success)
-      throw invalidInput(
-        Errors.InvalidInput,
-        result.error.issues.map(({ path, message }) => ({
-          path: ['fields', ...path].join('.'),
-          message,
-        })),
-      );
-    return Object.fromEntries([
-      ...Object.entries(values).filter(
-        ([key]) =>
-          key.startsWith('plugin:') &&
-          !fields.some((field) => field.key === key),
-      ),
-      ...Object.entries(result.data).filter(
-        ([, value]) => value !== undefined && value !== null,
-      ),
-    ]);
+    return checkValues(await this.forType(type), values);
   }
 
   /** Public fields of an entry; image fields become public images (missing ones are left out). */
@@ -183,14 +172,99 @@ export class FieldService {
     if (Object.keys(values).length === 0) return {};
     const fields = (await this.forType(type)).filter((field) => field.public);
     const images = await this.deps.images(fieldMediaIds(fields, values));
-    return Object.fromEntries(
-      fields.flatMap((field) => {
-        const value = values[field.key];
-        if (value === undefined || value === null) return [];
-        if (field.type !== 'image') return [[field.key, value]];
-        const image = images.get(value as string);
-        return image ? [[field.key, image]] : [];
-      }),
+    return project(fields, images, values);
+  }
+
+  async forTaxonomy(taxonomy: string): Promise<FieldDefinition[]> {
+    return (await this.list()).filter((field) =>
+      field.taxonomies.includes(taxonomy),
     );
   }
+
+  /**
+   * Validates the values of a `taxonomy` term like `validate`. Stored values of undeclared
+   * `plugin:` fields (an inactive plugin's) stay unless `values` replaces them.
+   */
+  async validateTerm(
+    taxonomy: string,
+    values: FieldValues,
+    stored: FieldValues,
+  ): Promise<FieldValues> {
+    const fields = await this.forTaxonomy(taxonomy);
+    return {
+      ...Object.fromEntries(
+        Object.entries(stored).filter(
+          ([key]) =>
+            key.startsWith('plugin:') &&
+            !fields.some((field) => field.key === key),
+        ),
+      ),
+      ...checkValues(fields, values),
+    };
+  }
+
+  /** Public fields of `taxonomy` terms, in order, with one definition and image read. */
+  async presentTerms(
+    taxonomy: string,
+    values: readonly FieldValues[],
+  ): Promise<Record<string, unknown>[]> {
+    if (values.every((entry) => Object.keys(entry).length === 0))
+      return values.map(() => ({}));
+    const fields = (await this.forTaxonomy(taxonomy)).filter(
+      (field) => field.public,
+    );
+    const images = await this.deps.images(
+      values.flatMap((entry) => fieldMediaIds(fields, entry)),
+    );
+    return values.map((entry) => project(fields, images, entry));
+  }
 }
+
+/**
+ * Undeclared keys are dropped (an inactive plugin's `plugin:` values are kept), each declared
+ * field must match its type, and required fields must be present.
+ */
+const checkValues = (
+  fields: readonly FieldDefinition[],
+  values: FieldValues,
+): FieldValues => {
+  const result = z
+    .object(
+      Object.fromEntries(
+        fields.map((field) => [field.key, valueSchema(field)]),
+      ),
+    )
+    .safeParse(values);
+  if (!result.success)
+    throw invalidInput(
+      Errors.InvalidInput,
+      result.error.issues.map(({ path, message }) => ({
+        path: ['fields', ...path].join('.'),
+        message,
+      })),
+    );
+  return Object.fromEntries([
+    ...Object.entries(values).filter(
+      ([key]) =>
+        key.startsWith('plugin:') && !fields.some((field) => field.key === key),
+    ),
+    ...Object.entries(result.data).filter(
+      ([, value]) => value !== undefined && value !== null,
+    ),
+  ]);
+};
+
+const project = (
+  fields: readonly FieldDefinition[],
+  images: Map<string, PublicImage>,
+  values: FieldValues,
+): Record<string, unknown> =>
+  Object.fromEntries(
+    fields.flatMap((field) => {
+      const value = values[field.key];
+      if (value === undefined || value === null) return [];
+      if (field.type !== 'image') return [[field.key, value]];
+      const image = images.get(value as string);
+      return image ? [[field.key, image]] : [];
+    }),
+  );

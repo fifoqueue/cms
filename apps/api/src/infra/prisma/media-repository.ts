@@ -4,22 +4,29 @@ import type {
   MediaRepository,
   MediaWrite,
 } from '#api/domain/media/ports';
-import { parseVariants, toPublicImage } from '#api/domain/media/media-mapper';
+import {
+  parseVariants,
+  toPublicImage,
+  projectMedia,
+} from '#api/domain/media/media-mapper';
+import type { HookDispatcher } from '#api/domain/ports';
 import type { Database } from '#api/infra/prisma/client';
 import type { Media } from '#api/infra/prisma/generated/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
+import { conflict, Errors } from '#api/shared/errors';
+import { PrismaMediaKeyCatchUp } from '#api/infra/prisma/media-key-catch-up';
 
 /** LIKE pattern text matching `value` literally. */
 const literal = (value: string) => value.replace(/[\\%_]/g, '\\$&');
 
 const relations = {
   uploader: { select: { name: true } },
-  _count: { select: { usages: true } },
+  _count: { select: { usages: true, termUsages: true } },
 } as const;
 
 type Row = Media & {
   uploader: { name: string } | null;
-  _count: { usages: number };
+  _count: { usages: number; termUsages: number };
 };
 
 const toRecord = ({
@@ -32,7 +39,8 @@ const toRecord = ({
   mime: row.mime as MediaRecord['mime'],
   uploaderName: uploader?.name ?? '',
   variants: parseVariants(variants),
-  usageCount: _count.usages,
+  // Entries and term image fields that show the file.
+  usageCount: _count.usages + _count.termUsages,
 });
 
 const MIME_PREFIX = {
@@ -54,11 +62,82 @@ const patternFiles = Prisma.sql`
   WHERE s.\`key\` LIKE 'pattern.%' AND files.id IS NOT NULL`;
 
 export class PrismaMediaRepository implements MediaRepository {
-  constructor(private readonly db: Database) {}
+  constructor(
+    private readonly db: Database,
+    private readonly hooks?: HookDispatcher,
+  ) {}
+  async getByKey(key: string) {
+    const row = await this.db.mediaStorageKey.findUnique({
+      where: { key: new TextEncoder().encode(key) },
+      select: { mediaId: true },
+    });
+    if (row?.mediaId) return this.get(row.mediaId);
+    // Original: one unique-index lookup. Legacy UUID variant: one primary-key lookup.
+    const original = await this.db.media.findUnique({
+      where: { storageKey: key },
+      select: { id: true, storageKey: true },
+    });
+    let id = original?.storageKey === key ? original.id : undefined;
+    if (!id) {
+      const match =
+        /^\d{4}\/\d{2}\/([0-9a-f-]{36})-[a-z][a-z0-9-]{0,63}\.webp$/.exec(key);
+      if (match) {
+        const media = await this.db.media.findUnique({
+          where: { id: match[1]! },
+          select: { variants: true },
+        });
+        if (
+          media &&
+          Object.values(parseVariants(media.variants)).some(
+            (variant) => variant?.key === key,
+          )
+        )
+          id = match[1]!;
+      }
+    }
+    if (!id) return null;
+    await new PrismaMediaKeyCatchUp(this.db).claim(id);
+    return this.get(id);
+  }
+  async reserveKeys(uploadId: string, keys: readonly string[]) {
+    try {
+      await this.db.mediaStorageKey.createMany({
+        data: keys.map((key) => ({
+          key: new TextEncoder().encode(key),
+          uploadId,
+        })),
+      });
+      return true;
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      )
+        return false;
+      throw error;
+    }
+  }
 
   async insert({ variants, ...media }: MediaWrite) {
-    await this.db.media.create({
-      data: { ...media, variants: JSON.stringify(variants) },
+    const keys = [
+      media.storageKey,
+      ...Object.values(variants).flatMap((variant) =>
+        variant ? [variant.key] : [],
+      ),
+    ].map((key) => new TextEncoder().encode(key));
+    await this.db.$transaction(async (tx) => {
+      await tx.media.create({
+        data: { ...media, variants: JSON.stringify(variants) },
+      });
+      await tx.mediaStorageKey.createMany({
+        data: keys.map((key) => ({ key, uploadId: media.id })),
+        skipDuplicates: true,
+      });
+      const claimed = await tx.mediaStorageKey.updateMany({
+        where: { key: { in: keys }, uploadId: media.id, mediaId: null },
+        data: { mediaId: media.id },
+      });
+      if (claimed.count !== keys.length) throw conflict(Errors.MediaKeyInvalid);
     });
   }
 
@@ -69,9 +148,10 @@ export class PrismaMediaRepository implements MediaRepository {
     });
     if (!row) return null;
     const uses = await this.patternUses([id]);
+    const record = toRecord(row);
     return {
-      ...toRecord(row),
-      usageCount: row._count.usages + (uses.get(id) ?? 0),
+      ...record,
+      usageCount: record.usageCount + (uses.get(id) ?? 0),
     };
   }
 
@@ -103,6 +183,7 @@ export class PrismaMediaRepository implements MediaRepository {
     if (unattached)
       filters.push(Prisma.sql`
       NOT EXISTS (SELECT 1 FROM content_media cm WHERE cm.media_id = m.id)
+      AND NOT EXISTS (SELECT 1 FROM term_media tm WHERE tm.media_id = m.id)
       AND m.id NOT IN (SELECT id FROM (${patternFiles}) AS pattern_files)`);
     if (search) {
       const contains = '%' + literal(search) + '%';
@@ -131,10 +212,13 @@ export class PrismaMediaRepository implements MediaRepository {
       ? new Map<string, number>()
       : await this.patternUses(rows.map(({ id }) => id));
     return {
-      items: rows.map((row) => ({
-        ...toRecord(row),
-        usageCount: row._count.usages + (uses.get(row.id) ?? 0),
-      })),
+      items: rows.map((row) => {
+        const record = toRecord(row);
+        return {
+          ...record,
+          usageCount: record.usageCount + (uses.get(row.id) ?? 0),
+        };
+      }),
       total,
     };
   }
@@ -189,7 +273,26 @@ export class PrismaMediaRepository implements MediaRepository {
       orderBy: { content: { updatedAt: 'desc' } },
       take: limit,
     });
-    return rows.map(({ content }) => content);
+    const terms =
+      rows.length < limit
+        ? await this.db.termMedia.findMany({
+            where: { mediaId: id },
+            select: {
+              term: { select: { id: true, name: true, taxonomy: true } },
+            },
+            orderBy: { term: { updatedAt: 'desc' } },
+            take: limit - rows.length,
+          })
+        : [];
+    return [
+      ...rows.map(({ content }) => ({ ...content, kind: 'content' as const })),
+      ...terms.map(({ term }) => ({
+        id: term.id,
+        title: term.name,
+        type: term.taxonomy,
+        kind: 'term' as const,
+      })),
+    ];
   }
 
   async publicImages(ids: readonly string[]) {
@@ -199,6 +302,7 @@ export class PrismaMediaRepository implements MediaRepository {
       select: {
         id: true,
         storageKey: true,
+        storageDriver: true,
         publicUrl: true,
         alt: true,
         width: true,
@@ -207,10 +311,20 @@ export class PrismaMediaRepository implements MediaRepository {
       },
     });
     return new Map(
-      rows.map(({ id, variants, ...row }) => [
-        id,
-        toPublicImage({ ...row, variants: parseVariants(variants) }),
-      ]),
+      await Promise.all(
+        rows.map(
+          async ({ id, variants, ...row }) =>
+            [
+              id,
+              toPublicImage(
+                await projectMedia(
+                  { ...row, variants: parseVariants(variants) },
+                  this.hooks,
+                ),
+              ),
+            ] as const,
+        ),
+      ),
     );
   }
 

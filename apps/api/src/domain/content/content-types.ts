@@ -74,7 +74,26 @@ export class ContentTypeService {
 
   /** Built-in types first, then custom ones in creation order. */
   async list(): Promise<ContentTypeDefinition[]> {
-    return [...this.registry.list(), ...(await this.custom())];
+    const types = [...this.registry.list(), ...(await this.custom())];
+    if (!this.hooks?.has('contentType.definition')) return types;
+    return Promise.all(
+      types.map(async (type) =>
+        contentTypeSchema.parse(
+          await this.hooks!.applyFilter(
+            'contentType.definition',
+            type,
+            (value) => {
+              const result = contentTypeSchema.safeParse(value);
+              return (
+                result.success &&
+                result.data.key === type.key &&
+                result.data.builtin === type.builtin
+              );
+            },
+          ),
+        ),
+      ),
+    );
   }
 
   /** Types with their public fields' labels, so themes can show field values. */

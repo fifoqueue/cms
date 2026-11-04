@@ -13,6 +13,21 @@ import type { MemoryContentRepository } from '#test/support/memory';
 export class MemoryPublishedContentRepository implements PublishedContentRepository {
   constructor(private readonly content: MemoryContentRepository) {}
 
+  async excerptBodies(ids: readonly string[], types?: readonly string[]) {
+    const bodies = new Map<string, string>();
+    for (const id of ids) {
+      const row = this.content.rows.get(id);
+      if (
+        row?.status === 'published' &&
+        row.passwordHash === null &&
+        !this.content.trashed.has(id) &&
+        (!types || types.includes(row.type))
+      )
+        bodies.set(id, row.html);
+    }
+    return bodies;
+  }
+
   async byId(id: string) {
     return this.ancestry(published(await this.content.findById(id)));
   }

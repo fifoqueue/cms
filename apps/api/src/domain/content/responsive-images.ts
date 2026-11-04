@@ -33,8 +33,15 @@ export class ResponsiveImages {
       : new Map<string, PublicImage>();
     let index = 0;
     return html.replace(IMAGE, (tag, attrs: string) => {
-      if (/\s(?:srcset|loading)=/.test(attrs)) return tag;
       const image = images.get(MEDIA_ID.exec(attrs)?.[1] ?? '');
+      if (!image && /\s(?:srcset|loading)=/.test(attrs)) return tag;
+      if (image) {
+        attrs = attrs.replace(
+          /\ssrc="[^"]*"/,
+          ` src="${escapeAttribute(image.url)}"`,
+        );
+        attrs = attrs.replace(/\ssrcset="[^"]*"/, '');
+      }
       const extra: string[] = [];
       if (image && image.sizes.length > 1)
         extra.push(
@@ -43,7 +50,8 @@ export class ResponsiveImages {
         );
       if (image?.width && image.height && !/\s(?:width|height)=/.test(attrs))
         extra.push(`width="${image.width}" height="${image.height}"`);
-      if (index++ > 0) extra.push('loading="lazy"');
+      if (index++ > 0 && !/\sloading=/.test(attrs))
+        extra.push('loading="lazy"');
       extra.push('decoding="async"');
       return `<img${attrs} ${extra.join(' ')}>`;
     });

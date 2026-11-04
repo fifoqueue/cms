@@ -1,7 +1,12 @@
 import { fail } from '@sveltejs/kit';
 import { adminEntrySeoFields, taxonomyInputSchema } from '@cms/sdk';
-import type { AdminTaxonomyTerm, TaxonomyType } from '@cms/sdk';
+import type {
+  AdminTaxonomyTerm,
+  FieldDefinition,
+  TaxonomyType,
+} from '@cms/sdk';
 import type { SeoFormValues } from '#lib/admin/seo.js';
+import { fieldImages, readFields } from '#lib/server/content-form.js';
 import type { FormFailure } from '#lib/server/errors.js';
 import { Errors, failFrom, issuesOf, text } from '#lib/server/errors.js';
 import { loadSeoContext, readSeoForm } from '#lib/server/seo-admin.js';
@@ -24,6 +29,7 @@ export const adminTermView = ({
   parentId,
   count,
   seo,
+  fields,
 }: AdminTaxonomyTerm) => ({
   id,
   taxonomy,
@@ -33,6 +39,7 @@ export const adminTermView = ({
   parentId,
   count,
   seo: adminEntrySeoFields(seo),
+  fields,
 });
 
 export type AdminTermView = ReturnType<typeof adminTermView>;
@@ -46,21 +53,38 @@ export interface TermFormValues {
   parentId: string;
   /** Absent when the form had no SEO fieldset; the API then keeps the stored SEO. */
   seo?: SeoFormValues;
+  /** Absent when the taxonomy declares no term fields; the API then keeps the stored values. */
+  fields?: Record<string, unknown>;
 }
 
 export type TermIntent = 'create' | 'update';
 
+/** The field definitions whose inputs the term form of `taxonomy` shows. */
+const loadTermFields = async (
+  event: Omit<AdminEvent, 'request' | 'url'>,
+  taxonomy: TaxonomyType,
+) =>
+  (await adminFor(event).contentModel.model()).fields.filter((field) =>
+    field.taxonomies.includes(taxonomy),
+  );
+
 export const loadTerms = async (event: AdminEvent, taxonomy: TaxonomyType) => {
-  const [list, seo] = await Promise.all([
+  const [list, seo, fields] = await Promise.all([
     adminFor(event).taxonomy.list(taxonomy),
     loadSeoContext(event),
+    loadTermFields(event, taxonomy),
   ]);
   const terms = list.map(adminTermView);
   const editId = event.url.searchParams.get('edit');
+  const editing = terms.find((term) => term.id === editId) ?? null;
   return {
     terms,
-    editing: terms.find((term) => term.id === editId) ?? null,
+    editing,
     seo,
+    fields,
+    fieldImages: editing
+      ? await fieldImages(adminFor(event), fields, editing.fields)
+      : {},
   };
 };
 
@@ -127,10 +151,12 @@ export const loadTermChoices = async (
   return { ...terms, parentPages };
 };
 
-const readTermForm = (
+/** Reads `TaxonomyManager.svelte`; `definitions` are the taxonomy's term fields. */
+export const readTermForm = (
   form: FormData,
   taxonomy: TaxonomyType,
   intent: TermIntent,
+  definitions: readonly FieldDefinition[] = [],
 ) => {
   const values: TermFormValues = {
     id: text(form, 'id'),
@@ -140,6 +166,7 @@ const readTermForm = (
     // Tags are flat: a parent is never sent for them.
     parentId: taxonomy !== 'tag' ? text(form, 'parentId') : '',
     seo: readSeoForm(form),
+    ...(definitions.length ? { fields: readFields(form, definitions) } : {}),
   };
   const result = taxonomyInputSchema.safeParse({
     name: values.name,
@@ -147,6 +174,7 @@ const readTermForm = (
     description: values.description,
     parentId: values.parentId || null,
     seo: values.seo,
+    fields: values.fields,
   });
   if (result.success) return { values, input: result.data };
   return {
@@ -166,10 +194,15 @@ export const saveTerm = async (
   taxonomy: TaxonomyType,
   intent: TermIntent,
 ) => {
+  const [form, definitions] = await Promise.all([
+    event.request.formData(),
+    loadTermFields(event, taxonomy),
+  ]);
   const { values, input, failure } = readTermForm(
-    await event.request.formData(),
+    form,
     taxonomy,
     intent,
+    definitions,
   );
   if (failure) return failure;
   const admin = adminFor(event);

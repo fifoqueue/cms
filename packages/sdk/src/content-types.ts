@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import { KEBAB_CASE } from '#sdk/common';
-import { isJsonValue } from '#sdk/common';
 import { Errors } from '#sdk/errors';
+import { taxonomyTypeSchema } from '#sdk/taxonomy-keys';
+
+export { fieldValuesSchema } from '#sdk/field-values';
+export type { FieldValues } from '#sdk/field-values';
 
 /** Types every site has. They cannot be removed, and their keys are reserved. */
 export const BUILTIN_CONTENT_TYPES = ['post', 'article', 'page'] as const;
@@ -76,7 +79,10 @@ export const FIELD_TYPES = [
 
 export type FieldType = (typeof FIELD_TYPES)[number];
 
-/** A custom field shown in the editor for the listed content types. */
+/**
+ * A custom field shown in the editor for the listed content types and on the terms of the listed
+ * taxonomies (WordPress post and term meta). At least one target is required.
+ */
 export const fieldDefinitionSchema = z
   .object({
     key: z.union([
@@ -99,22 +105,20 @@ export const fieldDefinitionSchema = z
     /** Served in the public API; otherwise kept for the administration only. */
     public: z.boolean().default(true),
     help: z.string().trim().max(300).default(''),
-    contentTypes: z.array(contentTypeKeySchema).min(1).max(50),
+    contentTypes: z.array(contentTypeKeySchema).max(50).default([]),
+    taxonomies: z.array(taxonomyTypeSchema).max(50).default([]),
   })
   .refine((field) => field.type !== 'select' || field.options.length > 0, {
     message: Errors.FieldOptionsRequired,
     path: ['options'],
-  });
+  })
+  .refine(
+    (field) => field.contentTypes.length > 0 || field.taxonomies.length > 0,
+    { message: Errors.FieldRequired, path: ['contentTypes'] },
+  );
 
 export type FieldDefinition = z.output<typeof fieldDefinitionSchema>;
 export type FieldDefinitionInput = z.input<typeof fieldDefinitionSchema>;
-
-/** Values of an entry's custom fields: plain JSON by key. */
-export const fieldValuesSchema = z
-  .record(z.string().max(136), z.unknown())
-  .refine((values) => isJsonValue(values), Errors.FieldValuesInvalid);
-
-export type FieldValues = Record<string, unknown>;
 
 /** Public description of a type (for archives and navigation) and its public fields. */
 export const publicContentTypeSchema = z.object({

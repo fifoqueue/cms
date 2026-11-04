@@ -16,10 +16,11 @@ export const load: PageServerLoad = async (event) => {
     context: {
       newerId: context.newerId,
       olderId: context.olderId,
-      usedIn: context.usedIn.map(({ id, title, type }) => ({
+      usedIn: context.usedIn.map(({ id, title, type, kind }) => ({
         id,
         title,
         type,
+        kind,
       })),
     },
   };

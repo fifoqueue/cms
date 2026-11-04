@@ -5,6 +5,7 @@ import {
   monthNeighboursQuerySchema,
   monthsQuerySchema,
   publicContentListQuerySchema,
+  publicContentCriteriaSchema,
   publicContentSchema,
   publicContentSummarySchema,
   permalinkPathIssue,
@@ -38,6 +39,12 @@ import type { SearchService } from '#api/domain/search/search-service';
 import { notFound, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 import { z } from 'zod';
+import { filterHtml } from '#api/domain/content/html-filter';
+import {
+  filterExcerpt,
+  regenerateExcerpt,
+} from '#api/domain/content/excerpt-filter';
+import type { PublishedSummaryRecord } from '#api/domain/content/published-content-repository';
 
 /**
  * The filter result is served as is, so it must be exactly the public shape (no extra keys,
@@ -60,6 +67,7 @@ export class PublishedContentReader implements ContentReader {
       records: readonly PublishedRecord[],
       visibility: 'published' | 'private',
     ) => Promise<Map<string, string>>,
+    private readonly hooks?: HookDispatcher,
   ) {}
 
   async list(query: unknown = {}): Promise<Paginated<PublicContent>> {
@@ -90,13 +98,21 @@ export class PublishedContentReader implements ContentReader {
     query: unknown = {},
     types?: readonly string[],
   ): Promise<Paginated<PublicContentSummary>> {
-    const criteria = parseInput(publicContentListQuerySchema, query);
+    const criteria = parseInput(
+      publicContentCriteriaSchema.or(publicContentListQuerySchema),
+      query,
+    );
     const { items, total } = await this.repository.summaries({
       ...criteria,
       types,
     });
     const { page, pageSize } = criteria;
-    return { items: items.map(toPublicSummary), total, page, pageSize };
+    return {
+      items: await this.summariesOf(items),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   /** Public entries among `ids`, in that order; others are left out. */
@@ -109,18 +125,55 @@ export class PublishedContentReader implements ContentReader {
         record,
       ]),
     );
-    return ids.flatMap((id) => {
-      const record = records.get(id);
-      return record ? [toPublicSummary(record)] : [];
-    });
+    return this.summariesOf(
+      ids.flatMap((id) => {
+        const record = records.get(id);
+        return record ? [record] : [];
+      }),
+    );
   }
 
   async adjacent(id: string) {
     const { previous, next } = await this.repository.adjacent(id);
+    const summaries = new Map(
+      (
+        await this.summariesOf([
+          ...(previous ? [previous] : []),
+          ...(next ? [next] : []),
+        ])
+      ).map((item) => [item.id, item]),
+    );
     return {
-      previous: previous && toPublicSummary(previous),
-      next: next && toPublicSummary(next),
+      previous: previous ? summaries.get(previous.id)! : null,
+      next: next ? summaries.get(next.id)! : null,
     };
+  }
+
+  private async summariesOf(records: PublishedSummaryRecord[]) {
+    const summaries = records.map(toPublicSummary);
+    if (!this.hooks?.has('content.excerpt')) return summaries;
+    const hooks = this.hooks;
+    const filtered = await Promise.all(
+      records.map((record) => filterExcerpt(hooks, record)),
+    );
+    const ids = records.flatMap((record, index) =>
+      filtered[index]!.generation ? [record.id] : [],
+    );
+    const bodies = ids.length
+      ? await this.repository.excerptBodies(ids)
+      : new Map<string, string>();
+    return summaries.map((summary, index) => {
+      const { excerpt, generation } = filtered[index]!;
+      const html = bodies.get(summary.id);
+      return {
+        ...summary,
+        excerpt: generation
+          ? html === undefined
+            ? ''
+            : regenerateExcerpt(html, generation)
+          : excerpt,
+      };
+    });
   }
 
   /** The nearest months with published posts around one month. */
@@ -253,14 +306,22 @@ export class PublicContentService {
           const result = searchHookQuerySchema.safeParse(value);
           return (
             result.success &&
-            publicContentListQuerySchema.safeParse(toCriteria(result.data))
+            publicContentCriteriaSchema.safeParse(toCriteria(result.data))
               .success
           );
         },
       );
       const args = searchHookQuerySchema.parse(filtered);
       types = args.types;
-      criteria = publicContentListQuerySchema.parse(toCriteria(args));
+      criteria = publicContentCriteriaSchema.parse(toCriteria(args));
+    } else if (this.hooks.has('content.publicQuery')) {
+      criteria = publicContentCriteriaSchema.parse(
+        await this.hooks.applyFilter(
+          'content.publicQuery',
+          criteria,
+          (value) => publicContentCriteriaSchema.safeParse(value).success,
+        ),
+      );
     }
     types = activeTypes.filter(
       (type) =>
@@ -305,6 +366,30 @@ export class PublicContentService {
       page.items = hits.ids.flatMap((id) => items.get(id) ?? []);
       page.total = hits.total;
     }
+    if (this.hooks.has('content.publicResults')) {
+      const initial = {
+        ids: page.items.map((item) => item.id),
+        total: page.total,
+      };
+      const available = new Map(page.items.map((item) => [item.id, item]));
+      const filtered = await this.hooks.applyFilter(
+        'content.publicResults',
+        initial,
+        async (value) => {
+          const result = searchHookResultsSchema.safeParse(value);
+          if (!result.success) return false;
+          const missing = result.data.ids.filter((id) => !available.has(id));
+          if (missing.length) {
+            for (const item of await this.reader.summariesByIds(missing))
+              if (activeTypes.includes(item.type)) available.set(item.id, item);
+          }
+          return result.data.ids.every((id) => available.has(id));
+        },
+      );
+      const hits = searchHookResultsSchema.parse(filtered);
+      page.items = hits.ids.flatMap((id) => available.get(id) ?? []);
+      page.total = hits.total;
+    }
     return {
       ...page,
       items: await Promise.all(page.items.map((item) => this.summarize(item))),
@@ -329,6 +414,7 @@ export class PublicContentService {
     id: string,
     proofs: readonly string[] = [],
     actor: Actor | null = null,
+    context: 'single' | 'feed' = 'single',
   ): Promise<PublicContent | null> {
     let content = await this.reader.getById(
       id,
@@ -341,7 +427,7 @@ export class PublicContentService {
         this.fields.present(type, values),
       );
     }
-    return content ? this.present(content) : null;
+    return content ? this.present(content, context) : null;
   }
 
   /** Previous and next entries of the same type, after the summary filter. */
@@ -387,21 +473,42 @@ export class PublicContentService {
     return this.locks.unlock(id, input, attempt);
   }
 
-  private async present(content: PublicContent): Promise<PublicContent> {
-    content = { ...content, path: await this.permalink(content) };
+  private async present(
+    content: PublicContent,
+    context: 'single' | 'feed' = 'single',
+  ): Promise<PublicContent> {
+    content = {
+      ...content,
+      path: await this.permalink(content),
+      title: await this.title(content),
+    };
     const filtered = await this.hooks.applyFilter(
       'content.public',
       {
         ...content,
-        html: await this.embeds.expand(content.html, {
-          content: {
-            id: content.id,
-            type: content.type,
-            slug: content.slug,
-            path: content.path,
-            title: content.title,
+        html: await this.embeds.expand(
+          await filterHtml(
+            this.hooks,
+            content.html,
+            {
+              id: content.id,
+              type: content.type,
+              slug: content.slug,
+              path: content.path,
+              title: content.title,
+            },
+            context,
+          ),
+          {
+            content: {
+              id: content.id,
+              type: content.type,
+              slug: content.slug,
+              path: content.path,
+              title: content.title,
+            },
           },
-        }),
+        ),
       },
       isPublicContent,
     );
@@ -419,7 +526,11 @@ export class PublicContentService {
   private async summarize(
     content: PublicContentSummary,
   ): Promise<PublicContentSummary> {
-    content = { ...content, path: await this.permalink(content) };
+    content = {
+      ...content,
+      path: await this.permalink(content),
+      title: await this.title(content),
+    };
     const filtered = await this.hooks.applyFilter(
       'content.publicSummary',
       content,
@@ -434,6 +545,22 @@ export class PublicContentService {
       parentId: content.parentId,
       seo: content.seo,
     });
+  }
+
+  private async title(content: PublicContentSummary) {
+    if (!this.hooks.has('content.title')) return content.title;
+    const schema = z
+      .object({
+        title: publicContentSummarySchema.shape.title,
+        contentId: z.literal(content.id),
+      })
+      .strict();
+    const filtered = await this.hooks.applyFilter(
+      'content.title',
+      { title: content.title, contentId: content.id },
+      (value) => schema.safeParse(value).success,
+    );
+    return schema.parse(filtered).title;
   }
 
   private async permalink(content: PublicContentSummary) {

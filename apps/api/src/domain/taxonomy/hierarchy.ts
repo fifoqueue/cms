@@ -1,6 +1,7 @@
 import type { TaxonomyType } from '@cms/sdk';
 import { descendantIds } from '@cms/sdk/tree';
 import { invalidInput, Errors } from '#api/shared/errors';
+import type { TermListFilter } from '#api/domain/taxonomy/taxonomy-repository';
 
 interface TermNode {
   id: string;
@@ -58,3 +59,32 @@ export const compareTerms = (
         : a.id > b.id
           ? 1
           : 0;
+
+interface SortableTerm {
+  id: string;
+  name: string;
+  slug: string;
+  count: number;
+  createdAt: Date;
+}
+
+const orderKeys: Record<
+  NonNullable<TermListFilter['orderBy']>,
+  (a: SortableTerm, b: SortableTerm) => number
+> = {
+  name: () => 0,
+  slug: (a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0),
+  count: (a, b) => a.count - b.count,
+  createdAt: (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+};
+
+/** Sorts a term list in place by `orderBy` and `order`; ties fall back to `compareTerms`. */
+export const sortTerms = <T extends SortableTerm>(
+  terms: T[],
+  { orderBy = 'name', order = 'asc' }: TermListFilter = {},
+): T[] => {
+  const sign = order === 'desc' ? -1 : 1;
+  return terms.sort(
+    (a, b) => sign * (orderKeys[orderBy](a, b) || compareTerms(a, b)),
+  );
+};

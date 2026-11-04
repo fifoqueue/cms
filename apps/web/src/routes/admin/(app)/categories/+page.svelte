@@ -15,5 +15,7 @@
   terms={data.terms}
   editing={data.editing}
   seo={data.seo}
+  fields={data.fields}
+  fieldImages={data.fieldImages}
   {form}
 />

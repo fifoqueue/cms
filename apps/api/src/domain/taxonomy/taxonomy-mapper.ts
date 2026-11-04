@@ -4,7 +4,11 @@ import { toAdminSeo, toPublicSeo } from '#api/domain/seo/seo-mapper';
 import type { CountedTermRecord } from '#api/domain/taxonomy/taxonomy-repository';
 
 // Every DTO lists its fields explicitly, so nothing stored leaks into a response.
-export const toPublicTerm = (record: CountedTermRecord): PublicTaxonomyTerm =>
+/** `fields` are the projected public term fields, never the stored values. */
+export const toPublicTerm = (
+  record: CountedTermRecord,
+  fields: Record<string, unknown>,
+): PublicTaxonomyTerm =>
   publicTaxonomyTermSchema.parse({
     id: record.id,
     taxonomy: record.taxonomy,
@@ -14,6 +18,7 @@ export const toPublicTerm = (record: CountedTermRecord): PublicTaxonomyTerm =>
     parentId: record.parentId,
     count: record.count,
     seo: toPublicSeo(record.seo),
+    fields,
   });
 
 export const toAdminTerm = (record: CountedTermRecord): AdminTaxonomyTerm =>
@@ -28,4 +33,5 @@ export const toAdminTerm = (record: CountedTermRecord): AdminTaxonomyTerm =>
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     seo: toAdminSeo(record.seo),
+    fields: record.fields,
   });

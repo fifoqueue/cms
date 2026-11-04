@@ -37,6 +37,7 @@ const TABLES = [
   'content_revisions',
   'media',
   'content_media',
+  'term_media',
   'comments',
   'push_subscriptions',
   'notice_windows',

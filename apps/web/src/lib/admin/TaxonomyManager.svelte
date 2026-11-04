@@ -3,7 +3,8 @@
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
   import { DEFAULT_ENTRY_SEO } from '@cms/sdk';
-  import type { TaxonomyType } from '@cms/sdk';
+  import type { FieldDefinition, TaxonomyType } from '@cms/sdk';
+  import CustomFields from '#lib/admin/CustomFields.svelte';
   import { default as Pencil } from '@lucide/svelte/icons/pencil';
   import { default as Trash2 } from '@lucide/svelte/icons/trash-2';
   import FormMessage from '#lib/admin/FormMessage.svelte';
@@ -58,6 +59,10 @@
     editing: AdminTermView | null;
     seo: SeoPreviewContext;
     form?: TermForm | null;
+    /** Term field definitions of the taxonomy. */
+    fields?: FieldDefinition[];
+    /** Thumbnail addresses of the edited term's image fields, by field key. */
+    fieldImages?: Record<string, string>;
   }
 
   let {
@@ -67,6 +72,8 @@
     seo,
     form,
     hierarchical = taxonomy !== 'tag',
+    fields = [],
+    fieldImages = {},
   }: Props = $props();
 
   const i18n = useI18n();
@@ -102,6 +109,7 @@
             description: target.description,
             parentId: target.parentId ?? '',
             seo: seoFormValues(target.seo),
+            fields: target.fields,
           }
         : {
             id: '',
@@ -185,6 +193,11 @@
       bind:value={description}
     />
   </div>
+  <CustomFields
+    {fields}
+    values={values.fields ?? {}}
+    images={target ? fieldImages : {}}
+  />
 {/snippet}
 
 {#if target}

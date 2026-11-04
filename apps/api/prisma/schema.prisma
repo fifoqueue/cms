@@ -282,6 +282,7 @@ model TaxonomyTerm {
   parent               TaxonomyTerm?  @relation("TermHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children             TaxonomyTerm[] @relation("TermHierarchy")
   contents             ContentTerm[]
+  media                TermMedia[]
   seoTitle             String         @default("") @map("seo_title") @db.Text
   seoDescription       String         @default("") @map("seo_description") @db.Text
   seoCanonicalUrl      String         @default("") @map("seo_canonical_url") @db.Text
@@ -295,6 +296,8 @@ model TaxonomyTerm {
   seoAuthorName        String         @default("") @map("seo_author_name") @db.Text
   seoAuthorUrl         String         @default("") @map("seo_author_url") @db.Text
   seoFocusKeyword      String         @default("") @map("seo_focus_keyword") @db.Text
+  /// Term field values by key (JSON); definitions target taxonomies in the `contentFields` setting.
+  fields               String         @default("{}") @db.LongText
 
   @@unique([taxonomy, slug])
   @@index([taxonomy, seoNoIndex, slug])
@@ -468,11 +471,24 @@ model Media {
   uploader   User?          @relation(fields: [uploaderId], references: [id], onDelete: SetNull)
   featuredIn Content[]      @relation("FeaturedMedia")
   usages     ContentMedia[]
+  termUsages TermMedia[]
+  keys       MediaStorageKey[]
 
   @@index([createdAt])
   @@index([uploaderId])
   @@index([mime])
   @@map("media")
+}
+
+/// Exact storage namespace, including unclaimed reservations and deleted-file tombstones.
+model MediaStorageKey {
+  key      Bytes   @id @db.VarBinary(255)
+  uploadId String? @map("upload_id") @db.Char(36)
+  mediaId  String? @map("media_id") @db.Char(36)
+  media    Media?  @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+
+  @@index([mediaId])
+  @@map("media_storage_keys")
 }
 
 /// Media an entry shows, in its body or as its featured image. Rebuilt on every save.
@@ -485,6 +501,18 @@ model ContentMedia {
   @@id([contentId, mediaId])
   @@index([mediaId])
   @@map("content_media")
+}
+
+/// Media a term's image fields point at. Rebuilt whenever the term's field values are saved.
+model TermMedia {
+  termId  String       @map("term_id") @db.Char(36)
+  mediaId String       @map("media_id") @db.Char(36)
+  term    TaxonomyTerm @relation(fields: [termId], references: [id], onDelete: Cascade)
+  media   Media        @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@id([termId, mediaId])
+  @@index([mediaId])
+  @@map("term_media")
 }
 
 enum CommentStatus {

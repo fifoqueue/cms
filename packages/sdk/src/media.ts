@@ -114,12 +114,20 @@ export const mediaListQuerySchema = z.object({
 
 export type MediaListQuery = z.input<typeof mediaListQuerySchema>;
 
-/** Where a file sits in the library (newest first) and which entries show it. */
+/**
+ * Where a file sits in the library (newest first) and which entries and terms show it. A term
+ * (`kind: 'term'`) has its name as `title` and its taxonomy as `type`.
+ */
 export const mediaContextSchema = z.object({
   newerId: z.string().nullable(),
   olderId: z.string().nullable(),
   usedIn: z.array(
-    z.object({ id: z.string(), title: z.string(), type: z.string() }),
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      type: z.string(),
+      kind: z.enum(['content', 'term']).default('content'),
+    }),
   ),
 });
 

@@ -5,6 +5,7 @@ import {
   can,
   contentInputSchema,
   contentListQuerySchema,
+  contentDefaultsSchema,
 } from '@cms/sdk';
 import type {
   AdminContentSummary,
@@ -35,7 +36,7 @@ import {
 import { mediaIdsOf } from '#api/domain/content/plain-text';
 import type { RevisionSave } from '#api/domain/content/revisions';
 import type { ContentTypeService } from '#api/domain/content/content-types';
-import { fieldMediaIds } from '#api/domain/content/fields';
+import { fieldMediaIds, retainedMediaIds } from '#api/domain/content/fields';
 import type { FieldService } from '#api/domain/content/fields';
 import { slugify, uniqueSlug } from '#api/domain/content/slug';
 import type { Clock, HookDispatcher, IdGenerator } from '#api/domain/ports';
@@ -81,6 +82,29 @@ const isUnpublished = (status: ContentRecord['status']) =>
 /** Authoring use cases over every content item, whatever its status. */
 export class ContentService {
   constructor(private readonly deps: ContentServiceDeps) {}
+
+  async defaults(type: string, actor: Actor) {
+    authorize(actor, 'content.create');
+    await this.deps.types.require(type);
+    const initial = contentDefaultsSchema.parse({
+      type,
+      title: '',
+      document: { type: 'doc', content: [{ type: 'paragraph' }] },
+    });
+    if (!this.deps.hooks.has('content.defaults')) return initial;
+    const filtered = await this.deps.hooks.applyFilter(
+      'content.defaults',
+      initial,
+      (value) => {
+        const result = contentDefaultsSchema.safeParse(value);
+        if (!result.success || result.data.type !== type) return false;
+        this.deps.renderer.render(result.data.document);
+        this.deps.blocks?.check(result.data.document);
+        return true;
+      },
+    );
+    return contentDefaultsSchema.parse(filtered);
+  }
 
   /** Every writer sees every entry (like WordPress); opening one needs edit rights. */
   async list(
@@ -133,12 +157,25 @@ export class ContentService {
     origin?: ContentOrigin,
   ): Promise<ContentEntry> {
     authorize(actor, 'content.create');
-    const data = await this.prepare(input);
+    const data = await this.prepare(input, actor, null);
     await this.assertStatus(actor, data);
     const authorId = await this.authorFor(actor, data.authorId, actor.id);
     const id = this.deps.ids.next();
     const now = this.deps.clock.now();
-    if (data.slug) await this.assertSlugFree(data.slug);
+    const initialSlug =
+      data.slug ??
+      (await uniqueSlug(
+        slugify(data.title) || `${data.type}-${id.slice(-12)}`,
+        async (candidates) =>
+          new Set([
+            ...RESERVED_CONTENT_SLUGS,
+            ...(await this.deps.repository.takenSlugs(candidates)),
+          ]),
+        () => this.deps.ids.next().slice(-8),
+      ));
+    const slug = await this.slug(initialSlug, data, null);
+    if (data.slug !== undefined || slug !== initialSlug)
+      await this.assertSlugFree(slug);
     const record = await this.deps.repository.insert(
       {
         ...(await this.fields(data, null)),
@@ -146,17 +183,7 @@ export class ContentService {
         passwordHash: await this.passwordHash(data, null),
         seo: data.seo ?? { ...DEFAULT_ENTRY_SEO },
         id,
-        slug:
-          data.slug ??
-          (await uniqueSlug(
-            slugify(data.title) || `${data.type}-${id.slice(-12)}`,
-            async (candidates) =>
-              new Set([
-                ...RESERVED_CONTENT_SLUGS,
-                ...(await this.deps.repository.takenSlugs(candidates)),
-              ]),
-            () => this.deps.ids.next().slice(-8),
-          )),
+        slug,
         createdAt: now,
         updatedAt: now,
         authorId,
@@ -167,11 +194,12 @@ export class ContentService {
         createdById: origin ? actor.id : null,
         modifiedById: origin ? actor.id : null,
       },
-      this.revision(actor, true, origin),
+      await this.revision(data.type, actor, true, origin),
     );
 
     const entry = toEntry(record);
     void this.deps.hooks.emit('content.created', entry);
+    this.statusChanged(entry, null);
     void this.deps.hooks.emit('content.revisionSaved', entry);
     if (this.termIds(entry).length)
       void this.deps.hooks.emit('content.termsChanged', entry);
@@ -192,14 +220,14 @@ export class ContentService {
   ): Promise<ContentEntry> {
     const current = await this.require(id);
     this.assertEditable(actor, current);
-    const data = await this.prepare(input);
+    const data = await this.prepare(input, actor, current);
     await this.assertStatus(actor, data);
     const authorId = await this.authorFor(
       actor,
       data.authorId,
       current.authorId,
     );
-    const slug = data.slug ?? current.slug;
+    const slug = await this.slug(data.slug ?? current.slug, data, current.id);
     if (slug !== current.slug) await this.assertSlugFree(slug);
     const now = this.deps.clock.now();
     const expected = data.expectedUpdatedAt
@@ -222,7 +250,7 @@ export class ContentService {
         modifiedUserAgent: origin?.userAgent ?? null,
         modifiedById: origin ? actor.id : null,
       },
-      this.revision(actor, !data.preserveAutosave, origin),
+      await this.revision(data.type, actor, !data.preserveAutosave, origin),
       {
         expectedUpdatedAt: expected,
         autosaveOf: data.preserveAutosave ? actor.id : undefined,
@@ -231,7 +259,13 @@ export class ContentService {
     );
 
     const entry = toEntry(record);
-    void this.deps.hooks.emit('content.updated', entry);
+    if (this.deps.hooks.has('content.updated'))
+      void this.deps.hooks.emit('content.updated', {
+        ...entry,
+        previous: toEntry(current),
+      });
+    if (record.status !== current.status)
+      this.statusChanged(entry, current.status);
     if (record.textSavedAt.getTime() !== current.textSavedAt.getTime())
       void this.deps.hooks.emit('content.revisionSaved', entry);
     if (
@@ -257,15 +291,25 @@ export class ContentService {
     const current = await this.require(id);
     this.assertEditable(actor, current);
     if (current.trashedAt) return;
+    if (
+      this.deps.hooks.has('content.trashAllowed') &&
+      !(await this.deps.hooks.applyFilter(
+        'content.trashAllowed',
+        true,
+        (value) => typeof value === 'boolean',
+        undefined,
+        [{ content: toEntry(current), actorId: actor.id }],
+      ))
+    )
+      throw forbidden();
     await this.deps.repository.setTrashed(id, this.deps.clock.now(), {
       modifiedIp: origin?.ip ? canonicalAddress(origin.ip) : null,
       modifiedUserAgent: origin?.userAgent ?? null,
       modifiedById: origin ? actor.id : null,
     });
-    void this.deps.hooks.emit(
-      'content.trashed',
-      toEntry(await this.require(id)),
-    );
+    const entry = toEntry(await this.require(id));
+    void this.deps.hooks.emit('content.trashed', entry);
+    this.statusChanged(entry, current.status);
   }
 
   async restore(
@@ -281,10 +325,9 @@ export class ContentService {
       modifiedUserAgent: origin?.userAgent ?? null,
       modifiedById: origin ? actor.id : null,
     });
-    void this.deps.hooks.emit(
-      'content.restored',
-      toEntry(await this.require(id)),
-    );
+    const entry = toEntry(await this.require(id));
+    void this.deps.hooks.emit('content.restored', entry);
+    this.statusChanged(entry, 'trash');
   }
 
   /** Deletes the entry for good, with its paths, assignments and revisions. */
@@ -306,8 +349,10 @@ export class ContentService {
       this.deps.clock.now(),
     )) {
       const record = await this.deps.repository.findById(id);
-      if (record)
+      if (record) {
         void this.deps.hooks.emit('content.published', toEntry(record));
+        this.statusChanged(toEntry(record), 'scheduled');
+      }
     }
   }
 
@@ -393,6 +438,7 @@ export class ContentService {
           ...fieldMediaIds(definitions, fields),
         ]),
       ],
+      retainedMediaIds: retainedMediaIds(definitions, fields),
     } satisfies Partial<ContentWrite>;
   }
 
@@ -441,28 +487,98 @@ export class ContentService {
     return data.password ? this.deps.hasher.hash(data.password) : null;
   }
 
-  private revision(
+  private async revision(
+    type: string,
     actor: Actor,
     clearAutosave = true,
     origin?: ContentOrigin,
-  ): RevisionSave {
+  ): Promise<RevisionSave> {
+    let keep = REVISIONS_KEPT;
+    if (this.deps.hooks.has('content.revisionsToKeep')) {
+      const result = await this.deps.hooks.applyFilter(
+        'content.revisionsToKeep',
+        { count: keep, type },
+        (value) =>
+          typeof value === 'object' &&
+          value !== null &&
+          'type' in value &&
+          value.type === type &&
+          'count' in value &&
+          typeof value.count === 'number' &&
+          Number.isInteger(value.count) &&
+          value.count >= 0 &&
+          value.count <= REVISIONS_KEPT,
+      );
+      keep = result.count;
+    }
     return {
       ip: origin?.ip ? canonicalAddress(origin.ip) : null,
       userAgent: origin?.userAgent ?? null,
       id: this.deps.ids.next(),
       authorId: actor.id,
-      keep: REVISIONS_KEPT,
+      keep,
       clearAutosave,
     };
   }
 
-  private async prepare(input: unknown): Promise<ContentData> {
-    const { password, ...data } = parseInput(contentInputSchema, input);
+  private statusChanged(
+    entry: ContentEntry,
+    previousStatus: ContentEntry['status'] | 'trash' | null,
+  ) {
+    if (this.deps.hooks.has('content.statusChanged'))
+      void this.deps.hooks.emit('content.statusChanged', {
+        ...entry,
+        previousStatus,
+      });
+  }
+
+  private async slug(
+    slug: string,
+    data: ContentData,
+    contentId: string | null,
+  ) {
+    if (!this.deps.hooks.has('content.slug')) return slug;
     const filtered = await this.deps.hooks.applyFilter(
-      'content.beforeSave',
-      data,
-      isContentSave,
+      'content.slug',
+      { slug, title: data.title, type: data.type, contentId },
+      (value) => {
+        if (typeof value !== 'object' || value === null) return false;
+        if (!('slug' in value) || typeof value.slug !== 'string') return false;
+        return (
+          'title' in value &&
+          value.title === data.title &&
+          'type' in value &&
+          value.type === data.type &&
+          'contentId' in value &&
+          value.contentId === contentId &&
+          contentInputSchema.safeParse({ ...data, slug: value.slug }).success
+        );
+      },
     );
+    return contentInputSchema.parse({ ...data, slug: filtered.slug }).slug!;
+  }
+
+  private async prepare(
+    input: unknown,
+    actor: Actor,
+    current: ContentRecord | null,
+  ): Promise<ContentData> {
+    const { password, ...data } = parseInput(contentInputSchema, input);
+    const filtered = this.deps.hooks.has('content.beforeSave')
+      ? await this.deps.hooks.applyFilter(
+          'content.beforeSave',
+          data,
+          isContentSave,
+          undefined,
+          [
+            {
+              contentId: current?.id ?? null,
+              previous: current ? toEntry(current) : null,
+              actorId: actor.id,
+            },
+          ],
+        )
+      : data;
     // The password and concurrency check are the client's, never a filter's.
     return {
       ...contentSaveSchema.parse(filtered),

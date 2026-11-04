@@ -78,6 +78,13 @@ export const contentDocumentSchema = z
 
 export type ContentDocument = z.infer<typeof contentDocumentSchema>;
 
+export const contentDefaultsSchema = z.strictObject({
+  type: contentTypeKeySchema,
+  title: z.string().max(255),
+  document: contentDocumentSchema,
+});
+export type ContentDefaults = z.infer<typeof contentDefaultsSchema>;
+
 /** Only the admin area owns a root slug. Archives and query-string search preserve legacy URLs. */
 export const RESERVED_CONTENT_SLUGS: readonly string[] = ['admin'];
 
@@ -232,28 +239,13 @@ export const contentListQuerySchema = z
 
 export type ContentListQuery = z.input<typeof contentListQuerySchema>;
 
-/** Public listing: published content only. Unknown keys (including `status`) are ignored. */
-export const publicContentListQuerySchema = z
+/** Normalized public query used by readers and filters, after HTTP alias conversion. */
+export const publicContentCriteriaSchema = z
   .object({
     ...listFilters,
-    orderby: z
-      .enum(['date', 'modified', 'title', 'id', 'menu_order'])
-      .optional(),
-    order: z.enum(['asc', 'desc']).optional(),
+    orderBy: z.enum(['publishedAt', 'updatedAt', 'title', 'id', 'menuOrder']),
+    order: z.enum(['asc', 'desc']),
   })
-  .transform((value) => ({
-    ...value,
-    orderBy: (
-      {
-        date: 'publishedAt',
-        modified: 'updatedAt',
-        title: 'title',
-        id: 'id',
-        menu_order: 'menuOrder',
-      } as const
-    )[value.orderby ?? (value.type === 'page' ? 'menu_order' : 'date')],
-    order: value.order ?? (value.type === 'page' ? 'asc' : 'desc'),
-  }))
   .refine(
     (value) =>
       !value.day ||
@@ -268,6 +260,40 @@ export const publicContentListQuerySchema = z
     path: ['term'],
     message: Errors.TaxonomyFilterPair,
   });
+
+export type PublicContentCriteria = z.output<
+  typeof publicContentCriteriaSchema
+>;
+
+/** Public listing: published content only. Unknown keys (including `status`) are ignored. */
+export const publicContentListQuerySchema = z
+  .object({
+    ...listFilters,
+    orderby: z
+      .enum(['date', 'modified', 'title', 'id', 'menu_order'])
+      .optional(),
+    order: z.enum(['asc', 'desc']).optional(),
+  })
+  .transform(
+    ({
+      orderby,
+      order,
+      ...value
+    }): z.input<typeof publicContentCriteriaSchema> => ({
+      ...value,
+      orderBy: (
+        {
+          date: 'publishedAt',
+          modified: 'updatedAt',
+          title: 'title',
+          id: 'id',
+          menu_order: 'menuOrder',
+        } as const
+      )[orderby ?? (value.type === 'page' ? 'menu_order' : 'date')],
+      order: order ?? (value.type === 'page' ? 'asc' : 'desc'),
+    }),
+  )
+  .pipe(publicContentCriteriaSchema);
 
 export type PublicContentListQuery = z.input<
   typeof publicContentListQuerySchema
