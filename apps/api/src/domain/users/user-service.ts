@@ -55,7 +55,7 @@ export interface UserServiceDeps {
   hooks?: HookDispatcher;
   roles?: RoleService;
   settings?: SettingsRepository;
-  protection?: ProtectionService;
+  protection?: Pick<ProtectionService, 'check'>;
   users: UserRepository;
   directory: UserDirectory;
   hasher: PasswordHasher;
@@ -217,25 +217,29 @@ export class UserService {
   /** Email possession is proved through the existing single-use password invitation. */
   async register(input: unknown, attempt: Omit<Attempt, 'action' | 'account'>) {
     const data = parseInput(registrationSchema, input);
-    let allowed = (await this.membership()).enabled;
-    if (!allowed) throw invalidInput(Errors.RegistrationClosed);
+    // Membership is only the initial decision; filters may open or close registration.
+    const enabled = (await this.membership()).enabled;
+    const hooks = this.deps.hooks;
+    // A dispatcher that cannot tell is assumed to have handlers.
+    const filtered =
+      hooks?.has?.('user.registrationAllowed') ?? hooks !== undefined;
+    // With nothing able to open it, closed registration fails before an attempt is counted.
+    if (!enabled && !filtered) throw invalidInput(Errors.RegistrationClosed);
+    // Counted before any handler runs, so rate-limited callers never reach plugin code.
     await this.deps.protection?.check({
       ...attempt,
       action: 'passwordReset',
       account: data.email.toLowerCase(),
     });
+    const allowed =
+      (await hooks?.applyFilter(
+        'user.registrationAllowed',
+        enabled,
+        (value) => typeof value === 'boolean',
+      )) ?? enabled;
+    if (!allowed) throw invalidInput(Errors.RegistrationClosed);
     if (!(await this.deps.invitations.available()))
       throw invalidInput(Errors.EmailDisabled);
-    await this.deps.hooks?.applyFilter(
-      'user.registrationAllowed',
-      allowed,
-      (value) => {
-        if (typeof value !== 'boolean' || (!allowed && value)) return false;
-        allowed = value;
-        return true;
-      },
-    );
-    if (!allowed) throw invalidInput(Errors.RegistrationClosed);
     await this.deps.sealedJobs.enqueue(
       REGISTRATION_JOB,
       {

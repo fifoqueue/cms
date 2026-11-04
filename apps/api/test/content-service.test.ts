@@ -289,6 +289,31 @@ describe('ContentService', () => {
     ).toBe('forbidden');
   });
 
+  test('a later publish or delete filter can grant after an earlier refusal', async () => {
+    const { service, hooks } = setup();
+    const draft = await service.create(input(), ADMIN);
+    const deny = hooks.registrar('deny');
+    deny.filter('content.publishAllowed', () => false);
+    deny.filter('content.deleteAllowed', () => false);
+    expect(
+      await codeOf(
+        service.create(input({ title: 'Denied', status: 'published' }), ADMIN),
+      ),
+    ).toBe('forbidden');
+    expect(await codeOf(service.remove(draft.id, ADMIN))).toBe('forbidden');
+
+    const grant = hooks.registrar('grant');
+    grant.filter('content.publishAllowed', () => true);
+    grant.filter('content.deleteAllowed', () => true);
+    const published = await service.create(
+      input({ title: 'Granted', status: 'published' }),
+      ADMIN,
+    );
+    expect(published.status).toBe('published');
+    await service.remove(draft.id, ADMIN);
+    expect(await codeOf(service.require(draft.id))).toBe('not_found');
+  });
+
   test('trash and schedules decide what is public', async () => {
     const { service, publicContent, clock, events } = setup();
     const live = await service.create(input({ status: 'published' }), ADMIN);

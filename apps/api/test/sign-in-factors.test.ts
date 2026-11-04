@@ -142,3 +142,75 @@ test('required enrollment, optional enrolled factors, expiry and admission fail 
     ),
   ).rejects.toMatchObject({ code: 'sign_in_expired' });
 });
+
+test('a later admission filter can grant sign-in and drop a required factor', async () => {
+  const user = profile({ id: 'u' });
+  const users = { findById: async () => user, findByEmail: async () => user };
+  const { logger } = recordingLogger();
+  const registry = new SignInRegistry({ logger, timeoutMs: 100 });
+  const hooks = new HookBus({ logger, timeoutMs: 100 });
+  const registrar = registry.registrar('test', users);
+  registrar.signInMethod('method', {
+    label: 'Test',
+    usableBy: () => true,
+    begin: () => ({ kind: 'user', userId: user.id }),
+  });
+  const challenge = () => ({
+    kind: 'fields' as const,
+    fields: [
+      { name: 'code', label: 'Code', type: 'code' as const, required: true },
+    ],
+  });
+  registrar.secondFactor('factor', {
+    label: 'Factor',
+    enrolled: () => false,
+    challenge,
+    verify: () => true,
+    enroll: { begin: challenge, finish: () => true },
+  });
+  let sequence = 0;
+  const now = new Date('2026-01-01');
+  const service = new SignInService({
+    factorChanges: new MemorySettings(),
+    registry,
+    users,
+    hooks,
+    settings: {
+      effective: async () => ({
+        methods: ['plugin:test:method'],
+        secondFactors: ['plugin:test:factor'],
+        requireSecondFactor: [user.role],
+      }),
+    },
+    transactions: new MemorySignInTransactions(),
+    tokens: {
+      issue: () => `${++sequence}`,
+      digest: (value) => `hash:${value}`,
+    },
+    clock: { now: () => now },
+    limits: { total: 10, perClient: 10 },
+    protection: { check: async () => {} },
+    siteUrl: async () => 'https://example.com',
+    session: async () => ({
+      user,
+      token: 'session',
+      expiresAt: now.toISOString(),
+    }),
+  });
+  const visitor = { client: 'visitor', address: null, captchaToken: null };
+  const start = () => service.start('plugin:test:method', {}, visitor);
+  const plugin = hooks.registrar('plugin');
+
+  plugin.filter('user.signInAllowed', (value) => ({
+    ...value,
+    allowed: false,
+  }));
+  await expect(start()).rejects.toMatchObject({ code: 'unauthorized' });
+  plugin.filter('user.signInAllowed', (value) => ({ ...value, allowed: true }));
+  expect((await start()).kind).toBe('enroll');
+  plugin.filter('user.secondFactorRequired', (value) => ({
+    ...value,
+    required: false,
+  }));
+  expect((await start()).kind).toBe('session');
+});

@@ -269,7 +269,7 @@ export class EmailService {
             allowed: z.boolean(),
           })
           .safeParse(value);
-        if (!parsed.success || (!allowed && parsed.data.allowed)) return false;
+        if (!parsed.success) return false;
         allowed = parsed.data.allowed;
         return true;
       },

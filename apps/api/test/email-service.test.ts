@@ -78,3 +78,17 @@ test('sensitive mail never reaches body filters while ordinary mail may change t
     text: 'Changed',
   });
 });
+test('a later send filter can allow mail an earlier one refused', async () => {
+  const { email, hooks, messages } = fixture();
+  await email.update(configured());
+  hooks
+    .registrar('deny')
+    .filter('email.sendAllowed', (value) => ({ ...value, allowed: false }));
+  await expect(email.deliver(message)).rejects.toThrow();
+  expect(messages).toEqual([]);
+  hooks
+    .registrar('grant')
+    .filter('email.sendAllowed', (value) => ({ ...value, allowed: true }));
+  await email.deliver(message);
+  expect(messages).toEqual([message]);
+});

@@ -28,7 +28,7 @@ export interface MediaFilterHooks {
   'media.beforeSave': MediaUpdateInput;
   /** Display name only; never a storage path. */
   'media.filename': string;
-  /** Core admission checks have already passed. A refusal is irreversible. */
+  /** Core supplies the initial decision; handlers may allow or refuse. Shape and identity stay validated. */
   'media.uploadAllowed': {
     allowed: boolean;
     filename: string;

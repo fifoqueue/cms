@@ -490,16 +490,12 @@ export class ContentService {
     }
   }
 
-  private async allowed(
-    name: 'content.publishAllowed' | 'content.deleteAllowed',
-  ) {
-    let allowed = true;
-    await this.deps.hooks.applyFilter(name, allowed, (value) => {
-      if (typeof value !== 'boolean') return false;
-      allowed = allowed && value;
-      return value === allowed;
-    });
-    return allowed;
+  private allowed(name: 'content.publishAllowed' | 'content.deleteAllowed') {
+    return this.deps.hooks.applyFilter(
+      name,
+      true,
+      (value) => typeof value === 'boolean',
+    );
   }
 
   /** The requested author when the actor may assign one, else `fallback`. */

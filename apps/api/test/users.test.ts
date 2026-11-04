@@ -5,11 +5,14 @@ import { RoleService } from '#api/domain/users/role-service';
 import { UserService } from '#api/domain/users/user-service';
 import type { UserServiceDeps } from '#api/domain/users/user-service';
 import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
+import { HookBus } from '#api/plugin-runtime/hook-bus';
+import { Errors, rateLimited } from '#api/shared/errors';
 import type { DomainError } from '#api/shared/errors';
 import {
   MemoryContentRepository,
   MemorySettings,
   fixedClock,
+  recordingLogger,
   sequentialIds,
   userRecord,
 } from '#test/support/memory';
@@ -193,6 +196,77 @@ describe('user administration', () => {
     await service.completeRegistration([...jobs.rows.values()].at(-1)!.payload);
     expect(hashes).toBe(2);
     expect(invitations).toEqual(['reader@example.com']);
+  });
+
+  describe('registration filters', () => {
+    const input = { name: 'Reader', email: 'reader@example.com' };
+    const attempt = { client: null, address: null, captchaToken: null };
+    const bus = () =>
+      new HookBus({ timeoutMs: 50, logger: recordingLogger().logger });
+    /** Membership stays closed; `log` records protection checks and handler runs in order. */
+    const registration = async (
+      hooks: HookBus | undefined,
+      limited = false,
+    ) => {
+      const log: string[] = [];
+      const context = await setup({
+        hooks,
+        invitations: { available: async () => true, send: async () => {} },
+        protection: {
+          check: async () => {
+            log.push('check');
+            if (limited) throw rateLimited(Errors.TooManyAttempts);
+          },
+        },
+      });
+      return { ...context, log };
+    };
+
+    test('rate-limited callers never reach registration handlers', async () => {
+      const hooks = bus();
+      const { jobs, log, service } = await registration(hooks, true);
+      hooks.registrar('grant').filter('user.registrationAllowed', () => {
+        log.push('grant');
+        return true;
+      });
+      expect(await codeOf(service.register(input, attempt))).toBe(
+        'rate_limited',
+      );
+      expect(await codeOf(service.register(input, attempt))).toBe(
+        'rate_limited',
+      );
+      expect(log).toEqual(['check', 'check']);
+      expect(jobs.rows.size).toBe(0);
+    });
+
+    test('closed registration with no handlers fails at once without counting an attempt', async () => {
+      for (const hooks of [undefined, bus()]) {
+        const { log, service } = await registration(hooks);
+        expect(await codeOf(service.register(input, attempt))).toBe(
+          'invalid_input',
+        );
+        expect(log).toEqual([]);
+      }
+    });
+
+    test('a later handler can open closed membership after an earlier refusal', async () => {
+      const hooks = bus();
+      const { jobs, log, service } = await registration(hooks);
+      hooks.registrar('deny').filter('user.registrationAllowed', () => {
+        log.push('deny');
+        return false;
+      });
+      expect(await codeOf(service.register(input, attempt))).toBe(
+        'invalid_input',
+      );
+      hooks.registrar('grant').filter('user.registrationAllowed', () => {
+        log.push('grant');
+        return true;
+      });
+      await service.register(input, attempt);
+      expect(log).toEqual(['check', 'deny', 'check', 'deny', 'grant']);
+      expect(jobs.rows.size).toBe(1);
+    });
   });
 
   test('only administrators manage users, and one administrator always remains', async () => {

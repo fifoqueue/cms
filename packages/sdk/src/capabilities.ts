@@ -38,6 +38,7 @@ export const CAPABILITIES = [
   /** Private-network destinations. Kept separate from ordinary service settings. */
   'egress.manage',
   'plugins.manage',
+  'functions.edit',
   /** Import, export, webhooks and site health. */
   'tools.manage',
 ] as const;

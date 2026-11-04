@@ -21,10 +21,8 @@ import type { UserDirectory } from '@cms/sdk/plugin';
 import type { SignInRegistry } from '#api/plugin-runtime/sign-in-registry';
 import type {
   ActionHandler,
-  ActionName,
   ContentReader,
   FilterHandler,
-  FilterName,
   PluginContext,
   PluginLogger,
 } from '@cms/sdk/plugin';
@@ -156,7 +154,11 @@ export class PluginContextFactory {
     );
   }
 
-  create(manifest: ResolvedManifest, scope: PluginScope): PluginContext {
+  create(
+    manifest: ResolvedManifest,
+    scope: PluginScope,
+    options: { trusted?: boolean; data?: PluginDataRepository } = {},
+  ): PluginContext {
     const {
       hooks,
       slots,
@@ -167,13 +169,13 @@ export class PluginContextFactory {
       pages,
       dashboardWidgets,
       routes,
-      data,
       settings,
       content,
       logger,
     } = this.services;
+    const data = options.data ?? this.services.data;
     const id = manifest.id;
-    const hookRegistrar = hooks.registrar(id);
+    const hookRegistrar = hooks.registrar(id, { trusted: options.trusted });
     const slotRegistrar = slots.registrar(id);
     const widgetRegistrar = widgets.registrar(id);
     const embedRegistrar = embeds.registrar(id);
@@ -360,9 +362,27 @@ export class PluginContextFactory {
         }),
       },
       hooks: {
-        on: <K extends ActionName>(name: K, handler: ActionHandler<K>) =>
-          scope.track(() => hookRegistrar.on(name, handler)),
-        filter: <K extends FilterName>(
+        define: (name, definition) =>
+          scope.track(() => hookRegistrar.define(name, definition)),
+        do: (name, payload) => scope.run(() => hookRegistrar.do(name, payload)),
+        apply: (name, value, ...args) =>
+          scope.run(() => hookRegistrar.apply(name, value, ...args)),
+        current: () => hookRegistrar.current(),
+        doing: (name) => hookRegistrar.doing(name),
+        remove: (name, handler) => {
+          if (scope.active) hookRegistrar.remove(name, handler);
+        },
+        removeAll: (name, priority) => {
+          if (scope.active) hookRegistrar.removeAll(name, priority);
+        },
+        has: (name, handler) => hookRegistrar.has(name, handler),
+        did: (name) => hookRegistrar.did(name),
+        on: <K extends string>(
+          name: K,
+          handler: ActionHandler<K>,
+          priority?: number,
+        ) => scope.track(() => hookRegistrar.on(name, handler, priority)),
+        filter: <K extends string>(
           name: K,
           handler: FilterHandler<K>,
           priority?: number,

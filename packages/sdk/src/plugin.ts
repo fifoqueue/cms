@@ -231,11 +231,11 @@ interface CoreFilterHooks {
   'comment.beforeSave': CommentDraft;
   /**
    * Whether an authenticated user may get a session (WordPress `wp_authenticate_user`). Filters
-   * can only refuse: a `true` returned after core said `false` is ignored.
+   * may return either decision; core supplies only the initial value. User and method stay validated.
    */
   'user.signInAllowed': { user: UserProfile; method: string; allowed: boolean };
-  /** Monotonic: plugins may require another factor, never remove an existing requirement.
-   * False after true is ignored and warned. A UV passkey has already satisfied core policy. */
+  /** Core supplies the initial requirement; handlers may require or waive another factor.
+   * User and method stay validated. A UV passkey has already satisfied core policy. */
   'user.secondFactorRequired': {
     user: UserProfile;
     method: string;
@@ -277,17 +277,47 @@ export {
   discoveryFilterSchemas,
   discoveryFilterInputSchema,
 } from '#sdk/hooks/seo';
-export type ActionHandler<K extends ActionName> = (
-  payload: Readonly<ActionHookMap[K]>,
+export type ActionHandler<K extends string> = (
+  payload: K extends ActionName ? Readonly<ActionHookMap[K]> : unknown,
 ) => Awaitable<void>;
-export type FilterHandler<K extends FilterName> = (
-  value: FilterHookMap[K],
-) => Awaitable<FilterHookMap[K]>;
+export type FilterHandler<K extends string> = (
+  value: K extends FilterName ? FilterHookMap[K] : unknown,
+  ...args: readonly unknown[]
+) => Awaitable<K extends FilterName ? FilterHookMap[K] : unknown>;
+
+export interface CustomHookDefinition {
+  kind: 'action' | 'filter';
+  validate(value: unknown): boolean;
+}
 
 export interface HookRegistrar {
-  on<K extends ActionName>(name: K, handler: ActionHandler<K>): Unsubscribe;
+  define(name: string, definition: CustomHookDefinition): Unsubscribe;
+  do(name: string, payload: unknown): Promise<void>;
+  apply(
+    name: string,
+    value: unknown,
+    ...args: readonly unknown[]
+  ): Promise<unknown>;
+  current(): string | undefined;
+  doing(name?: string): boolean;
+  remove<K extends string>(
+    name: K,
+    handler: K extends ActionName
+      ? ActionHandler<K>
+      : K extends FilterName
+        ? FilterHandler<K>
+        : (value: unknown, ...args: readonly unknown[]) => Awaitable<unknown>,
+  ): void;
+  removeAll(name: string, priority?: number): void;
+  has(name: string, handler?: unknown): boolean;
+  did(name: string): number;
+  on<K extends string>(
+    name: K,
+    handler: ActionHandler<K>,
+    priority?: number,
+  ): Unsubscribe;
   /** Lower priority runs first. Default 10. */
-  filter<K extends FilterName>(
+  filter<K extends string>(
     name: K,
     handler: FilterHandler<K>,
     priority?: number,

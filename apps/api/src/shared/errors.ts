@@ -96,6 +96,8 @@ export const ServerErrors = {
  * SDK's fixed text, so readers' catalogs can key on it; its values travel as `issues[].params`.
  */
 export const Errors = {
+  HookDefinitionInvalid: 'Invalid or already defined hook name or contract',
+  HookValueInvalid: 'Custom hook validation failed; value ignored',
   DatabaseCleanupBusy: SdkErrors.DatabaseCleanupBusy,
   PrivacyPolicyInvalid: SdkErrors.PrivacyPolicyInvalid,
   PrivacyConfirmationInvalid: SdkErrors.PrivacyConfirmationInvalid,

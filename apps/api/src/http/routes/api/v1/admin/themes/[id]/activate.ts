@@ -6,6 +6,7 @@ import { session } from '#api/http/session';
 export const routes = (app: ApiApp) =>
   session(app, 'appearance.manage').post(
     '',
-    async ({ themes, params }) => json(await themes.activate(params.id)),
+    async ({ themes, params, user }) =>
+      json(await themes.activate(params.id, user)),
     idParams,
   );

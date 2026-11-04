@@ -9,12 +9,12 @@ const MAX_ARCHIVE_BYTES = 2 * 1024 * 1024;
 export const routes = (app: ApiApp) =>
   session(app, 'appearance.manage')
     .get('', async ({ themes }) => json(await themes.list()))
-    .post('', async ({ themes, request }) => {
+    .post('', async ({ themes, request, user }) => {
       if (Number(request.headers.get('content-length')) > MAX_ARCHIVE_BYTES)
         throw invalidInput(Errors.ThemeArchiveTooLarge);
       const bytes = new Uint8Array(await request.arrayBuffer());
       if (bytes.byteLength > MAX_ARCHIVE_BYTES)
         throw invalidInput(Errors.ThemeArchiveTooLarge);
 
-      return json(await themes.install(bytes), 201);
+      return json(await themes.install(bytes, user), 201);
     });

@@ -305,7 +305,7 @@ export class CommentService {
             address: z.literal(admission.address),
           })
           .safeParse(value);
-        if (!result.success || (!allowed && result.data.allowed)) return false;
+        if (!result.success) return false;
         allowed = result.data.allowed;
         return true;
       },

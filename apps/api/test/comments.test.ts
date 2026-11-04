@@ -279,6 +279,24 @@ describe('CommentService', () => {
     );
     expect(store.rows.size).toBe(0);
   });
+  test('a later submit filter can admit a comment an earlier one refused', async () => {
+    const { comments, publish, hooks, store } = setup();
+    const entry = await publish();
+    hooks.registrar('deny').filter('comment.submitAllowed', (value) => ({
+      ...value,
+      allowed: false,
+    }));
+    expect(await codeOf(comments.submit(comment(entry.id), visitor))).toBe(
+      'forbidden',
+    );
+    expect(store.rows.size).toBe(0);
+    hooks.registrar('grant').filter('comment.submitAllowed', (value) => ({
+      ...value,
+      allowed: true,
+    }));
+    await comments.submit(comment(entry.id), visitor);
+    expect(store.rows.size).toBe(1);
+  });
   test('public threads never expose emails and only public, open entries take comments', async () => {
     const { comments, publish, content } = setup();
     const entry = await publish();

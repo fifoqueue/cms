@@ -17,6 +17,8 @@ export interface ThemeState {
   installed: ThemePackage[];
   /** Site-editor changes by theme id; themes without changes have no entry. */
   customizations: Record<string, ThemeCustomization>;
+  /** Admin-installed server code, never included in theme DTOs. */
+  functions: Record<string, string>;
 }
 
 export const isBuiltinTheme = (id: string) =>
@@ -68,6 +70,7 @@ export class ThemeStateStore {
       active: DEFAULT_THEME_ID,
       installed,
       customizations: {},
+      functions: {},
     };
 
     for (const [id, value] of Object.entries(recordOf(storedCustomizations))) {
@@ -79,6 +82,12 @@ export class ThemeStateStore {
     if (typeof record.active === 'string' && findTheme(state, record.active))
       state.active = record.active;
 
+    for (const theme of installed) {
+      const id = theme.manifest.id;
+      const source = recordOf(record.functions)[id];
+      if (typeof source === 'string') state.functions[id] = source;
+    }
+
     return state;
   }
 
@@ -86,6 +95,7 @@ export class ThemeStateStore {
     await this.settings.set(THEMES_KEY, {
       active: state.active,
       installed: state.installed,
+      functions: state.functions,
     });
   }
 

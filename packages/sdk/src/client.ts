@@ -1,4 +1,5 @@
 import { archivePathsStateSchema } from '#sdk/archive-paths';
+import { functionsStatusSchema, functionsSourceSchema } from '#sdk/functions';
 import type { ArchiveBases, ArchivePathsState } from '#sdk/archive-paths';
 import { taxonomyDefinitionSchema } from '#sdk/taxonomy';
 import type { TaxonomyDefinition } from '#sdk/taxonomy';
@@ -435,6 +436,26 @@ export const createAdminClient = (
   const themePath = (id: string) =>
     `/api/v1/admin/themes/${encodeURIComponent(id)}`;
   return {
+    functions: {
+      read: () =>
+        request('GET', '/api/v1/admin/functions', {
+          response: functionsSourceSchema,
+        }),
+      status: () =>
+        request('GET', '/api/v1/admin/functions/status', {
+          response: functionsStatusSchema,
+        }),
+      validate: (source: string) =>
+        request('POST', '/api/v1/admin/functions', {
+          json: { source },
+          response: z.object({ valid: z.literal(true) }),
+        }),
+      write: (source: string) =>
+        request('PUT', '/api/v1/admin/functions', {
+          json: { source },
+          response: functionsStatusSchema,
+        }),
+    },
     roles: {
       capabilities: () =>
         request<CapabilityInfo[]>('GET', '/api/v1/admin/capabilities', {

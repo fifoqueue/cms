@@ -24,6 +24,7 @@ export const isScreenshot = (path: string) =>
 export const isThemeFile = (path: string) =>
   path === 'theme.json' ||
   path === 'style.css' ||
+  path === 'functions.ts' ||
   /^parts\/[a-z0-9-]+\.json$/.test(path) ||
   // Template names may end in a Unicode slug (`page-소식`); the theme schema validates them.
   /^templates\/[\p{L}\p{N}\p{M}-]+\.json$/u.test(path);

@@ -1,4 +1,6 @@
 import { serialQueue } from '#api/shared/serial-queue';
+import { authorize } from '#api/domain/auth/authorization';
+import type { Actor } from '#api/domain/auth/authorization';
 import {
   TEMPLATE_NAME,
   SLUG,
@@ -178,7 +180,7 @@ const toAdmin = (
 /**
  * Block theme lifecycle (install or upgrade by id, activate, remove) and the site editor, which
  * stores an administrator's template, part and style changes beside the theme instead of
- * editing it, so resetting restores the theme's own files. Themes change presentation only.
+ * editing it, so resetting restores the theme's own files.
  */
 export class ThemeService {
   private readonly state: ThemeStateStore;
@@ -202,6 +204,7 @@ export class ThemeService {
         key: string,
       ): Promise<{ source: string; value: ThemeContribution } | null>;
     },
+    private readonly functionsChanged?: () => Promise<void>,
   ) {
     this.state = new ThemeStateStore(settings);
     this.screenshots = new ThemeScreenshots(settings, images);
@@ -211,6 +214,12 @@ export class ThemeService {
   /** The site fonts every theme's styles may use. */
   fonts(): Promise<SiteFont[]> {
     return this.siteFonts.load();
+  }
+
+  async activeFunctions(): Promise<{ owner: string; text: string } | null> {
+    const state = await this.state.load();
+    const text = state.functions[state.active];
+    return text === undefined ? null : { owner: `theme:${state.active}`, text };
   }
 
   /** Replaces the site fonts; styles that chose a removed font fall back to the theme's. */
@@ -321,8 +330,10 @@ export class ThemeService {
   }
 
   /** Installs a theme archive, or upgrades the installed theme with the same id, keeping its activation and changes. */
-  async install(bytes: Uint8Array): Promise<AdminTheme> {
+  async install(bytes: Uint8Array, actor: Actor): Promise<AdminTheme> {
+    authorize(actor, 'appearance.manage');
     const { files, screenshot } = this.archive.read(bytes);
+    if (files.has('functions.ts')) authorize(actor, 'functions.edit');
     const theme = parseInput(themePackageSchema, packageFromFiles(files));
     if (screenshot) await this.screenshots.check(screenshot);
 
@@ -338,7 +349,11 @@ export class ThemeService {
       if (index === -1) state.installed.push(theme);
       else state.installed[index] = theme;
 
+      const functions = files.get('functions.ts');
+      if (functions === undefined) delete state.functions[theme.manifest.id];
+      else state.functions[theme.manifest.id] = functions;
       await this.state.save(state);
+      await this.functionsChanged?.();
       // A new id may have belonged to a removed built-in; its stored changes are not this theme's.
       if (index === -1) await this.state.saveCustomizations(state);
       // An upgrade without a screenshot drops the old one.
@@ -350,13 +365,16 @@ export class ThemeService {
     });
   }
 
-  activate(id: string): Promise<AdminTheme> {
+  activate(id: string, actor: Actor): Promise<AdminTheme> {
+    authorize(actor, 'appearance.manage');
     return this.exclusive(async () => {
       const state = await this.state.load();
       const theme = this.require(state, id);
 
+      if (state.functions[id] !== undefined) authorize(actor, 'functions.edit');
       state.active = theme.manifest.id;
       await this.state.save(state);
+      await this.functionsChanged?.();
 
       const dto = toAdmin(state, theme);
       void this.hooks?.emit('theme.activated', dto);
@@ -377,7 +395,9 @@ export class ThemeService {
       state.installed = state.installed.filter(
         (theme) => theme.manifest.id !== id,
       );
+      delete state.functions[id];
       await this.state.save(state);
+      await this.functionsChanged?.();
       if (state.customizations[id]) {
         delete state.customizations[id];
         await this.state.saveCustomizations(state);

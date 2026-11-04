@@ -37,8 +37,9 @@ export interface ContentFilterHooks {
    * password afterwards, so filters can neither read nor set it.
    */
   'content.beforeSave': Omit<ContentData, 'password'>;
-  /** Additional veto after core permissions; a refusal cannot be reversed. */
+  /** Core supplies the initial decision; every handler may return either boolean. */
   'content.publishAllowed': boolean;
+  /** Core supplies the initial decision; every handler may return either boolean. */
   'content.deleteAllowed': boolean;
   'content.permalink': { contentId: string; path: string };
   'contentType.beforeSave': Omit<ContentTypeDefinition, 'builtin'>;

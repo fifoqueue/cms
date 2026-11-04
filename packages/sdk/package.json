@@ -9,6 +9,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./plugin": "./src/plugin.ts",
+    "./functions": "./src/functions.ts",
     "./code-block": "./src/code-block.ts",
     "./embed-pattern": "./src/embed-pattern.ts",
     "./client": "./src/client.ts",

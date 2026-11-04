@@ -145,6 +145,27 @@ describe('media library', () => {
     expect(await media.file('../config.json')).toBeNull();
   });
 
+  test('a later upload filter can grant after an earlier refusal, but not change the facts', async () => {
+    const { media, hooks } = setup();
+    hooks
+      .registrar('deny')
+      .filter('media.uploadAllowed', (value) => ({ ...value, allowed: false }));
+    expect(await codeOf(media.upload(PNG, 'cat.png', author))).toBe(
+      'forbidden',
+    );
+    hooks
+      .registrar('grant')
+      .filter('media.uploadAllowed', (value) => ({ ...value, allowed: true }));
+    hooks.registrar('rename').filter('media.uploadAllowed', (value) => ({
+      ...value,
+      allowed: false,
+      filename: 'other.png',
+    }));
+    expect((await media.upload(PNG, 'cat.png', author)).filename).toBe(
+      'cat.png',
+    );
+  });
+
   test('only the uploader or managers change a file, and used files need force', async () => {
     const { media, repository, storage } = setup();
     const image = await media.upload(PNG, 'cat.png', author);

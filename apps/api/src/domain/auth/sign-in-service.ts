@@ -574,9 +574,8 @@ export class SignInService {
         },
         (value) => {
           const parsed = allowedSchema.safeParse(value);
-          if (!parsed.success || (!allowed && parsed.data.allowed))
-            return false;
-          allowed = allowed && parsed.data.allowed;
+          if (!parsed.success) return false;
+          allowed = parsed.data.allowed;
           return true;
         },
       );
@@ -593,10 +592,8 @@ export class SignInService {
         },
         (value) => {
           const parsed = requiredSchema.safeParse(value);
-          // Rejecting the filter result makes HookBus warn; no plugin may undo a requirement.
-          if (!parsed.success || (required && !parsed.data.required))
-            return false;
-          required = required || parsed.data.required;
+          if (!parsed.success) return false;
+          required = parsed.data.required;
           return true;
         },
       );

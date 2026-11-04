@@ -35,6 +35,8 @@ API와 웹은 병렬로 실행됩니다. 개별 실행은 `bun run dev:api`, `bu
 
 운영 실행·릴리스 승격·설치 마법사·환경변수·비밀 키는 [docs/operations.md](docs/operations.md)를 봅니다. **`.env` 없이 운영할 수 있어야 하며**, 새 설정은 env 전용이 아니라 관리자 설정으로 만듭니다.
 
+예외: 관리자 권한 밖에 있어야 하는 보안 게이트(현재 functions 코드 편집기만 해당)는 관리자 설정이 아닌 서버 측 설정으로 둡니다. 환경변수 없이도 서버 측 파일로 설정할 수 있어야 하며, 관리자는 게이트 상태만 읽을 수 있습니다.
+
 변경을 마치기 전에 **반드시** 루트에서 실행합니다.
 
 ```bash
@@ -121,6 +123,7 @@ plugins/
 | [apps/web/AGENTS.md](apps/web/AGENTS.md)                                                         | 프론트엔드 규약, 세션·로그인 경로, DTO 경계, i18n, minify, 웹 테스트         |
 | [packages/sdk/AGENTS.md](packages/sdk/AGENTS.md)                                                 | SDK 계약 규칙(공유 스키마, 오류 카탈로그, 클라이언트)과 플러그인 문서 포인터 |
 | [docs/plugins/authoring.md](docs/plugins/authoring.md)                                           | 플러그인 작성 방법과 번들 규칙                                               |
+| [docs/functions.md](docs/functions.md)                                                           | 사이트 함수, 서버 편집기 게이트와 API                                        |
 | [docs/plugins/extension-points.md](docs/plugins/extension-points.md)                             | 훅·슬롯·등록소 등 확장 지점 표(도메인별)와 확장 원칙                         |
 | [docs/plugins/lifecycle-and-isolation.md](docs/plugins/lifecycle-and-isolation.md)               | 플러그인 수명주기와 코어 격리 보장                                           |
 | [docs/api/routes.md](docs/api/routes.md)                                                         | HTTP API 라우트 표                                                           |

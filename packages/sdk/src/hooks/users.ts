@@ -38,6 +38,6 @@ export interface UserFilterHooks {
   };
   'privacy.exportData': PrivacyExportData;
   'user.public': PublicAuthor;
-  /** Deny-only; neither disabled membership nor a prior denial can be overridden. */
+  /** Membership supplies the initial boolean; every handler may allow or refuse registration. */
   'user.registrationAllowed': boolean;
 }

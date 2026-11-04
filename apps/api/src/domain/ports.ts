@@ -53,5 +53,8 @@ export interface HookDispatcher {
       previous: FilterHookMap[K],
       next: FilterHookMap[K],
     ) => void,
+    args?: readonly unknown[],
   ): Promise<FilterHookMap[K]>;
+  /** Whether any handler is registered for `name`, so core can skip work no handler could change. */
+  has(name: ActionName | FilterName): boolean;
 }

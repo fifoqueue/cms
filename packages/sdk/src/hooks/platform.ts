@@ -72,6 +72,7 @@ export interface PlatformFilterHooks {
   'webhook.payload': unknown;
   /** Never called for sensitive mail (reset/invite/recovery/privacy). */
   'email.beforeSend': z.output<typeof outgoingEmailSchema>;
+  /** Core supplies the initial decision; handlers may allow or refuse. Shape and identity stay validated. */
   'email.sendAllowed': { to: string; subject: string; allowed: boolean };
 }
 

@@ -73,6 +73,8 @@ const configSchema = z
     /** Only the web server talks to the API, so it listens on this machine unless told otherwise. */
     API_HOST: z.string().trim().min(1).default('127.0.0.1'),
     PLUGINS_DIR: z.string().min(1).default('data/plugins'),
+    FUNCTIONS_DIR: z.string().min(1).default('data/functions'),
+    FUNCTIONS_EDITOR_ENABLED: z.stringbool().default(false),
     SESSION_TTL_HOURS: z.coerce.number().int().min(1).default(336),
     PLUGIN_TIMEOUT_MS: z.coerce.number().int().min(10).default(3000),
     /** Uploaded media files. Share it between API instances. */

@@ -1,4 +1,11 @@
 import { invalidatingStore } from '#api/infra/invalidating-store';
+import { pluginManifestSchema } from '@cms/sdk';
+import { FunctionsHost } from '#api/functions-runtime/functions-host';
+import { functionsData } from '#api/functions-runtime/functions-data';
+import { SiteSource } from '#api/infra/functions/site-source';
+import { versionedSource } from '#api/infra/functions/versioned-source';
+import { FunctionsWatch } from '#api/infra/functions/functions-watch';
+import { SiteEditor } from '#api/infra/functions/site-editor';
 import { MemoryPublicCache } from '#api/infra/public-cache';
 import { ArchivePathsService } from '#api/domain/permalinks/archive-paths';
 import { VisibleContentRepository } from '#api/domain/content/visible-content';
@@ -604,12 +611,13 @@ export const createContainer = async (
     sitemaps,
   );
   const themeContributions = createThemeContributions({ timeoutMs, logger });
-  const themes = new ThemeService(
+  const themes: ThemeService = new ThemeService(
     settingsRepository,
     zipThemeArchive,
     sharpImages,
     hooks,
     themeContributions,
+    () => functionsHost.reconcile(),
   );
   const themePreviews = new ThemePreviews({
     themes,
@@ -1261,51 +1269,86 @@ export const createContainer = async (
     },
   });
   const pluginSettings = new PluginSettings(pluginData);
+  const contexts = new PluginContextFactory({
+    roles: roleDefaults,
+    profileFields,
+    captchaProviders,
+    privacyErasers,
+    contentTypes: contentTypeRegistry,
+    permalinkTokens,
+    taxonomies: taxonomyRegistry,
+    fields: fieldRegistry,
+    capabilities,
+    menuItemTypes,
+    themeContributions,
+    patterns: patternContributions,
+    patternRenderer: tiptapRenderer,
+    mailTransports: delivery.mailer,
+    storageDrivers,
+    jobs: new PluginJobs(jobs, sealedJobs, systemClock),
+    healthChecks,
+    sitemaps,
+    searchEngines,
+    mediaProcessors,
+    imageSizes,
+    commentCheckers,
+    authentication,
+    users: authUsers,
+    hooks,
+    slots: slotRegistry,
+    widgets: widgetRegistry,
+    embeds: embedRegistry,
+    blocks: blockRegistry,
+    scheduler,
+    pages: pluginPages,
+    dashboardWidgets,
+    routes: pluginRoutes,
+    data: pluginData,
+    settings: pluginSettings,
+    content: reader,
+    logger: (pluginId) => consoleLogger(`plugin:${pluginId}`),
+  });
+  const siteSource = new SiteSource(config.FUNCTIONS_DIR);
+  const sourceData = functionsData(settingsRepository);
+  const functionsHost = new FunctionsHost({
+    sources: async () => {
+      const theme = await themes.activeFunctions();
+      const source = await siteSource.source();
+      return [
+        ...(theme
+          ? [versionedSource(siteSource.directory, theme.owner, theme.text)]
+          : []),
+        ...(source ? [source] : []),
+      ];
+    },
+    context: (owner, scope) =>
+      contexts.create(
+        {
+          ...pluginManifestSchema.parse({
+            id: 'site-functions',
+            name: 'Site functions',
+            version: '1.0.0',
+          }),
+          id: owner,
+        },
+        scope,
+        { trusted: true, data: sourceData },
+      ),
+    logger,
+    invalidate: () => publicCache.invalidate(),
+  });
+  const functionsWatch = new FunctionsWatch(
+    siteSource.directory,
+    functionsHost,
+    logger,
+  );
   const plugins = new PluginHost({
     publicCache,
     hooks,
     state: new PrismaPluginStateRepository(db),
     packages: new FsPluginPackageStore(config.PLUGINS_DIR),
     loader: dynamicImportLoader,
-    contexts: new PluginContextFactory({
-      roles: roleDefaults,
-      profileFields,
-      captchaProviders,
-      privacyErasers,
-      contentTypes: contentTypeRegistry,
-      permalinkTokens,
-      taxonomies: taxonomyRegistry,
-      fields: fieldRegistry,
-      capabilities,
-      menuItemTypes,
-      themeContributions,
-      patterns: patternContributions,
-      patternRenderer: tiptapRenderer,
-      mailTransports: delivery.mailer,
-      storageDrivers,
-      jobs: new PluginJobs(jobs, sealedJobs, systemClock),
-      healthChecks,
-      sitemaps,
-      searchEngines,
-      mediaProcessors,
-      imageSizes,
-      commentCheckers,
-      authentication,
-      users: authUsers,
-      hooks,
-      slots: slotRegistry,
-      widgets: widgetRegistry,
-      embeds: embedRegistry,
-      blocks: blockRegistry,
-      scheduler,
-      pages: pluginPages,
-      dashboardWidgets,
-      routes: pluginRoutes,
-      data: pluginData,
-      settings: pluginSettings,
-      content: reader,
-      logger: (pluginId) => consoleLogger(`plugin:${pluginId}`),
-    }),
+    contexts,
     settings: pluginSettings,
     versions: semverPolicy(CMS_VERSION),
     updates: httpsUpdateFeed,
@@ -1409,6 +1452,12 @@ export const createContainer = async (
   const app = await createApiApp({
     logger,
     services: {
+      functionsEditor: new SiteEditor(
+        siteSource.directory,
+        config.FUNCTIONS_EDITOR_ENABLED,
+        functionsHost,
+        logger,
+      ),
       databaseCleanup,
       publicCache,
       privacy,
@@ -1493,7 +1542,7 @@ export const createContainer = async (
     },
   });
 
-  return { app, plugins, db, logger, auth, hooks, scheduler };
+  return { app, plugins, db, logger, auth, hooks, scheduler, functionsWatch };
 };
 
 /** Starts the installer without a database; switches to the CMS after configuration. */
@@ -1513,6 +1562,7 @@ export const createBootstrap = async () => {
 
     try {
       await candidate.plugins.boot();
+      await candidate.functionsWatch.start();
       await candidate.auth.status();
       if (persist) await saveInstallationConfig(url);
       runtime = candidate;
@@ -1528,6 +1578,7 @@ export const createBootstrap = async () => {
         PLUGIN_SYNC_MS,
       );
     } catch {
+      await candidate.functionsWatch.stop();
       await candidate.plugins.stop();
       await candidate.db.$disconnect();
       throw invalidInput(Errors.InstallApplyFailed);
@@ -1608,6 +1659,7 @@ export const createBootstrap = async () => {
     stop: async () => {
       runtime?.scheduler.stop();
       clearInterval(reconciling);
+      await runtime?.functionsWatch.stop();
       await runtime?.plugins.stop();
       await runtime?.db.$disconnect();
     },

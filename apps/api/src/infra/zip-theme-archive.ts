@@ -2,6 +2,7 @@ import { unzipSync } from 'fflate';
 import type { ThemeArchive } from '#api/domain/theme/theme-archive';
 import { isScreenshot, isThemeFile } from '#api/domain/theme/theme-archive';
 import { invalidInput, Errors, withParams } from '#api/shared/errors';
+import { validateFunctions } from '#api/infra/functions/validate-source';
 
 /** Upload limits: the archive itself, each unpacked file and all unpacked files together. */
 export const THEME_ARCHIVE_MAX_BYTES = 2 * 1024 * 1024;
@@ -73,6 +74,8 @@ export const zipThemeArchive: ThemeArchive = {
         );
       }
     }
+    const functions = files.get('functions.ts');
+    if (functions !== undefined) validateFunctions(functions);
     return { files, screenshot };
   },
 };

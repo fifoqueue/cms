@@ -46,6 +46,7 @@ export interface CommentFilterHooks {
   'comment.notification': { to: string; subject: string; text: string };
   /** Browser push before it is queued; `url` and `tag` are fixed by core. */
   'comment.push': CommentPushPayload;
+  /** Core supplies the initial decision; handlers may allow or refuse. Shape and identity stay validated. */
   'comment.submitAllowed': {
     allowed: boolean;
     contentId: string;

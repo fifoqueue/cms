@@ -205,8 +205,7 @@ export class MediaService {
           typeof result.allowed !== 'boolean' ||
           result.filename !== displayName(filename) ||
           result.mime !== mime ||
-          result.size !== bytes.byteLength ||
-          (!allowed && result.allowed)
+          result.size !== bytes.byteLength
         )
           return false;
         allowed = result.allowed;
