@@ -118,9 +118,13 @@ for (const asset of new Set([...publicLayout, ...publicPage])) {
   raw += css.length;
   gzip += gzipSync(css).length;
 }
+// Catches admin utilities leaking into public pages (that build was ~149K raw / ~27.6K gzip)
+// while leaving room for ordinary growth from public styles and Tailwind releases.
+const PUBLIC_RAW_BUDGET = 120_000;
+const PUBLIC_GZIP_BUDGET = 23_500;
 assert.ok(
-  raw <= 109688 && gzip <= 21315,
-  `Public CSS exceeds HEAD: ${raw} raw / ${gzip} gzip`,
+  raw <= PUBLIC_RAW_BUDGET && gzip <= PUBLIC_GZIP_BUDGET,
+  `Public CSS exceeds its budget: ${raw} raw / ${gzip} gzip`,
 );
 console.log(
   `Style isolation passed; public home CSS: ${raw} raw / ${gzip} gzip bytes.`,

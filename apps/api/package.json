@@ -27,7 +27,7 @@
     "aws4fetch": "1.0.20",
     "elysia": "^1.4.30",
     "elysia-autoload": "1.7.0",
-    "fast-xml-parser": "5.11.2",
+    "fast-xml-parser": "5.12.0",
     "fflate": "^0.8.3",
     "meilisearch": "0.62.0",
     "nodemailer": "^10.3.1",
