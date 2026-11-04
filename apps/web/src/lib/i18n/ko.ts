@@ -1150,6 +1150,36 @@ export const ko: Messages = {
   databaseCleanupAfter: '정리 후',
   databaseCleanupFree: '사용하지 않는 공간',
 
+  // Registered list filters
+  extensionFilterAny: (label: string) => `${label}: 전체`,
+
+  // Tools: site functions
+  toolsFunctions: '함수',
+  functionsStatus: '상태',
+  functionsCheckedAt: (time: string) => `${time}에 확인했습니다.`,
+  functionsNoSources: '사용 중인 함수 파일이 없습니다.',
+  functionsOwner: '소스',
+  functionsLoaded: '실행 중인 버전',
+  functionsObserved: '파일 버전',
+  functionsLastError: '마지막 오류',
+  functionsUpdated: '업데이트',
+  functionsInSync: '최신',
+  functionsOutOfSync: '실행되지 않음',
+  functionsActivationFailed: '최신 코드를 불러오지 못했습니다.',
+  functionsRecoveryFailed:
+    '최신 코드를 불러오지 못했고 이전 버전도 복원하지 못했습니다.',
+  functionsEditorOff: '코드 편집기가 꺼져 있습니다',
+  functionsEditorOffHelp:
+    '서버 관리자가 서버에서 다음 중 하나를 설정한 뒤 이 페이지를 새로 고치면 켜집니다.',
+  functionsWarning:
+    '이 코드는 서버에서 모든 권한으로 실행됩니다. 신뢰하는 코드만 저장하세요.',
+  functionsValidate: '문법 검사',
+  functionsValid: '문법 오류가 없습니다.',
+  functionsSaved: '함수를 저장했습니다.',
+  functionsReloaded: '저장하고 새 코드를 불러왔습니다.',
+  functionsReloadFailed: '저장했지만 새 코드를 불러오지 못했습니다',
+  functionsUnsaved: '저장하지 않은 변경 사항',
+
   // Dashboard
   dashboard: '대시보드',
   atAGlance: '한눈에 보기',

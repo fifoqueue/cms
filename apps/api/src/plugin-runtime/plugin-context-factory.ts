@@ -1,5 +1,6 @@
 import type { ResolvedManifest, ContentDocument } from '@cms/sdk';
 import { AssetRegistry } from '#api/plugin-runtime/asset-registry';
+import { AdminUiRegistry } from '#api/plugin-runtime/admin-ui-registry';
 import { RedirectRegistry } from '#api/domain/permalinks/redirect-registry';
 import { Translations } from '#api/domain/i18n/translations';
 import { PermalinkTokenRegistry } from '#api/domain/permalinks/token-registry';
@@ -71,6 +72,7 @@ import type {
 } from '@cms/sdk/plugin';
 
 export interface PluginContextServices {
+  adminUi?: AdminUiRegistry;
   assets?: AssetRegistry;
   redirects?: RedirectRegistry;
   translations?: Translations;
@@ -137,6 +139,7 @@ const checkKey = (key: string) => {
 /** Builds the capabilities handed to `activate`. Every registration is tracked by the scope. */
 export class PluginContextFactory {
   constructor(private readonly services: PluginContextServices) {
+    services.adminUi ??= new AdminUiRegistry();
     services.translations ??= new Translations();
     services.storageDrivers ??= new StorageDrivers(services.logger('core'));
     services.contentTypes ??= new ContentTypeRegistry(BUILTIN_TYPES);
@@ -202,6 +205,7 @@ export class PluginContextFactory {
     const embedRegistrar = embeds.registrar(id);
     const blockRegistrar = blocks.registrar(id);
     const pageRegistrar = pages.registrar(id);
+    const adminUi = this.services.adminUi!.registrar(id);
     const widgetBoxes = dashboardWidgets.registrar(id);
     const log = logger(id);
     const routeRegistrar = routes.registrar(id);
@@ -493,6 +497,18 @@ export class PluginContextFactory {
         },
       },
       admin: {
+        notice: (key, definition) =>
+          scope.track(() => adminUi.notice(key, definition)),
+        column: (screen, key, definition) =>
+          scope.track(() => adminUi.column(screen, key, definition)),
+        rowAction: (screen, key, definition) =>
+          scope.track(() => adminUi.rowAction(screen, key, definition)),
+        bulkAction: (screen, key, definition) =>
+          scope.track(() => adminUi.bulkAction(screen, key, definition)),
+        filter: (screen, key, definition) =>
+          scope.track(() => adminUi.filter(screen, key, definition)),
+        assets: (key, definition) =>
+          scope.track(() => adminUi.assets(key, definition)),
         page: (key, page) => scope.track(() => pageRegistrar.page(key, page)),
         dashboardWidget: (key, widget) =>
           scope.track(() => widgetBoxes.dashboardWidget(key, widget)),

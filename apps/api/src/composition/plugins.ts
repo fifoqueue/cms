@@ -37,6 +37,7 @@ type Input = Omit<ReturnType<typeof createRegistries>, 'roleExists'> &
   };
 
 export const createPlugins = ({
+  adminUi,
   assets,
   redirects,
   translations,
@@ -87,6 +88,7 @@ export const createPlugins = ({
 }: Input) => {
   const pluginSettings = new PluginSettings(pluginData, hooks);
   const contexts = new PluginContextFactory({
+    adminUi,
     redirects,
     assets,
     translations,

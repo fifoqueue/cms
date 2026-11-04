@@ -14,6 +14,12 @@ import { clampPage } from '#lib/server/page-range.js';
 import { readScreenOptions } from '#lib/server/screen-options.js';
 import { CONTENT_COLUMNS } from '#lib/admin/screen-options.js';
 import { adminFor } from '#lib/server/session.js';
+import {
+  EXTENSION_ACTION,
+  loadScreen,
+  readFilters,
+  runExtensionAction,
+} from '#lib/server/admin-ui.js';
 import { loadTaxonomyChoices } from '#lib/server/taxonomy-admin.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -79,9 +85,11 @@ export const load: PageServerLoad = async (event) => {
     CONTENT_COLUMNS,
     20,
   );
+  const filters = readFilters(params);
   // Status view totals follow the type only.
   const [content, counts] = await Promise.all([
     admin.content.list({
+      ...filters,
       type,
       status,
       view,
@@ -102,8 +110,15 @@ export const load: PageServerLoad = async (event) => {
   ]);
 
   clampPage(event.url, content);
+  const extensions = await loadScreen(
+    event,
+    'content',
+    content.items.map(({ id }) => id),
+  );
 
   return {
+    extensions,
+    extensionFilters: filters,
     filter: {
       type,
       status,
@@ -191,8 +206,13 @@ export const actions: Actions = {
     return { notice: 'saved' };
   },
   /** Applies one action to every selected entry and reports the ones that failed. */
+  extension: async (event) =>
+    runExtensionAction(event, 'content', await event.request.formData()),
   bulk: async (event) => {
     const form = await event.request.formData();
+
+    if (text(form, 'action').startsWith(EXTENSION_ACTION))
+      return runExtensionAction(event, 'content', form);
     const action = pick(BULK, text(form, 'action'));
     const selection = readSelection(form);
 

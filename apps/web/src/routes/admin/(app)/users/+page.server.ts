@@ -5,14 +5,22 @@ import { eachBounded, readSelection } from '#lib/server/bulk.js';
 import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { adminFor, requireCapability } from '#lib/server/session.js';
 import { passwordAllowed } from '#lib/server/sign-in.js';
+import {
+  EXTENSION_ACTION,
+  loadScreen,
+  pageOf,
+  readFilters,
+  runExtensionAction,
+} from '#lib/server/admin-ui.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
   requireCapability(event.locals, 'users.manage');
   const admin = adminFor(event);
+  const filters = readFilters(event.url.searchParams);
   const [users, roles, capabilities, membership, passwordSignIn] =
     await Promise.all([
-      admin.users.list(),
+      admin.users.list(filters),
       admin.roles.list(),
       // Labels and sources of registered capabilities; without them, keys are shown.
       admin.roles.capabilities().catch(() => null),
@@ -29,14 +37,26 @@ export const load: PageServerLoad = async (event) => {
 
   for (const user of users) counts[user.role] = (counts[user.role] ?? 0) + 1;
 
-  return {
-    users: users.filter(
+  const shown = pageOf(
+    users.filter(
       (user) =>
         (!role || user.role === role) &&
         (!search ||
           [user.name, user.email, user.slug].some((value) =>
             value.toLowerCase().includes(search),
           )),
+    ),
+    params,
+  );
+
+  return {
+    users: shown.items,
+    list: shown.list,
+    extensionFilters: filters,
+    extensions: await loadScreen(
+      event,
+      'users',
+      shown.items.map(({ id }) => id),
     ),
     total: users.length,
     counts,
@@ -66,6 +86,11 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+  extension: async (event) => {
+    requireCapability(event.locals, 'users.manage');
+
+    return runExtensionAction(event, 'users', await event.request.formData());
+  },
   role: async (event) => {
     const form = await event.request.formData();
 
@@ -155,6 +180,9 @@ export const actions: Actions = {
     requireCapability(event.locals, 'users.manage');
     const form = await event.request.formData();
     const self = event.locals.user!.id;
+
+    if (text(form, 'action').startsWith(EXTENSION_ACTION))
+      return runExtensionAction(event, 'users', form);
     const selection = readSelection(form);
 
     if (selection.failure) return selection.failure;

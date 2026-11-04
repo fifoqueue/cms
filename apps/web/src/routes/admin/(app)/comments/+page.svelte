@@ -5,7 +5,11 @@
   import { COMMENT_STATUSES } from '@cms/sdk';
   import type { CommentStatus } from '@cms/sdk';
   import { default as Search } from '@lucide/svelte/icons/search';
+  import AdminBlocks from '#lib/admin/AdminBlocks.svelte';
+  import BulkReport from '#lib/admin/BulkReport.svelte';
   import ClientOrigin from '#lib/admin/ClientOrigin.svelte';
+  import ExtensionFilters from '#lib/admin/ExtensionFilters.svelte';
+  import ExtensionRowActions from '#lib/admin/ExtensionRowActions.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import ListPager from '#lib/admin/ListPager.svelte';
   import ScreenOptions from '#lib/admin/ScreenOptions.svelte';
@@ -37,7 +41,10 @@
     })[status];
 
   const query = (changes: Record<string, string | number | undefined>) =>
-    listQuery({ ...data.filter, page: data.comments.page }, changes);
+    listQuery(
+      { ...data.filter, ...data.extensionFilters, page: data.comments.page },
+      changes,
+    );
 
   let selected = $state<string[]>([]);
   let undoForm = $state<HTMLFormElement>();
@@ -109,6 +116,10 @@
     value={data.filter.q ?? ''}
     class="w-64"
   />
+  <ExtensionFilters
+    filters={data.extensions.filters}
+    selected={data.extensionFilters}
+  />
   <Button type="submit" variant="outline"
     ><Search class="size-4" /> {m.filter}</Button
   >
@@ -135,6 +146,12 @@
     ? { label: m.undo, onClick: () => undoForm?.requestSubmit() }
     : undefined}
 />
+{#if form && 'bulk' in form && form.bulk}
+  <BulkReport result={form.bulk} names={new Map()} />
+{/if}
+{#if form && 'extensionNotice' in form && form.extensionNotice}
+  <AdminBlocks blocks={[form.extensionNotice]} />
+{/if}
 {#if form && 'undo' in form && form.undo}
   <form
     method="POST"
@@ -181,6 +198,11 @@
           >{m.deletePermanently}</NativeSelectOption
         >
       {/if}
+      {#each data.extensions.bulkActions as bulk (bulk.key)}
+        <NativeSelectOption value={`ext:${bulk.key}`}
+          >{bulk.label}</NativeSelectOption
+        >
+      {/each}
     </NativeSelect>
     <Button
       type="submit"
@@ -288,6 +310,18 @@
               {m.commentInReplyTo(item.parentAuthor ?? item.parentId)}
             </p>{/if}
           <p class="text-sm whitespace-pre-line">{item.body}</p>
+          {#if data.extensions.columns.length}
+            <dl class="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+              {#each data.extensions.columns as column (column.key)}
+                <div class="flex gap-1">
+                  <dt class="text-muted-foreground">{column.label}</dt>
+                  <dd class="whitespace-pre-line">
+                    {data.extensions.values[item.id]?.[column.key] ?? '—'}
+                  </dd>
+                </div>
+              {/each}
+            </dl>
+          {/if}
         </div>
       </div>
       <div class="flex flex-wrap gap-1">
@@ -313,6 +347,12 @@
             >
           </form>
         {/each}
+        <div class="flex flex-wrap items-center gap-3 px-2 text-sm">
+          <ExtensionRowActions
+            actions={data.extensions.rowActions}
+            id={item.id}
+          />
+        </div>
       </div>
       <details>
         <summary class="cursor-pointer text-sm text-primary"

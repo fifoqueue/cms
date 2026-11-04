@@ -20,6 +20,7 @@
     pluginPages,
     types = [],
     taxonomies = [],
+    extensions = [],
   }: Omit<NavContext, 'counts'> & {
     user: NavUser;
     pluginPages: readonly PluginPage[];
@@ -37,6 +38,7 @@
       adminSections({ types, taxonomies }),
       user,
       pluginPages,
+      extensions,
     ).flatMap((section) =>
       section.items.map((item) => ({
         href: item.href,

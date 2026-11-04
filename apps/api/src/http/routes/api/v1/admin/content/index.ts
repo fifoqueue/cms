@@ -2,11 +2,24 @@ import { CONTENT_BODY_BYTES, readJson } from '#api/http/request';
 import { json } from '#api/http/respond';
 import type { ApiApp } from '#api/http/services';
 import { session } from '#api/http/session';
+import { contentListQuerySchema } from '@cms/sdk';
 
 export const routes = (app: ApiApp) =>
   session(app)
-    .get('', async ({ adminContent, query, user }) =>
-      json(await adminContent.list(query, user)),
+    .get('', async ({ adminContent, adminUi, query, user }) =>
+      json(
+        await adminContent.list(
+          adminUi
+            ? await adminUi.apply(
+                user,
+                'content',
+                query,
+                contentListQuerySchema,
+              )
+            : query,
+          user,
+        ),
+      ),
     )
     .post('', async ({ adminContent, clients, request, user }) =>
       json(

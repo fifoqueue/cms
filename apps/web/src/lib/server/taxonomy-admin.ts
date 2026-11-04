@@ -6,11 +6,18 @@ import type {
   TaxonomyType,
 } from '@cms/sdk';
 import type { SeoFormValues } from '#lib/admin/seo.js';
+import { flattenTree } from '#lib/admin/taxonomy-tree.js';
 import { fieldImages, readFields } from '#lib/server/content-form.js';
 import type { FormFailure } from '#lib/server/errors.js';
 import { Errors, failFrom, issuesOf, text } from '#lib/server/errors.js';
 import { loadSeoContext, readSeoForm } from '#lib/server/seo-admin.js';
 import { adminFor } from '#lib/server/session.js';
+import {
+  loadScreen,
+  pageOf,
+  readFilters,
+  runExtensionAction,
+} from '#lib/server/admin-ui.js';
 
 interface AdminEvent {
   fetch: typeof globalThis.fetch;
@@ -69,17 +76,26 @@ const loadTermFields = async (
   );
 
 export const loadTerms = async (event: AdminEvent, taxonomy: TaxonomyType) => {
+  const filters = readFilters(event.url.searchParams);
   const [list, seo, fields] = await Promise.all([
-    adminFor(event).taxonomy.list(taxonomy),
+    adminFor(event).taxonomy.list(taxonomy, filters),
     loadSeoContext(event),
     loadTermFields(event, taxonomy),
   ]);
   const terms = list.map(adminTermView);
   const editId = event.url.searchParams.get('edit');
   const editing = terms.find((term) => term.id === editId) ?? null;
+  const shown = pageOf(flattenTree(terms), event.url.searchParams);
 
   return {
     terms,
+    termPage: shown.list,
+    extensions: await loadScreen(
+      event,
+      'terms',
+      shown.items.map(({ term }) => term.id),
+    ),
+    extensionFilters: filters,
     editing,
     seo,
     fields,
@@ -88,6 +104,10 @@ export const loadTerms = async (event: AdminEvent, taxonomy: TaxonomyType) => {
       : {},
   };
 };
+
+/** A registered row or bulk action of the term screens. */
+export const termExtensionAction = async (event: AdminEvent) =>
+  runExtensionAction(event, 'terms', await event.request.formData());
 
 const termChoice = ({ id, name, slug, parentId }: AdminTaxonomyTerm) => ({
   id,

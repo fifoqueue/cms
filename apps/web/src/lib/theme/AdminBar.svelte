@@ -20,6 +20,8 @@
       slug: string;
       role: Role;
       capabilities?: Capability[];
+      /** Registered toolbar links the API already checked for this user; labels are plain text. */
+      items?: readonly { key: string; label: string; href: string }[];
     };
     siteTitle: string;
     /** Name of the theme being previewed, if any. */
@@ -127,6 +129,13 @@
       </a>
       <!-- eslint-enable svelte/no-navigation-without-resolve -->
     {/if}
+    <!-- eslint-disable svelte/no-navigation-without-resolve -- registered same-site paths -->
+    {#each user.items ?? [] as link (link.key)}
+      <a href={link.href} class={item} data-sveltekit-reload
+        ><span class="max-w-40 truncate">{link.label}</span></a
+      >
+    {/each}
+    <!-- eslint-enable svelte/no-navigation-without-resolve -->
     {#if previewing}
       <span class="flex items-center gap-1.5 px-2.5 text-amber-300">
         <Eye class="size-4" aria-hidden="true" />

@@ -1,6 +1,6 @@
 // Regression guard: overrides are requested for a supported catalog language, administration
 // translations never cross users, and the locale the API chooses decides the page's copy.
-import { expect, test } from 'bun:test';
+import { afterAll, beforeEach, expect, setSystemTime, test } from 'bun:test';
 
 // SvelteKit provides these at build time (same values as `page-data.test.ts`).
 Bun.plugin({
@@ -22,6 +22,18 @@ const { adminTranslation, siteTranslation } =
   await import('#lib/i18n/overrides.server.js');
 const { loadSiteMessages } = await import('#lib/i18n/site.js');
 const { siteCatalog } = await import('#lib/i18n/site.server.js');
+
+/** Each test runs a day after the previous one: every translation cached before it is stale. */
+let clock = Date.now();
+
+beforeEach(() => {
+  clock += 86_400_000;
+  setSystemTime(new Date(clock));
+});
+
+afterAll(() => {
+  setSystemTime();
+});
 
 /** The API stand-in: answers each request with `answer(locale, token)` and records the request. */
 const api = (

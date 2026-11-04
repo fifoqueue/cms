@@ -1,6 +1,7 @@
 import type { PublicCache } from '#api/domain/site/public-cache';
 import type { HookDispatcher } from '#api/domain/ports';
 import type { AssetRegistry } from '#api/plugin-runtime/asset-registry';
+import type { AdminUiRegistry } from '#api/plugin-runtime/admin-ui-registry';
 import type { I18nService } from '#api/domain/i18n/service';
 import type { FunctionsEditor } from '#api/functions-runtime/functions-editor';
 import type { DatabaseCleanupService } from '#api/domain/tools/database-cleanup';
@@ -69,6 +70,7 @@ import type { ClientResolver } from '#api/http/client-identity';
  * so route files under `routes/api` read them from the handler context (`({ site }) => ...`).
  */
 export type ApiServices = {
+  adminUi?: AdminUiRegistry;
   renderHooks?: HookDispatcher;
   assets?: AssetRegistry;
   i18n?: I18nService;

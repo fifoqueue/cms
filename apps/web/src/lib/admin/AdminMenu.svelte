@@ -16,6 +16,7 @@
     types = [],
     taxonomies = [],
     counts = { comments: 0, plugins: 0 },
+    extensions = [],
   }: NavContext & {
     user: NavUser;
     pluginPages: readonly PluginPage[];
@@ -27,7 +28,7 @@
   const sections = $derived(adminSections({ types, taxonomies, counts }));
 
   const menu = $derived(
-    visibleSections(sections, user, pluginPages).map((section) => {
+    visibleSections(sections, user, pluginPages, extensions).map((section) => {
       const items = section.items.map((item) => ({
         href: item.href,
         label: item.label(i18n.m),

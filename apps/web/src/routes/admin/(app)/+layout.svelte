@@ -8,6 +8,8 @@
   import { default as PanelLeftOpen } from '@lucide/svelte/icons/panel-left-open';
   import { default as X } from '@lucide/svelte/icons/x';
   import { onMount } from 'svelte';
+  import { addScripts, stylesAt } from '#lib/admin/admin-assets.js';
+  import AdminBlocks from '#lib/admin/AdminBlocks.svelte';
   import AdminMenu from '#lib/admin/AdminMenu.svelte';
   import AdminSearch from '#lib/admin/AdminSearch.svelte';
   import AdminTopBar from '#lib/admin/AdminTopBar.svelte';
@@ -38,6 +40,8 @@
   // Another account's editor backups never reach this one (a shared browser tab).
   $effect(() => claimBackups(data.user.id));
 
+  $effect(() => addScripts(data.screenAssets));
+
   // Icons-only sidebar on wide screens, remembered by this browser.
   const COLLAPSED = 'cms-admin-collapsed';
   let collapsed = $state(false);
@@ -60,6 +64,19 @@
     }
   };
 </script>
+
+<!-- Registered stylesheets of this screen, in the head or after the page by placement, keyed so a
+     screen change swaps them; scripts come from the server hook and `addScripts`. -->
+<svelte:head>
+  {#each stylesAt(data.screenAssets, 'head') as item (item.key)}
+    <link
+      rel="stylesheet"
+      href={item.src}
+      integrity={item.attrs.integrity}
+      crossorigin={item.attrs.crossorigin}
+    />
+  {/each}
+</svelte:head>
 
 <svelte:window
   onkeydown={(event) => {
@@ -122,6 +139,7 @@
             types={data.types}
             taxonomies={data.taxonomies}
             counts={data.counts}
+            extensions={data.menuItems}
           />
         </nav>
         <div class="space-y-1 border-t pt-3">
@@ -170,17 +188,31 @@
           pluginPages={data.pluginPages}
           types={data.types}
           taxonomies={data.taxonomies}
+          extensions={data.menuItems}
         />
       </AdminTopBar>
       <main id="admin-main" tabindex="-1" class="p-4 md:p-8">
         <div class="mx-auto max-w-5xl space-y-6">
           <FlashNotice />
+          {#if data.screenNotices.length}
+            <div class="space-y-2" role="status">
+              <AdminBlocks blocks={data.screenNotices} />
+            </div>
+          {/if}
           {@render children()}
         </div>
       </main>
     </div>
   </div>
 </Toasts>
+{#each stylesAt(data.screenAssets, 'footer') as item (item.key)}
+  <link
+    rel="stylesheet"
+    href={item.src}
+    integrity={item.attrs.integrity}
+    crossorigin={item.attrs.crossorigin}
+  />
+{/each}
 
 <style>
   /* Collapsed (wide screens): section links keep their icon and accessible name only. */

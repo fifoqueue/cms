@@ -17,5 +17,8 @@
   seo={data.seo}
   fields={data.fields}
   fieldImages={data.fieldImages}
+  extensions={data.extensions}
+  extensionFilters={data.extensionFilters}
+  termPage={data.termPage}
   {form}
 />

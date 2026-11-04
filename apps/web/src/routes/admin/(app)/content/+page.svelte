@@ -11,6 +11,9 @@
   import { default as Plus } from '@lucide/svelte/icons/plus';
   import { default as Search } from '@lucide/svelte/icons/search';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import AdminBlocks from '#lib/admin/AdminBlocks.svelte';
+  import ExtensionFilters from '#lib/admin/ExtensionFilters.svelte';
+  import ExtensionRowActions from '#lib/admin/ExtensionRowActions.svelte';
   import BulkEdit from '#lib/admin/BulkEdit.svelte';
   import BulkReport from '#lib/admin/BulkReport.svelte';
   import QuickEdit from '#lib/admin/QuickEdit.svelte';
@@ -53,6 +56,7 @@
       Object.fromEntries(
         Object.entries({
           ...data.filter,
+          ...data.extensionFilters,
           page: data.content.page,
           ...changes,
         }).filter(([, value]) => value !== 'active'),
@@ -137,7 +141,12 @@
   });
   /** Title and checkbox are always shown; colspan of full-width rows. */
   const span = $derived(
-    2 + CONTENT_COLUMNS.filter((key) => !hidden.has(key)).length,
+    2 +
+      CONTENT_COLUMNS.filter((key) => !hidden.has(key)).length +
+      data.extensions.columns.length,
+  );
+  const extensionNotice = $derived(
+    form && 'extensionNotice' in form ? form.extensionNotice : null,
   );
 
   const confirmBulk: SubmitFunction = ({ formData, cancel }) => {
@@ -169,7 +178,8 @@
       data.filter.tag ||
       data.filter.taxonomy ||
       data.filter.author ||
-      data.filter.m,
+      data.filter.m ||
+      Object.keys(data.extensionFilters).length,
     ),
   );
   const date = (value: string | null) =>
@@ -328,6 +338,10 @@
       {/each}
     </NativeSelect>
   </label>
+  <ExtensionFilters
+    filters={data.extensions.filters}
+    selected={data.extensionFilters}
+  />
   <Button type="submit" variant="outline"
     ><Search class="size-4" /> {m.filter}</Button
   >
@@ -335,7 +349,7 @@
     <Button
       variant="ghost"
       href={resolve(
-        `/admin/(app)/content${query({ q: undefined, category: undefined, tag: undefined, taxonomy: undefined, term: undefined, author: undefined, m: undefined, page: 1 })}`,
+        `/admin/(app)/content${query({ q: undefined, category: undefined, tag: undefined, taxonomy: undefined, term: undefined, author: undefined, m: undefined, ...Object.fromEntries(Object.keys(data.extensionFilters).map((key) => [key, undefined])), page: 1 })}`,
       )}>{m.clear}</Button
     >
   {/if}
@@ -343,6 +357,7 @@
 
 {#if !quickForm}<FormMessage {form} />{/if}
 <BulkReport result={bulkResult} names={titles} />
+{#if extensionNotice}<AdminBlocks blocks={[extensionNotice]} />{/if}
 
 <!-- The row checkboxes belong to this form through their `form` attribute, so rows can hold their own forms. -->
 <form
@@ -362,6 +377,11 @@
     {/if}
     <NativeSelectOption value="delete">{m.deletePermanently}</NativeSelectOption
     >
+    {#each data.extensions.bulkActions as action (action.key)}
+      <NativeSelectOption value={`ext:${action.key}`}
+        >{action.label}</NativeSelectOption
+      >
+    {/each}
   </NativeSelect>
   <Button type="submit" variant="outline" size="sm" disabled={!selected.length}
     >{m.apply}</Button
@@ -423,6 +443,9 @@
             aria-sort={ariaSort('updatedAt')}
             >{@render sortLink('updatedAt', m.columnModified)}</TableHead
           >{/if}
+        {#each data.extensions.columns as column (column.key)}
+          <TableHead>{column.label}</TableHead>
+        {/each}
       </TableRow>
     </TableHeader>
     <TableBody>
@@ -549,6 +572,10 @@
                     >
                   </form>
                 {/if}
+                <ExtensionRowActions
+                  actions={data.extensions.rowActions}
+                  id={item.id}
+                />
               </div>
             </TableCell>
             {#if !hidden.has('author')}
@@ -616,6 +643,12 @@
                 >{date(item.updatedAt)}</TableCell
               >
             {/if}
+            {#each data.extensions.columns as column (column.key)}
+              <TableCell class="align-top text-sm whitespace-pre-line"
+                >{data.extensions.values[item.id]?.[column.key] ??
+                  ''}</TableCell
+              >
+            {/each}
           </TableRow>
         {/if}
       {:else}

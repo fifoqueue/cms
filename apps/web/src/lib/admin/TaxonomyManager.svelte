@@ -43,6 +43,15 @@
     TermFormValues,
     TermIntent,
   } from '#lib/server/taxonomy-admin.js';
+  import type { ScreenExtensions } from '#lib/server/admin-ui.js';
+  import type { AdminBlock } from '@cms/sdk';
+  import AdminBlocks from '#lib/admin/AdminBlocks.svelte';
+  import BulkReport from '#lib/admin/BulkReport.svelte';
+  import ExtensionFilters from '#lib/admin/ExtensionFilters.svelte';
+  import ExtensionRowActions from '#lib/admin/ExtensionRowActions.svelte';
+  import ListPager from '#lib/admin/ListPager.svelte';
+  import { listQuery } from '#lib/admin/list-query.js';
+  import { page } from '$app/state';
 
   interface TermForm {
     intent?: TermIntent;
@@ -50,6 +59,8 @@
     message?: string;
     issues?: unknown;
     notice?: string;
+    bulk?: { done: number; failed: { id: string; message: string }[] };
+    extensionNotice?: AdminBlock | null;
   }
 
   interface Props {
@@ -63,6 +74,12 @@
     fields?: FieldDefinition[];
     /** Thumbnail addresses of the edited term's image fields, by field key. */
     fieldImages?: Record<string, string>;
+    /** Registered columns and row and bulk actions of the term screens. */
+    extensions?: ScreenExtensions;
+    /** The address's `filter.<key>` values. */
+    extensionFilters?: Record<string, string>;
+    /** The shown page of the term rows; every row when absent. */
+    termPage?: { page: number; total: number; pageSize: number };
   }
 
   let {
@@ -71,6 +88,15 @@
     editing,
     seo,
     form,
+    extensions = {
+      columns: [],
+      values: {},
+      rowActions: [],
+      bulkActions: [],
+      filters: [],
+    },
+    extensionFilters = {},
+    termPage,
     hierarchical = taxonomy !== 'tag',
     fields = [],
     fieldImages = {},
@@ -89,6 +115,23 @@
         : resolve('/admin/(app)/taxonomies/[taxonomy]', { taxonomy }),
   );
   const rows = $derived(flattenTree(terms));
+  /** The rows of the shown page. */
+  const pageRows = $derived(
+    termPage
+      ? rows.slice(
+          (termPage.page - 1) * termPage.pageSize,
+          termPage.page * termPage.pageSize,
+        )
+      : rows,
+  );
+  /** The current query string without `edit`, on page `changes.page`. */
+  const pageQuery = (changes: { page: number }): `?${string}` =>
+    listQuery(
+      Object.fromEntries(
+        [...page.url.searchParams].filter(([name]) => name !== 'edit'),
+      ),
+      changes,
+    );
 
   /** A failed update keeps its own target, even if `?edit=` changed meanwhile. */
   const target = $derived(
@@ -279,82 +322,157 @@
       </CardContent>
     </Card>
 
-    <div class="rounded-md border bg-background">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{m.name}</TableHead>
-            <TableHead>{m.slug}</TableHead>
-            <TableHead class="hidden md:table-cell"
-              >{m.termDescription}</TableHead
-            >
-            <TableHead class="text-right">{m.termCount}</TableHead>
-            <TableHead class="w-24"></TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {#each rows as { term, depth } (term.id)}
+    <div class="grid min-w-0 gap-4">
+      {#if form?.bulk}
+        <BulkReport
+          result={form.bulk}
+          names={new Map(terms.map((term) => [term.id, term.name]))}
+        />
+      {/if}
+      {#if form?.extensionNotice}
+        <AdminBlocks blocks={[form.extensionNotice]} />
+      {/if}
+      {#if extensions.filters.length}
+        <form
+          method="GET"
+          role="search"
+          aria-label={m.filter}
+          class="flex flex-wrap items-end gap-2"
+        >
+          <ExtensionFilters
+            filters={extensions.filters}
+            selected={extensionFilters}
+          />
+          <Button type="submit" variant="outline" size="sm">{m.filter}</Button>
+        </form>
+      {/if}
+      {#if extensions.bulkActions.length}
+        <form
+          id="term-bulk"
+          method="POST"
+          action="?/extension"
+          use:enhance
+          class="flex flex-wrap items-center gap-2"
+        >
+          <label class="sr-only" for="term-bulk-action">{m.bulkActions}</label>
+          <NativeSelect id="term-bulk-action" name="action" size="sm">
+            {#each extensions.bulkActions as bulk (bulk.key)}
+              <NativeSelectOption value={bulk.key}
+                >{bulk.label}</NativeSelectOption
+              >
+            {/each}
+          </NativeSelect>
+          <Button type="submit" variant="outline" size="sm">{m.apply}</Button>
+        </form>
+      {/if}
+      <div class="rounded-md border bg-background">
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell class="font-medium">
-                <span class="text-muted-foreground">{'— '.repeat(depth)}</span
-                >{term.name}
-              </TableCell>
-              <TableCell class="text-sm text-muted-foreground"
-                >{term.slug}</TableCell
+              {#if extensions.bulkActions.length}<TableHead class="w-8"
+                  ><span class="sr-only">{m.selectAll}</span></TableHead
+                >{/if}
+              <TableHead>{m.name}</TableHead>
+              <TableHead>{m.slug}</TableHead>
+              <TableHead class="hidden md:table-cell"
+                >{m.termDescription}</TableHead
               >
-              <TableCell
-                class="hidden max-w-xs truncate text-sm text-muted-foreground md:table-cell"
-                >{term.description}</TableCell
-              >
-              <TableCell class="text-right">
-                <a
-                  href={resolve(
-                    `/admin/(app)/content?${taxonomy === 'category' || taxonomy === 'tag' ? `${taxonomy}=${encodeURIComponent(term.slug)}` : `taxonomy=${encodeURIComponent(taxonomy)}&term=${encodeURIComponent(term.slug)}`}`,
-                  )}
-                  class="hover:underline"
-                  aria-label={m.termCountLabel(term.count, term.name)}
-                  >{term.count}</a
+              <TableHead class="text-right">{m.termCount}</TableHead>
+              {#each extensions.columns as column (column.key)}
+                <TableHead>{column.label}</TableHead>
+              {/each}
+              <TableHead class="w-24"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {#each pageRows as { term, depth } (term.id)}
+              <TableRow>
+                {#if extensions.bulkActions.length}
+                  <TableCell>
+                    <input
+                      type="checkbox"
+                      form="term-bulk"
+                      name="ids"
+                      value={term.id}
+                      aria-label={m.selectItem(term.name)}
+                    />
+                  </TableCell>
+                {/if}
+                <TableCell class="font-medium">
+                  <span class="text-muted-foreground">{'— '.repeat(depth)}</span
+                  >{term.name}
+                </TableCell>
+                <TableCell class="text-sm text-muted-foreground"
+                  >{term.slug}</TableCell
                 >
-              </TableCell>
-              <TableCell>
-                <div class="flex justify-end gap-1">
-                  <Button
-                    href={`${managerUrl}?edit=${term.id}`}
-                    variant="ghost"
-                    size="icon"
-                    aria-label={m.editItem(term.name)}
+                <TableCell
+                  class="hidden max-w-xs truncate text-sm text-muted-foreground md:table-cell"
+                  >{term.description}</TableCell
+                >
+                <TableCell class="text-right">
+                  <a
+                    href={resolve(
+                      `/admin/(app)/content?${taxonomy === 'category' || taxonomy === 'tag' ? `${taxonomy}=${encodeURIComponent(term.slug)}` : `taxonomy=${encodeURIComponent(taxonomy)}&term=${encodeURIComponent(term.slug)}`}`,
+                    )}
+                    class="hover:underline"
+                    aria-label={m.termCountLabel(term.count, term.name)}
+                    >{term.count}</a
                   >
-                    <Pencil class="size-4" />
-                  </Button>
-                  <form
-                    method="POST"
-                    action="?/delete"
-                    use:enhance={confirmDelete(term.name)}
+                </TableCell>
+                {#each extensions.columns as column (column.key)}
+                  <TableCell class="text-sm whitespace-pre-line"
+                    >{extensions.values[term.id]?.[column.key] ?? ''}</TableCell
                   >
-                    <input type="hidden" name="id" value={term.id} />
+                {/each}
+                <TableCell>
+                  <div class="flex items-center justify-end gap-1 text-xs">
+                    <ExtensionRowActions
+                      actions={extensions.rowActions}
+                      id={term.id}
+                    />
                     <Button
-                      type="submit"
+                      href={`${managerUrl}?edit=${term.id}`}
                       variant="ghost"
                       size="icon"
-                      aria-label={m.deleteItem(term.name)}
+                      aria-label={m.editItem(term.name)}
                     >
-                      <Trash2 class="size-4" />
+                      <Pencil class="size-4" />
                     </Button>
-                  </form>
-                </div>
-              </TableCell>
-            </TableRow>
-          {:else}
-            <TableRow>
-              <TableCell
-                colspan={5}
-                class="py-10 text-center text-muted-foreground"
-                >{hierarchical ? m.noCategories : m.noTags}</TableCell
-              >
-            </TableRow>
-          {/each}
-        </TableBody>
-      </Table>
+                    <form
+                      method="POST"
+                      action="?/delete"
+                      use:enhance={confirmDelete(term.name)}
+                    >
+                      <input type="hidden" name="id" value={term.id} />
+                      <Button
+                        type="submit"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={m.deleteItem(term.name)}
+                      >
+                        <Trash2 class="size-4" />
+                      </Button>
+                    </form>
+                  </div>
+                </TableCell>
+              </TableRow>
+            {:else}
+              <TableRow>
+                <TableCell
+                  colspan={5 +
+                    extensions.columns.length +
+                    (extensions.bulkActions.length ? 1 : 0)}
+                  class="py-10 text-center text-muted-foreground"
+                  >{hierarchical ? m.noCategories : m.noTags}</TableCell
+                >
+              </TableRow>
+            {/each}
+          </TableBody>
+        </Table>
+      </div>
+      {#if termPage}
+        <ListPager base={managerUrl} list={termPage} query={pageQuery} />
+      {/if}
     </div>
   </div>
 {/if}

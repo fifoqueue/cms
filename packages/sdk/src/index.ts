@@ -16,6 +16,7 @@ export * from '#sdk/render';
 export * from '#sdk/response-headers';
 export * from '#sdk/redirects';
 export * from '#sdk/plugins';
+export * from '#sdk/admin-ui';
 export * from '#sdk/taxonomy';
 export * from '#sdk/blocks';
 export * from '#sdk/themes';

@@ -5,6 +5,7 @@ import {
 } from '#api/composition/persistence';
 import { createSecurity } from '#api/composition/security';
 import { createRegistries } from '#api/composition/registries';
+import { createAdminUiAccess } from '#api/composition/admin-ui';
 import { createRepositories } from '#api/composition/repositories';
 import { createContent } from '#api/composition/content';
 import { createSite } from '#api/composition/site';
@@ -270,6 +271,15 @@ export const createContainer = async (
     store: repositories.cleanupStore,
     leases: repositories.taskLeases,
   });
+
+  registries.adminUi.setAccess(
+    createAdminUiAccess(
+      repositories,
+      content.content,
+      media.media,
+      registries.hooks,
+    ),
+  );
   const app = await http.assemble({
     i18n: registries.i18n,
     functionsEditor: functions.functionsEditor,
@@ -308,6 +318,7 @@ export const createContainer = async (
     avatars: security.avatars,
     search: security.search,
     pluginPages: registries.pluginPages,
+    adminUi: registries.adminUi,
     pluginBlocks: registries.blockRegistry,
     dashboardWidgets: registries.dashboardWidgets,
     webhooks,

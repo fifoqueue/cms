@@ -11,6 +11,7 @@ import { default as MessageSquare } from '@lucide/svelte/icons/message-square';
 import { default as Palette } from '@lucide/svelte/icons/palette';
 import { default as Pin } from '@lucide/svelte/icons/pin';
 import { default as Plug } from '@lucide/svelte/icons/plug';
+import { default as Puzzle } from '@lucide/svelte/icons/puzzle';
 import { default as SearchCheck } from '@lucide/svelte/icons/search-check';
 import { default as Settings } from '@lucide/svelte/icons/settings';
 import { default as Users } from '@lucide/svelte/icons/users';
@@ -18,6 +19,7 @@ import { default as Wrench } from '@lucide/svelte/icons/wrench';
 import type { Component } from 'svelte';
 import { can } from '@cms/sdk/capabilities';
 import type { Capability } from '@cms/sdk/capabilities';
+import type { AdminMenuItem } from '@cms/sdk';
 import { pluralLabel } from '#lib/i18n/index.js';
 import type { Messages } from '#lib/i18n/index.js';
 
@@ -63,6 +65,8 @@ export interface NavContext {
   taxonomies?: readonly { key: string; name: string }[];
   /** What needs attention: comments awaiting moderation, failed plugins. */
   counts?: { comments: number; plugins: number };
+  /** Registered menu entries (`data.menuItems`); the API lists only those the user may open. */
+  extensions?: readonly AdminMenuItem[];
 }
 
 /** The settings screens in display order: the tabs and the menu. */
@@ -391,6 +395,12 @@ export const adminSections = ({
           capability: 'tools.manage',
           keywords: ['optimize', 'revisions', 'cleanup', '최적화', '리비전'],
         },
+        {
+          href: resolve('/admin/(app)/tools/functions'),
+          label: (m) => m.toolsFunctions,
+          capability: 'functions.edit',
+          keywords: ['site.ts', 'code', 'hooks', '코드', '훅'],
+        },
       ],
     },
     {
@@ -427,30 +437,164 @@ export const adminSections = ({
 export const allowedEntries = (entries: readonly NavEntry[], user: NavUser) =>
   entries.filter((entry) => !entry.capability || can(user, entry.capability));
 
+/** Sidebar sections a registered entry's `parent` names; content goes under Posts when it exists. */
+const PARENT_SECTIONS: Record<
+  NonNullable<AdminMenuItem['parent']>,
+  string[]
+> = {
+  content: ['type-post', 'content'],
+  media: ['media'],
+  users: ['users'],
+  tools: ['tools'],
+  settings: ['settings'],
+  appearance: ['appearance'],
+  plugins: ['plugins'],
+};
+
+/** `entries` inserted into `list` in `position` order, each at index `position` (clamped). */
+const placed = <T>(
+  list: readonly T[],
+  entries: readonly { position: number; value: T }[],
+) => {
+  const result = [...list];
+
+  for (const { position, value } of [...entries].sort(
+    (left, right) => left.position - right.position,
+  ))
+    result.splice(
+      Math.min(Math.max(0, Math.trunc(position)), result.length),
+      0,
+      value,
+    );
+
+  return result;
+};
+
+const extensionEntry = (item: AdminMenuItem): NavEntry => ({
+  href: item.href,
+  label: () => item.label,
+  keywords: [item.key],
+});
+
+/** Sidebar sections a core menu entry's `key` stands for, as for `parent`. */
+const CORE_SECTIONS: Record<string, string[]> = {
+  ...PARENT_SECTIONS,
+  comments: ['comments'],
+};
+
 /**
- * The sections as the user sees them: only entries they may open, plugin pages under Plugins
- * (the API checks those, so they are listed as given), and no empty sections.
+ * The core sections as the menu's core entries arrange them. A section whose entry has
+ * `hidden: true` is hidden; the other listed ones swap places in `position` order, and an
+ * entry's label replaces the translated one only when `labelOverridden`. Sections without an
+ * entry keep their place and their own entry gating.
+ */
+const arranged = (
+  sections: readonly NavSection[],
+  core: readonly AdminMenuItem[],
+): readonly NavSection[] => {
+  const keys = new Set(sections.map(({ key }) => key));
+  const entries = new Map(
+    core.flatMap((item) => {
+      const key = CORE_SECTIONS[item.key]?.find((section) => keys.has(section));
+
+      return key ? [[key, item] as const] : [];
+    }),
+  );
+  const ordered = sections
+    .filter(({ key }) => entries.has(key) && !entries.get(key)!.hidden)
+    .sort(
+      (left, right) =>
+        entries.get(left.key)!.position - entries.get(right.key)!.position,
+    )
+    .map((section) => {
+      const item = entries.get(section.key)!;
+
+      return item.labelOverridden
+        ? { ...section, label: () => item.label }
+        : section;
+    });
+  let next = 0;
+
+  return sections.flatMap((section) => {
+    const item = entries.get(section.key);
+
+    if (!item) return [section];
+    if (item.hidden) return [];
+    const replacement = ordered[next]!;
+
+    next += 1;
+
+    return [replacement];
+  });
+};
+
+/**
+ * The sections as the user sees them: core sections arranged by the menu's core entries, only
+ * entries they may open, registered entries (plugin pages included) under their parent section
+ * or as their own top-level section at `position`, plugin pages the menu does not list under
+ * Plugins (the API checks those, so they are listed as given), and no empty sections.
  */
 export const visibleSections = (
-  sections: readonly NavSection[],
+  all: readonly NavSection[],
   user: NavUser,
   pluginPages: readonly PluginPage[],
-): NavSection[] =>
-  sections
+  extensions: readonly AdminMenuItem[] = [],
+): NavSection[] => {
+  const sections = arranged(
+    all,
+    extensions.filter((item) => item.core),
+  );
+  const keys = new Set(sections.map(({ key }) => key));
+  const registered = extensions.filter((item) => !item.core);
+  const listed = new Set(registered.map(({ href }) => href));
+  const parentOf = (item: AdminMenuItem) =>
+    item.parent
+      ? PARENT_SECTIONS[item.parent].find((key) => keys.has(key))
+      : undefined;
+  const topLevel = registered
+    .filter((item) => !parentOf(item))
+    .map((item) => ({
+      position: item.position,
+      value: {
+        key: `extension-${item.key}`,
+        icon: Puzzle,
+        label: () => item.label,
+        items: [extensionEntry(item)],
+      } satisfies NavSection,
+    }));
+
+  return placed(
+    sections.map((section) => ({
+      ...section,
+      items: placed(
+        allowedEntries(section.items, user),
+        registered
+          .filter((item) => parentOf(item) === section.key)
+          .map((item) => ({
+            position: item.position,
+            value: extensionEntry(item),
+          })),
+      ),
+    })),
+    topLevel,
+  )
     .map((section) => ({
       ...section,
       items: [
         ...allowedEntries(section.items, user),
         ...(section.key === 'plugins'
-          ? pluginPages.map(({ plugin, key, title }): NavEntry => ({
-              href: resolve('/admin/(app)/extensions/[plugin]/[key]', {
-                plugin,
-                key,
-              }),
-              label: () => title,
-              keywords: [plugin],
-            }))
+          ? pluginPages
+              .map(({ plugin, key, title }): NavEntry => ({
+                href: resolve('/admin/(app)/extensions/[plugin]/[key]', {
+                  plugin,
+                  key,
+                }),
+                label: () => title,
+                keywords: [plugin],
+              }))
+              .filter(({ href }) => !listed.has(href))
           : []),
       ],
     }))
     .filter((section) => section.items.length > 0);
+};

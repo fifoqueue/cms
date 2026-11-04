@@ -6,6 +6,70 @@
 
 ## 코어
 
+### 관리자 UI
+
+`admin.page`는 선택적 `parent`와 `position`으로 메뉴 위치를 지정합니다.
+`admin.menu`는 `{ userId, items }`를 받아 허용된 항목을 숨기거나 이름과
+순서를 바꿀 수 있습니다. 항목 추가·주소 변경·권한 상승은 허용하지 않습니다.
+메뉴 응답 항목의 `core`는 코어 항목 여부입니다. `labelOverridden`은
+코어 항목의 최종 라벨이 필터 적용 전 기본 라벨과 다를 때만 `true`이며,
+서버가 계산합니다. 기본 코어 라벨은 웹에서 번역하고 변경된 라벨은 그대로
+표시합니다. 코어 항목도 `position` 순서와 필터의 항목 제거를 적용합니다.
+사용자에게 허용된 코어 항목은 필터가 제거해도 응답에 남으며 `hidden: true`로
+표시합니다. 권한이 없는 코어 항목은 응답에 포함하지 않습니다. 숨긴 비코어
+항목은 응답에서 제외합니다. 나머지 항목은 `hidden: false`이며, 필터가
+`core`나 `hidden`을 직접 바꾼 결과는 거부합니다. 웹은 별도 권한 표 없이
+`hidden`으로 코어 섹션 숨김을 적용할 수 있습니다.
+플러그인 페이지의 `core`·`labelOverridden`은 모두 `false`입니다.
+관리자 바에는 숨긴 메뉴 항목을 전달하지 않습니다.
+`adminBar.items`도 같은 권한 경계를 유지하며 사이트 내부 주소만 반환합니다.
+
+등록 메서드는 플러그인과 사이트·테마 함수의 `admin`에 공통으로 제공됩니다.
+등록 해제 함수를 호출하거나 소유 범위를 해제하면 등록이 제거됩니다.
+열과 필터의 `capability`를 생략하면 화면의 기본 목록 권한을 사용합니다:
+`content.create`, `media.upload`, `users.manage`, `comments.moderate`,
+용어 목록의 `content.create`. 목록 필터는 등록에 별도 권한을 지정해도
+화면의 기본 목록 권한을 먼저 확인한 뒤에만 실행합니다.
+행·일괄 액션은 실행 권한을 명시해야 하며 용어 변경에는 별도로
+`taxonomy.manage`가 필요합니다.
+열 값과 액션은 객체를 먼저 조회하여 코어의 소유권·상태·객체 권한 검사를
+통과한 ID만 콜백에 전달합니다. 없는 객체나 거부된 객체는 열에서 제외하고,
+액션에서는 `failed`로 반환합니다.
+
+| 등록                                                                  | 계약                                                               |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `notice(key, { capability?, screens?, render })`                      | notice 블록만 반환합니다. 실패·시간 초과·잘못된 출력은 제외합니다. |
+| `column(screen, key, { label, capability?, values })`                 | 요청한 ID의 일반 텍스트 값만 노출합니다.                           |
+| `rowAction(screen, key, { label, capability, run })`                  | ID별 실행 전에 권한과 `capability.check`를 확인합니다.             |
+| `bulkAction(screen, key, { label, capability, run })`                 | 허용된 ID만 전달하며 실패 ID를 반환합니다.                         |
+| `filter(screen, key, { label, options, apply })`                      | 목록 조회 조건을 해당 화면의 쿼리 스키마로 재검증합니다.           |
+| `assets(key, { kind, src, placement, attrs, capability?, screens? })` | 공개 자산과 같은 출처·속성·무결성 제약을 사용합니다.               |
+
+화면 이름은 `content`, `media`, `users`, `comments`, `terms`입니다.
+이 목록 화면 이름은 열·행 액션·일괄 액션·목록 필터에 사용합니다.
+알림과 자산의 `screens`는 `/admin/(app)` 아래 라우트 ID를 사용합니다.
+예를 들어 `content`, `content/[id]`, `tools/functions`, `dashboard`이며
+실제 콘텐츠 ID나 쿼리 문자열은 포함하지 않습니다.
+
+선택한 필터는 `filter.<소유자>:<등록 키>=<옵션 값>` 쿼리로 전달합니다.
+해당 화면에 등록되어 현재 사용자에게 허용된 필터만 사용할 수 있으며
+옵션 목록에 없는 값은 거부합니다. 선택 항목은 최대 100개, 키는 198자,
+값은 200자입니다. `apply`에는 검증된 선택 항목과 코어 조회 조건이 전달되고,
+반환값은 선택 항목을 제거한 뒤 해당 화면의 조회 스키마로 재검증합니다.
+사용자 목록은 `search`·`role`, 용어 목록은 `search`·`parentId`·`hideEmpty`·
+`orderBy`·`order`를 지원합니다. 두 목록은 기존 배열 응답을 유지합니다.
+
+ID는 요청당 최대 100개이며 액션의 중복 ID는 한 번만 실행합니다.
+콜백은 제한 시간 안에서 격리 실행됩니다. 제한 시간 초과가 이미 시작된
+외부 부작용의 취소를 보장하지는 않습니다.
+
+관리자 UI API는 Bearer 세션 인증을 요구하며 쿠키만으로 인증하지 않습니다.
+`/api/v1/admin/ui` 아래 `GET /menu`, `GET /notices?screen=...`,
+`GET /screens/:screen?ids=...`, `POST /screens/:screen/actions/:key`,
+`GET /admin-bar`, `GET /assets?screen=...`를 제공합니다.
+액션 본문은 `{ ids: string[] }`, 응답은 `{ notice?, failed: string[] }`입니다.
+SDK 호출은 `createAdminClient(...).ui.menu/notices/screen/action/adminBar/assets`입니다.
+
 ### 훅 실행 인수와 순서
 
 `hooks.on(name, handler, priority?)`와 `hooks.filter(name, handler, priority?)`는

@@ -112,14 +112,14 @@ const registrationJobSchema = registrationSchema.pick({
 export class UserService {
   constructor(private readonly deps: UserServiceDeps) {}
 
-  async list(actor: Actor): Promise<AdminUserSummary[]> {
+  async list(actor: Actor, input: unknown = {}): Promise<AdminUserSummary[]> {
     authorize(actor, 'users.manage');
     const query =
       (await this.deps.hooks?.applyFilter(
         'user.query',
-        {},
+        userQuerySchema.parse(input),
         (value) => userQuerySchema.safeParse(value).success,
-      )) ?? {};
+      )) ?? userQuerySchema.parse(input);
 
     return (await this.deps.directory.list(userQuerySchema.parse(query))).map(
       toSummary,

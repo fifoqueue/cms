@@ -1,6 +1,7 @@
 import { loadErrorData } from '#lib/server/theme-queries.js';
 import { themeLinks } from '#lib/server/theme-links.js';
 import { authApi, contentApi } from '#lib/server/api.js';
+import { loadAdminBar } from '#lib/server/admin-ui.js';
 import {
   menuView,
   pageLink,
@@ -26,13 +27,14 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
   const api = contentApi(fetch);
   // The hook chooses the scheme-specific cookie without making this layout depend on `url`.
   const token = locals.token;
-  const [layout, user] = await Promise.all([
+  const [layout, user, barItems] = await Promise.all([
     siteLayout({ fetch, cookies, locals }),
     token
       ? authApi(fetch, token)
           .me()
           .catch(() => null)
       : null,
+    token ? loadAdminBar({ fetch, locals }) : [],
   ]);
   const { site, seo, reading, menus, widgets } = layout;
   const theme = themeView(layout.theme);
@@ -82,6 +84,7 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
       slug: user.slug,
       role: user.role,
       capabilities: user.capabilities,
+      items: barItems,
     },
   };
 };

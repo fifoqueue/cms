@@ -1,5 +1,17 @@
 // Plugin authoring API. A plugin may depend on this module and on `@cms/sdk` only.
 import type { I18nFilterHooks } from '#sdk/hooks/i18n';
+import type { AdminMenuItem, AdminBarItem } from '#sdk/admin-ui';
+import type { AdminUiRegistrar } from '#sdk/admin-ui-contracts';
+
+export type {
+  AdminUiRegistrar,
+  AdminNoticeDefinition,
+  AdminColumnDefinition,
+  AdminRowActionDefinition,
+  AdminBulkActionDefinition,
+  AdminFilterDefinition,
+  AdminAssetDefinition,
+} from '#sdk/admin-ui-contracts';
 import type { TranslationRegistrar } from '#sdk/hooks/i18n';
 
 export type { I18nFilterHooks, TranslationScope } from '#sdk/hooks/i18n';
@@ -267,6 +279,8 @@ interface CoreActionHooks {
 
 /** Transformations. Each handler receives the previous handler's output. Invalid output is discarded. */
 interface CoreFilterHooks {
+  'admin.menu': { userId: string; items: AdminMenuItem[] };
+  'adminBar.items': { userId: string; items: AdminBarItem[] };
   /** Published content (with its body) right before it leaves the public API. */
   'content.public': PublicContent;
   /** A published content list item (no body) right before it leaves the public API. */
@@ -484,6 +498,8 @@ export interface TaskRegistrar {
 /** A screen of the plugin in the admin area, described as blocks. */
 export interface AdminPageDefinition {
   title: string;
+  parent?: AdminMenuItem['parent'];
+  position?: number;
   /** Who may open it and run its actions. Default `plugins.manage`. */
   capability?: Capability;
   render(): Awaitable<AdminBlock[]>;
@@ -728,7 +744,9 @@ export interface PluginContext {
   readonly embeds: EmbedRegistrar;
   readonly blocks: BlockRegistrar;
   readonly tasks: TaskRegistrar;
-  readonly admin: AdminPageRegistrar & DashboardWidgetRegistrar;
+  readonly admin: AdminPageRegistrar &
+    DashboardWidgetRegistrar &
+    AdminUiRegistrar;
   readonly routes: RouteRegistrar;
   readonly auth: AuthenticationRegistrar;
   readonly settings: SettingsReader;

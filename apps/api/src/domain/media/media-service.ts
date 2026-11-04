@@ -717,7 +717,7 @@ export class MediaService {
   }
 
   /** Own uploads need `media.upload`; other people's need `media.manage`. */
-  private async editable(id: string, actor: Actor) {
+  async editable(id: string, actor: Actor) {
     if (!this.deps.hooks.has('capability.check'))
       authorize(actor, 'media.upload');
     const media = await this.require(id);

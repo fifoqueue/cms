@@ -50,6 +50,15 @@
             page.params.action === action,
         }))
       : []),
+    ...(can(data.user, 'functions.edit')
+      ? [
+          {
+            href: resolve('/admin/(app)/tools/functions'),
+            label: i18n.m.toolsFunctions,
+            current: page.route.id === '/admin/(app)/tools/functions',
+          },
+        ]
+      : []),
   ]}
 />
 

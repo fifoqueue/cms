@@ -1,5 +1,10 @@
 import { adminFor } from '#lib/server/session.js';
-import { loadTerms, removeTerm, saveTerm } from '#lib/server/taxonomy-admin.js';
+import {
+  loadTerms,
+  removeTerm,
+  saveTerm,
+  termExtensionAction,
+} from '#lib/server/taxonomy-admin.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => ({
@@ -10,6 +15,7 @@ export const load: PageServerLoad = async (event) => ({
 });
 
 export const actions: Actions = {
+  extension: termExtensionAction,
   create: (event) => saveTerm(event, event.params.taxonomy, 'create'),
   update: (event) => saveTerm(event, event.params.taxonomy, 'update'),
   delete: (event) => removeTerm(event, event.params.taxonomy),

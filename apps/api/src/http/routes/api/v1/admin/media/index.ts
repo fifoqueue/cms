@@ -3,6 +3,7 @@ import { json } from '#api/http/respond';
 import type { ApiApp } from '#api/http/services';
 import { session } from '#api/http/session';
 import { readBytes } from '#api/http/request';
+import { mediaListQuerySchema } from '@cms/sdk';
 
 /** The file name travels URI-encoded in a header; the body is the raw file. */
 const filenameOf = (request: Request) => {
@@ -24,8 +25,15 @@ const upload = <T>(task: () => Promise<T>) => {
 
 export const routes = (app: ApiApp) =>
   session(app)
-    .get('', async ({ media, query, user }) =>
-      json(await media.list(query, user)),
+    .get('', async ({ media, adminUi, query, user }) =>
+      json(
+        await media.list(
+          adminUi
+            ? await adminUi.apply(user, 'media', query, mediaListQuerySchema)
+            : query,
+          user,
+        ),
+      ),
     )
     .post(
       '',

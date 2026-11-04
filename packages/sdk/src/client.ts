@@ -452,6 +452,20 @@ export const createSsoClient = (options: ClientOptions, token?: string) => {
 };
 
 /** Content and system management for a signed-in user. */
+import {
+  adminMenuResponseSchema,
+  adminNoticesResponseSchema,
+  adminScreenSchema,
+  adminIdsSchema,
+  adminScreenResponseSchema,
+  adminActionInputSchema,
+  adminActionResponseSchema,
+  adminBarResponseSchema,
+  adminAssetsResponseSchema,
+} from '#sdk/admin-ui';
+import type { AdminScreen } from '#sdk/admin-ui';
+import type { TermQuery } from '#sdk/taxonomy';
+
 export const createAdminClient = (
   options: ClientOptions,
   token: string,
@@ -469,6 +483,49 @@ export const createAdminClient = (
 
   return {
     ...i18nClient(request, 'admin'),
+    ui: {
+      menu: () =>
+        request('GET', '/api/v1/admin/ui/menu', {
+          response: adminMenuResponseSchema,
+        }),
+      notices: (screen: string) =>
+        request(
+          'GET',
+          `/api/v1/admin/ui/notices?screen=${encodeURIComponent(screen)}`,
+          {
+            response: adminNoticesResponseSchema,
+          },
+        ),
+      screen: (screen: AdminScreen, ids: string[] = []) =>
+        request(
+          'GET',
+          `/api/v1/admin/ui/screens/${adminScreenSchema.parse(screen)}?ids=${encodeURIComponent(adminIdsSchema.parse(ids).join(','))}`,
+          {
+            response: adminScreenResponseSchema,
+          },
+        ),
+      action: (screen: AdminScreen, key: string, input: { ids: string[] }) =>
+        request(
+          'POST',
+          `/api/v1/admin/ui/screens/${adminScreenSchema.parse(screen)}/actions/${encodeURIComponent(key)}`,
+          {
+            json: adminActionInputSchema.parse(input),
+            response: adminActionResponseSchema,
+          },
+        ),
+      adminBar: () =>
+        request('GET', '/api/v1/admin/ui/admin-bar', {
+          response: adminBarResponseSchema,
+        }),
+      assets: (screen: string) =>
+        request(
+          'GET',
+          `/api/v1/admin/ui/assets?screen=${encodeURIComponent(screen)}`,
+          {
+            response: adminAssetsResponseSchema,
+          },
+        ),
+    },
     functions: {
       read: () =>
         request('GET', '/api/v1/admin/functions', {
@@ -645,8 +702,18 @@ export const createAdminClient = (
         }),
     },
     taxonomy: {
-      list: (taxonomy: TaxonomyType) =>
+      list: (
+        taxonomy: TaxonomyType,
+        query: Omit<TermQuery, 'taxonomy'> &
+          Partial<Record<`filter.${string}`, string>> = {},
+      ) =>
         request<AdminTaxonomyTerm[]>('GET', taxonomyPath(taxonomy), {
+          query: Object.fromEntries(
+            Object.entries(query).map(([key, value]) => [
+              key,
+              value === undefined ? undefined : String(value),
+            ]),
+          ),
           response: z.array(adminTaxonomyTermSchema),
         }),
       create: (taxonomy: TaxonomyType, input: TaxonomyInput) =>

@@ -3,6 +3,7 @@ import {
   pluginPageResultSchema,
   settingValuesSchema,
   pluginCapabilitySchema,
+  adminMenuItemSchema,
 } from '@cms/sdk';
 import type { PluginPage, PluginPageSummary } from '@cms/sdk';
 import { can } from '@cms/sdk/capabilities';
@@ -65,6 +66,25 @@ export class AdminPageRegistry {
         key,
         title: String(page.title).slice(0, 100),
       }));
+  }
+
+  menu(actor: Actor) {
+    return this.registrations
+      .filter((entry) => can(actor, entry.capability))
+      .flatMap(({ owner, key, page }) => {
+        const result = adminMenuItemSchema.safeParse({
+          key: `${owner}:${key}`,
+          label: page.title,
+          href: `/admin/extensions/${encodeURIComponent(owner)}/${encodeURIComponent(key)}`,
+          parent: page.parent ?? 'plugins',
+          position: page.position ?? 100,
+          core: false,
+          labelOverridden: false,
+          hidden: false,
+        });
+
+        return result.success ? [result.data] : [];
+      });
   }
 
   /** The page's blocks; `null` when the plugin failed to describe it. */

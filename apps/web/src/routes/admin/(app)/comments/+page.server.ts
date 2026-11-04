@@ -6,6 +6,12 @@ import { readScreenOptions } from '#lib/server/screen-options.js';
 import { adminFor, requireCapability } from '#lib/server/session.js';
 import { clientProof } from '#lib/server/visitor.js';
 import { COMMENT_COLUMNS } from '#lib/admin/screen-options.js';
+import {
+  EXTENSION_ACTION,
+  loadScreen,
+  readFilters,
+  runExtensionAction,
+} from '#lib/server/admin-ui.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
@@ -24,8 +30,10 @@ export const load: PageServerLoad = async (event) => {
     COMMENT_COLUMNS,
     20,
   );
+  const filters = readFilters(params);
   const [comments, counts] = await Promise.all([
     admin.comments.list({
+      ...filters,
       status,
       search,
       contentId,
@@ -38,6 +46,12 @@ export const load: PageServerLoad = async (event) => {
   clampPage(event.url, comments);
 
   return {
+    extensions: await loadScreen(
+      event,
+      'comments',
+      comments.items.map(({ id }) => id),
+    ),
+    extensionFilters: filters,
     filter: { status, q: search, contentId },
     counts,
     screen,
@@ -81,8 +95,13 @@ const UNDO = {
 
 export const actions: Actions = {
   /** One action for every selected comment (or the single comment of a row button). */
+  extension: async (event) =>
+    runExtensionAction(event, 'comments', await event.request.formData()),
   bulk: async (event) => {
     const form = await event.request.formData();
+
+    if (text(form, 'action').startsWith(EXTENSION_ACTION))
+      return runExtensionAction(event, 'comments', form);
     const action = COMMENT_BULK_ACTIONS.find(
       (option) => option === text(form, 'action'),
     );

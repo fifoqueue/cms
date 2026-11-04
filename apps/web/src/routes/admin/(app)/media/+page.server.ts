@@ -5,6 +5,11 @@ import { submitAction } from '#lib/server/form-action.js';
 import { clampPage } from '#lib/server/page-range.js';
 import { readScreenOptions } from '#lib/server/screen-options.js';
 import { adminFor, requireCapability } from '#lib/server/session.js';
+import {
+  loadScreen,
+  readFilters,
+  runExtensionAction,
+} from '#lib/server/admin-ui.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
@@ -17,8 +22,9 @@ export const load: PageServerLoad = async (event) => {
   // Polled while a resync runs. The list comes from the database only, never the storage.
   event.depends('media:resync');
   const admin = adminFor(event);
+  const filters = readFilters(params);
   const [media, resync] = await Promise.all([
-    admin.media.list({ ...query, page, pageSize: screen.perPage }),
+    admin.media.list({ ...filters, ...query, page, pageSize: screen.perPage }),
     event.locals.user && can(event.locals.user, 'media.manage')
       ? admin.media.storage.resyncStatus()
       : null,
@@ -27,6 +33,12 @@ export const load: PageServerLoad = async (event) => {
   clampPage(event.url, media);
 
   return {
+    extensions: await loadScreen(
+      event,
+      'media',
+      media.items.map(({ id }) => id),
+    ),
+    extensionFilters: filters,
     filter,
     screen,
     media,
@@ -35,6 +47,8 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+  extension: async (event) =>
+    runExtensionAction(event, 'media', await event.request.formData()),
   /** Queues a pass over the current storage (or joins the one already running). */
   resync: async (event) => {
     requireCapability(event.locals, 'media.manage');

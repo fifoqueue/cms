@@ -7,6 +7,7 @@ import { createCaptcha } from '#api/composition/security';
 import { createImages } from '#api/composition/media';
 import { HookBus } from '#api/plugin-runtime/hook-bus';
 import { AssetRegistry } from '#api/plugin-runtime/asset-registry';
+import { AdminUiRegistry } from '#api/plugin-runtime/admin-ui-registry';
 import { RedirectRegistry } from '#api/domain/permalinks/redirect-registry';
 import { HealthChecks } from '#api/domain/tools/health-checks';
 import { SlotRegistry } from '#api/plugin-runtime/slot-registry';
@@ -90,6 +91,7 @@ export const createRegistries = ({
   const authentication = new SignInRegistry({ timeoutMs, logger });
 
   return {
+    adminUi: new AdminUiRegistry(timeoutMs),
     assets: new AssetRegistry(timeoutMs, () => publicCache?.invalidate()),
     redirects: new RedirectRegistry(timeoutMs),
     hooks,

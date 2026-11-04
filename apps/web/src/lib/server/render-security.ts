@@ -84,6 +84,13 @@ export const headTagHtml = (tag: WebHeadTag) =>
     .map(([name, value]) => ` ${name}="${escape(value!)}"`)
     .join('')}>`;
 
+/** `assetHtml` marked with the asset's key (`data-cms-asset`), so the page can tell it is present. */
+export const keyedAssetHtml = (asset: WebAsset) =>
+  assetHtml(asset).replace(
+    /^<(script|link)/,
+    `<$1 data-cms-asset="${escape(asset.key)}"`,
+  );
+
 /** Callers supply validated assets; every string is escaped for an attribute value. */
 export const assetHtml = (asset: WebAsset) => {
   const attrs = asset.attrs;

@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import {
   assetHtml,
+  keyedAssetHtml,
   renderHeaders,
   withAssetOrigins,
 } from '#lib/server/render-security.js';
@@ -8,6 +9,52 @@ import type { WebAsset } from '@cms/sdk/functions';
 import { WebHookBus } from '#lib/server/web-hooks.js';
 import { applyWebPresentation } from '#lib/server/web-render.js';
 import { emptyPageRender } from '#lib/server/slots.js';
+
+test('admin asset origins widen only the script and style directives', () => {
+  const base = new URL('https://site.example/admin/content');
+  const assets: WebAsset[] = [
+    {
+      key: 'p:script',
+      kind: 'script',
+      src: 'https://cdn.example/a.js',
+      placement: 'footer',
+      attrs: {},
+    },
+    {
+      key: 'p:style',
+      kind: 'style',
+      src: 'https://fonts.example/a.css',
+      placement: 'head',
+      attrs: {},
+    },
+  ];
+  const restricted =
+    "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'";
+  const widened = withAssetOrigins(restricted, assets, base);
+  const directives = Object.fromEntries(
+    widened.split(';').map((part) => {
+      const [name, ...sources] = part.trim().split(/\s+/);
+
+      return [name, sources];
+    }),
+  );
+
+  expect(directives).toEqual({
+    'default-src': ["'self'"],
+    'img-src': ["'self'", 'data:'],
+    'frame-ancestors': ["'none'"],
+    'script-src': ["'self'", 'https://cdn.example'],
+    'style-src': ["'self'", 'https://fonts.example'],
+  });
+  expect(withAssetOrigins(restricted, [], base)).toBe(restricted);
+  // The admin policy as sent today restricts neither kind, so it stays as it is.
+  expect(withAssetOrigins("frame-ancestors 'none'", assets, base)).toBe(
+    "frame-ancestors 'none'",
+  );
+  expect(keyedAssetHtml(assets[0]!)).toBe(
+    '<script data-cms-asset="p:script" src="https://cdn.example/a.js"></script>',
+  );
+});
 
 test('web header additions reject policy probes, injection and replacement', async () => {
   const headers = new Headers({ 'x-existing': 'original' });

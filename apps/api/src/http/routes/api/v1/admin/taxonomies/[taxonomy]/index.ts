@@ -4,6 +4,8 @@ import { readJson } from '#api/http/request';
 import { json } from '#api/http/respond';
 import type { ApiApp } from '#api/http/services';
 import { session } from '#api/http/session';
+import { adminTermListQuerySchema } from '@cms/sdk';
+import { parseInput } from '#api/shared/validation';
 
 const taxonomyParams = { params: t.Object({ taxonomy: t.String() }) };
 
@@ -12,8 +14,24 @@ export const routes = (app: ApiApp) =>
   session(app, 'content.create')
     .get(
       '',
-      async ({ adminTaxonomy, params }) =>
-        json(await adminTaxonomy.list(params.taxonomy)),
+      async ({ adminTaxonomy, adminUi, user, params, query: input }) =>
+        json(
+          await adminTaxonomy.list(params.taxonomy, async (query) => {
+            const values = { ...query, ...input, taxonomy: query.taxonomy };
+
+            return parseInput(
+              adminTermListQuerySchema,
+              adminUi
+                ? await adminUi.apply(
+                    user,
+                    'terms',
+                    values,
+                    adminTermListQuerySchema,
+                  )
+                : values,
+            );
+          }),
+        ),
       taxonomyParams,
     )
     .post(

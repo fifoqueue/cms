@@ -1174,6 +1174,36 @@ export const en = {
   databaseCleanupAfter: 'After',
   databaseCleanupFree: 'Unused space',
 
+  // Registered list filters
+  extensionFilterAny: (label: string) => `${label}: all`,
+
+  // Tools: site functions
+  toolsFunctions: 'Functions',
+  functionsStatus: 'Status',
+  functionsCheckedAt: (time: string) => `Checked ${time}.`,
+  functionsNoSources: 'No functions file is in use.',
+  functionsOwner: 'Source',
+  functionsLoaded: 'Running version',
+  functionsObserved: 'File version',
+  functionsLastError: 'Last error',
+  functionsUpdated: 'Updated',
+  functionsInSync: 'Current',
+  functionsOutOfSync: 'Not running',
+  functionsActivationFailed: 'The latest code failed to load.',
+  functionsRecoveryFailed:
+    'The latest code failed to load, and the previous version could not be restored.',
+  functionsEditorOff: 'The code editor is turned off',
+  functionsEditorOffHelp:
+    'The server owner can turn it on with one of the following on the server, then reload this page:',
+  functionsWarning:
+    'This code runs on the server with full access. Only save code you trust.',
+  functionsValidate: 'Check syntax',
+  functionsValid: 'No syntax errors found.',
+  functionsSaved: 'Functions saved.',
+  functionsReloaded: 'Saved and loaded the new code.',
+  functionsReloadFailed: 'Saved, but the new code did not load',
+  functionsUnsaved: 'Unsaved changes',
+
   // Dashboard
   dashboard: 'Dashboard',
   atAGlance: 'At a glance',

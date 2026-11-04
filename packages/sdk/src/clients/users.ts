@@ -10,6 +10,7 @@ import type {
   ProfileUpdateInput,
   UserCreateInput,
   UserUpdateInput,
+  UserQuery,
 } from '#sdk/users';
 
 /** Someone who can be named as an entry's author. */
@@ -28,8 +29,11 @@ export const usersClient = (request: Request) => {
   const path = (id: string) => `/api/v1/admin/users/${encodeURIComponent(id)}`;
 
   return {
-    list: () =>
+    list: (
+      query: UserQuery & Partial<Record<`filter.${string}`, string>> = {},
+    ) =>
       request<AdminUserSummary[]>('GET', '/api/v1/admin/users', {
+        query,
         response: z.array(adminUserSummarySchema),
       }),
     authors: () =>

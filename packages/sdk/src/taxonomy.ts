@@ -126,3 +126,14 @@ export const termQuerySchema = z.object({
 });
 
 export type TermQuery = z.output<typeof termQuerySchema>;
+
+export const adminTermListQuerySchema = termQuerySchema.extend({
+  parentId: z.preprocess(
+    (value) => (value === 'null' ? null : value),
+    termQuerySchema.shape.parentId,
+  ),
+  hideEmpty: z.preprocess(
+    (value) => (value === 'true' ? true : value === 'false' ? false : value),
+    termQuerySchema.shape.hideEmpty,
+  ),
+});

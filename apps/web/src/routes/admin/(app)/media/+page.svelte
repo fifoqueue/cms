@@ -14,7 +14,15 @@
   import { default as Music } from '@lucide/svelte/icons/music';
   import { default as Search } from '@lucide/svelte/icons/search';
   import { default as Upload } from '@lucide/svelte/icons/upload';
+  import AdminBlocks from '#lib/admin/AdminBlocks.svelte';
+  import BulkReport from '#lib/admin/BulkReport.svelte';
+  import ExtensionFilters from '#lib/admin/ExtensionFilters.svelte';
+  import ExtensionRowActions from '#lib/admin/ExtensionRowActions.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import {
+    NativeSelect,
+    NativeSelectOption,
+  } from '#lib/components/ui/native-select/index.js';
   import ListPager from '#lib/admin/ListPager.svelte';
   import {
     RESYNC_POLL_MS,
@@ -65,10 +73,20 @@
       audio: m.mediaAudio,
     })[kind];
   const query = (changes: Record<string, string | number | undefined>) =>
-    listQuery({ ...data.filter, page: data.media.page }, changes);
+    listQuery(
+      { ...data.filter, ...data.extensionFilters, page: data.media.page },
+      changes,
+    );
 
   let selected = $state<string[]>([]);
-  const confirmDelete: SubmitFunction = ({ cancel }) => {
+  const confirmDelete: SubmitFunction = ({ action, cancel }) => {
+    // Registered bulk actions report through the action result, not the delete toasts.
+    if (action.search === '?/extension')
+      return async ({ update }) => {
+        selected = [];
+        await update();
+      };
+
     if (!confirm(m.confirmDelete)) {
       cancel();
 
@@ -321,6 +339,10 @@
       value={data.filter.q ?? ''}
       class="h-8 w-48"
     />
+    <ExtensionFilters
+      filters={data.extensions.filters}
+      selected={data.extensionFilters}
+    />
     <Button type="submit" size="sm" variant="outline"
       ><Search class="size-4" /></Button
     >
@@ -356,7 +378,29 @@
       size="sm"
       disabled={!selected.length}>{m.deletePermanently}</Button
     >
+    {#if data.extensions.bulkActions.length}
+      <label class="sr-only" for="media-extension">{m.bulkActions}</label>
+      <NativeSelect id="media-extension" name="action" size="sm">
+        {#each data.extensions.bulkActions as bulk (bulk.key)}
+          <NativeSelectOption value={bulk.key}>{bulk.label}</NativeSelectOption>
+        {/each}
+      </NativeSelect>
+      <Button
+        type="submit"
+        formaction="?/extension"
+        variant="outline"
+        size="sm"
+        formnovalidate
+        disabled={!selected.length}>{m.apply}</Button
+      >
+    {/if}
   </form>
+  {#if form && 'bulk' in form && form.bulk}
+    <BulkReport result={form.bulk} names={new Map()} />
+  {/if}
+  {#if form && 'extensionNotice' in form && form.extensionNotice}
+    <AdminBlocks blocks={[form.extensionNotice]} />
+  {/if}
   {#if data.filter.view === 'list'}
     <div class="overflow-x-auto rounded-md border bg-background">
       <table class="w-full text-sm">
@@ -369,6 +413,9 @@
             <th scope="col" class="p-2">{m.fieldAuthor}</th>
             <th scope="col" class="p-2">{m.mediaUsedColumn}</th>
             <th scope="col" class="p-2">{m.mediaUploadedOn}</th>
+            {#each data.extensions.columns as column (column.key)}
+              <th scope="col" class="p-2">{column.label}</th>
+            {/each}
           </tr>
         </thead>
         <tbody>
@@ -405,6 +452,12 @@
                     title={m.mediaMissingHelp}>{m.mediaMissing}</Badge
                   >
                 {/if}
+                <div class="mt-1 flex flex-wrap gap-x-3 text-xs">
+                  <ExtensionRowActions
+                    actions={data.extensions.rowActions}
+                    id={media.id}
+                  />
+                </div>
               </td>
               <td class="p-2">{media.uploaderName || m.none}</td>
               <td class="p-2"
@@ -413,6 +466,11 @@
                   : m.mediaUnattached}</td
               >
               <td class="p-2 whitespace-nowrap">{date(media.createdAt)}</td>
+              {#each data.extensions.columns as column (column.key)}
+                <td class="p-2 whitespace-pre-line"
+                  >{data.extensions.values[media.id]?.[column.key] ?? ''}</td
+                >
+              {/each}
             </tr>
           {/each}
         </tbody>
@@ -461,6 +519,29 @@
               class="pointer-events-none absolute right-2 bottom-2 bg-background"
               title={m.mediaMissingHelp}>{m.mediaMissing}</Badge
             >
+          {/if}
+          {#if data.extensions.columns.length}
+            <dl class="mt-1 grid gap-0.5 text-xs">
+              {#each data.extensions.columns as column (column.key)}
+                {@const value = data.extensions.values[media.id]?.[column.key]}
+                {#if value}
+                  <div class="flex gap-1">
+                    <dt class="text-muted-foreground">{column.label}</dt>
+                    <dd class="min-w-0 break-words whitespace-pre-line">
+                      {value}
+                    </dd>
+                  </div>
+                {/if}
+              {/each}
+            </dl>
+          {/if}
+          {#if data.extensions.rowActions.length}
+            <div class="mt-1 flex flex-wrap gap-x-3 text-xs">
+              <ExtensionRowActions
+                actions={data.extensions.rowActions}
+                id={media.id}
+              />
+            </div>
           {/if}
         </li>
       {/each}

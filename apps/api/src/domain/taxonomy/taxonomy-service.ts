@@ -79,13 +79,21 @@ export interface TaxonomyServiceDeps {
 export class TaxonomyService {
   constructor(private readonly deps: TaxonomyServiceDeps) {}
 
-  async list(taxonomy: string): Promise<AdminTaxonomyTerm[]> {
-    const query = await termQuery(
+  async list(
+    taxonomy: string,
+    transform?: (
+      query: Awaited<ReturnType<typeof termQuery>>,
+    ) => Promise<Awaited<ReturnType<typeof termQuery>>>,
+  ): Promise<AdminTaxonomyTerm[]> {
+    let query = await termQuery(
       this.deps.hooks,
       await this.kind(taxonomy),
       'admin',
       (other) => resolves((key) => this.kind(key), other),
     );
+
+    if (transform) query = await transform(query);
+
     const terms = await this.deps.repository.list(
       query.taxonomy,
       'all',

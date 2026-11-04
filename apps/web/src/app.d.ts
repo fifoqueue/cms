@@ -1,5 +1,5 @@
 // See https://svelte.dev/docs/kit/types#app.d.ts
-import type { UserProfile } from '@cms/sdk';
+import type { PageAsset, UserProfile } from '@cms/sdk';
 import type { contentApi } from '#lib/server/api.js';
 
 declare global {
@@ -13,6 +13,8 @@ declare global {
       lang?: string;
       /** The captcha widget's origins, set by pages that render it (`allowCaptcha`). */
       captchaOrigins?: string[];
+      /** The admin screen's registered assets, whose origins the admin policy admits. */
+      adminAssets?: PageAsset[];
     }
   }
 }

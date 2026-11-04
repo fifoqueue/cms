@@ -18,6 +18,7 @@ import { startWebFunctions } from '#lib/server/web-functions.js';
 import { webHooks } from '#lib/server/web-functions.js';
 import { renderRequest } from '#lib/server/render-request.js';
 import {
+  keyedAssetHtml,
   renderHeaders,
   withAssetOrigins,
 } from '#lib/server/render-security.js';
@@ -60,6 +61,33 @@ const publicRender: Handle = ({ event, resolve }) => {
       statusText: response.statusText,
       headers,
     });
+  });
+};
+
+/**
+ * Writes the admin screen's registered scripts into the document (`data-cms-asset` keyed) outside
+ * the rendered components, so each runs once per document; later screens add theirs in the browser.
+ */
+const adminScripts: Handle = ({ event, resolve }) => {
+  if (!event.route.id?.startsWith('/admin/(app)')) return resolve(event);
+
+  return resolve(event, {
+    transformPageChunk: ({ html }) => {
+      const scripts = (event.locals.adminAssets ?? []).filter(
+        (asset) => asset.kind === 'script',
+      );
+      const tags = (placement: 'head' | 'footer') =>
+        scripts
+          .filter((asset) => asset.placement === placement)
+          .map(keyedAssetHtml)
+          .join('');
+
+      return scripts.length
+        ? html
+            .replace('</head>', `${tags('head')}</head>`)
+            .replace('</body>', `${tags('footer')}</body>`)
+        : html;
+    },
   });
 };
 
@@ -177,6 +205,15 @@ const responseSecurity: Handle = async ({ event, resolve }) => {
         .split(',')
         .map((part) => withWidgetOrigins(part, origins))
         .join(', '),
+    );
+  // Admin screens admit the origins of their registered assets; public policies never change here.
+  const assets = admin ? event.locals.adminAssets : undefined;
+  const adminPolicy = headers.get('content-security-policy');
+
+  if (assets?.length && adminPolicy)
+    headers.set(
+      'content-security-policy',
+      withAssetOrigins(adminPolicy, assets, event.url),
     );
 
   return new Response(response.body, {
@@ -372,5 +409,6 @@ export const handle = sequence(
   responseSecurity,
   guardAdmin,
   publicRender,
+  adminScripts,
   documentLanguage,
 );

@@ -40,6 +40,8 @@ user.signedOut user.created user.updated user.roleChanged user.deleted role.crea
 );
 
 for (const name of [
+  'admin.menu',
+  'adminBar.items',
   'template.candidates',
   'page.bodyClasses',
   'response.headers',

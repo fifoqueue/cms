@@ -10,7 +10,11 @@
   import type { SubmitFunction } from '$app/forms';
   import { resolve } from '$app/paths';
   import { default as Search } from '@lucide/svelte/icons/search';
+  import AdminBlocks from '#lib/admin/AdminBlocks.svelte';
   import BulkReport from '#lib/admin/BulkReport.svelte';
+  import ExtensionFilters from '#lib/admin/ExtensionFilters.svelte';
+  import ExtensionRowActions from '#lib/admin/ExtensionRowActions.svelte';
+  import ListPager from '#lib/admin/ListPager.svelte';
   import RoleOptions from '#lib/admin/RoleOptions.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { Badge } from '#lib/components/ui/badge/index.js';
@@ -107,6 +111,9 @@
 <FormMessage {form} />
 
 <BulkReport result={bulkResult} {names} />
+{#if form && 'extensionNotice' in form && form.extensionNotice}
+  <AdminBlocks blocks={[form.extensionNotice]} />
+{/if}
 
 <nav class="flex flex-wrap gap-2 text-sm" aria-label={m.role}>
   <a
@@ -139,6 +146,11 @@
       <NativeSelectOption value="">{m.bulkActions}</NativeSelectOption>
       <NativeSelectOption value="role">{m.usersChangeRole}</NativeSelectOption>
       <NativeSelectOption value="delete">{m.delete}</NativeSelectOption>
+      {#each data.extensions.bulkActions as bulk (bulk.key)}
+        <NativeSelectOption value={`ext:${bulk.key}`}
+          >{bulk.label}</NativeSelectOption
+        >
+      {/each}
     </NativeSelect>
     {#if action === 'role'}
       <label class="sr-only" for="users-role">{m.role}</label>
@@ -183,6 +195,10 @@
       aria-label={m.usersSearch}
       class="w-56"
     />
+    <ExtensionFilters
+      filters={data.extensions.filters}
+      selected={data.extensionFilters}
+    />
     <Button type="submit" variant="outline"
       ><Search class="size-4" /> {m.search}</Button
     >
@@ -212,6 +228,9 @@
               >{m.usersEntries}</TableHead
             >
             <TableHead class="hidden md:table-cell">{m.usersJoined}</TableHead>
+            {#each data.extensions.columns as column (column.key)}
+              <TableHead>{column.label}</TableHead>
+            {/each}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -263,6 +282,10 @@
                         : m.usersSendSignInLink}</button
                     >
                   </form>
+                  <ExtensionRowActions
+                    actions={data.extensions.rowActions}
+                    id={user.id}
+                  />
                 </div>
               </TableCell>
               <TableCell class="hidden break-all sm:table-cell"
@@ -286,6 +309,12 @@
                   i18n.language,
                 )}</TableCell
               >
+              {#each data.extensions.columns as column (column.key)}
+                <TableCell class="whitespace-pre-line"
+                  >{data.extensions.values[user.id]?.[column.key] ??
+                    ''}</TableCell
+                >
+              {/each}
             </TableRow>
           {/each}
         </TableBody>
@@ -295,6 +324,20 @@
     {/if}
   </CardContent>
 </Card>
+
+<ListPager
+  base={resolve('/admin/(app)/users')}
+  list={data.list}
+  query={(changes) =>
+    listQuery(
+      {
+        role: data.filter.role,
+        q: data.filter.q,
+        ...data.extensionFilters,
+      },
+      changes,
+    )}
+/>
 
 <Card>
   <CardHeader><CardTitle>{m.usersAdd}</CardTitle></CardHeader>
