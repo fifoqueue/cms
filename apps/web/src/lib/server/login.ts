@@ -12,7 +12,9 @@ import { visitorOf } from '#lib/server/visitor.js';
 
 const loginPath = async (event: RequestEvent) => {
   const path = (await contentApi(event.fetch).site()).loginPath;
+
   if (event.url.pathname !== path) error(404, Errors.NotFound);
+
   return path;
 };
 
@@ -31,6 +33,7 @@ export const loginPage = async (
   if ((await authApi(event.fetch).status()).setupRequired)
     redirect(303, '/admin/setup');
   const back = returnPath(event.url.searchParams.get(RETURN_PARAM), path);
+
   if (signedIn) redirect(303, back);
 
   const [info, captcha, membership] = await Promise.all([
@@ -38,6 +41,7 @@ export const loginPage = async (
     contentApi(event.fetch).captcha(),
     authApi(event.fetch).membership(),
   ]);
+
   return {
     kind: 'login' as const,
     signIn: {
@@ -55,6 +59,7 @@ export const loginPage = async (
 export const loginStartAction = async (event: RequestEvent) => {
   const path = await loginPath(event);
   const form = await event.request.formData();
+
   return startStep(event, form, returnPath(text(form, RETURN_PARAM), path));
 };
 
@@ -64,16 +69,19 @@ export const loginRecoverAction = async (event: RequestEvent) => {
   const form = await event.request.formData();
   const email = text(form, 'email');
   const back = returnPath(text(form, RETURN_PARAM), path);
+
   try {
     const session = await authApi(event.fetch).recover(
       { email, code: text(form, 'code') },
       visitorOf(event, form),
     );
+
     // Whatever was pending belonged to an earlier visitor of this browser.
     clearPending(event.cookies, event.url);
     startSession(event.cookies, session, event.url);
   } catch (caught) {
     return failFrom(caught, { email, back, recovery: true });
   }
+
   redirect(303, back);
 };

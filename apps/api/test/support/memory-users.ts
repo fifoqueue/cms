@@ -56,6 +56,7 @@ export class MemoryUserDirectory implements UserDirectory, RoleWriter {
         row.status === 'published' &&
         !this.content.trashed.has(row.id),
     );
+
     return user && hasPublic
       ? { name: user.name, slug: user.slug, bio: user.bio }
       : null;
@@ -75,6 +76,7 @@ export class MemoryUserDirectory implements UserDirectory, RoleWriter {
     return this.exclusive(async () => {
       this.requireRole(changes.role);
       const current = this.users.rows.get(changes.id)!;
+
       if (changes.role !== 'administrator')
         this.assertOtherAdministrator(changes.id);
       this.users.rows.set(changes.id, { ...current, ...changes });
@@ -84,6 +86,7 @@ export class MemoryUserDirectory implements UserDirectory, RoleWriter {
   updateProfile(changes: UserProfileChanges) {
     return this.exclusive(async () => {
       const current = this.users.rows.get(changes.id)!;
+
       this.users.rows.set(changes.id, { ...current, ...changes });
     });
   }
@@ -92,6 +95,7 @@ export class MemoryUserDirectory implements UserDirectory, RoleWriter {
     return this.exclusive(async () => {
       this.requireRole(role);
       const current = this.users.rows.get(id)!;
+
       if (role !== 'administrator') this.assertOtherAdministrator(id);
       this.users.rows.set(id, { ...current, role });
     });
@@ -124,16 +128,19 @@ export class MemoryUserDirectory implements UserDirectory, RoleWriter {
     return this.content.transaction(() =>
       this.exclusive(async () => {
         this.assertOtherAdministrator(id);
+
         for (const row of [...this.content.rows.values()])
           if (row.authorId === id) {
             if (reassignTo) row.authorId = reassignTo;
             else await this.content.erase(row.id);
           }
+
         for (const revision of this.content.revisions.rows)
           if (revision.authorId === id) {
             revision.authorId = null;
             revision.authorName = '';
           }
+
         this.users.rows.delete(id);
       }),
     );
@@ -143,12 +150,14 @@ export class MemoryUserDirectory implements UserDirectory, RoleWriter {
     const others = [...this.users.rows.values()].filter(
       (user) => user.role === 'administrator' && user.id !== id,
     );
+
     if (others.length === 0) throw conflict(Errors.LastAdministrator);
   }
 
   private requireRole(role: string) {
     if (!this.hasRole(role)) throw invalidInput(Errors.RoleUnknown);
   }
+
   private hasRole(role: string) {
     return (
       !this.deletedRoles.has(role) &&

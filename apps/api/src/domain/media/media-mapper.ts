@@ -48,6 +48,7 @@ export const projectMedia = async <
       ]),
     ),
   );
+
   return { ...media, publicUrl, variants };
 };
 
@@ -67,6 +68,7 @@ export const toAdminMedia = (media: MediaRecord): AdminMedia => ({
   url: media.publicUrl ?? mediaUrl(media.storageKey),
   variants: Object.keys(media.variants).flatMap((name) => {
     const variant = media.variants[name];
+
     return variant
       ? [
           {
@@ -100,6 +102,7 @@ export const toPublicImage = (image: {
   sizes: [
     ...Object.keys(image.variants).flatMap((name) => {
       const variant = image.variants[name];
+
       return variant
         ? [
             {
@@ -126,6 +129,7 @@ export const parseVariants = (
 ): Partial<Record<ImageSizeName, StoredVariant>> => {
   try {
     const value = JSON.parse(raw) as Record<string, StoredVariant>;
+
     return Object.fromEntries(
       Object.keys(value)
         .filter((name) => typeof value[name]?.key === 'string')

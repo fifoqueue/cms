@@ -52,24 +52,30 @@ export type StepView =
 export const qrCode = (value: string): QrCode => {
   const code = generate(value);
   let path = '';
+
   for (let y = 0; y < code.size; y += 1) {
     let x = 0;
+
     while (x < code.size) {
       if (!code.get(x, y)) {
         x += 1;
         continue;
       }
+
       const start = x;
+
       while (x < code.size && code.get(x, y)) x += 1;
       path += `M${start} ${y}h${x - start}v1h${start - x}z`;
     }
   }
+
   return { size: code.size, path };
 };
 
 /** A value too long for any QR code is shown as text to copy instead. */
 export const displayView = (display: SignInDisplay): DisplayView => {
   if (display.kind !== 'qr') return { kind: display.kind, text: display.text };
+
   try {
     return { kind: 'qr', qr: qrCode(display.value) };
   } catch {
@@ -85,6 +91,7 @@ export const redirectTarget = (step: { url: string; expiresAt: string }) => {
   if (!URL.canParse(step.url) || Number.isNaN(Date.parse(step.expiresAt)))
     return null;
   const { protocol } = new URL(step.url);
+
   return protocol === 'https:' || protocol === 'http:' ? step.url : null;
 };
 
@@ -163,6 +170,7 @@ export const fieldValues = (
   Object.fromEntries(
     fields.map(({ name }) => {
       const value = form.get(FIELD_PREFIX + name);
+
       return [name, typeof value === 'string' ? value : ''];
     }),
   );

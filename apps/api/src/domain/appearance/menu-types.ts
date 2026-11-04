@@ -11,11 +11,14 @@ export const coreMenuTypes: Record<string, MenuItemProvider> = {
   }),
   content: ({ item, content }) => {
     const entry = content[item.contentId ?? ''];
+
     return entry ? { url: entry.path, title: entry.title } : null;
   },
   term: ({ item, terms, bases }) => {
     const term = terms[`${item.taxonomy}:${item.termId}`];
+
     if (!term) return null;
+
     return {
       url:
         term.taxonomy === 'category' || term.taxonomy === 'tag'

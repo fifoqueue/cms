@@ -7,6 +7,7 @@ export const GET: RequestHandler = async (event) => {
   const { theme } = await siteLayout(event);
   const { body, hash } = themeCss(theme.css);
   const preview = theme.preview || themePreviewToken(event.cookies);
+
   return new Response(body, {
     headers: {
       'content-type': 'text/css; charset=utf-8',

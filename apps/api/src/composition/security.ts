@@ -22,12 +22,14 @@ export const createCaptcha = (
 ): { captchaProviders: CaptchaRegistry } => {
   const captchaProviders = new CaptchaRegistry({ timeoutMs, logger });
   const coreCaptcha = httpCaptchaVerifier(logger);
+
   for (const id of ['turnstile', 'hcaptcha', 'recaptcha'])
     captchaProviders.registerCore(id, {
       label: id,
       widget: CORE_CAPTCHA_WIDGETS[id],
       verify: (input) => coreCaptcha.verify(input),
     });
+
   return { captchaProviders };
 };
 
@@ -99,6 +101,7 @@ export const createSecurity = ({
   });
   const { registry: searchEngines, lookup: searchLookup } =
     createSearchProviders(search, { timeoutMs, logger });
+
   return {
     avatars,
     mediaLimits: async () => (await security.policy()).media,

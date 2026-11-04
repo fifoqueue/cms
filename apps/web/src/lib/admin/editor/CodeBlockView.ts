@@ -21,6 +21,7 @@ const INDENT = '    ';
 const indent = (editor: Editor, outdent: boolean) => {
   const { state } = editor;
   const { $from, $to, empty } = state.selection;
+
   if ($from.parent.type.name !== 'codeBlock' || !$from.sameParent($to))
     return false;
   const text = $from.parent.textContent;
@@ -30,6 +31,7 @@ const indent = (editor: Editor, outdent: boolean) => {
       ? 0
       : text.lastIndexOf('\n', $from.parentOffset - 1) + 1,
   ];
+
   for (
     let next = text.indexOf('\n', rows[0]);
     next !== -1 && next + 1 < $to.parentOffset;
@@ -37,6 +39,7 @@ const indent = (editor: Editor, outdent: boolean) => {
   )
     rows.push(next + 1);
   const tr = state.tr;
+
   if (!outdent && empty) tr.insertText(INDENT);
   else
     for (const row of rows.reverse()) {
@@ -44,13 +47,17 @@ const indent = (editor: Editor, outdent: boolean) => {
         tr.insertText(INDENT, start + row);
         continue;
       }
+
       const width =
         text[row] === '\t'
           ? 1
           : /^ {0,4}/.exec(text.slice(row, row + 4))![0].length;
+
       if (width) tr.delete(start + row, start + row + width);
     }
+
   if (tr.docChanged) editor.view.dispatch(tr.scrollIntoView());
+
   return true;
 };
 
@@ -80,8 +87,10 @@ export const codeBlockView = (labels: () => { name: string; auto: string }) =>
       const release = () => {
         if (!this.storage.escaped) return false;
         this.storage.escaped = false;
+
         return true;
       };
+
       return {
         ...this.parent?.(),
         Tab: () => !release() && indent(this.editor, false),
@@ -89,6 +98,7 @@ export const codeBlockView = (labels: () => { name: string; auto: string }) =>
         Escape: () => {
           if (!this.editor.isActive(this.name)) return false;
           this.storage.escaped = true;
+
           return true;
         },
       };
@@ -97,20 +107,25 @@ export const codeBlockView = (labels: () => { name: string; auto: string }) =>
       return ({ node }) => {
         let current = node;
         const dom = document.createElement('figure');
+
         dom.className = 'cms-code cms-editor-code not-prose';
         const caption = document.createElement('figcaption');
         const chips = document.createElement('span');
+
         chips.className = 'cms-editor-code-chips';
         chips.setAttribute('aria-hidden', 'true');
         const layer = document.createElement('div');
+
         layer.className = 'cms-editor-code-layer';
         layer.setAttribute('aria-hidden', 'true');
         for (const part of [caption, chips, layer])
           part.contentEditable = 'false';
         const pre = document.createElement('pre');
         const body = document.createElement('div');
+
         body.className = 'cms-editor-code-body';
         const code = document.createElement('code');
+
         code.spellcheck = false;
         code.setAttribute('autocorrect', 'off');
         code.setAttribute('autocapitalize', 'off');
@@ -128,6 +143,7 @@ export const codeBlockView = (labels: () => { name: string; auto: string }) =>
         ) => {
           let rows = 1;
           const text = next.textContent;
+
           for (
             let at = text.indexOf('\n');
             at !== -1;
@@ -135,21 +151,27 @@ export const codeBlockView = (labels: () => { name: string; auto: string }) =>
           )
             rows++;
           const signature = `${rows}:${lineNumbers}:${first}:${marked}`;
+
           if (signature === drawn) return;
           drawn = signature;
           const isMarked = highlightedRows(marked);
           const parts: HTMLElement[] = [];
+
           if (marked)
             for (let row = 1; row <= rows; row++) {
               if (!isMarked(row)) continue;
               const band = document.createElement('span');
+
               band.className = 'cms-editor-code-mark';
               band.style.top = `${(row - 1) * 1.7}em`;
               parts.push(band);
             }
+
           body.classList.toggle('cms-editor-code-numbered', lineNumbers);
+
           if (lineNumbers) {
             const numbers = document.createElement('span');
+
             numbers.className = 'cms-editor-code-numbers';
             numbers.textContent = Array.from(
               { length: rows },
@@ -161,17 +183,21 @@ export const codeBlockView = (labels: () => { name: string; auto: string }) =>
             );
             parts.push(numbers);
           }
+
           layer.replaceChildren(...parts);
         };
         const chip = (text: string, title = text) => {
           const element = document.createElement('span');
+
           element.textContent = text;
           element.title = title;
+
           return element;
         };
         const render = (next: Node) => {
           const { attrs, language } = codeAttributes(next.attrs);
           const { name, auto } = labels();
+
           caption.textContent =
             attrs.label || (language === 'text' ? name : language);
           chips.replaceChildren(
@@ -187,7 +213,9 @@ export const codeBlockView = (labels: () => { name: string; auto: string }) =>
             attrs.highlightLines,
           );
         };
+
         render(node);
+
         return {
           dom,
           contentDOM: code,
@@ -195,6 +223,7 @@ export const codeBlockView = (labels: () => { name: string; auto: string }) =>
             if (next.type !== current.type) return false;
             current = next;
             render(next);
+
             return true;
           },
           ignoreMutation: (mutation) =>

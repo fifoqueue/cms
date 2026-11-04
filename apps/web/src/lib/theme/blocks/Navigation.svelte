@@ -20,7 +20,9 @@
   /** The menu at this location; without a primary menu, the published pages (as before menus). */
   const items = $derived.by((): MenuItemView[] => {
     const menu = scope().menus[a.location];
+
     if (menu) return menu;
+
     return a.location === 'primary'
       ? scope().pages.map((page) => ({
           label: page.title,

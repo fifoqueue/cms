@@ -15,6 +15,7 @@ test('secrets never enter administrator SSO DTOs', () => {
     passwordLoginForced: false,
     secrets: { company: 'sealed-secret' },
   });
+
   expect(JSON.stringify(dto)).not.toContain('never-return-this');
   expect(JSON.stringify(dto)).not.toContain('sealed-secret');
 });

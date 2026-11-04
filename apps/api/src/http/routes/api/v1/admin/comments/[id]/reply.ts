@@ -12,6 +12,7 @@ export const routes = (app: ApiApp) =>
         address: clients.address(request),
         userAgent: clients.userAgent(request),
       });
+
       return noContent();
     },
     idParams,

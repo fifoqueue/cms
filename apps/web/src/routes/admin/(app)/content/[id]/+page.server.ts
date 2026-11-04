@@ -32,6 +32,7 @@ export const load: PageServerLoad = async (event) => {
       admin.contentModel.model(),
       editorPushKey(event),
     ]).catch(notFoundFrom);
+
   return {
     entry,
     model,
@@ -69,8 +70,10 @@ const isStale = async (
 export const actions: Actions = {
   save: async (event) => {
     const { input, values, failure } = await readContentInput(event);
+
     if (failure) return failure;
     let saved;
+
     try {
       saved = await adminFor(event).content.update(event.params.id, input);
     } catch (caught) {
@@ -81,6 +84,7 @@ export const actions: Actions = {
         }),
       });
     }
+
     // The editor shows what the save did and adopts this version (and only this one).
     return { saved: true, version: saved.updatedAt, status: saved.status };
   },
@@ -90,6 +94,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     // The list says so and offers Undo (restore from the Trash).
     redirect(
       303,
@@ -102,6 +107,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'restored' };
   },
   delete: async (event) => {
@@ -110,6 +116,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     redirect(303, '/admin/content?notice=deleted');
   },
   /** Opens the site's rendering of the editor's current text (the form targets a new tab). */
@@ -123,6 +130,7 @@ export const actions: Actions = {
           document: jsonField(form, 'document'),
         })
       : null;
+
     if (sent && !sent.success)
       return fail(400, {
         message: Errors.FormInvalid,
@@ -132,6 +140,7 @@ export const actions: Actions = {
         })),
       });
     let token: string;
+
     try {
       // Kept as an autosave first: the preview renders the newest autosave.
       if (sent?.success)
@@ -140,10 +149,12 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     redirect(303, `/preview/${encodeURIComponent(token)}`);
   },
   restoreRevision: async (event) => {
     const form = await event.request.formData();
+
     try {
       await adminFor(event).content.restoreRevision(
         event.params.id,
@@ -152,6 +163,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'revisionRestored' };
   },
 };

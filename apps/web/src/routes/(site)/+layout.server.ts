@@ -36,6 +36,7 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
   const { site, seo, reading, menus, widgets } = layout;
   const theme = themeView(layout.theme);
   const { primary, footer } = menus;
+
   locals.lang = site.locale;
   const [pages, blocks, linkRoutes] = await Promise.all([
     // Without a primary menu, navigation falls back to the published pages.
@@ -44,6 +45,7 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
     loadErrorData(api, theme, reading.timeZone),
     themeLinks(layout.theme),
   ]);
+
   return {
     siteCatalog: siteCatalog(site.locale),
     linkRoutes,

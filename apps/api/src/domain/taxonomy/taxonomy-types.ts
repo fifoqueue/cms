@@ -12,6 +12,7 @@ import { parseInput } from '#api/shared/validation';
 import { DefinitionRegistry } from '#api/domain/content/definition-registry';
 
 const PREFIX = 'taxonomy.definition.';
+
 export const BUILTIN_TAXONOMIES: readonly TaxonomyDefinition[] = [
   { key: 'category', name: 'Categories', hierarchical: true },
   { key: 'tag', name: 'Tags', hierarchical: false },

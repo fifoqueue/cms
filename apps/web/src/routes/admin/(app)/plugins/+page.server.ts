@@ -16,6 +16,7 @@ export const load: PageServerLoad = async (event) => {
   const params = event.url.searchParams;
   const status = STATUSES.find((option) => option === params.get('status'));
   const search = (params.get('q') ?? '').trim().slice(0, 200).toLowerCase();
+
   return {
     plugins: plugins.filter(
       (plugin) =>
@@ -41,9 +42,11 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   install: async (event) => {
     const bundle = (await event.request.formData()).get('bundle');
+
     if (!(bundle instanceof File) || bundle.size === 0)
       return fail(400, { message: Errors.PluginBundleRequired });
     const source = await bundle.text();
+
     return submitAction(
       () => adminFor(event).plugins.install(source),
       'pluginInstalled',
@@ -51,6 +54,7 @@ export const actions: Actions = {
   },
   enable: async (event) => {
     const id = text(await event.request.formData(), 'id');
+
     return submitAction(
       () => adminFor(event).plugins.enable(id),
       'pluginEnabled',
@@ -58,6 +62,7 @@ export const actions: Actions = {
   },
   disable: async (event) => {
     const id = text(await event.request.formData(), 'id');
+
     return submitAction(
       () => adminFor(event).plugins.disable(id),
       'pluginDisabled',
@@ -65,6 +70,7 @@ export const actions: Actions = {
   },
   remove: async (event) => {
     const id = text(await event.request.formData(), 'id');
+
     return submitAction(
       () => adminFor(event).plugins.remove(id),
       'pluginRemoved',
@@ -73,8 +79,10 @@ export const actions: Actions = {
   /** Reports the latest version from the plugin's update address; installs nothing. */
   update: async (event) => {
     const id = text(await event.request.formData(), 'id');
+
     try {
       const update = await adminFor(event).plugins.checkUpdate(id);
+
       return {
         update: {
           id,
@@ -92,9 +100,12 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const action = text(form, 'action');
     const plugins = adminFor(event).plugins;
+
     if (!['enable', 'disable', 'remove'].includes(action)) return {};
     const selection = readSelection(form, isPluginId);
+
     if (selection.failure) return selection.failure;
+
     return {
       bulk: await eachBounded(
         selection.ids,
@@ -103,6 +114,7 @@ export const actions: Actions = {
           if (action === 'disable') return void (await plugins.disable(id));
           // The host isolates a failing activation and answers with status `failed`.
           const plugin = await plugins.enable(id);
+
           if (plugin.status !== 'active')
             return plugin.error
               ? { message: plugin.error, params: plugin.errorParams }

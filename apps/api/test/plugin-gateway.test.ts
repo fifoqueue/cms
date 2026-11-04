@@ -38,6 +38,7 @@ const setup = async () => {
           role: 'subscriber',
           capabilities: [],
         });
+
       return null;
     },
   };
@@ -79,16 +80,19 @@ const setup = async () => {
         headers: token ? { authorization: `Bearer ${token}` } : {},
       }),
     );
+
   return { runtime, call };
 };
 
 describe('plugin gateway', () => {
   test('routes exist only while the plugin is active', async () => {
     const { runtime, call } = await setup();
+
     expect((await call('/api/plugins/echo/items/7')).status).toBe(404);
 
     await runtime.host.enable('echo');
     const response = await call('/api/plugins/echo/items/7');
+
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ id: '7' });
 
@@ -98,6 +102,7 @@ describe('plugin gateway', () => {
 
   test('admin routes require a session and failures are contained', async () => {
     const { runtime, call } = await setup();
+
     await runtime.host.enable('echo');
     expect((await call('/api/plugins/echo/me')).status).toBe(401);
     expect((await call('/api/plugins/echo/me', SUBSCRIBER_TOKEN)).status).toBe(

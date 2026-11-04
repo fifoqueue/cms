@@ -24,22 +24,27 @@ export const zipThemeArchive: ThemeArchive = {
     const relative = (name: string) =>
       prefix && name.startsWith(prefix) ? name.slice(prefix.length) : name;
     let unpacked: Record<string, Uint8Array>;
+
     try {
       // Learn whether everything sits in one top-level folder (`my-theme/theme.json`).
       const names: string[] = [];
+
       unzipSync(bytes, {
         filter: (file) => {
           if (++entries <= ENTRIES_MAX) names.push(file.name);
+
           return false;
         },
       });
       const roots = new Set(names.map((name) => name.split('/')[0]));
+
       if (roots.size === 1 && names.some((name) => name.includes('/')))
         prefix = `${[...roots][0]}/`;
       unpacked = unzipSync(bytes, {
         filter: (file) => {
           const path = relative(file.name);
           const screenshot = isScreenshot(path);
+
           if (!screenshot && !isThemeFile(path)) return false;
           total += file.originalSize;
           if (
@@ -48,23 +53,28 @@ export const zipThemeArchive: ThemeArchive = {
             total > TOTAL_MAX_BYTES
           )
             tooLarge = true;
+
           return !tooLarge;
         },
       });
     } catch {
       throw invalidInput(Errors.ThemeArchiveInvalid);
     }
+
     if (entries > ENTRIES_MAX || tooLarge)
       throw invalidInput(Errors.ThemeArchiveTooLarge);
     const decoder = new TextDecoder('utf-8', { fatal: true });
     const files = new Map<string, string>();
     let screenshot: Uint8Array | null = null;
+
     for (const [name, data] of Object.entries(unpacked)) {
       const path = relative(name);
+
       if (isScreenshot(path)) {
         screenshot = data;
         continue;
       }
+
       try {
         files.set(path, decoder.decode(data));
       } catch {
@@ -74,8 +84,11 @@ export const zipThemeArchive: ThemeArchive = {
         );
       }
     }
+
     const functions = files.get('functions.ts');
+
     if (functions !== undefined) validateFunctions(functions);
+
     return { files, screenshot };
   },
 };

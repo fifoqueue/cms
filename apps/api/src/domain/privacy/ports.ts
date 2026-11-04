@@ -1,4 +1,5 @@
 import type { PrivacyAction, PrivacyRequest } from '@cms/sdk';
+
 export interface PrivacyRecord extends Omit<
   PrivacyRequest,
   'createdAt' | 'expiresAt' | 'confirmedAt' | 'completedAt'

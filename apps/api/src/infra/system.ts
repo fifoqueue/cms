@@ -65,10 +65,13 @@ export const httpsUpdateFeed: UpdateFeed = {
       signal: AbortSignal.timeout(5000),
       headers: { accept: 'application/json' },
     });
+
     if (!response.ok) throw new Error(Errors.PluginUpdateUnavailable);
     const body = await response.arrayBuffer();
+
     if (body.byteLength > MAX_FEED_BYTES)
       throw new Error(Errors.PluginUpdateUnavailable);
+
     return JSON.parse(new TextDecoder().decode(body)) as unknown;
   },
 };

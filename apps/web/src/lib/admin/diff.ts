@@ -13,6 +13,7 @@ export const lineDiff = (before: string[], after: string[]): DiffLine[] => {
   const lengths: number[][] = Array.from({ length: rows + 1 }, () =>
     Array<number>(columns + 1).fill(0),
   );
+
   for (let i = rows - 1; i >= 0; i--)
     for (let j = columns - 1; j >= 0; j--)
       lengths[i]![j] =
@@ -22,6 +23,7 @@ export const lineDiff = (before: string[], after: string[]): DiffLine[] => {
   const lines: DiffLine[] = [];
   let i = 0;
   let j = 0;
+
   while (i < rows && j < columns)
     if (before[i] === after[j]) {
       lines.push({ kind: 'same', text: before[i]! });
@@ -32,6 +34,7 @@ export const lineDiff = (before: string[], after: string[]): DiffLine[] => {
     else lines.push({ kind: 'added', text: after[j++]! });
   while (i < rows) lines.push({ kind: 'removed', text: before[i++]! });
   while (j < columns) lines.push({ kind: 'added', text: after[j++]! });
+
   return lines;
 };
 
@@ -45,20 +48,25 @@ export interface DiffRow {
 /** Pairs each run of removed lines with the added lines that follow it. */
 export const sideBySide = (lines: DiffLine[]): DiffRow[] => {
   const rows: DiffRow[] = [];
+
   for (let index = 0; index < lines.length;) {
     const line = lines[index]!;
+
     if (line.kind === 'same') {
       rows.push({ before: line.text, after: line.text, changed: false });
       index++;
       continue;
     }
+
     const removed: string[] = [];
     const added: string[] = [];
+
     while (lines[index]?.kind === 'removed') removed.push(lines[index++]!.text);
     while (lines[index]?.kind === 'added') added.push(lines[index++]!.text);
     for (let row = 0; row < Math.max(removed.length, added.length); row++)
       rows.push({ before: removed[row], after: added[row], changed: true });
   }
+
   return rows;
 };
 
@@ -98,66 +106,83 @@ export const blockLines = (document: unknown, labels: BlockLabels) => {
     const children = Array.isArray(node.content)
       ? (node.content as Node[])
       : [];
+
     switch (node.type) {
       case 'paragraph':
         lines.push(prefix + inline(node));
+
         return;
       case 'heading':
         lines.push(
           `${prefix}${'#'.repeat(Number(node.attrs?.level) || 2)} ${inline(node)}`,
         );
+
         return;
       case 'codeBlock':
         for (const line of inline(node).split('\n'))
           lines.push(`${prefix}    ${line}`);
+
         return;
       case 'tableRow':
         lines.push(`${prefix}| ${children.map(inline).join(' | ')} |`);
+
         return;
       case 'image':
         lines.push(
           `${prefix}[${labels.image}] ${String(node.attrs?.alt ?? '')}`.trimEnd(),
         );
+
         return;
       case 'audio':
         lines.push(`${prefix}[${labels.audio}]`);
+
         return;
       case 'embed':
         lines.push(
           `${prefix}[${labels.embed}] ${String(node.attrs?.url ?? '')}`,
         );
+
         return;
       case 'horizontalRule':
         lines.push(`${prefix}---`);
+
         return;
       case 'more':
         lines.push(`${prefix}<!--more-->`);
+
         return;
       case 'pageBreak':
         lines.push(`${prefix}<!--nextpage-->`);
+
         return;
       case 'patternRef':
         lines.push(
           `${prefix}[${labels.pattern}] ${String(node.attrs?.ref ?? '')}`,
         );
+
         return;
       case 'blockquote':
         for (const child of children) walk(child, `${prefix}> `);
+
         return;
       case 'bulletList':
       case 'orderedList':
         children.forEach((item, index) => {
           const marker = node.type === 'bulletList' ? '• ' : `${index + 1}. `;
+
           (Array.isArray(item.content) ? (item.content as Node[]) : []).forEach(
             (child, position) =>
               walk(child, prefix + (position ? '   ' : marker)),
           );
         });
+
         return;
       default:
         for (const child of children) walk(child, prefix);
     }
   };
+
   if (document && typeof document === 'object') walk(document as Node, '');
+
   return lines;
 };

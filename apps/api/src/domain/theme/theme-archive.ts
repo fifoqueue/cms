@@ -49,15 +49,18 @@ const fileName = (path: string) =>
  */
 export const packageFromFiles = (files: Map<string, string>) => {
   const manifest = files.get('theme.json');
+
   if (manifest === undefined) throw invalidInput(Errors.ThemeArchiveMissing);
   const templates: Record<string, unknown> = {};
   const parts: Record<string, unknown> = {};
+
   for (const [path, text] of files) {
     if (path.startsWith('templates/'))
       templates[fileName(path)] = parseJson(path, text);
     else if (path.startsWith('parts/'))
       parts[fileName(path)] = parseJson(path, text);
   }
+
   return {
     manifest: parseJson('theme.json', manifest),
     templates,

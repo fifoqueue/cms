@@ -43,6 +43,7 @@
 
   const update = (target: Target, attrs: Record<string, unknown>) => {
     const node = editor.state.doc.nodeAt(target.pos);
+
     if (node?.type !== target.node.type) return;
     editor.view.dispatch(
       editor.state.tr.setNodeMarkup(target.pos, undefined, {
@@ -54,6 +55,7 @@
 
   const chooseMedia = async (target: Target) => {
     const type = target.node.type.name;
+
     mediaKind =
       type === 'file' ? 'document' : type === 'video' ? 'video' : 'image';
     mediaTarget = { pos: target.pos, type };
@@ -65,25 +67,30 @@
   const pickedMany = (picks: MediaPick[]) => {
     if (mediaTarget?.type !== 'gallery') return;
     const node = editor.state.doc.nodeAt(mediaTarget.pos);
+
     if (node?.type.name === 'gallery') {
       const items = picks
         .filter(({ media }) => media.kind === 'image')
         .slice(0, Math.max(0, 100 - node.childCount))
         .map(({ media, choice }) => mediaNode(media, choice));
+
       if (items.length)
         editor.commands.insertContentAt(
           mediaTarget.pos + node.nodeSize - 1,
           items,
         );
     }
+
     mediaTarget = null;
   };
 
   const picked = (media: AdminMedia, choice: MediaChoice) => {
     if (!mediaTarget || media.kind !== mediaKind) return;
     const node = editor.state.doc.nodeAt(mediaTarget.pos);
+
     if (node?.type.name !== mediaTarget.type) return;
     const item = mediaNode(media, choice);
+
     editor.view.dispatch(
       editor.state.tr.setNodeMarkup(mediaTarget.pos, undefined, {
         ...node.attrs,
@@ -268,6 +275,7 @@
               value={Number(target.node.attrs.columns)}
               onchange={(event) => {
                 const columns = Number(event.currentTarget.value);
+
                 if (columns >= 1 && columns <= 6 && Number.isInteger(columns))
                   update(target, { columns });
               }}
@@ -397,6 +405,7 @@
               value={Number(target.node.attrs.height)}
               onchange={(event) => {
                 const height = Number(event.currentTarget.value);
+
                 if (Number.isInteger(height) && height >= 0 && height <= 500)
                   update(target, { height });
               }}

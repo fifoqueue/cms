@@ -18,6 +18,7 @@ test('CSS resource functions and escaped forms are stripped in both style contex
     expect(() =>
       sanitizeSvg(bytes(wrap(`<path fill="${name}(evil)"/>`))),
     ).toThrow();
+
     for (const fn of [
       name,
       `\\${name.charCodeAt(0).toString(16)} ${name.slice(1)}`,
@@ -28,12 +29,15 @@ test('CSS resource functions and escaped forms are stripped in both style contex
           bytes(wrap(`<style>${style}</style><path style="${style}"/>`)),
         ).bytes,
       );
+
       expect(result).toContain('<style></style>');
       expect(result).toContain('style=""');
     }
   }
+
   const safe =
     'fill:rgb(10,20,30);transform:translate(1px,2px);width:calc(10px + var(--x));stroke:url(#a)';
+
   expect(
     new TextDecoder().decode(
       sanitizeSvg(bytes(wrap(`<path style="${safe}"/>`))).bytes,

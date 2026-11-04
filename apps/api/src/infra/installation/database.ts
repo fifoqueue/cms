@@ -10,12 +10,14 @@ export const databaseUrl = (input: DatabaseSetupInput) => {
     input.host.includes(':') && !input.host.startsWith('[')
       ? `[${input.host}]`
       : input.host;
+
   return `mysql://${encodeURIComponent(input.username)}:${encodeURIComponent(input.password)}@${host}:${input.port ?? 3306}/${encodeURIComponent(input.database)}`;
 };
 
 /** Credentials only travel through the child environment, never argv or logs. */
 export const prepareDatabase = async (url: string) => {
   const db = createDatabase(url);
+
   try {
     await db.$queryRaw`SELECT 1`;
   } catch {
@@ -23,6 +25,7 @@ export const prepareDatabase = async (url: string) => {
   } finally {
     await db.$disconnect();
   }
+
   const migration = spawn({
     cmd: [
       process.execPath,
@@ -36,6 +39,7 @@ export const prepareDatabase = async (url: string) => {
     stderr: 'ignore',
     timeout: 120_000,
   });
+
   if ((await migration.exited) !== 0)
     throw invalidInput(Errors.InstallMigrationFailed);
 };

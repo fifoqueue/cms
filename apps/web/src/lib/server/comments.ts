@@ -57,6 +57,7 @@ export const readCommentFields = (
   typed: Object.fromEntries(
     customFields.map((field): [string, string | boolean] => {
       const name = `field.${field.key}`;
+
       return [
         field.key,
         field.type === 'boolean' ? form.has(name) : text(form, name),
@@ -136,6 +137,7 @@ export const loadComments = async (
     captchaRequest,
     loadManagement(event, contentId, thread),
   ]);
+
   // Actions set their own caching rule; a page that shows moderation data is never cached.
   if (management && event.request.method === 'GET')
     event.setHeaders({ 'cache-control': 'private, no-store' });
@@ -151,10 +153,12 @@ export const loadComments = async (
     .privacy()
     .catch(() => ({ policy: null, commentCookies: false }));
   let remembered = null;
+
   try {
     const saved = commenterSchema.safeParse(
       JSON.parse(event.cookies.get(COMMENTER_COOKIE) ?? 'null'),
     );
+
     if (saved.success)
       remembered = {
         authorName: comments.fields.name ? saved.data.authorName : '',
@@ -164,6 +168,7 @@ export const loadComments = async (
   } catch {
     /* Ignore malformed visitor preferences. */
   }
+
   return {
     ...commentsView(comments),
     privacyPolicy: privacy.policy,
@@ -214,6 +219,7 @@ export const commentAction = async (event: RequestEvent) => {
     fields: answers.typed,
   };
   let result;
+
   try {
     result = await api.comments.submit(
       {
@@ -230,12 +236,14 @@ export const commentAction = async (event: RequestEvent) => {
   } catch (caught) {
     return failFrom(caught, typed);
   }
+
   const options = {
     path: '/',
     httpOnly: true,
     sameSite: 'lax' as const,
     secure: event.url.protocol === 'https:',
   };
+
   if (result.pendingProof)
     event.cookies.set(`cms_pending_${contentId}`, result.pendingProof, {
       ...options,
@@ -261,12 +269,14 @@ export const commentAction = async (event: RequestEvent) => {
         .privacy()
         .catch(() => ({ commentCookies: false }))
     : { commentCookies: false };
+
   if (remember && privacy.commentCookies && comments) {
     const saved = commenterSchema.safeParse({
       authorName: comments.fields.name ? typed.authorName : '',
       authorEmail: comments.fields.email ? typed.authorEmail : '',
       authorUrl: comments.fields.website ? typed.authorUrl : '',
     });
+
     if (saved.success) {
       event.cookies.set(COMMENTER_COOKIE, JSON.stringify(saved.data), {
         ...options,
@@ -283,13 +293,16 @@ export const commentAction = async (event: RequestEvent) => {
     event.cookies.delete(COMMENTER_COOKIE, { path: '/' });
     event.cookies.delete(COMMENTER_PROOF_COOKIE, { path: '/' });
   }
+
   const search = new URLSearchParams(event.url.search);
+
   search.delete('/comment');
   search.delete(REPLY_PARAM);
   search.set('cpage', String(result.page));
   if (!result.comment) search.set('moderation', '1');
   else search.delete('moderation');
   const location = `${event.url.pathname}?${search}#${result.comment ? `comment-${result.comment.id}` : 'comments'}`;
+
   if (event.request.headers.get('x-sveltekit-action') === 'true')
     return {
       commented: true,

@@ -46,6 +46,7 @@ const codeOf = async (promise: Promise<unknown>) =>
 const tokens = {
   issue: (() => {
     let next = 0;
+
     return () => `token-${++next}-0123456789abcdef`;
   })(),
   digest: (token: string) => `digest:${token}`,
@@ -186,6 +187,7 @@ describe('sign-in protection', () => {
     expect(JSON.stringify(admin)).not.toContain('secret"');
     expect(admin.captcha.secretConfigured).toBe(true);
     const visitor = await settings.getPublic();
+
     expect(visitor).toMatchObject({ provider: 'turnstile', siteKey: 'site' });
     expect(JSON.stringify(visitor)).not.toContain('secret');
   });
@@ -197,16 +199,21 @@ class MemoryApiTokens implements ApiTokenRepository {
   async insert(token: ApiTokenRecord & { tokenHash: string }) {
     this.rows.set(token.id, token);
   }
+
   async list(userId: string) {
     return [...this.rows.values()].filter((row) => row.userId === userId);
   }
+
   async delete(id: string, userId: string) {
     return this.rows.get(id)?.userId === userId && this.rows.delete(id);
   }
+
   async authenticate(tokenHash: string, now: Date) {
     const row = [...this.rows.values()].find((r) => r.tokenHash === tokenHash);
     const user = row && this.users.rows.get(row.userId);
+
     if (!row || !user || (row.expiresAt && row.expiresAt <= now)) return null;
+
     return { id: row.id, user };
   }
 }
@@ -215,6 +222,7 @@ describe('application passwords', () => {
   test('a token acts as its user until revoked or expired, and only its owner revokes it', async () => {
     const clock = fixedClock();
     const users = new MemoryUsers();
+
     await users.insert(userRecord({ id: 'admin' }));
     const service = new ApiTokenService({
       tokens: new MemoryApiTokens(users),
@@ -228,6 +236,7 @@ describe('application passwords', () => {
       { name: 'CI', expiresInDays: 1 },
       owner,
     );
+
     expect((await service.authenticate(created.token))?.id).toBe('admin');
     expect(await service.authenticate('token-1-0123456789abcdef')).toBeNull();
     expect(JSON.stringify(await service.list(owner))).not.toContain(
@@ -248,8 +257,10 @@ describe('password reset', () => {
   test('a reset link works once, signs out everywhere, and unknown addresses look the same', async () => {
     const clock = fixedClock();
     const users = new MemoryUsers();
+
     await users.insert(userRecord({ id: 'admin', email: 'admin@example.com' }));
     const sessions = new MemorySessions(() => false, users);
+
     await sessions.insert({
       tokenHash: 'old',
       userId: 'admin',
@@ -273,6 +284,7 @@ describe('password reset', () => {
       },
       sealedJobs,
     });
+
     await email.update({
       enabled: true,
       transport: 'smtp',
@@ -305,6 +317,7 @@ describe('password reset', () => {
     });
     const events: { name: string; payload: unknown }[] = [];
     const registrar = hooks.registrar('password-policy');
+
     for (const name of [
       'user.passwordResetRequested',
       'user.passwordReset',
@@ -331,6 +344,7 @@ describe('password reset', () => {
       hasher: {
         hash: async (value) => {
           hashes += 1;
+
           return `hash:${value}`;
         },
         verify: async () => true,
@@ -355,10 +369,12 @@ describe('password reset', () => {
 
     await passwords.requestReset({ email: 'nobody@example.com' }, visitor);
     const unknown = [...queue.rows.values()].at(-1)!;
+
     expect(JSON.stringify(unknown.payload)).not.toContain('nobody@example.com');
     await passwords.deliverResetRequest(unknown.payload);
     await passwords.requestReset({ email: 'Admin@Example.com' }, visitor);
     const request = [...queue.rows.values()].at(-1)!;
+
     expect(JSON.stringify(request.payload)).not.toContain('admin@example.com');
     const deny = registrar.filter('user.passwordResetAllowed', (value) => ({
       ...value,
@@ -369,9 +385,11 @@ describe('password reset', () => {
       .filter('user.passwordResetAllowed', (value) => {
         value.user.id = 'another-user';
         value.allowed = true;
+
         return value;
       });
     const beforeDenied = queue.rows.size;
+
     await passwords.deliverResetRequest(request.payload);
     expect(queue.rows.size).toBe(beforeDenied);
     expect(passwordTokens.rows.size).toBe(0);
@@ -379,9 +397,11 @@ describe('password reset', () => {
       ...value,
       allowed: true,
     }));
+
     await passwords.deliverResetRequest(request.payload);
     const job = [...queue.rows.values()].at(-1)!;
     const token = passwordTokens.rows.get(`digest:${issued}`)!;
+
     expect(job.expiresAt).toEqual(token.expiresAt);
     expect(
       (
@@ -417,6 +437,7 @@ describe('password reset', () => {
       'user.passwordReset',
       'user.passwordChanged',
     ]);
+
     for (const event of events) {
       expect(event.payload).toEqual({
         user: {
@@ -430,6 +451,7 @@ describe('password reset', () => {
         },
       });
     }
+
     deny();
     allow();
     invalid();
@@ -441,6 +463,7 @@ describe('password reset', () => {
       ),
     ).toBe('forbidden');
     const queued = queue.rows.size;
+
     await passwords.sendReset('admin', { id: 'boss', role: 'administrator' });
     expect(queue.rows.size).toBe(queued + 1);
     const signIn = signInFor(

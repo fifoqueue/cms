@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import stylistic from '@stylistic/eslint-plugin';
 import prettier from 'eslint-config-prettier';
 import { defineConfig } from 'eslint/config';
 import svelte from 'eslint-plugin-svelte';
@@ -107,6 +108,38 @@ export default defineConfig(
   svelte.configs.recommended,
   prettier,
   svelte.configs.prettier,
+  {
+    // Semantic blocks are separated by one blank line (AGENTS.md 4.3).
+    plugins: { '@stylistic': stylistic },
+    rules: {
+      '@stylistic/padding-line-between-statements': [
+        'error',
+        { blankLine: 'always', prev: '*', next: 'return' },
+        { blankLine: 'always', prev: 'block-like', next: '*' },
+        { blankLine: 'always', prev: '*', next: 'block-like' },
+        { blankLine: 'always', prev: ['const', 'let', 'var'], next: '*' },
+        {
+          blankLine: 'any',
+          prev: ['const', 'let', 'var'],
+          next: ['const', 'let', 'var'],
+        },
+        { blankLine: 'always', prev: 'import', next: '*' },
+        { blankLine: 'any', prev: 'import', next: 'import' },
+        {
+          blankLine: 'always',
+          prev: '*',
+          next: ['export', 'function', 'class'],
+        },
+        { blankLine: 'any', prev: 'export', next: 'export' },
+        { blankLine: 'any', prev: 'case', next: ['case', 'default'] },
+      ],
+      '@stylistic/lines-between-class-members': [
+        'error',
+        'always',
+        { exceptAfterSingleLine: true },
+      ],
+    },
+  },
   {
     languageOptions: {
       globals: { ...globals.browser, ...globals.node, Bun: 'readonly' },

@@ -20,9 +20,12 @@ export const routes = (app: ApiApp) =>
         ssoStartSchema,
         await readJson(request, SMALL_BODY_BYTES),
       );
+
       if (input.intent !== 'link') throw conflict(Errors.SignInStepRequired);
       const user = await requireUser(auth, request);
+
       await auth.requireRecent(user, bearerToken(request)!);
+
       return json(await sso.start(input, user, clients.resolve(request)));
     },
     { parse: 'none' },

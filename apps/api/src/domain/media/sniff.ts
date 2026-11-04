@@ -11,19 +11,25 @@ const svgPrefix = (text: string) => {
   const skipSpace = () => {
     while (whitespace(text[offset])) offset++;
   };
+
   skipSpace();
+
   if (text.startsWith('<?xml', offset) && whitespace(text[offset + 5])) {
     const end = text.indexOf('?>', offset + 6);
+
     if (end < 0) return false;
     offset = end + 2;
     skipSpace();
   }
+
   while (text.startsWith('<!--', offset)) {
     const end = text.indexOf('-->', offset + 4);
+
     if (end < 0) return false;
     offset = end + 3;
     skipSpace();
   }
+
   return (
     text.startsWith('<svg', offset) &&
     (whitespace(text[offset + 4]) ||
@@ -46,6 +52,7 @@ export const sniffMediaType = (bytes: Uint8Array): MediaType | null => {
     return null;
   // Identification only: the upload service must sanitize before storage.
   const prefix = new TextDecoder().decode(bytes.subarray(0, 4096));
+
   if (svgPrefix(prefix)) return 'image/svg+xml';
   if (bytes.length < 12) return null;
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
@@ -85,12 +92,15 @@ export const sniffMediaType = (bytes: Uint8Array): MediaType | null => {
     bytes[3] === 0xa3
   )
     return 'video/webm';
+
   if (ascii(bytes, 4, 8) === 'ftyp') {
     const brand = ascii(bytes, 8, 12);
+
     if (brand === 'avif' || brand === 'avis') return 'image/avif';
     // ISO media brands used by MP4 video (isom, mp41, mp42, avc1, M4V, dash …).
     if (/^(isom|iso\d|mp4\d|avc1|M4V |dash|mmp4)$/.test(brand))
       return 'video/mp4';
   }
+
   return null;
 };

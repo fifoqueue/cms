@@ -22,6 +22,7 @@ export class ReadingService {
     const result = readingSettingsSchema.safeParse(
       await this.settings.get(KEY),
     );
+
     return result.success ? result.data : DEFAULT_READING_SETTINGS;
   }
 
@@ -41,6 +42,7 @@ export class ReadingService {
       settings.frontPage === 'page' && settings.frontPageId
         ? (pages.get(settings.frontPageId) ?? null)
         : null;
+
     return {
       ...settings,
       frontPagePath,
@@ -53,8 +55,10 @@ export class ReadingService {
 
   async update(input: unknown): Promise<ReadingSettings> {
     const settings = parseInput(readingSettingsSchema, input);
+
     await this.settings.set(KEY, settings);
     void this.hooks?.emit('settings.updated', { section: KEY, settings });
+
     return settings;
   }
 }

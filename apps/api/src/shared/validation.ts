@@ -8,6 +8,7 @@ export const parseInput = <S extends z.ZodType>(
   input: unknown,
 ): z.output<S> => {
   const result = schema.safeParse(input);
+
   if (result.success) return result.data;
   const issues = result.error.issues.map((issue) => {
     // Custom issues may name the values their catalog message leaves out.
@@ -15,11 +16,13 @@ export const parseInput = <S extends z.ZodType>(
       issue.code === 'custom'
         ? issueParamsSchema.safeParse(issue.params).data
         : undefined;
+
     return {
       path: issue.path.map(String).join('.'),
       message: issue.message,
       ...(params && { params }),
     };
   });
+
   throw invalidInput(Errors.InvalidInput, issues);
 };

@@ -30,9 +30,12 @@ export class ProviderRegistry<I, O> {
   ): Unsubscribe {
     parseInput(providerKeySchema, key);
     const provider = { owner, key, run, core };
+
     this.providers.push(provider);
+
     return () => {
       const index = this.providers.indexOf(provider);
+
       if (index !== -1) this.providers.splice(index, 1);
     };
   }
@@ -52,23 +55,30 @@ export class ProviderRegistry<I, O> {
     for (const provider of [...this.providers].reverse()) {
       if (key !== undefined && provider.key !== key) continue;
       if (!this.providers.includes(provider)) continue;
+
       if (provider.core) {
         const output = await provider.run(input);
+
         if (output !== null)
           return { source: provider.owner, value: this.schema.parse(output) };
         continue;
       }
+
       const result = await isolate(async () => {
         if (!this.providers.includes(provider)) return null;
         const output = await provider.run(structuredClone(input));
+
         if (output === null) return null;
         const parsed = this.schema.safeParse(output);
+
         if (parsed.success) return structuredClone(parsed.data);
         this.options.logger.warn(
           `Provider "${provider.owner}:${provider.key}" returned invalid output`,
         );
+
         return null;
       }, this.options.timeoutMs);
+
       if (!this.providers.includes(provider)) continue;
       if (result.ok && result.value !== null)
         return { source: provider.owner, value: result.value };
@@ -77,6 +87,7 @@ export class ProviderRegistry<I, O> {
           `Provider "${provider.owner}:${provider.key}" failed; using fallback`,
         );
     }
+
     return null;
   }
 }

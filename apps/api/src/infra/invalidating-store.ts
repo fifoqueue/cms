@@ -9,8 +9,10 @@ export const invalidatingStore = <T extends object>(
   new Proxy(store, {
     get(target, key) {
       const value = Reflect.get(target, key);
+
       if (typeof value !== 'function') return value;
       if (!writes.includes(key as keyof T)) return value.bind(target);
+
       return async (...args: unknown[]) => {
         try {
           return await value.apply(target, args);

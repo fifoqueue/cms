@@ -10,6 +10,7 @@ export const routes = (app: ApiApp) =>
       '',
       async ({ comments, params, request, user }) => {
         await comments.update(params.id, await readJson(request), user);
+
         return noContent();
       },
       idParams,
@@ -18,6 +19,7 @@ export const routes = (app: ApiApp) =>
       '',
       async ({ comments, params, user }) => {
         await comments.remove(params.id, user);
+
         return noContent();
       },
       idParams,

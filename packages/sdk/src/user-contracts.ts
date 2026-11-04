@@ -9,6 +9,7 @@ export interface RoleRegistrar {
 }
 
 const fieldBase = { label: z.string().trim().min(1).max(100) };
+
 export const profileFieldSchema = z.discriminatedUnion('type', [
   z.strictObject({
     ...fieldBase,
@@ -75,6 +76,7 @@ export const captchaWidgetSchema = z.strictObject({
     .pipe(
       z.string().refine((value) => {
         const url = new URL(value);
+
         return !url.username && !url.password && !url.hash;
       }),
     ),

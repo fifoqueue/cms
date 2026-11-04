@@ -62,6 +62,7 @@ const responseSchema = z
         ),
       ),
     );
+
     return data.crossOrigin !== true;
   });
 const assertionSchema = responseSchema.and(
@@ -85,9 +86,12 @@ const registrationSchema = responseSchema.and(
 const ceremonies = (deps: PasskeyDeps) => {
   const relyingParty = async () => {
     const site = await deps.site();
+
     if (!site.siteUrl) return null;
+
     try {
       const url = new URL(site.siteUrl);
+
       if (
         url.username ||
         url.password ||
@@ -96,6 +100,7 @@ const ceremonies = (deps: PasskeyDeps) => {
           !(url.protocol === 'http:' && url.hostname === 'localhost'))
       )
         return null;
+
       return {
         origin: url.origin,
         rpId: url.hostname,
@@ -111,6 +116,7 @@ const ceremonies = (deps: PasskeyDeps) => {
     residentKey: 'preferred' | 'required' = 'preferred',
   ): Promise<SecondFactorChallenge> => {
     const rp = await relyingParty();
+
     if (!rp) throw unauthorized(Errors.InvalidCredentials);
     const existing = user ? await deps.passkeys.list(user.id) : [];
     // Sixteen maximum-sized credential ids leave room below the 32 KiB auth-step budget.
@@ -139,6 +145,7 @@ const ceremonies = (deps: PasskeyDeps) => {
             allowCredentials: credentials,
             userVerification: 'required',
           });
+
     return {
       kind: 'webauthn',
       ceremony,
@@ -162,6 +169,7 @@ const ceremonies = (deps: PasskeyDeps) => {
     try {
       const state = stateSchema.parse(step.state);
       const rp = await relyingParty();
+
       if (
         !rp ||
         state.ceremony !== ceremony ||
@@ -176,6 +184,7 @@ const ceremonies = (deps: PasskeyDeps) => {
         expectedRPID: rp.rpId,
         requireUserVerification: true,
       };
+
       if (ceremony === 'create') {
         if (!user) return null;
         const response = registrationSchema.parse(step.credential);
@@ -183,16 +192,20 @@ const ceremonies = (deps: PasskeyDeps) => {
           ...expected,
           response,
         });
+
         if (!result.verified || !result.registrationInfo.userVerified)
           return null;
         const info = result.registrationInfo;
         const credentialId = Buffer.from(info.credential.id, 'base64url');
+
         if (credentialId.length > 1023) return null;
         const props = z
           .object({ rk: z.boolean().optional() })
           .optional()
           .parse(response.clientExtensionResults.credProps);
+
         if (state.residentKeyRequired && props?.rk === false) return null;
+
         return {
           id: deps.ids.next(),
           userId: user.id,
@@ -208,13 +221,16 @@ const ceremonies = (deps: PasskeyDeps) => {
           lastUsedAt: null,
         };
       }
+
       const response = assertionSchema.parse(step.credential);
       const key = await deps.passkeys.find(
         Buffer.from(response.id, 'base64url'),
       );
+
       if (!key || (user && key.userId !== user.id)) return null;
       if (!user && !key.discoverable) return null;
       const handle = response.response.userHandle;
+
       if (
         (!user && !handle) ||
         (handle && handle !== Buffer.from(key.userId).toString('base64url'))
@@ -233,10 +249,13 @@ const ceremonies = (deps: PasskeyDeps) => {
           transports: key.transports,
         },
       });
+
       if (!result.verified || !result.authenticationInfo.userVerified)
         return null;
       const info = result.authenticationInfo;
+
       if (info.credentialDeviceType !== key.deviceType) return null;
+
       return (await deps.passkeys.use(
         key.id,
         key.counter,
@@ -250,11 +269,13 @@ const ceremonies = (deps: PasskeyDeps) => {
       return null;
     }
   };
+
   return { relyingParty, begin, finish };
 };
 
 export const createPasskeyMethod = (deps: PasskeyDeps): CoreSignInMethod => {
   const flow = ceremonies(deps);
+
   return {
     label: 'Passkey',
     ready: async () => !!(await flow.relyingParty()),
@@ -269,6 +290,7 @@ export const createPasskeyMethod = (deps: PasskeyDeps): CoreSignInMethod => {
     },
     continue: async (step) => {
       const userId = await flow.finish(null, step, 'get');
+
       return typeof userId === 'string'
         ? { kind: 'user', userId }
         : { kind: 'failed' };
@@ -283,7 +305,9 @@ export const createPasskeyMethod = (deps: PasskeyDeps): CoreSignInMethod => {
       },
       continue: async (user, step) => {
         const record = await flow.finish(user, step, 'create');
+
         if (!record || typeof record === 'string') return { kind: 'failed' };
+
         return {
           kind: 'user',
           userId: user.id,
@@ -299,6 +323,7 @@ export const createPasskeyFactor = (
   deps: PasskeyDeps,
 ): SecondFactorDefinition => {
   const flow = ceremonies(deps);
+
   return {
     label: 'Passkey',
     enrolled: async (user) => (await deps.passkeys.list(user.id)).length > 0,
@@ -309,6 +334,7 @@ export const createPasskeyFactor = (
       begin: (user) => flow.begin(user, 'create'),
       finish: async (user, step) => {
         const record = await flow.finish(user, step, 'create');
+
         return (
           !!record &&
           typeof record !== 'string' &&

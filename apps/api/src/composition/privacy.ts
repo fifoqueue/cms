@@ -24,6 +24,7 @@ export const registerPrivacy = (
         await bunPasswordHasher.hash(randomTokenIssuer.issue()),
         systemClock.now(),
       );
+
       return { erased: 1, retained: 0 };
     },
   });
@@ -43,6 +44,7 @@ type Input = Pick<
   site: Pick<SiteService, 'get'>;
   seo: Pick<SeoSettingsService, 'getPublic'>;
 };
+
 export const createPrivacy = ({
   erasers,
   hooks,

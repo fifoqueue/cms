@@ -46,9 +46,11 @@ export const pageSchema = <T>(item: z.ZodType<T>) =>
 
 const toSearch = (query: Query = {}) => {
   const params = new URLSearchParams();
+
   for (const [key, value] of Object.entries(query))
     if (value !== undefined) params.set(key, String(value));
   const search = params.toString();
+
   return search ? `?${search}` : '';
 };
 
@@ -67,8 +69,10 @@ export const createTransport = (
       ...options.headers,
       accept: 'application/json',
     });
+
     if (token) headers.set('authorization', `Bearer ${token}`);
     let body = options.body;
+
     if (options.json !== undefined) {
       headers.set('content-type', 'application/json');
       body = JSON.stringify(options.json);
@@ -87,13 +91,16 @@ export const createTransport = (
         ...(body instanceof ReadableStream && { duplex: 'half' }),
       } as RequestInit,
     );
+
     if (response.status === 204 && !options.response) return undefined as T;
     if (options.raw && response.ok) return response as T;
     if (options.text && response.ok) return (await response.text()) as T;
     const payload: unknown = await response.json().catch(() => null);
+
     if (!response.ok) {
       const parsed = apiErrorBodySchema.safeParse(payload);
       const error = parsed.success ? parsed.data.error : undefined;
+
       throw new CmsApiError(
         response.status,
         error?.code ?? 'http_error',
@@ -101,12 +108,16 @@ export const createTransport = (
         error?.issues,
       );
     }
+
     if (options.response) {
       const parsed = options.response.safeParse(payload);
+
       if (!parsed.success)
         throw new CmsApiError(502, 'invalid_response', Errors.InvalidResponse);
+
       return parsed.data;
     }
+
     // Commands without a response contract never return arbitrary API data to callers.
     return undefined as T;
   };

@@ -14,6 +14,7 @@
   const text = $derived.by(() => {
     const excerpt = post?.excerpt ?? '';
     const words = excerpt.trim().split(/\s+/);
+
     return length && words.length > length
       ? `${words.slice(0, length).join(' ')}…`
       : excerpt;

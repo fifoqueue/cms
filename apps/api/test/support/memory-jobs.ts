@@ -37,6 +37,7 @@ export class MemoryTaskLeases implements TaskLeases {
     options: { ignoreDue?: boolean } = {},
   ) {
     const row = this.rows.get(name);
+
     if (
       !row ||
       (!options.ignoreDue && row.nextRunAt > now) ||
@@ -45,13 +46,16 @@ export class MemoryTaskLeases implements TaskLeases {
       return false;
     row.lockedUntil = new Date(now.getTime() + leaseMs);
     row.lockedBy = owner;
+
     return true;
   }
 
   async extend(name: string, owner: string, leaseMs: number, now: Date) {
     const row = this.rows.get(name);
+
     if (!row || row.lockedBy !== owner) return false;
     row.lockedUntil = new Date(now.getTime() + leaseMs);
+
     return true;
   }
 
@@ -62,6 +66,7 @@ export class MemoryTaskLeases implements TaskLeases {
     error: string | null,
   ) {
     const row = this.rows.get(name)!;
+
     if (row.lockedBy !== owner) return false;
     Object.assign(row, {
       nextRunAt,
@@ -70,6 +75,7 @@ export class MemoryTaskLeases implements TaskLeases {
       lastRunAt: this.now(),
       lastError: error,
     });
+
     return true;
   }
 
@@ -103,6 +109,7 @@ export class MemoryJobQueue implements JobQueue {
     expiresAt = new Date(this.now().getTime() + 7 * 86400000),
   ) {
     const id = `job-${++this.sequence}`;
+
     this.rows.set(id, {
       id,
       kind,
@@ -129,10 +136,12 @@ export class MemoryJobQueue implements JobQueue {
       )
       .sort((a, b) => a.runAt.getTime() - b.runAt.getTime())
       .slice(0, limit);
+
     for (const row of due) {
       row.lockedUntil = new Date(now.getTime() + leaseMs);
       row.lockedBy = owner;
     }
+
     return due.map(({ id, kind, payload, attempts }) => ({
       id,
       kind,
@@ -164,16 +173,19 @@ export class MemoryJobQueue implements JobQueue {
     preservePayload = false,
   ) {
     const row = this.rows.get(id)!;
+
     if (row.lockedBy !== owner) return false;
     row.attempts += 1;
     row.error = error;
     row.lockedUntil = null;
     row.lockedBy = null;
+
     if (retryAt) row.runAt = retryAt;
     else {
       row.failedAt = this.now();
       if (!preservePayload) row.payload = null;
     }
+
     return true;
   }
 
@@ -192,8 +204,10 @@ export class MemoryJobQueue implements JobQueue {
 
   async retry(ids: readonly string[]) {
     let count = 0;
+
     for (const id of ids) {
       const row = this.rows.get(id);
+
       if (!row?.failedAt) continue;
       row.failedAt = null;
       row.error = null;
@@ -201,11 +215,13 @@ export class MemoryJobQueue implements JobQueue {
       row.runAt = this.now();
       count += 1;
     }
+
     return count;
   }
 
   async scrubFailed(preserveErrors: readonly string[], limit: number) {
     let count = 0;
+
     for (const row of this.rows.values()) {
       if (
         count >= limit ||
@@ -217,6 +233,7 @@ export class MemoryJobQueue implements JobQueue {
       row.payload = null;
       count += 1;
     }
+
     return count;
   }
 
@@ -236,11 +253,13 @@ export class MemoryJobQueue implements JobQueue {
 
   async purge(before: Date) {
     let purged = 0;
+
     for (const [id, row] of this.rows)
       if (row.failedAt && row.failedAt < before) {
         this.rows.delete(id);
         purged += 1;
       }
+
     return purged;
   }
 }

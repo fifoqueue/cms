@@ -26,6 +26,7 @@ export type ProfileMeta = z.output<typeof profileMetaSchema>;
 /** User administration (`users.manage`) and author choices (`content.editOthers`). */
 export const usersClient = (request: Request) => {
   const path = (id: string) => `/api/v1/admin/users/${encodeURIComponent(id)}`;
+
   return {
     list: () =>
       request<AdminUserSummary[]>('GET', '/api/v1/admin/users', {

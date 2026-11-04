@@ -7,6 +7,7 @@ import type { Clock, IdGenerator } from '#api/domain/ports';
 import { Errors, rateLimited } from '#api/shared/errors';
 
 const KEY = 'media.storage.resync';
+
 export const MEDIA_RESYNC_JOB = 'media.storage.resync';
 type Counts = Pick<
   MediaResync,
@@ -36,6 +37,7 @@ export class StorageResync {
 
   async status() {
     const raw = await this.deps.settings.get(KEY);
+
     return raw
       ? mediaResyncSchema.parse({
           ...mediaResyncSchema.parse(raw),
@@ -48,9 +50,11 @@ export class StorageResync {
     return this.deps.transactions.run(`${KEY}.lock`, async (store) => {
       const raw = await store.get(KEY);
       const current = raw ? mediaResyncSchema.parse(raw) : null;
+
       if (current && ['queued', 'running'].includes(current.status))
         return current;
       const now = this.deps.clock.now();
+
       if (current && now.getTime() - Date.parse(current.startedAt) < 60_000)
         throw rateLimited(Errors.MediaStorageBusy);
       const state: MediaResync = {
@@ -66,17 +70,21 @@ export class StorageResync {
         untracked: 0,
         error: null,
       };
+
       await store.set(KEY, state);
       await this.deps.recoverCleanup?.();
       await this.deps.queue.enqueue(MEDIA_RESYNC_JOB, { id: state.id });
+
       return state;
     });
   }
 
   async run(payload: unknown) {
     const id = (payload as { id?: unknown } | null)?.id;
+
     await this.deps.leases.ensure(KEY);
     const owner = this.deps.ids.next();
+
     if (
       !(await this.deps.leases.claim(
         KEY,
@@ -108,8 +116,10 @@ export class StorageResync {
         })
         .catch((error: unknown) => controller.abort(error));
     }, 20_000);
+
     try {
       const state = await this.status();
+
       if (!state) return;
       if (
         state.id !== id ||
@@ -119,6 +129,7 @@ export class StorageResync {
         return;
       state.status = 'running';
       await this.deps.settings.set(KEY, state);
+
       try {
         if (state.driver !== 'local' && state.driver !== 's3')
           throw new Error(Errors.MediaDriverInvalid);
@@ -135,6 +146,7 @@ export class StorageResync {
         state.status = 'failed';
         state.error = Errors.MediaResyncFailed;
       }
+
       state.finishedAt = this.deps.clock.now().toISOString();
       await this.deps.settings.set(KEY, state);
     } finally {

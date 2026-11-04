@@ -61,13 +61,16 @@
   const bytes = (value: number) => {
     let size = value;
     let unit = 0;
+
     while (size >= 1024 && unit < units.length - 1) {
       size /= 1024;
       unit += 1;
     }
+
     const number = new Intl.NumberFormat(i18n.language, {
       maximumFractionDigits: unit === 0 ? 0 : 1,
     }).format(size);
+
     return `${number} ${units[unit]}`;
   };
   const sizeOf = (table: DatabaseTableSize) =>
@@ -144,12 +147,15 @@
       action="?/run"
       use:enhance={() => {
         busy = true;
+
         return async ({ result: outcome, update }) => {
           busy = false;
+
           if (outcome.type === 'success') {
             selected = [];
             confirmed = false;
           }
+
           await update({ reset: false });
         };
       }}

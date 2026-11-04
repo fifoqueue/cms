@@ -41,9 +41,11 @@ export class PreviewService {
 
   async create(contentId: string, actor: Actor): Promise<PreviewToken> {
     const record = await this.deps.content.require(contentId);
+
     await this.deps.content.assertEditable(actor, record);
     const expires = this.deps.clock.now().getTime() + LIFETIME_MS;
     const payload = `${contentId}.${actor.id}.${expires}`;
+
     return {
       token: `${payload}.${this.deps.signer.sign(payload)}`,
       expiresAt: new Date(expires).toISOString(),
@@ -53,6 +55,7 @@ export class PreviewService {
   /** The entry as the site would show it, including the preview author's latest autosave. */
   async render(token: string): Promise<PublicContent> {
     const [contentId, userId, expires, signature] = token.split('.');
+
     if (
       !contentId ||
       !userId ||
@@ -68,6 +71,7 @@ export class PreviewService {
         userId,
         record.textSavedAt,
       )) ?? record;
+
     return publicContentSchema.parse({
       id: record.id,
       type: record.type,

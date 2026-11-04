@@ -14,14 +14,17 @@ export const validatePlugin = (value: unknown): ValidPlugin => {
   if (typeof value !== 'object' || value === null)
     throw invalidInput(Errors.PluginExportMissing);
   const candidate = value as Partial<PluginDefinition>;
+
   if (typeof candidate.activate !== 'function')
     throw invalidInput(Errors.PluginActivateInvalid);
+
   if (
     candidate.deactivate !== undefined &&
     typeof candidate.deactivate !== 'function'
   ) {
     throw invalidInput(Errors.PluginDeactivateInvalid);
   }
+
   return {
     definition: candidate as PluginDefinition,
     manifest: parseInput(pluginManifestSchema, candidate.manifest),

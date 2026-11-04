@@ -57,6 +57,7 @@ export interface HtmlParser {
 /** A skipped item for a refusal, keeping the values its catalog message leaves out. */
 const skip = (title: string, error: DomainError) => {
   const params = paramsOf(error);
+
   return { title, reason: error.message, ...(params && { params }) };
 };
 
@@ -84,11 +85,14 @@ const parentsFirst = (terms: readonly WxrTerm[]) => {
     if (added.has(term) || path.has(term.slug)) return;
     path.add(term.slug);
     const parent = term.parent ? bySlug.get(term.parent) : undefined;
+
     if (parent) visit(parent, path);
     ordered.push(term);
     added.add(term);
   };
+
   for (const term of terms) visit(term, new Set());
+
   return ordered;
 };
 
@@ -101,11 +105,14 @@ const entriesParentsFirst = (items: readonly WxrItem[]) => {
     if (added.has(item) || path.has(item)) return;
     path.add(item);
     const parent = item.parentId ? byId.get(item.parentId) : undefined;
+
     if (parent) visit(parent, path);
     ordered.push(item);
     added.add(item);
   };
+
   for (const item of items) visit(item, new Set());
+
   return ordered;
 };
 
@@ -124,14 +131,17 @@ const originOf = (url: string | undefined) => {
 const oldPath = (link: string | undefined, origin: string | null) => {
   if (!link || !origin) return null;
   let url: URL;
+
   try {
     url = new URL(link);
   } catch {
     return null;
   }
+
   // Query-string addresses (`/?p=12`) cannot be content paths.
   if (url.origin !== origin || url.search) return null;
   const path = canonicalPermalinkPath(url.pathname)?.replace(/(.)\/$/, '$1');
+
   return path && path !== '/' ? path : null;
 };
 
@@ -191,6 +201,7 @@ export class ImportService {
       options,
     );
     const document = this.deps.parser.parse(xml);
+
     // Filters get password-free items; the file's password is re-applied afterwards.
     if (this.deps.hooks)
       document.items = await Promise.all(
@@ -237,6 +248,7 @@ export class ImportService {
     const members = new Map(
       document.authors.flatMap((author) => {
         const id = author.id && authors.get(author.login.trim().toLowerCase());
+
         return id ? [[author.id!, id] as const] : [];
       }),
     );
@@ -264,18 +276,22 @@ export class ImportService {
     };
     const uploaded = new Map<string, AdminMedia>();
     const sources = new Map<string, AdminMedia>();
+
     if (downloadAttachments) {
       if (!this.deps.attachments) throw invalidInput(Errors.MediaUploadRefused);
       const budget = { remaining: 100 };
+
       for (const item of attachments.values()) {
         try {
           const media =
             sources.get(item.attachmentUrl!) ??
             (await importMedia(item, actor, this.deps.attachments, budget));
+
           uploaded.set(item.id, media);
           sources.set(item.attachmentUrl!, media);
         } catch (error) {
           const title = item.title || item.attachmentUrl!;
+
           result.skipped.push(
             error instanceof DomainError
               ? skip(title, error)
@@ -284,6 +300,7 @@ export class ImportService {
         }
       }
     }
+
     const origin = originOf(document.baseUrl);
     const created = new Map<string, string>();
     const featured = new Map<string, number>();
@@ -291,12 +308,15 @@ export class ImportService {
     // Stage every id before parsing bodies, so forward and cyclic references keep their targets.
     const patterns = new Map<string, string>();
     const staged: { item: WxrItem; id: string; title: string }[] = [];
+
     if (this.deps.patterns) {
       const pending = new Set<string>();
+
       try {
         for (const item of document.items) {
           if (item.type !== 'wp_block') continue;
           const title = item.title.trim().slice(0, 191) || 'Pattern';
+
           try {
             const pattern = await this.deps.patterns.create(
               {
@@ -307,6 +327,7 @@ export class ImportService {
               },
               actor,
             );
+
             patterns.set(item.id, pattern.id);
             staged.push({ item, id: pattern.id, title });
             pending.add(pattern.id);
@@ -315,6 +336,7 @@ export class ImportService {
             result.skipped.push(skip(title, error));
           }
         }
+
         for (const { item, id, title } of staged) {
           try {
             await this.deps.patterns.update(
@@ -361,6 +383,7 @@ export class ImportService {
       ),
     )) {
       const status = STATUSES[item.status];
+
       if (!status || !types.has(item.type)) {
         result.skipped.push({
           title: item.title || item.slug,
@@ -370,6 +393,7 @@ export class ImportService {
         });
         continue;
       }
+
       // A planned date in the past publishes the entry instead.
       const scheduled =
         status === 'scheduled' &&
@@ -377,6 +401,7 @@ export class ImportService {
         item.publishedAt > this.deps.clock.now();
       const title = item.title.trim() || item.slug || 'Untitled';
       let document: ContentInput['document'];
+
       try {
         document = this.deps.html.parse(
           classicHtml(fromWordPressHtml(item.html, patterns), item.id, library),
@@ -387,6 +412,7 @@ export class ImportService {
         result.skipped.push(skip(title, error));
         continue;
       }
+
       const parentId =
         item.type === 'page' && item.parentId
           ? created.get(item.parentId)
@@ -413,6 +439,7 @@ export class ImportService {
         ...(item.password && { password: item.password.slice(0, 200) }),
       };
       let entry: { id: string; path: string };
+
       try {
         entry = await this.deps.content.create(input, actor);
       } catch (error) {
@@ -420,10 +447,12 @@ export class ImportService {
         result.skipped.push(skip(input.title, error));
         continue;
       }
+
       created.set(item.id, entry.id);
       result.content += 1;
       result.comments += await this.comments(entry.id, item.comments, members);
       const previous = oldPath(item.link, origin);
+
       if (
         previous &&
         previous !== withoutSlash(entry.path) &&
@@ -431,6 +460,7 @@ export class ImportService {
       )
         result.redirects += 1;
       const thumbnail = item.meta?._thumbnail_id;
+
       if (thumbnail && attachments.has(thumbnail))
         featured.set(thumbnail, (featured.get(thumbnail) ?? 0) + 1);
     }
@@ -442,6 +472,7 @@ export class ImportService {
     }));
     await this.menus(document, created, { categories, tags }, actor, result);
     void this.deps.hooks?.emit('import.completed', result);
+
     return result;
   }
 
@@ -470,10 +501,12 @@ export class ImportService {
         .filter((author) => {
           const email = author.email.trim().toLowerCase();
           const login = author.login.trim().toLowerCase();
+
           return email && !byEmail.has(email) && !byLogin.has(login);
         })
         .map((author) => author.email.trim().toLowerCase()),
     );
+
     // Reject the whole request before account creation or any term/content side effects.
     if (
       mode !== 'me' &&
@@ -482,17 +515,21 @@ export class ImportService {
       missing.size > 100
     )
       throw invalidInput(Errors.ImportAuthorsLimit);
+
     for (const author of unique) {
       const email = author.email.trim().toLowerCase();
       const login = author.login.trim().toLowerCase();
       const id = byEmail.get(email) ?? byLogin.get(login);
+
       if (id) {
         ids.set(login, id);
         continue;
       }
+
       if (mode === 'me' || !email || !this.deps.accounts || !this.deps.tokens)
         continue;
       const name = (author.displayName.trim() || author.login).slice(0, 100);
+
       try {
         const account = await this.deps.accounts.create(
           {
@@ -504,6 +541,7 @@ export class ImportService {
           },
           actor,
         );
+
         ids.set(login, account.id);
         byEmail.set(email, account.id);
         byLogin.set(login, account.id);
@@ -513,6 +551,7 @@ export class ImportService {
         result.skipped.push(skip(name, error));
       }
     }
+
     return ids;
   }
 
@@ -533,23 +572,31 @@ export class ImportService {
     const entries = document.items.filter(
       (item) => item.type === 'nav_menu_item' && item.menus?.length,
     );
+
     if (!entries.length || !this.deps.menus) return;
     const termOf = new Map<
       string,
       { taxonomy: 'category' | 'tag'; id: string }
     >();
+
     for (const term of document.categories) {
       const id = terms.categories.get(term.slug);
+
       if (term.id && id) termOf.set(term.id, { taxonomy: 'category', id });
     }
+
     for (const term of document.tags) {
       const id = terms.tags.get(term.slug);
+
       if (term.id && id) termOf.set(term.id, { taxonomy: 'tag', id });
     }
+
     const grouped = new Map<string, { name: string; items: WxrItem[] }>();
+
     for (const entry of entries) {
       const menu = entry.menus![0]!;
       const group = grouped.get(menu.slug) ?? { name: menu.name, items: [] };
+
       group.items.push(entry);
       grouped.set(menu.slug, group);
     }
@@ -563,31 +610,42 @@ export class ImportService {
         newTab: meta._menu_item_target === '_blank',
       };
       const objectId = meta._menu_item_object_id ?? '';
+
       if (meta._menu_item_type === 'post_type') {
         const contentId = created.get(objectId);
+
         return contentId ? { ...base, kind: 'content', contentId } : null;
       }
+
       if (meta._menu_item_type === 'taxonomy') {
         const term = termOf.get(objectId);
+
         return term
           ? { ...base, kind: 'term', taxonomy: term.taxonomy, termId: term.id }
           : null;
       }
+
       const url = menuLink(meta._menu_item_url);
+
       return url ? { ...base, kind: 'custom', url } : null;
     };
 
     let settings;
+
     try {
       settings = await this.deps.menus.get(actor);
     } catch (error) {
       if (!(error instanceof DomainError)) throw error;
       result.skipped.push(skip('Menus', error));
+
       return;
     }
+
     const added: string[] = [];
+
     for (const { name, items } of grouped.values()) {
       const title = (name.trim() || 'Menu').slice(0, 100);
+
       if (settings.menus.some((menu) => menu.name === title)) continue;
       const nodes = new Map<string, MenuItem>();
       const depth = new Map<string, number>();
@@ -598,19 +656,23 @@ export class ImportService {
       /** The nearest kept ancestor (skipped items pass their children up). */
       const keptParent = (id: string | undefined) => {
         const seen = new Set<string>();
+
         while (id && id !== '0' && !seen.has(id)) {
           seen.add(id);
           if (nodes.has(id)) return id;
           id = wpParent.get(id);
         }
+
         return null;
       };
+
       for (const item of entriesParentsFirst(
         [...items]
           .map((entry) => ({ ...entry, parentId: wpParent.get(entry.id) }))
           .sort((a, b) => (a.menuOrder ?? 0) - (b.menuOrder ?? 0)),
       )) {
         const link = target(item);
+
         if (!link) continue;
         const node: MenuItem = {
           ...link,
@@ -618,9 +680,11 @@ export class ImportService {
           children: [],
         };
         let parent = keptParent(wpParent.get(item.id));
+
         // Deeper levels join the third level.
         while (parent && (depth.get(parent) ?? 1) >= 3)
           parent = keptParent(wpParent.get(parent));
+
         if (parent) {
           nodes.get(parent)!.children.push(node);
           depth.set(item.id, (depth.get(parent) ?? 1) + 1);
@@ -628,10 +692,13 @@ export class ImportService {
           roots.push(node);
           depth.set(item.id, 1);
         }
+
         nodes.set(item.id, node);
       }
+
       if (!roots.length) continue;
       const id = this.deps.ids.next();
+
       settings.menus.push({
         id,
         name: title,
@@ -639,8 +706,10 @@ export class ImportService {
       });
       added.push(id);
     }
+
     if (!added.length) return;
     if (!settings.locations.primary) settings.locations.primary = added[0]!;
+
     try {
       await this.deps.menus.update(settings, actor);
       result.menus += added.length;
@@ -662,8 +731,10 @@ export class ImportService {
         term.id,
       ]),
     );
+
     for (const term of parentsFirst(terms)) {
       if (ids.has(term.slug) || !CONTENT_SLUG.test(term.slug)) continue;
+
       try {
         const created = await this.deps.taxonomy.create(taxonomy, {
           name: term.name || term.slug,
@@ -671,6 +742,7 @@ export class ImportService {
           description: term.description.slice(0, 1000),
           parentId: (term.parent && ids.get(term.parent)) || null,
         });
+
         ids.set(created.slug, created.id);
         result[taxonomy === 'category' ? 'categories' : 'tags'] += 1;
       } catch (error) {
@@ -678,6 +750,7 @@ export class ImportService {
         result.skipped.push(skip(term.name, error));
       }
     }
+
     return ids;
   }
 
@@ -695,17 +768,21 @@ export class ImportService {
     const ordered = [...comments].sort(
       (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
     );
+
     for (const comment of ordered) {
       const status =
         COMMENT_STATUSES[comment.approved as keyof typeof COMMENT_STATUSES];
+
       if (!status || (comment.type && comment.type !== 'comment')) continue;
       // Comments are plain text here; WordPress allows a little markup.
       const body = comment.body
         .replace(/<[^>]*>/g, '')
         .trim()
         .slice(0, 5000);
+
       if (!body) continue;
       const id = this.deps.ids.next();
+
       await this.deps.comments.insert({
         id,
         contentId,
@@ -728,6 +805,7 @@ export class ImportService {
       ids.set(comment.id, id);
       count += 1;
     }
+
     return count;
   }
 }

@@ -37,6 +37,7 @@
     const message = issues.find(
       (issue) => issue.path === `providers.${index}.${field}`,
     )?.message;
+
     return message ? issueText(m, i18n.language, message) : undefined;
   };
   const togglePermission = (
@@ -47,12 +48,14 @@
     const selected = embedPermissions(provider.allow).filter(
       (permission) => permission !== directive,
     );
+
     if (checked) selected.push(directive);
     provider.allow = selected.join('; ');
   };
   const move = (index: number, direction: number) => {
     const next = [...providers];
     const target = index + direction;
+
     [next[index], next[target]] = [next[target]!, next[index]!];
     providers = next;
   };

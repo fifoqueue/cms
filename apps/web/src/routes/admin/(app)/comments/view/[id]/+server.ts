@@ -12,6 +12,7 @@ export const GET: RequestHandler = async (event) => {
   const comment = event.url.searchParams.get('comment') ?? '';
   // Only an id-shaped fragment is added to the address.
   const anchor = /^[\w-]{1,36}$/.test(comment) ? `#comment-${comment}` : '';
+
   redirect(
     303,
     entry.status === 'published' && !entry.trashedAt

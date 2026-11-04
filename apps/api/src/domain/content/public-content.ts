@@ -80,6 +80,7 @@ export class PublishedContentReader implements ContentReader {
       open.length && this.renderBody
         ? await this.renderBody(open, 'published')
         : new Map<string, string>();
+
     return {
       items: items.map((item) =>
         toPublic({
@@ -107,6 +108,7 @@ export class PublishedContentReader implements ContentReader {
       types,
     });
     const { page, pageSize } = criteria;
+
     return {
       items: await this.summariesOf(items),
       total,
@@ -125,9 +127,11 @@ export class PublishedContentReader implements ContentReader {
         record,
       ]),
     );
+
     return this.summariesOf(
       ids.flatMap((id) => {
         const record = records.get(id);
+
         return record ? [record] : [];
       }),
     );
@@ -143,6 +147,7 @@ export class PublishedContentReader implements ContentReader {
         ])
       ).map((item) => [item.id, item]),
     );
+
     return {
       previous: previous ? summaries.get(previous.id)! : null,
       next: next ? summaries.get(next.id)! : null,
@@ -151,6 +156,7 @@ export class PublishedContentReader implements ContentReader {
 
   private async summariesOf(records: PublishedSummaryRecord[]) {
     const summaries = records.map(toPublicSummary);
+
     if (!this.hooks?.has('content.excerpt')) return summaries;
     const hooks = this.hooks;
     const filtered = await Promise.all(
@@ -162,9 +168,11 @@ export class PublishedContentReader implements ContentReader {
     const bodies = ids.length
       ? await this.repository.excerptBodies(ids)
       : new Map<string, string>();
+
     return summaries.map((summary, index) => {
       const { excerpt, generation } = filtered[index]!;
       const html = bodies.get(summary.id);
+
       return {
         ...summary,
         excerpt: generation
@@ -235,10 +243,13 @@ export class PublishedContentReader implements ContentReader {
   ) {
     if (!record) return null;
     const open = !record.protected || (await unlock(record.id));
+
     if (open && this.renderBody) {
       const bodies = await this.renderBody([record], visibility);
+
       record = { ...record, html: bodies.get(record.id) ?? record.html };
     }
+
     return {
       ...toPublic(record, record.protected && open),
       fields: open ? await fields(record.type, record.fields) : {},
@@ -287,6 +298,7 @@ export class PublicContentService {
             .filter((type) => type.searchable)
             .map((type) => type.key)
         : undefined;
+
     if (searching) {
       const initial = searchHookQuerySchema.parse({
         ...criteria,
@@ -310,6 +322,7 @@ export class PublicContentService {
         initial,
         (value) => {
           const result = searchHookQuerySchema.safeParse(value);
+
           return (
             result.success &&
             publicContentCriteriaSchema.safeParse(toCriteria(result.data))
@@ -318,6 +331,7 @@ export class PublicContentService {
         },
       );
       const args = searchHookQuerySchema.parse(filtered);
+
       types = args.types;
       criteria = publicContentCriteriaSchema.parse(toCriteria(args));
     } else if (this.hooks.has('content.publicQuery')) {
@@ -329,6 +343,7 @@ export class PublicContentService {
         ),
       );
     }
+
     types = activeTypes.filter(
       (type) =>
         (!types || types.includes(type)) &&
@@ -351,6 +366,7 @@ export class PublicContentService {
             types: criteria.type ? [criteria.type] : types,
           })
         : null) ?? (await this.reader.summaries(criteria, types));
+
     if (searching) {
       const initial = {
         ids: page.items.map((item) => item.id),
@@ -361,6 +377,7 @@ export class PublicContentService {
         initial,
         (value) => {
           const result = searchHookResultsSchema.safeParse(value);
+
           return (
             result.success &&
             result.data.ids.every((id) => initial.ids.includes(id))
@@ -369,9 +386,11 @@ export class PublicContentService {
       );
       const hits = searchHookResultsSchema.parse(filtered);
       const items = new Map(page.items.map((item) => [item.id, item]));
+
       page.items = hits.ids.flatMap((id) => items.get(id) ?? []);
       page.total = hits.total;
     }
+
     if (this.hooks.has('content.publicResults')) {
       const initial = {
         ids: page.items.map((item) => item.id),
@@ -383,19 +402,24 @@ export class PublicContentService {
         initial,
         async (value) => {
           const result = searchHookResultsSchema.safeParse(value);
+
           if (!result.success) return false;
           const missing = result.data.ids.filter((id) => !available.has(id));
+
           if (missing.length) {
             for (const item of await this.reader.summariesByIds(missing))
               if (activeTypes.includes(item.type)) available.set(item.id, item);
           }
+
           return result.data.ids.every((id) => available.has(id));
         },
       );
       const hits = searchHookResultsSchema.parse(filtered);
+
       page.items = hits.ids.flatMap((id) => available.get(id) ?? []);
       page.total = hits.total;
     }
+
     return {
       ...page,
       items: await Promise.all(page.items.map((item) => this.summarize(item))),
@@ -412,7 +436,9 @@ export class PublicContentService {
       (id) => this.locks.unlocked(id, proofs),
       (type, values) => this.fields.present(type, values),
     );
+
     if (!content) throw notFound(Errors.ContentNotFound);
+
     return this.present(content);
   }
 
@@ -427,6 +453,7 @@ export class PublicContentService {
       (contentId) => this.locks.unlocked(contentId, proofs),
       (type, values) => this.fields.present(type, values),
     );
+
     if (
       !content &&
       actor &&
@@ -451,6 +478,7 @@ export class PublicContentService {
   async adjacent(query: unknown): Promise<PublicAdjacent> {
     const { contentId } = parseInput(adjacentQuerySchema, query);
     const { previous, next } = await this.reader.adjacent(contentId);
+
     return {
       previous: previous && (await this.summarize(previous)),
       next: next && (await this.summarize(next)),
@@ -459,11 +487,13 @@ export class PublicContentService {
 
   async monthNeighbours(query: unknown): Promise<PublicMonthNeighbours> {
     const { year, month } = parseInput(monthNeighboursQuerySchema, query);
+
     return this.reader.monthNeighbours(year, month);
   }
 
   async months(query: unknown): Promise<PublicMonth[]> {
     const { limit } = parseInput(monthsQuerySchema, query);
+
     return this.reader.months(limit);
   }
 
@@ -473,7 +503,9 @@ export class PublicContentService {
     // A plugin can become active before a background index rebuild restores its documents.
     if (criteria.types?.some((type) => type.startsWith('plugin:'))) return null;
     const hits = await this.search?.find(criteria);
+
     if (!hits) return null;
+
     return {
       items: await this.reader.summariesByIds(hits.ids),
       total: hits.total,
@@ -529,6 +561,7 @@ export class PublicContentService {
       },
       isPublicContent,
     );
+
     // Plugins may decorate display content, but cannot move an entry or override crawler policy.
     return publicContentSchema.parse({
       ...filtered,
@@ -553,6 +586,7 @@ export class PublicContentService {
       content,
       isPublicSummary,
     );
+
     // Same fixed routing identity and crawler policy as `present`.
     return publicContentSummarySchema.parse({
       ...filtered,
@@ -577,6 +611,7 @@ export class PublicContentService {
       { title: content.title, contentId: content.id },
       (value) => schema.safeParse(value).success,
     );
+
     return schema.parse(filtered).title;
   }
 
@@ -592,6 +627,7 @@ export class PublicContentService {
           .object({ contentId: z.literal(content.id), path: z.string() })
           .strict()
           .safeParse(value);
+
         return (
           parsed.success &&
           !permalinkPathIssue(parsed.data.path) &&
@@ -599,6 +635,7 @@ export class PublicContentService {
         );
       },
     );
+
     return result.path;
   }
 }

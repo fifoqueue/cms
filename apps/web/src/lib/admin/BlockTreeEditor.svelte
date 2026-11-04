@@ -70,10 +70,12 @@
   };
   const canUndo = $derived.by(() => {
     void steps;
+
     return history.canUndo;
   });
   const canRedo = $derived.by(() => {
     void steps;
+
     return history.canRedo;
   });
 
@@ -94,21 +96,26 @@
   };
   const move = (path: BlockPath, offset: number) => {
     const slot = slotAt(tree, path);
+
     if (!slot) return;
     const target = slot.index + offset;
+
     if (target < 0 || target >= slot.list.length) return;
     const [item] = slot.list.splice(slot.index, 1);
+
     slot.list.splice(target, 0, item!);
     selected = [...path.slice(0, -1), target];
   };
   const remove = (path: BlockPath) => {
     const slot = slotAt(tree, path);
+
     if (!slot) return;
     slot.list.splice(slot.index, 1);
     selected = null;
   };
   const insert = (name: BlockName) => {
     const path = insertionPoint(tree, selected, name);
+
     insertAt(tree, path, newBlock(name));
     selected = path;
   };
@@ -117,6 +124,7 @@
 <svelte:window
   onkeydown={(event) => {
     const direction = historyKey(event);
+
     if (!direction) return;
     event.preventDefault();
     step(direction);

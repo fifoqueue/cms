@@ -97,6 +97,7 @@
   /** The footnote list as the published entry shows it, shared with the footnote views. */
   const notePages = $derived.by(() => {
     void revision;
+
     return editor ? footnotePages(editor.state.doc).pages : [];
   });
 
@@ -113,15 +114,21 @@
     to = from,
   ) => {
     const images = files.filter(isImage);
+
     if (!images.length) return false;
     const marker = { from, to };
+
     markers.push(marker);
+
     void (async () => {
       uploadErrors = [];
       uploading += images.length;
+
       for (const file of images) {
         const result = await uploadFile(file);
+
         uploading--;
+
         // The server decides the kind from the file's bytes, not the browser's type.
         if (!('media' in result) || result.media.kind !== 'image') {
           uploadErrors = [
@@ -136,7 +143,9 @@
           ];
           continue;
         }
+
         const media = result.media;
+
         if (!editor || view.isDestroyed) break;
         // Mapping moves the marker past each inserted image, so the next one follows it.
         editor
@@ -154,8 +163,10 @@
         // Later images follow the first one instead of replacing anything.
         marker.from = marker.to;
       }
+
       markers = markers.filter((other) => other !== marker);
     })();
+
     return true;
   };
 
@@ -236,14 +247,17 @@
             left: event.clientX,
             top: event.clientY,
           })?.pos;
+
           if (position === undefined) return false;
           if (!uploadInto(view, [...event.dataTransfer.files], position))
             return false;
           event.preventDefault();
+
           return true;
         },
         handlePaste: (view, event) => {
           const files = [...(event.clipboardData?.files ?? [])];
+
           if (!files.some(isImage))
             return (
               !htmlMode &&
@@ -255,11 +269,13 @@
             );
           // Pasting replaces the selection, as it does for text, once the upload succeeds.
           const { from, to } = view.state.selection;
+
           return uploadInto(view, files, from, to);
         },
       },
       onTransaction: ({ transaction }) => {
         outsideRender(() => revision++);
+
         for (const marker of markers) {
           marker.from = transaction.mapping.map(marker.from);
           marker.to = transaction.mapping.map(marker.to);
@@ -270,6 +286,7 @@
       onUpdate: ({ editor: current }) =>
         (value = publishedDocument(current.getJSON()) as ContentDocument),
     });
+
     editor = instance;
     // Pattern boxes show their titles once the library is read.
     void loadPatterns().then((list) => {
@@ -282,6 +299,7 @@
           box.dataset.patternRef ?? null,
         );
     });
+
     return () => instance.destroy();
   });
 
@@ -299,9 +317,12 @@
         parseFloat(
           getComputedStyle(root).getPropertyValue('--cms-save-bar-offset'),
         ) || 0);
+
     read();
     const observer = new MutationObserver(read);
+
     observer.observe(root, { attributes: true, attributeFilter: ['style'] });
+
     return () => observer.disconnect();
   });
   $effect(() => {
@@ -312,6 +333,7 @@
       bottom: saveBarOffset + 8,
       left: 0,
     };
+
     editor.view.setProps({ scrollThreshold: margins, scrollMargin: margins });
   });
 
@@ -349,10 +371,13 @@
       response?.status === 201
         ? ((await response.json()) as PatternChoice)
         : null;
+
     if (!created) {
       patternError = m.patternCreateFailed;
+
       return;
     }
+
     patterns = [...patterns, created];
     patternDialog.close();
     patternTitle = '';
@@ -409,7 +434,9 @@
   let html = $state('');
   const blockLines = (source: string) => {
     const template = document.createElement('template');
+
     template.innerHTML = source;
+
     return [...template.content.childNodes]
       .map((node) =>
         node instanceof Element ? node.outerHTML : (node.textContent ?? ''),
@@ -428,11 +455,14 @@
   };
   const toggleHtml = () => {
     if (!editor) return;
+
     if (htmlMode) {
       htmlMode = false;
       editor.commands.focus();
+
       return;
     }
+
     html = blockLines(editor.getHTML());
     htmlMode = true;
   };
@@ -469,6 +499,7 @@
         : node instanceof HTMLElement
           ? node.querySelector('img')
           : null;
+
     return picture?.naturalWidth
       ? { width: picture.naturalWidth, height: picture.naturalHeight }
       : null;
@@ -478,6 +509,7 @@
   const files = new SvelteMap<string, AdminMedia | null>();
   $effect(() => {
     const id = image?.mediaId;
+
     if (typeof id !== 'string' || files.has(id)) return;
     files.set(id, null);
     void fetch(`/admin/media/picker?id=${encodeURIComponent(id)}`)
@@ -505,19 +537,24 @@
   const resize = (size: string) => {
     if (file) {
       const variant = file.variants.find((entry) => entry.name === size);
+
       setImage(
         variant
           ? { src: variant.url, width: variant.width, height: variant.height }
           : { src: file.url, width: file.width, height: file.height },
       );
+
       return;
     }
+
     const full = natural();
+
     if (!full) return;
     const width =
       size === 'thumbnail' || size === 'medium'
         ? Math.min(IMAGE_SIZES[size], full.width)
         : full.width;
+
     setImage({
       width,
       height: Math.round((width * full.height) / full.width),
@@ -545,6 +582,7 @@
             : event.key === 'End'
               ? last
               : null;
+
     if (next === null) return;
     event.preventDefault();
     focused = next;

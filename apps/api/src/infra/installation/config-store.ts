@@ -18,12 +18,14 @@ const storedSchema = z.object({
 
 export const readInstallationConfig = (path = INSTALLATION_CONFIG) => {
   let source: string;
+
   try {
     source = readFileSync(path, 'utf8');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     throw new Error(Errors.InstallConfigUnreadable, { cause: error });
   }
+
   try {
     return storedSchema.parse(JSON.parse(source));
   } catch {
@@ -37,9 +39,11 @@ export const saveInstallationConfig = async (
   path = INSTALLATION_CONFIG,
 ) => {
   const values = storedSchema.parse({ DATABASE_URL: databaseUrl });
+
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = `${path}.${randomUUID()}.tmp`;
   const handle = await open(temporary, 'wx', 0o600);
+
   try {
     await handle.writeFile(JSON.stringify(values), 'utf8');
     await handle.sync();

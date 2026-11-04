@@ -10,6 +10,7 @@ test('password method verifies unknown users against a dummy hash and defers set
     email: 'owner@example.com',
     passwordHash: 'hash:correct-password',
   });
+
   await users.insert(user);
   const verified: string[] = [];
   let consumed = false;
@@ -19,6 +20,7 @@ test('password method verifies unknown users against a dummy hash and defers set
       hash: async (password) => `hash:${password}`,
       verify: async (password, hash) => {
         verified.push(hash);
+
         return hash === `hash:${password}`;
       },
     },
@@ -28,6 +30,7 @@ test('password method verifies unknown users against a dummy hash and defers set
         if (consumed || token !== 'valid-token-hash') return false;
         consumed = true;
         await users.setPassword(user.id, `hash:${password}`);
+
         return true;
       },
     },
@@ -38,6 +41,7 @@ test('password method verifies unknown users against a dummy hash and defers set
     callbackUrl: 'https://site.example/admin/sign-in/callback',
     values: { email: user.email, password: 'correct-password' },
   };
+
   expect(await method.begin(request)).toEqual({
     kind: 'user',
     userId: user.id,
@@ -63,6 +67,7 @@ test('password method verifies unknown users against a dummy hash and defers set
     ...request,
     values: { password: 'new-password' },
   });
+
   expect(consumed).toBe(false);
   expect((await users.findById(user.id))?.passwordHash).toBe(
     'hash:correct-password',
@@ -73,6 +78,7 @@ test('password method verifies unknown users against a dummy hash and defers set
     outcome.commitSetup('valid-token-hash', new Date()),
     outcome.commitSetup('valid-token-hash', new Date()),
   ]);
+
   expect(results.filter(Boolean)).toHaveLength(1);
   expect((await users.findById(user.id))?.passwordHash).toBe(
     'hash:new-password',

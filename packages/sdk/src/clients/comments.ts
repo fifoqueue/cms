@@ -114,6 +114,7 @@ export const publicCommentsClient = (request: Request) => ({
 export const commentsAdminClient = (request: Request) => {
   const path = (id: string) =>
     `/api/v1/admin/comments/${encodeURIComponent(id)}`;
+
   return {
     comments: {
       list: (query: CommentListQuery = {}) =>

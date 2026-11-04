@@ -104,6 +104,7 @@ const setup = (
         email.failures -= 1;
         throw new Error('mail server unreachable');
       }
+
       notices.push(message);
     },
   };
@@ -142,6 +143,7 @@ const setup = (
         endpoint: target.endpoint,
         payload: JSON.parse(payload) as CommentPushPayload,
       });
+
       return sender.status;
     },
   };
@@ -203,6 +205,7 @@ const setup = (
     logger: recordingLogger().logger,
     owner: 'test',
   });
+
   runner.handle(COMMENT_NOTICE_JOB, (payload) =>
     notifier.deliverNotice(payload),
   );
@@ -211,6 +214,7 @@ const setup = (
   runner.handle(COMMENT_SUMMARY_JOB, (payload) =>
     notifier.deliverSummary(payload),
   );
+
   /** Runs the job runner until no job is due now (retries wait for their backoff). */
   const drain = async () => {
     const due = () =>
@@ -220,6 +224,7 @@ const setup = (
           row.runAt <= clock.now() &&
           (!row.lockedUntil || row.lockedUntil < clock.now()),
       );
+
     while (due()) await runner.drain();
   };
   const publish = (overrides: Partial<ContentInput> = {}) =>
@@ -233,6 +238,7 @@ const setup = (
       },
       ADMIN,
     );
+
   return {
     content,
     comments,
@@ -275,10 +281,12 @@ describe('CommentService', () => {
   test('object capabilities admit moderation but refuse a mixed batch before writing', async () => {
     const { comments, publish, store, hooks } = setup();
     const entry = await publish();
+
     await comments.submit(comment(entry.id), visitor);
     await comments.submit(comment(entry.id), visitor);
     const [first, second] = [...store.rows.keys()];
     const reader = { id: 'reader', role: 'subscriber' };
+
     hooks.registrar('object-policy').filter('capability.check', (value) => ({
       ...value,
       allowed: value.object.id === first,
@@ -298,6 +306,7 @@ describe('CommentService', () => {
   });
   test('a failing core checker fails the submit instead of approving', async () => {
     const checkers = new CommentCheckers(10);
+
     checkers.registerCore({
       check: () => {
         throw new Error('core offline');
@@ -305,6 +314,7 @@ describe('CommentService', () => {
     });
     const { comments, publish, store } = setup(false, checkers);
     const entry = await publish();
+
     await comments.updateDiscussion({ moderation: 'auto' }, ADMIN);
     await expect(comments.submit(comment(entry.id), visitor)).rejects.toThrow(
       'core offline',
@@ -314,6 +324,7 @@ describe('CommentService', () => {
   test('a later submit filter can admit a comment an earlier one refused', async () => {
     const { comments, publish, hooks, store } = setup();
     const entry = await publish();
+
     hooks.registrar('deny').filter('comment.submitAllowed', (value) => ({
       ...value,
       allowed: false,
@@ -357,8 +368,10 @@ describe('CommentService', () => {
 
     await comments.updateDiscussion({ moderation: 'auto' }, ADMIN);
     const sent = await comments.submit(comment(entry.id), visitor);
+
     expect(sent.status).toBe('approved');
     const thread = await comments.publicPage(entry.id, 1);
+
     expect(thread).toMatchObject({ count: 1, open: true });
     expect(JSON.stringify(thread)).not.toContain('example.com');
     expect(JSON.stringify(sent)).not.toContain('example.com');
@@ -371,6 +384,7 @@ describe('CommentService', () => {
       ADMIN,
     );
     const avatars = await comments.publicPage(entry.id, 1);
+
     expect(avatars.items[0]?.avatarUrl).toBe(
       `/avatars/comment%3A${sent.comment!.id}.signed?s=96`,
     );
@@ -380,9 +394,12 @@ describe('CommentService', () => {
   test('recent comment links locate roots and replies on their actual comment page', async () => {
     const { comments, publish, store } = setup();
     const entry = await publish();
+
     await comments.updateDiscussion({ pageSize: 5 }, ADMIN);
+
     for (let index = 0; index < 7; index += 1) {
       const at = new Date(Date.UTC(2026, 0, 1, 0, 0, index));
+
       await store.insert({
         id: `recent-${index}`,
         contentId: entry.id,
@@ -400,6 +417,7 @@ describe('CommentService', () => {
         updatedAt: at,
       });
     }
+
     expect(await comments.recent(2)).toEqual(
       [6, 5].map((index) => ({
         author: 'Ann',
@@ -419,6 +437,7 @@ describe('CommentService', () => {
   test('protected comments require a current unlock proof for both reads and writes', async () => {
     const { comments, content, publish, locks } = setup();
     const entry = await publish({ password: 'secret' });
+
     await comments.updateDiscussion({ moderation: 'auto' }, ADMIN);
     expect(await codeOf(comments.publicPage(entry.id, 1))).toBe('not_found');
     expect(await codeOf(comments.submit(comment(entry.id), visitor))).toBe(
@@ -426,6 +445,7 @@ describe('CommentService', () => {
     );
     const { token } = await locks.unlock(entry.id, { password: 'secret' });
     const proofs = [`${entry.id}.${token}`];
+
     await comments.submit(comment(entry.id), visitor, proofs);
     expect((await comments.publicPage(entry.id, 1, proofs)).items).toHaveLength(
       1,
@@ -457,6 +477,7 @@ describe('CommentService', () => {
   test('only proven IP addresses and user agents are stored, and only moderators see them', async () => {
     const { comments, publish, store } = setup();
     const entry = await publish();
+
     await comments.updateDiscussion({ moderation: 'auto' }, ADMIN);
     const clients = new ClientResolver('frontend-secret');
     const browser = {
@@ -466,6 +487,7 @@ describe('CommentService', () => {
     // As the comment routes read a request.
     const from = (headers: Record<string, string>) => {
       const request = new Request('http://localhost/', { headers });
+
       return {
         ...clients.attempt(request),
         userAgent: clients.userAgent(request),
@@ -484,6 +506,7 @@ describe('CommentService', () => {
       comment(entry.id, { body: 'Wrong secret' }),
       from({ ...browser, [SSO_FRONTEND_SECRET_HEADER]: 'guess' }),
     );
+
     expect(store.rows.get(proven.comment!.id)).toMatchObject({
       authorIp: '203.0.113.9',
       authorUserAgent: `Mozilla/5.0(Test) ${'x'.repeat(237)}`,
@@ -500,6 +523,7 @@ describe('CommentService', () => {
 
     const ids = [proven, forged, proven].map((sent) => sent.comment!.id);
     const listed = await comments.list({ ids: ids.join(',') }, ADMIN);
+
     expect(
       listed.items.map((item) => [item.body, item.authorIp]).sort(),
     ).toEqual([
@@ -522,6 +546,7 @@ describe('CommentService', () => {
   test('registered-only comments use the authenticated profile, never supplied identity', async () => {
     const { comments, publish, store } = setup();
     const entry = await publish();
+
     await comments.updateDiscussion(
       {
         requireLogin: true,
@@ -547,6 +572,7 @@ describe('CommentService', () => {
       [],
       ADMIN,
     );
+
     expect(store.rows.get(sent.comment!.id)).toMatchObject({
       userId: ADMIN.id,
       authorName: 'Profile name',
@@ -568,9 +594,11 @@ describe('CommentService', () => {
       role: 'custom',
       capabilities: ['comments.moderate'] as const,
     };
+
     for (const moderation of ['manual', 'known'] as const) {
       const scoped = setup();
       const target = await scoped.publish();
+
       await scoped.comments.updateDiscussion(
         {
           moderation,
@@ -611,6 +639,7 @@ describe('CommentService', () => {
         ).status,
       ).toBe('approved');
     }
+
     await comments.updateDiscussion(
       {
         moderation: 'manual',
@@ -636,6 +665,7 @@ describe('CommentService', () => {
       true,
     );
     const before = store.rows.size;
+
     await comments.submit(
       comment(entry.id, { website: 'bot' }),
       visitor,
@@ -648,6 +678,7 @@ describe('CommentService', () => {
       password: 'secret',
     });
     const closed = await publish({ title: 'Closed', allowComments: false });
+
     expect(
       await codeOf(
         comments.submit(comment(protectedEntry.id), visitor, [], moderator),
@@ -670,6 +701,7 @@ describe('CommentService', () => {
       comment(entry.id, { body: 'Someone else' }),
       visitor,
     );
+
     expect((await comments.publicPage(entry.id, 1)).ownPending).toBeNull();
     const own = await comments.publicPage(
       entry.id,
@@ -678,6 +710,7 @@ describe('CommentService', () => {
       null,
       first.pendingProof!,
     );
+
     expect(own.items).toEqual([]);
     expect(own.ownPending).toMatchObject({ body: 'Mine', pending: true });
     expect(JSON.stringify(own)).not.toContain('example.com');
@@ -686,6 +719,7 @@ describe('CommentService', () => {
       first.pendingProof!.split('.')[0]!,
       second.pendingProof!.split('.')[0]!,
     );
+
     expect(
       (await comments.publicPage(entry.id, 1, [], null, forged)).ownPending,
     ).toBeNull();
@@ -694,6 +728,7 @@ describe('CommentService', () => {
         .ownPending,
     ).toBeNull();
     const spammed = own.ownPending!.id;
+
     await comments.bulk({ ids: [spammed], action: 'spam' }, ADMIN);
     expect(
       (await comments.publicPage(entry.id, 1, [], null, first.pendingProof!))
@@ -716,6 +751,7 @@ describe('CommentService', () => {
     const { comments, publish, store } = setup();
     const entry = await publish();
     const other = await publish({ title: 'Other' });
+
     await comments.submit(comment(entry.id), visitor);
     await comments.submit(comment(other.id), visitor);
     const [own] = (await comments.list({ contentId: entry.id }, ADMIN)).items;
@@ -767,6 +803,7 @@ describe('CommentService', () => {
   test('moderation holds first comments, filters spam, and keeps the approved count', async () => {
     const { comments, store, publish, repository } = setup();
     const entry = await publish();
+
     await comments.updateDiscussion(
       { blockWords: ['casino'], holdWords: ['refund'] },
       ADMIN,
@@ -779,15 +816,18 @@ describe('CommentService', () => {
     expect(store.rows.size).toBe(0);
 
     const firstSubmission = await comments.submit(comment(entry.id), visitor);
+
     expect(firstSubmission.status).toBe('pending');
     const spam = await comments.submit(
       comment(entry.id, { body: 'Best CASINO' }),
       visitor,
     );
+
     expect(spam.status).toBe('pending');
     expect((await comments.counts(ADMIN)).spam).toBe(1);
 
     const [first] = (await comments.list({ status: 'pending' }, ADMIN)).items;
+
     await comments.bulk({ ids: [first!.id], action: 'approve' }, ADMIN);
     expect(repository.commentCounts.get(entry.id)).toBe(1);
     // An approved email alone is spoofable; only its signed commenter proof skips the queue.
@@ -848,8 +888,10 @@ describe('CommentService', () => {
       null,
       firstSubmission.commenterProof!,
     );
+
     await comments.remove(first!.id, ADMIN);
     const thread = await comments.publicPage(entry.id, 1);
+
     expect(thread.items.map((item) => [item.body, item.depth])).toEqual([
       ['Nice post', 0],
       ['Agreed', 0],
@@ -864,8 +906,10 @@ describe('CommentService', () => {
     const closed = await publish({ title: 'Closed', allowComments: false });
     const seen: unknown[] = [];
     const policy = hooks.registrar('policy');
+
     policy.filter('comment.openAllowed', (value) => {
       seen.push(structuredClone(value));
+
       return { ...value, allowed: value.contentId === closed.id };
     });
     expect((await comments.publicPage(open.id, 1)).open).toBe(false);
@@ -901,9 +945,12 @@ describe('CommentService', () => {
   test('comment.publicQuery pages and orders public threads, and comment links follow it', async () => {
     const { comments, publish, hooks, store } = setup();
     const entry = await publish();
+
     await comments.updateDiscussion({ moderation: 'auto' }, ADMIN);
+
     for (const [index, id] of ['q-0', 'q-1', 'q-2', 'q-reply'].entries()) {
       const at = new Date(Date.UTC(2025, 0, 1, 0, 0, index));
+
       await store.insert({
         id,
         contentId: entry.id,
@@ -921,12 +968,14 @@ describe('CommentService', () => {
         updatedAt: at,
       });
     }
+
     hooks.registrar('newest').filter('comment.publicQuery', (value) => ({
       ...value,
       pageSize: 2,
       order: 'desc' as const,
     }));
     const first = await comments.publicPage(entry.id, 1);
+
     expect(first.items.map(({ id }) => id)).toEqual(['q-2', 'q-1']);
     expect(first).toMatchObject({ page: 1, pageSize: 2, total: 3 });
     // Replies stay under their comment, oldest first.
@@ -957,8 +1006,10 @@ describe('CommentService', () => {
     const cpage = Number(
       new URL(link, 'https://blog.example').searchParams.get('cpage'),
     );
+
     expect(cpage).toBe(2);
     const linked = await comments.publicPage(entry.id, cpage);
+
     expect(linked).toMatchObject({ page: 2, pageSize: 2 });
     expect(linked.items.map(({ id }) => id)).toContain('q-reply');
   });
@@ -969,6 +1020,7 @@ describe('CommentService', () => {
 
     for (const [index, id] of ['first', 'second', 'third'].entries()) {
       const at = new Date(Date.UTC(2025, 0, 1, 0, 0, index));
+
       await store.insert({
         id,
         contentId: entry.id,
@@ -996,9 +1048,11 @@ describe('CommentService', () => {
     const link = (await comments.recent(10)).find(({ path }) =>
       path.endsWith('#comment-third'),
     )!.path;
+
     expect(link).toBe(`${entry.path}?cpage=2#comment-third`);
 
     const second = await comments.publicPage(entry.id, 2);
+
     expect(second).toMatchObject({ page: 2, pageSize: 2 });
     expect(second.items.map(({ id }) => id)).toEqual(['third']);
   });
@@ -1012,6 +1066,7 @@ describe('CommentService', () => {
         list: (prefix: string) => stored.list(prefix),
         get: (key: string) => {
           if (key === 'contentFields') reads += 1;
+
           return stored.get(key);
         },
         set: (key: string, value: unknown) => stored.set(key, value),
@@ -1028,6 +1083,7 @@ describe('CommentService', () => {
     });
     const { comments, publish } = setup(false, undefined, { fields });
     const entry = await publish();
+
     await comments.updateDiscussion({ moderation: 'auto' }, ADMIN);
     // No comment fields anywhere: pages and submissions share one read.
     await comments.publicPage(entry.id, 1);
@@ -1066,6 +1122,7 @@ describe('CommentService', () => {
     });
     const { comments, publish } = setup(false, undefined, { fields });
     const entry = await publish();
+
     await comments.updateDiscussion({ moderation: 'auto' }, ADMIN);
     const unregister = registry.register('demo', 'city', {
       label: 'City',
@@ -1073,6 +1130,7 @@ describe('CommentService', () => {
       required: true,
       comments: true,
     });
+
     registry.register('demo', 'phone', {
       label: 'Phone',
       type: 'text',
@@ -1112,8 +1170,10 @@ describe('CommentService', () => {
       }),
       visitor,
     );
+
     expect(sent.comment?.fields).toEqual({ 'plugin:demo:city': 'Seoul' });
     const page = await comments.publicPage(entry.id, 1);
+
     expect(page.customFields).toEqual([
       {
         key: 'plugin:demo:city',
@@ -1146,6 +1206,7 @@ describe('CommentService', () => {
       'plugin:demo:city': 'Seoul',
       'plugin:demo:phone': '010-1234',
     };
+
     expect((await comments.list({}, ADMIN)).items[0]?.fields).toEqual(stored);
     // A deactivated plugin's values leave public output but stay stored.
     unregister();
@@ -1184,6 +1245,7 @@ describe('comment notifications', () => {
   ) => {
     const context = setup(mail);
     const entry = await context.publish();
+
     await context.comments.updateDiscussion(
       {
         moderation: 'auto',
@@ -1194,8 +1256,10 @@ describe('comment notifications', () => {
       ADMIN,
     );
     const parent = await context.comments.submit(comment(entry.id), visitor);
+
     await context.drain();
     context.notices.length = 0;
+
     return { ...context, entry, parent };
   };
   const to = (notices: unknown[], address: string) =>
@@ -1204,6 +1268,7 @@ describe('comment notifications', () => {
   test('an approved reply emails and pushes the parent author exactly once', async () => {
     const { comments, notifier, entry, parent, notices, drain, sent } =
       await ready();
+
     await notifier.registerVisitor(
       { token: parent.pushToken, subscription: browser() },
       visitor.client,
@@ -1212,8 +1277,10 @@ describe('comment notifications', () => {
       reply(entry.id, parent.comment!.id),
       visitor,
     );
+
     await drain();
     const mails = to(notices, 'ann@example.com');
+
     expect(mails).toHaveLength(1);
     expect(mails[0]!.text).toContain('Reply from Bob');
     expect(mails[0]!.text).toContain(
@@ -1253,12 +1320,14 @@ describe('comment notifications', () => {
   test('a failed claim surfaces, leaves the comment unclaimed and a repeated approval announces it once', async () => {
     const { comments, entry, parent, notices, drain, noticeState, queue } =
       await ready();
+
     await comments.updateDiscussion(
       { moderation: 'manual', notifyCommenters: true },
       ADMIN,
     );
     await comments.submit(reply(entry.id, parent.comment!.id), visitor);
     const [held] = (await comments.list({ status: 'pending' }, ADMIN)).items;
+
     noticeState.failures = 1;
     expect(
       await codeOf(
@@ -1290,6 +1359,7 @@ describe('comment notifications', () => {
       queue,
       clock,
     } = await ready(true, { notifyAuthors: false });
+
     outbox.failures = 1;
     email.failures = 1;
     await comments.submit(reply(entry.id, parent.comment!.id), visitor);
@@ -1297,6 +1367,7 @@ describe('comment notifications', () => {
       (row) => row.kind === COMMENT_NOTICE_JOB,
     );
     const payload = structuredClone(notice!.payload);
+
     await drain();
     expect(to(notices, 'ann@example.com')).toHaveLength(0);
     later(clock);
@@ -1320,6 +1391,7 @@ describe('comment notifications', () => {
       ...userRecord(account),
       contentCount: 0,
     }));
+
     return {
       list: async () => people,
       get: async (id) => people.find((person) => person.id === id) ?? null,
@@ -1341,23 +1413,28 @@ describe('comment notifications', () => {
     const entry = await publish();
     const seen: unknown[] = [];
     let routed: string[] = [];
+
     hooks
       .registrar('routing')
       .filter('comment.notificationRecipients', (value) => {
         seen.push(structuredClone(value));
+
         return { ...value, to: routed };
       });
+
     const mailed = async () => {
       notices.length = 0;
       await comments.submit(comment(entry.id), visitor);
       // Moderator mail is queued after the submission answers; added users' mail is a job.
       await new Promise((resolve) => setTimeout(resolve, 20));
       await drain();
+
       return (notices as EmailMessage[]).map((notice) => [
         notice.to,
         notice.text.includes('ann@example.com'),
       ]);
     };
+
     routed = ['Editor@Example.com', 'READER@example.com'];
     expect(await mailed()).toEqual([
       ['Editor@Example.com', true],
@@ -1389,13 +1466,16 @@ describe('comment notifications', () => {
       },
     );
     const entry = await publish();
+
     await comments.updateDiscussion(
       { moderation: 'auto', notifyCommenters: true },
       ADMIN,
     );
     const parent = await comments.submit(comment(entry.id), visitor);
+
     await drain();
     let routes: Record<string, string[]> = {};
+
     hooks
       .registrar('routing')
       .filter('comment.notificationRecipients', (value) => ({
@@ -1414,6 +1494,7 @@ describe('comment notifications', () => {
     await comments.submit(reply(entry.id, parent.comment!.id), visitor);
     await drain();
     const sent = notices as EmailMessage[];
+
     expect(sent.map((notice) => notice.to).sort()).toEqual([
       'profile@example.com',
       'watcher@example.com',
@@ -1448,12 +1529,14 @@ describe('comment notifications', () => {
       ]),
     });
     const entry = await publish();
+
     await comments.updateDiscussion(
       { moderation: 'auto', notifyCommenters: true },
       ADMIN,
     );
     const muted = await comments.submit(comment(entry.id), visitor);
     const second = await comments.submit(comment(entry.id), visitor);
+
     await drain();
     hooks
       .registrar('routing')
@@ -1465,6 +1548,7 @@ describe('comment notifications', () => {
             : [],
       }));
     const sent = notices as EmailMessage[];
+
     // Already unsubscribed: the approval result naming the address is refused.
     await noticeState.muteReplyMail(muted.comment!.id);
     notices.length = 0;
@@ -1478,6 +1562,7 @@ describe('comment notifications', () => {
     const fanOut = [...queue.rows.values()]
       .filter((row) => row.kind === COMMENT_NOTICE_JOB)
       .at(-1)!;
+
     await notifier.deliverNotice(structuredClone(fanOut.payload));
     await noticeState.muteReplyMail(second.comment!.id);
     await drain();
@@ -1508,6 +1593,7 @@ describe('comment notifications', () => {
       },
     );
     const entry = await publish();
+
     await comments.updateDiscussion({ notifyModerators: false }, ADMIN);
     hooks
       .registrar('routing')
@@ -1557,6 +1643,7 @@ describe('comment notifications', () => {
       });
     const entry = await publish();
     const at = new Date(Date.UTC(2025, 0, 1));
+
     await store.insert({
       id: 'parent',
       contentId: entry.id,
@@ -1579,6 +1666,7 @@ describe('comment notifications', () => {
       'ann@example.com',
       'kept@example.com',
     ];
+
     hooks
       .registrar('routing')
       .filter('comment.notificationRecipients', (value) => ({
@@ -1591,6 +1679,7 @@ describe('comment notifications', () => {
       await comments.submit(reply(entry.id, 'parent'), visitor);
       await new Promise((resolve) => setTimeout(resolve, 20));
     };
+
     await held();
     // Before the queued mail goes out: one account is deleted, one changes its address, and
     // the parent comment's author unsubscribes from reply mail.
@@ -1611,6 +1700,7 @@ describe('comment notifications', () => {
     routed = ['kept@example.com'];
     await held();
     const waiting = (await comments.list({ status: 'pending' }, ADMIN)).items;
+
     await comments.bulk(
       { ids: waiting.map(({ id }) => id), action: 'approve' },
       ADMIN,

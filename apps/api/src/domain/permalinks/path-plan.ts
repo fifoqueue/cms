@@ -92,6 +92,7 @@ export const resolvePathChanges = async (
   tokens = new PermalinkTokenRegistry(),
 ) => {
   const expanded = new Map<string, string>();
+
   for (const { subject } of entries) {
     const path = await tokens.expand(
       permalinkPatternFor(settings, subject.type),
@@ -110,6 +111,7 @@ export const resolvePathChanges = async (
           index % 2 === 1 &&
           !(PERMALINK_TOKENS as readonly string[]).includes(part),
       );
+
     expanded.set(
       subject.id,
       canonical ??
@@ -118,6 +120,7 @@ export const resolvePathChanges = async (
           : path),
     );
   }
+
   return pathChanges(settings, entries, timeZone, expanded);
 };
 

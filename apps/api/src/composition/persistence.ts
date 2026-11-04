@@ -25,6 +25,7 @@ export const createPersistence = (url: string) => {
   const databaseVersion = async () =>
     (await db.$queryRaw<{ version: string }[]>`SELECT VERSION() AS version`)[0]
       ?.version ?? 'unknown';
+
   return {
     db,
     publicCache,
@@ -43,6 +44,7 @@ export const createSecrets = (
   );
   const signer = hmacSigner(activeSecret);
   const secrets = aesSecretBox(activeSecret, config.CMS_SECRET_KEY_PREVIOUS);
+
   return { signer, secrets };
 };
 
@@ -62,5 +64,6 @@ export const createEgress = (
       outbound.fetch(input, init, await access(service));
   const checkUrl = async (service: EgressService, url: string) =>
     outbound.check(url, await access(service));
+
   return { egress, access, egressFetch, checkUrl };
 };

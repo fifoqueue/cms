@@ -19,13 +19,16 @@ export const load: PageServerLoad = async ({
 }) => {
   setHeaders({ 'cache-control': 'no-store' });
   const status = await installationApi(fetch).status();
+
   if (!status.setupRequired) {
     cookies.delete(INSTALL_KEY_COOKIE, { path: '/admin/setup' });
     if (locals.user) redirect(303, '/admin');
     const site = await contentApi(fetch).site();
+
     if (!site.showLogin) error(404, Errors.NotFound);
     redirect(303, site.loginPath);
   }
+
   return { ...status, hasKey: Boolean(cookies.get(INSTALL_KEY_COOKIE)) };
 };
 
@@ -39,6 +42,7 @@ export const actions: Actions = {
       username: text(form, 'username'),
     };
     const token = text(form, 'token');
+
     try {
       await installationApi(fetch).database({
         ...values,
@@ -48,8 +52,10 @@ export const actions: Actions = {
       cookies.set(INSTALL_KEY_COOKIE, token, { ...keyOptions, maxAge: 1800 });
     } catch (caught) {
       const failure = failFrom(caught);
+
       return fail(failure.status, { ...failure.data, databaseValues: values });
     }
+
     redirect(303, '/admin/setup');
   },
   complete: async ({ request, fetch, cookies, url }) => {
@@ -61,11 +67,13 @@ export const actions: Actions = {
       name: text(form, 'name'),
       email: text(form, 'email'),
     };
+
     if (text(form, 'password') !== text(form, 'confirmation'))
       return fail(400, {
         message: Errors.PasswordMismatch,
         siteValues: values,
       });
+
     try {
       const grant = await installationApi(fetch).complete({
         token: text(form, 'token') || cookies.get(INSTALL_KEY_COOKIE) || '',
@@ -81,12 +89,15 @@ export const actions: Actions = {
           locale: values.locale,
         },
       });
+
       startSession(cookies, grant, url);
       cookies.delete(INSTALL_KEY_COOKIE, { path: '/admin/setup' });
     } catch (caught) {
       const failure = failFrom(caught);
+
       return fail(failure.status, { ...failure.data, siteValues: values });
     }
+
     redirect(303, '/admin');
   },
 };

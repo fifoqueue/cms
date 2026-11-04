@@ -15,9 +15,11 @@ export interface Late<T> {
 
 export const createLate = <T>(): Late<T> => {
   let current: T | undefined;
+
   return {
     get: () => {
       if (current === undefined) throw new Error(Errors.InvalidInput);
+
       return current;
     },
     set: (value) => {
@@ -38,6 +40,7 @@ export const createLatePorts = () => {
     createLate<Pick<CommentService, 'avatar' | 'discussion' | 'remove'>>();
   const content = createLate<Pick<ContentService, 'remove'>>();
   const types = createLate<() => Promise<string[]>>();
+
   return {
     scheduler,
     writing,

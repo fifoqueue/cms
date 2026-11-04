@@ -29,8 +29,10 @@ export const loadEmbedProviders = () =>
 /** The providers' patterns; one that does not compile is skipped. */
 export const embedMatchers = async (providers: EmbedProviderInfo[]) => {
   const { compileEmbedPattern } = await import('@cms/sdk/embed-pattern');
+
   return providers.flatMap((provider) => {
     const matcher = compileEmbedPattern(provider.urlPattern);
+
     return matcher ? [matcher] : [];
   });
 };
@@ -41,12 +43,14 @@ export const embedPasteUrl = (
   matchers: Pick<EmbedMatcher, 'test'>[],
 ) => {
   const trimmed = text.trim();
+
   if (
     trimmed.length > MAX_EMBED_URL_LENGTH ||
     !/^https:\/\/\S+$/i.test(trimmed)
   )
     return null;
   const href = safeHttpsUrl(trimmed);
+
   return href &&
     href.length <= MAX_EMBED_URL_LENGTH &&
     matchers.some((pattern) => pattern.test(href))
@@ -62,6 +66,7 @@ export const embedPasteTarget = (state: EditorState) => {
   const { selection } = state;
   const { $from } = selection;
   const embed = state.schema.nodes.embed;
+
   if (
     !embed ||
     !selection.empty ||
@@ -74,8 +79,10 @@ export const embedPasteTarget = (state: EditorState) => {
     if (['tableCell', 'tableHeader'].includes($from.node(depth).type.name))
       return null;
   const index = $from.index($from.depth - 1);
+
   if (!$from.node($from.depth - 1).canReplaceWith(index, index + 1, embed))
     return null;
+
   return { from: $from.before(), to: $from.after() };
 };
 
@@ -91,9 +98,11 @@ export const pasteEmbed = (
 ) => {
   const url = embedPasteUrl(text, matchers);
   const target = url && embedPasteTarget(view.state);
+
   if (!url || !target) return false;
   const { schema } = view.state;
   const link = schema.marks.link?.create({ href: url });
+
   view.dispatch(
     view.state.tr
       .replaceSelectionWith(schema.text(url, link ? [link] : []), false)
@@ -108,10 +117,12 @@ export const pasteEmbed = (
     embed,
     schema.nodes.paragraph!.create(),
   ]);
+
   view.dispatch(
     closeHistory(tr)
       .setSelection(TextSelection.create(tr.doc, from + embed.nodeSize + 1))
       .scrollIntoView(),
   );
+
   return true;
 };

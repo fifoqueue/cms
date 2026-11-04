@@ -68,6 +68,7 @@ import { noticeRecipients } from '#api/domain/comments/notice-recipients';
 const KEY = 'discussion';
 const DAY = 24 * 60 * 60 * 1000;
 const COMMENTER_LIFETIME = 365 * DAY;
+
 /** Spam and trashed comments are deleted after this long (WordPress empties them after 30 days). */
 export const COMMENT_PURGE_DAYS = 30;
 
@@ -181,6 +182,7 @@ export class CommentService {
     const result = discussionSettingsSchema.safeParse(
       await this.deps.settings.get(KEY),
     );
+
     return result.success ? result.data : discussionSettingsSchema.parse({});
   }
 
@@ -193,8 +195,10 @@ export class CommentService {
         (value) => discussionSettingsSchema.safeParse(value).success,
       ),
     );
+
     await this.deps.settings.set(KEY, settings);
     void this.deps.hooks.emit('discussion.updated', settings);
+
     return settings;
   }
 
@@ -207,6 +211,7 @@ export class CommentService {
     pendingProof = '',
   ): Promise<PublicCommentPage> {
     const target = await this.deps.repository.target(contentId);
+
     if (
       !target ||
       (target.protected && !(await this.deps.locks.unlocked(target.id, proofs)))
@@ -228,6 +233,7 @@ export class CommentService {
     const ownPending = await this.pending(pendingProof, target.id);
     const viewer = actor ? await this.deps.users.get(actor.id) : null;
     const definitions = await this.commentFields();
+
     return {
       notifications: await this.deps.notifier.offer(settings, !!viewer),
       items: await Promise.all(
@@ -271,6 +277,7 @@ export class CommentService {
     commenterProof = '',
   ): Promise<CommentSubmitted> {
     const user = actor ? await this.deps.users.get(actor.id) : null;
+
     if (actor && !user) throw notFound(Errors.UserNotFound);
     const settings = await this.discussion();
     const identity =
@@ -298,11 +305,13 @@ export class CommentService {
           : '',
       authorUrl: !user && settings.showWebsite ? identity.authorUrl : '',
     });
+
     if (!user && settings.showEmail && !data.authorEmail)
       throw invalidInput(Errors.CommentEmailRequired, [
         { path: 'authorEmail', message: Errors.CommentEmailRequired },
       ]);
     const protectedAttempt = { ...attempt, action: 'comment' as const };
+
     await this.deps.protection.check(protectedAttempt);
     if (data.website)
       return {
@@ -317,6 +326,7 @@ export class CommentService {
     const fields = commentValues(definitions, data.fields);
 
     const target = await this.deps.repository.target(data.contentId);
+
     if (
       !target ||
       (target.protected && !(await this.deps.locks.unlocked(target.id, proofs)))
@@ -335,6 +345,7 @@ export class CommentService {
       authorEmail: data.authorEmail,
       address: attempt.address,
     };
+
     await this.deps.hooks.applyFilter(
       'comment.submitAllowed',
       admission,
@@ -348,8 +359,10 @@ export class CommentService {
             address: z.literal(admission.address),
           })
           .safeParse(value);
+
         if (!result.success) return false;
         allowed = result.data.allowed;
+
         return true;
       },
     );
@@ -414,6 +427,7 @@ export class CommentService {
       createdAt: now,
       updatedAt: now,
     };
+
     await this.deps.repository.insert(record);
     void this.deps.hooks.emit('comment.created', toPlugin(record));
     void this.notify(record, target, settings).catch(() => undefined);
@@ -423,6 +437,7 @@ export class CommentService {
     const page = await this.pageFor(record, settings);
     const expires = this.deps.clock.now().getTime() + DAY;
     const payload = `comment:${record.contentId}:${record.id}:${expires}`;
+
     return {
       status: status === 'approved' ? 'approved' : 'pending',
       comment:
@@ -465,10 +480,13 @@ export class CommentService {
       }),
       query,
     );
+
     if (contentId) {
       const target = await this.deps.repository.target(contentId);
+
       if (!target || target.protected) throw notFound(Errors.ContentNotFound);
     }
+
     return (await this.deps.repository.feed(limit, contentId)).map((row) =>
       commentFeedSchema.parse({
         id: row.id,
@@ -488,6 +506,7 @@ export class CommentService {
       this.deps.repository.recent(limit),
       this.discussion(),
     ]);
+
     return Promise.all(
       rows.map(async (row) => ({
         author: row.author,
@@ -500,6 +519,7 @@ export class CommentService {
   /** The thread page showing `record`, with the entry's page size and order (see `query`). */
   private async pageFor(record: CommentPosition, settings: DiscussionSettings) {
     let root = record;
+
     for (
       let level = 0;
       root.parentId && level < settings.threadDepth;
@@ -507,6 +527,7 @@ export class CommentService {
     )
       root = (await this.deps.repository.findById(root.parentId)) ?? root;
     const { pageSize, order } = await this.query(record.contentId, 1, settings);
+
     return this.deps.repository.pageOf(root, pageSize, order);
   }
 
@@ -527,6 +548,7 @@ export class CommentService {
       pageSize: settings.pageSize,
       order: 'asc',
     };
+
     if (!this.deps.hooks.has('comment.publicQuery'))
       return { ...initial, page };
 
@@ -535,6 +557,7 @@ export class CommentService {
       z.number().int().min(1).max(QUERY_PAGE_SIZE_MAX),
       z.enum(['asc', 'desc']),
     );
+
     if (page === 1) return first;
 
     return this.filterQuery(
@@ -556,6 +579,7 @@ export class CommentService {
       pageSize,
       order,
     });
+
     return schema.parse(
       await this.deps.hooks.applyFilter(
         'comment.publicQuery',
@@ -580,6 +604,7 @@ export class CommentService {
       ),
     );
     const { items, total } = await this.deps.repository.list(criteria);
+
     return {
       items: items.map(toAdmin),
       total,
@@ -590,6 +615,7 @@ export class CommentService {
 
   async counts(actor: Actor): Promise<CommentCounts> {
     authorize(actor, 'comments.moderate');
+
     return this.deps.repository.counts();
   }
 
@@ -601,6 +627,7 @@ export class CommentService {
       changes,
       this.deps.clock.now(),
     );
+
     if (!result) throw notFound(Errors.CommentNotFound);
     this.statusChanged(result.before, result.after.status);
     void this.deps.hooks.emit('comment.updated', toPlugin(result.after));
@@ -618,8 +645,10 @@ export class CommentService {
     await authorizeComments(this.deps.hooks, actor, this.deps.repository, [id]);
     const { body } = parseInput(commentReplySchema, input);
     const parent = await this.deps.repository.findById(id);
+
     if (!parent) throw notFound(Errors.CommentNotFound);
     const user = await this.deps.users.get(actor.id);
+
     if (!user) throw notFound(Errors.UserNotFound);
     const now = this.deps.clock.now();
     const record: CommentRecord = {
@@ -638,6 +667,7 @@ export class CommentService {
       createdAt: now,
       updatedAt: now,
     };
+
     await this.deps.repository.insert(record);
     // Replying approves the comment answered, as in WordPress.
     if (parent.status === 'pending')
@@ -648,20 +678,27 @@ export class CommentService {
 
   async bulk(input: unknown, actor: Actor) {
     const { ids, action, contentId } = parseInput(commentBulkSchema, input);
+
     await authorizeComments(this.deps.hooks, actor, this.deps.repository, ids);
+
     if (contentId) {
       const found = await Promise.all(
         ids.map((id) => this.deps.repository.findById(id)),
       );
+
       if (found.some((row) => row?.contentId !== contentId))
         throw notFound(Errors.CommentNotFound);
     }
+
     if (action === 'delete') {
       const deleted = await this.deps.repository.delete(ids);
+
       for (const record of deleted)
         void this.deps.hooks.emit('comment.deleted', toPlugin(record));
+
       return;
     }
+
     const status = (
       {
         approve: 'approved',
@@ -675,6 +712,7 @@ export class CommentService {
       status,
       this.deps.clock.now(),
     );
+
     for (const before of changed) this.statusChanged(before, status);
     // Every approved row, changed or not, so repeating a failed approval announces it then.
     for (const before of changed)
@@ -695,11 +733,14 @@ export class CommentService {
       expected ? 'tools.manage' : 'comments.moderate',
     );
     const [deleted] = await this.deps.repository.delete([id], expected);
+
     if (!deleted) {
       if (expected) return false;
       throw notFound(Errors.CommentNotFound);
     }
+
     void this.deps.hooks.emit('comment.deleted', toPlugin(deleted));
+
     return true;
   }
 
@@ -709,6 +750,7 @@ export class CommentService {
       this.deps.clock.now().getTime() - COMMENT_PURGE_DAYS * DAY,
     );
     let deleted;
+
     do {
       deleted = await this.deps.repository.purge(before, 500);
       for (const record of deleted)
@@ -730,6 +772,7 @@ export class CommentService {
    */
   private async open(target: CommentTarget, settings: DiscussionSettings) {
     const allowed = await this.coreOpen(target, settings);
+
     if (!this.deps.hooks.has('comment.openAllowed')) return allowed;
 
     const schema = z.strictObject({
@@ -737,6 +780,7 @@ export class CommentService {
       type: z.literal(target.type),
       allowed: z.boolean(),
     });
+
     return schema.parse(
       await this.deps.hooks.applyFilter(
         'comment.openAllowed',
@@ -752,8 +796,10 @@ export class CommentService {
     const type = (await this.deps.types.list()).find(
       (option) => option.key === target.type,
     );
+
     if (!type?.supports.comments) return false;
     if (!settings.closeAfterDays || !target.publishedAt) return true;
+
     return (
       this.deps.clock.now().getTime() - target.publishedAt.getTime() <
       settings.closeAfterDays * DAY
@@ -767,8 +813,10 @@ export class CommentService {
     settings: DiscussionSettings,
   ) {
     let depth = 0;
+
     for (let id = parentId; id; depth += 1) {
       const parent = await this.deps.repository.findById(id);
+
       if (
         !parent ||
         parent.contentId !== target.id ||
@@ -780,6 +828,7 @@ export class CommentService {
         ]);
       id = parent.parentId;
     }
+
     return depth;
   }
 
@@ -805,6 +854,7 @@ export class CommentService {
       createdAt: record.createdAt.toISOString(),
       fields: publicCommentValues(definitions, record.fields),
     });
+
     return publicCommentSchema.parse(
       await this.deps.hooks.applyFilter(
         'comment.public',
@@ -821,14 +871,17 @@ export class CommentService {
       proof,
       (id, expires) => `commenter:${id}:${email}:${expires}`,
     );
+
     if (!id) return false;
     const comment = await this.deps.repository.findById(id);
+
     return comment?.status === 'approved' && comment.authorEmail === email;
   }
 
   private commenterProof(comment: CommentRecord) {
     const expires = this.deps.clock.now().getTime() + COMMENTER_LIFETIME;
     const payload = `commenter:${comment.id}:${comment.authorEmail}:${expires}`;
+
     return `${comment.id}.${expires}.${this.deps.signer.sign(payload)}`;
   }
 
@@ -837,8 +890,10 @@ export class CommentService {
       proof,
       (id, expires) => `comment:${contentId}:${id}:${expires}`,
     );
+
     if (!id) return null;
     const record = await this.deps.repository.findById(id);
+
     return record?.contentId === contentId && record.status === 'pending'
       ? record
       : null;
@@ -850,6 +905,7 @@ export class CommentService {
   ) {
     if (proof.length > 512) return null;
     const [id, expires, signature, extra] = proof.split('.');
+
     if (
       !id ||
       !signature ||
@@ -859,6 +915,7 @@ export class CommentService {
       !this.deps.signer.verify(payload(id, expires), signature)
     )
       return null;
+
     return id;
   }
 
@@ -920,6 +977,7 @@ export class CommentService {
       () => this.deps.notifier.unsubscribed(record.parentId),
     );
     const byAddress = new Map(users.map((user) => [user.email, user]));
+
     for (const user of kept.flatMap((to) => byAddress.get(to) ?? []))
       await this.deps.notifier.notice({
         to: user.email,

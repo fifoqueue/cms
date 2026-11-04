@@ -92,6 +92,7 @@ export const createComments = ({
       site.get(),
       site.getPublic(),
     ]);
+
     return { siteUrl, ...settings, icon: publicSite.icon?.url ?? null };
   };
   const commentNotifier = new CommentNotifier({
@@ -119,6 +120,7 @@ export const createComments = ({
     ids: uuidV7,
     clock: systemClock,
   });
+
   jobs.handle(COMMENT_NOTICE_JOB, (payload) =>
     commentNotifier.deliverNotice(payload),
   );
@@ -170,5 +172,6 @@ export const createComments = ({
     comments,
     plugins: widgetRegistry,
   });
+
   return { comments, commentNotifier, widgets, schedulePurge };
 };

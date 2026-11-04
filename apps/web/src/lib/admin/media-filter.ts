@@ -15,6 +15,7 @@ export const readMediaFilter = (params: URLSearchParams) => {
   // Files the last resync could not find in the storage.
   const missing = params.get('missing') === '1' || undefined;
   const view = params.get('view') === 'list' ? 'list' : undefined;
+
   return {
     filter: {
       kind,

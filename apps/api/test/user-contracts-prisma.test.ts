@@ -8,9 +8,11 @@ import { plainSecretBox } from '#test/support/memory-security';
 import { userRecord } from '#test/support/memory';
 
 const server = process.env.CMS_TEST_DATABASE_URL;
+
 describe.skipIf(!server)('user extension persistence on MariaDB', () => {
   let db: Database;
   let drop = async () => {};
+
   beforeAll(async () => {
     ({ db, drop } = await scratchDatabase(server!, 'cms_user_extensions'));
   }, 60000);
@@ -18,6 +20,7 @@ describe.skipIf(!server)('user extension persistence on MariaDB', () => {
 
   test('profile metadata is subject-scoped, exported while its plugin is disabled, erased atomically and cannot be recreated after erasure', async () => {
     const users = new PrismaUserRepository(db);
+
     await users.insert(
       userRecord({
         id: 'meta-subject',
@@ -35,15 +38,18 @@ describe.skipIf(!server)('user extension persistence on MariaDB', () => {
       }),
     );
     const profiles = new PrismaProfileMeta(db);
+
     await profiles.save('meta-subject', { 'preferences:color': 'blue' });
     await profiles.save('meta-other', { 'preferences:color': 'red' });
     const repository = new PrismaPrivacyRepository(db, plainSecretBox);
+
     expect(
       await repository.data('subject@example.com', 'profileFields', null, 200),
     ).toEqual([
       { id: 'meta-subject', values: { 'preferences:color': 'blue' } },
     ]);
     const now = new Date();
+
     await repository.insert({
       id: 'erasure',
       email: 'subject@example.com',

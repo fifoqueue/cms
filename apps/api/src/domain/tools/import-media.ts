@@ -36,6 +36,7 @@ export const importMedia = async (
   const key = `import.media.${Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('')}`;
   const saved = await deps.settings.get(key);
   let media: AdminMedia | undefined;
+
   if (typeof saved === 'string') {
     try {
       media = await deps.media.get(saved, actor);
@@ -44,16 +45,19 @@ export const importMedia = async (
         throw error;
     }
   }
+
   if (!media) {
     if (budget) {
       if (budget.remaining === 0)
         throw invalidInput(Errors.ImportDownloadDeferred);
       budget.remaining--;
     }
+
     const response = await deps.fetch(url, {
       signal: AbortSignal.timeout(10_000),
     });
     const reader = response.body?.getReader();
+
     try {
       if (!response.ok || !reader)
         throw invalidInput(Errors.MediaTypeUnsupported);
@@ -64,8 +68,10 @@ export const importMedia = async (
         );
       const chunks: Uint8Array[] = [];
       let size = 0;
+
       for (;;) {
         const part = await reader.read();
+
         if (part.done) break;
         size += part.value.length;
         if (size > deps.media.maxBytes)
@@ -75,12 +81,15 @@ export const importMedia = async (
           );
         chunks.push(part.value);
       }
+
       const bytes = new Uint8Array(size);
       let offset = 0;
+
       for (const chunk of chunks) {
         bytes.set(chunk, offset);
         offset += chunk.length;
       }
+
       // An admin import is not interactive uploading: skip the hourly limit, keep every check.
       media = await deps.media.upload(
         bytes,
@@ -93,6 +102,7 @@ export const importMedia = async (
       await reader?.cancel();
     }
   }
+
   return deps.media.update(
     media.id,
     {
@@ -111,43 +121,55 @@ export const rewriteMedia = (
   sources: ReadonlyMap<string, AdminMedia>,
 ) => {
   const aliases = new Map<string, AdminMedia>();
+
   for (const [source, media] of sources)
     aliases.set(attachmentSource(source).key, media);
+
   const resolve = (value: unknown) => {
     if (typeof value !== 'string') return undefined;
     let source: ReturnType<typeof attachmentSource>;
     let original: ReturnType<typeof attachmentSource>;
+
     try {
       source = attachmentSource(value);
       original = attachmentSource(value, true);
     } catch {
       return undefined;
     }
+
     const exact = aliases.get(source.key);
+
     if (exact) return { media: exact, url: exact.url };
     if (!original.width) return undefined;
     const media = aliases.get(original.key);
+
     if (!media) return undefined;
     const variant = media.variants.find(
       (v) => v.width === original.width && v.height === original.height,
     );
+
     return { media, url: variant?.url ?? media.url };
   };
   const visit = (node: Record<string, unknown>) => {
     const attrs = node.attrs as Record<string, unknown> | undefined;
+
     if (attrs) {
       for (const key of ['src', 'href', 'link', 'poster']) {
         const found = resolve(attrs[key]);
+
         if (!found) continue;
         attrs[key] = found.url;
         if (key === 'src') attrs.mediaId = found.media.id;
       }
     }
+
     for (const mark of (node.marks ?? []) as Record<string, unknown>[])
       visit(mark);
     for (const child of (node.content ?? []) as Record<string, unknown>[])
       visit(child);
   };
+
   visit(document);
+
   return document;
 };

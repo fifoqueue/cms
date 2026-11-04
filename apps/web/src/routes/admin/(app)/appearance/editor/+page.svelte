@@ -73,14 +73,19 @@
 
   const selected = $derived.by(() => {
     const [kind, key] = data.edit.split(':') as [string, string | undefined];
+
     if (kind === 'styles') return { kind: 'styles' as const };
+
     if (kind === 'part') {
       const part = editor.parts.find((entry) => entry.slug === key);
+
       if (part) return { kind: 'part' as const, part };
     }
+
     const template =
       editor.templates.find((entry) => entry.name === key) ??
       editor.templates.find((entry) => entry.name === 'index');
+
     return template
       ? { kind: 'template' as const, template }
       : { kind: 'styles' as const };
@@ -191,23 +196,28 @@
   const styleStep = (direction: 'undo' | 'redo') => {
     const snapshot =
       direction === 'undo' ? stylesHistory?.undo() : stylesHistory?.redo();
+
     if (!snapshot || !stylesForm) return;
+
     for (const [name, value] of Object.entries(
       JSON.parse(snapshot) as Record<string, string>,
     )) {
       const control = stylesForm.elements.namedItem(name);
+
       if (
         control instanceof HTMLInputElement ||
         control instanceof HTMLSelectElement
       )
         control.value = value;
     }
+
     stylesDraft = snapshot;
     stylesDirty = true;
     stylesSteps++;
   };
   const stylesCan = $derived.by(() => {
     void stylesSteps;
+
     return {
       undo: stylesHistory?.canUndo ?? false,
       redo: stylesHistory?.canRedo ?? false,
@@ -217,6 +227,7 @@
   /** The canvas theme with the unsaved colors and styles; values outside the choices are ignored. */
   const styledTheme = $derived.by(() => {
     const theme = data.canvas.theme;
+
     if (!stylesDraft) return theme;
     const values = JSON.parse(stylesDraft) as Record<string, string>;
     const fonts = theme.settings.fontFamilies.map((font) => font.slug);
@@ -225,12 +236,14 @@
       value: string | undefined,
       fallback: T,
     ) => (options.includes(value as T) ? (value as T) : fallback);
+
     return {
       ...theme,
       settings: {
         ...theme.settings,
         palette: theme.settings.palette.map((entry) => {
           const color = values[`color.${entry.slug}`];
+
           return color && HEX.test(color) ? { ...entry, color } : entry;
         }),
       },
@@ -262,12 +275,14 @@
     const theme = editor.id;
     const selection = selected;
     const blocks = untrack(() => canvasBlocks);
+
     if (!blocks || selection.kind === 'styles' || signature === '[]') return;
 
     const controller = new AbortController();
     let current = true;
     const timer = setTimeout(async () => {
       const body = new FormData();
+
       body.set('theme', theme);
       body.set('kind', selection.kind);
       body.set(
@@ -277,6 +292,7 @@
           : selection.part.slug,
       );
       body.set('blocks', JSON.stringify(blocks));
+
       // The published sample entry, for its previous and next entries.
       if (data.previewPage?.kind === 'content') {
         body.set('contentId', data.previewPage.content.id);
@@ -293,7 +309,9 @@
         const result = deserialize<CanvasData, { message?: string }>(
           await response.text(),
         );
+
         if (!current) return;
+
         if (result.type === 'success') {
           canvasData = result.data;
           previewError = undefined;
@@ -343,6 +361,7 @@
   onkeydown={(event) => {
     if (selected.kind !== 'styles') return;
     const direction = historyKey(event);
+
     if (!direction) return;
     event.preventDefault();
     styleStep(direction);
@@ -847,6 +866,7 @@
                             '[data-block-path]',
                           );
                           const key = target?.getAttribute('data-block-path');
+
                           if (key) select(key.split('.').map(Number));
                         }}
                         onsubmitcapture={(event) => event.preventDefault()}

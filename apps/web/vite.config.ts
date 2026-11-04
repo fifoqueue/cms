@@ -28,6 +28,7 @@ const layerOrder = (): Plugin => ({
         const css = Buffer.from(asset.source).toString();
         const marker = /\/\*! cms-layer-order: (@layer [^;]+;) \*\//;
         const match = css.match(marker);
+
         if (match) asset.source = `${match[1]}${css.replace(marker, '')}`;
       }
     },
@@ -45,6 +46,7 @@ const routeKinds = (): Plugin => {
   const generate = () =>
     `export const documents = ${JSON.stringify(scanDocumentRoutes(routes))};\n`;
   let code = '';
+
   return {
     name: 'cms:route-kinds',
     resolveId: (source) => (source === id ? resolved : undefined),
@@ -54,16 +56,22 @@ const routeKinds = (): Plugin => {
     configureServer(server) {
       const refresh = (file: string) => {
         const path = relative(routes, file);
+
         if (!path || path.startsWith('..') || isAbsolute(path)) return;
         const next = generate();
+
         if (next === code) return;
         code = next;
+
         for (const environment of Object.values(server.environments)) {
           const node = environment.moduleGraph.getModuleById(resolved);
+
           if (node) environment.moduleGraph.invalidateModule(node);
         }
+
         server.ws.send({ type: 'full-reload' });
       };
+
       server.watcher
         .on('add', refresh)
         .on('unlink', refresh)
@@ -74,6 +82,7 @@ const routeKinds = (): Plugin => {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, envDir, '');
+
   return {
     server: {
       port: Number(env.WEB_PORT) || undefined,

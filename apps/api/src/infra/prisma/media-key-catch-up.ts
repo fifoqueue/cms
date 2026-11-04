@@ -4,6 +4,7 @@ import { conflict, Errors } from '#api/shared/errors';
 import { z } from 'zod';
 
 const CURSOR = 'media.keys.cursor';
+
 export const MEDIA_KEY_CATCH_UP = 'core:media-key-catch-up';
 export const MEDIA_KEY_BATCH = 100;
 const encode = (key: string) => new TextEncoder().encode(key);
@@ -20,6 +21,7 @@ export class PrismaMediaKeyCatchUp {
       >`
         SELECT storage_key AS storageKey, variants FROM media WHERE id = ${id} FOR UPDATE`;
       const row = rows[0];
+
       if (!row) return;
       const keys = [
         ...new Set([
@@ -29,6 +31,7 @@ export class PrismaMediaKeyCatchUp {
           ),
         ]),
       ].map(encode);
+
       if (keys.length > 33 || keys.some((key) => key.length > 255))
         throw conflict(Errors.MediaKeyInvalid);
       await tx.mediaStorageKey.createMany({
@@ -38,6 +41,7 @@ export class PrismaMediaKeyCatchUp {
       const existing = await tx.mediaStorageKey.findMany({
         where: { key: { in: keys } },
       });
+
       if (
         existing.some(
           (key) =>
@@ -55,6 +59,7 @@ export class PrismaMediaKeyCatchUp {
 
   private async save(sweep: z.infer<typeof sweepSchema>) {
     const value = JSON.stringify(sweep);
+
     await this.db.setting.upsert({
       where: { key: CURSOR },
       create: { key: CURSOR, value },
@@ -67,28 +72,33 @@ export class PrismaMediaKeyCatchUp {
     const sweep = saved
       ? sweepSchema.parse(JSON.parse(saved.value))
       : { after: '', through: '' };
+
     if (!sweep.through) {
       const last = await this.db.media.findFirst({
         select: { id: true },
         orderBy: { id: 'desc' },
       });
+
       if (!last) return { media: 0 };
       sweep.through = last.id;
       // Persist the boundary before work so failures cannot extend an unfinished sweep.
       await this.save(sweep);
     }
+
     const rows = await this.db.media.findMany({
       where: { id: { gt: sweep.after, lte: sweep.through } },
       select: { id: true },
       orderBy: { id: 'asc' },
       take: MEDIA_KEY_BATCH,
     });
+
     for (const { id } of rows) await this.claim(id);
     await this.save(
       rows.length < MEDIA_KEY_BATCH || rows.at(-1)?.id === sweep.through
         ? { after: '', through: '' }
         : { after: rows.at(-1)!.id, through: sweep.through },
     );
+
     return { media: rows.length };
   }
 }

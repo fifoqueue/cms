@@ -29,6 +29,7 @@ export const roleLabel = (m: Messages, role: Role) => {
     contributor: m.roleContributor,
     subscriber: m.roleSubscriber,
   };
+
   return Object.hasOwn(labels, role) ? labels[role]! : role;
 };
 

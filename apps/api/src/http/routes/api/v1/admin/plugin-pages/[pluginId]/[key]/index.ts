@@ -9,6 +9,7 @@ export const routes = (app: ApiApp) =>
     '',
     async ({ pluginPages, params, user }) => {
       const page = await pluginPages.render(params.pluginId, params.key, user);
+
       return page
         ? json(page)
         : errorResponse(502, 'plugin_error', Errors.PluginPageFailed);

@@ -101,6 +101,7 @@
   /** A refusal next to the buttons: the probe's error, or what it says about other fields. */
   const failure = $derived.by(() => {
     if (!form?.message) return null;
+
     return {
       title: storageFailureTitle(m, i18n.language, form),
       lines: issueLines(m, i18n.language, split.rest),
@@ -111,6 +112,7 @@
   /** Invalid state and descriptions (help text first, then the issue). */
   const described = (path: string, help?: string) => {
     const ids = [help, issues[path] && `${path}-error`].filter(Boolean);
+
     return {
       'aria-invalid': issues[path] ? true : undefined,
       'aria-describedby': ids.length ? ids.join(' ') : undefined,

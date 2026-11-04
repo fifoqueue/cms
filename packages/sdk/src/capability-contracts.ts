@@ -1,4 +1,5 @@
 import { z } from 'zod';
+
 export const capabilitySchema = z
   .string()
   .min(1)

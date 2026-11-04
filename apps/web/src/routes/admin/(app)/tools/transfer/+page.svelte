@@ -49,6 +49,7 @@
       enctype="multipart/form-data"
       use:enhance={() => {
         busy = true;
+
         return async ({ update }) => {
           busy = false;
           await update();

@@ -15,6 +15,7 @@ export class DefinitionRegistry<T extends { key: string }> {
   ) {
     for (const value of builtins) {
       const entry = schema.parse(value);
+
       this.entries.set(entry.key, entry);
     }
   }
@@ -22,7 +23,9 @@ export class DefinitionRegistry<T extends { key: string }> {
   register(owner: string, key: string, definition: object) {
     const id = `plugin:${keySchema.parse(owner)}:${keySchema.parse(key)}`;
     const entry = this.schema.parse({ ...definition, key: id });
+
     this.entries.set(id, entry);
+
     return () => {
       if (this.entries.get(id) === entry) this.entries.delete(id);
     };

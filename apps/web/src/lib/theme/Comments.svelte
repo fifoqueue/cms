@@ -145,10 +145,12 @@
   };
   const moderateAction = $derived.by(() => {
     const search = new SvelteURLSearchParams(page.url.search);
+
     search.delete('moderation');
     search.delete('commentNotice');
     search.delete(REPLY_PARAM);
     search.set('cpage', String(visible.page));
+
     return `?/moderateComment&${search}`;
   });
   const badges: Partial<Record<ModerationStatus, string>> = {
@@ -162,9 +164,11 @@
   let submitting = $state(false);
   const action = $derived.by(() => {
     const search = new SvelteURLSearchParams(page.url.search);
+
     search.set('cpage', String(visible.page));
     search.delete('commentNotice');
     search.delete(REPLY_PARAM);
+
     return `?/comment&${search}`;
   });
   const scope = useScope();
@@ -197,13 +201,16 @@
         ? [...visible.items, visible.ownPending]
         : visible.items
     ).filter((comment) => !held.some((item) => item.id === comment.id));
+
     for (const item of held) {
       const parent = thread.findIndex(
         (comment) => comment.id === item.parentId,
       );
+
       if (parent === -1 && visible.page < pages) continue;
       const depth = parent === -1 ? 0 : thread[parent]!.depth + 1;
       let at = parent === -1 ? thread.length : parent + 1;
+
       while (at < thread.length && thread[at]!.depth >= depth) at++;
       thread.splice(at, 0, {
         id: item.id,
@@ -218,6 +225,7 @@
         createdAt: item.createdAt,
       });
     }
+
     return thread.filter(
       (comment) => !moderatedNow?.hidden.includes(comment.id),
     );
@@ -265,9 +273,11 @@
     hash: string,
   ) => {
     const search = new SvelteURLSearchParams(page.url.search);
+
     search.delete('moderation');
     search.delete('commentNotice');
     change(search);
+
     return `?${search}#${hash}`;
   };
   const commentLink = (number: number) =>
@@ -293,6 +303,7 @@
     selectedReply = { id: comment.id, name: comment.authorName };
     await tick();
     const form = document.getElementById(REPLY_FORM);
+
     if (form) revealReply(form);
   };
   const onreplycancel = async (id: string) => {
@@ -324,6 +335,7 @@
     event: MouseEvent & { currentTarget: HTMLAnchorElement },
   ) => {
     const target = leaveFor(event, event.currentTarget.href, page.url.origin);
+
     if (!target) return;
     event.preventDefault();
     leaving = target;

@@ -50,6 +50,7 @@ export const load: PageServerLoad = async (event) => {
         ),
       )
     : [];
+
   return {
     entry: { id: entry.id, title: entry.title },
     // Newest first, as the API lists them.
@@ -68,6 +69,7 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   delete: async (event) => {
     const form = await event.request.formData();
+
     try {
       await adminFor(event).content.deleteRevision(
         event.params.id,
@@ -76,10 +78,12 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'revisionDeleted' };
   },
   restore: async (event) => {
     const form = await event.request.formData();
+
     try {
       await adminFor(event).content.restoreRevision(
         event.params.id,
@@ -88,6 +92,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     redirect(303, `/admin/content/${event.params.id}?restored`);
   },
 };

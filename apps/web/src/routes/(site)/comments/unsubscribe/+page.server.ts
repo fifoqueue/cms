@@ -16,6 +16,7 @@ const PRIVATE = {
  */
 export const load: PageServerLoad = ({ url, setHeaders }) => {
   setHeaders(PRIVATE);
+
   return {
     kind: 'unsubscribe' as const,
     token: (url.searchParams.get('token') ?? '').slice(0, 1024),
@@ -26,11 +27,13 @@ export const actions: Actions = {
   // The page load that renders the result sets the same headers.
   default: async (event) => {
     const form = await event.request.formData();
+
     try {
       const { channel } = await contentApi(event.fetch).comments.unsubscribe(
         text(form, 'token'),
         visitorOf(event, form),
       );
+
       return { channel };
     } catch (caught) {
       return failFrom(caught);

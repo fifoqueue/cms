@@ -32,6 +32,7 @@ export class PrismaSearchSource implements SearchSource {
       orderBy: { id: 'asc' },
       take: limit,
     });
+
     return rows.map((row) => ({
       id: Number(row.id),
       contentId: row.contentId,
@@ -47,6 +48,7 @@ export class PrismaSearchSource implements SearchSource {
       orderBy: { id: 'desc' },
       select: { id: true },
     });
+
     return row ? Number(row.id) : 0;
   }
 
@@ -63,6 +65,7 @@ export class PrismaSearchSource implements SearchSource {
   async documents(ids: readonly string[]) {
     if (!ids.length) return [];
     const types = await this.activeTypes?.();
+
     return this.toDocuments(
       await this.db.content.findMany({
         where: {
@@ -77,6 +80,7 @@ export class PrismaSearchSource implements SearchSource {
 
   async page(afterId: string | null, limit: number) {
     const types = await this.activeTypes?.();
+
     return this.toDocuments(
       await this.db.content.findMany({
         where: {
@@ -100,17 +104,21 @@ export class PrismaSearchSource implements SearchSource {
     const byId = new Map(terms.map((term) => [term.id, term]));
     const withAncestors = (id: string) => {
       const slugs = new Set<string>();
+
       for (
         let term = byId.get(id);
         term && !slugs.has(term.slug);
         term = term.parentId ? byId.get(term.parentId) : undefined
       )
         slugs.add(term.slug);
+
       return [...slugs];
     };
+
     return rows.map((row) => {
       const locked = row.passwordHash !== null;
       const assigned = row.terms.map(({ term }) => term);
+
       return {
         id: row.id,
         type: row.type,

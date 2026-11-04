@@ -11,6 +11,7 @@ export const load: PageServerLoad = async (event) => {
     admin.search.settings(),
     admin.search.status(),
   ]);
+
   return { settings, status };
 };
 
@@ -23,11 +24,13 @@ export const actions: Actions = {
       indexPrefix: text(form, 'indexPrefix') || 'cms',
       apiKey: secretInput(form, 'apiKey', 'removeApiKey'),
     };
+
     return submitAction(() => adminFor(event).search.update(input));
   },
   test: async (event) => {
     try {
       const { version } = await adminFor(event).search.test();
+
       return { notice: `Meilisearch ${version}` };
     } catch (caught) {
       return failFrom(caught);

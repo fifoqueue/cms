@@ -13,6 +13,7 @@ export type ProofEvent = Pick<RequestEvent, 'getClientAddress' | 'request'>;
  */
 export const clientProof = (event: ProofEvent): ClientProof | undefined => {
   const secret = frontendSecret();
+
   return secret
     ? {
         address: event.getClientAddress(),
@@ -26,6 +27,7 @@ export const clientProof = (event: ProofEvent): ClientProof | undefined => {
 export const visitorOf = (event: ProofEvent, form?: FormData): Visitor => {
   // `Captcha.svelte` copies whichever provider's response field into this one.
   const value = form?.get(CAPTCHA_TOKEN_FIELD);
+
   return {
     proof: clientProof(event),
     captchaToken: typeof value === 'string' && value !== '' ? value : undefined,

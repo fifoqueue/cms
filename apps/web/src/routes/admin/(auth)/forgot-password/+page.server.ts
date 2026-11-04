@@ -10,6 +10,7 @@ export const load: PageServerLoad = async (event) => {
     contentApi(event.fetch).captcha(),
     passwordAllowed(event.fetch),
   ]);
+
   return { captcha: allowCaptcha(event, captcha), passwordReset };
 };
 
@@ -17,11 +18,13 @@ export const actions: Actions = {
   default: async (event) => {
     const form = await event.request.formData();
     const email = text(form, 'email');
+
     try {
       await authApi(event.fetch).password.forgot(email, visitorOf(event, form));
     } catch (caught) {
       return failFrom(caught, { email });
     }
+
     return { sent: true };
   },
 };

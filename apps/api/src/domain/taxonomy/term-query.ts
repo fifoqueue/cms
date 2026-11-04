@@ -13,12 +13,14 @@ export const termQuery = async (
   exists: (taxonomy: string) => Promise<boolean>,
 ): Promise<TermQuery> => {
   const query: TermQuery = { taxonomy };
+
   if (!hooks?.has('term.query')) return query;
   const filtered = await hooks.applyFilter(
     'term.query',
     query,
     async (value) => {
       const result = termQuerySchema.safeParse(value);
+
       return (
         result.success &&
         (result.data.taxonomy === taxonomy ||
@@ -28,5 +30,6 @@ export const termQuery = async (
     undefined,
     [{ scope }],
   );
+
   return termQuerySchema.parse(filtered);
 };

@@ -18,8 +18,10 @@ for (const context of ['single', 'feed', 'preview'] as const) {
       logger: recordingLogger().logger,
     });
     const registrar = hooks.registrar('functions:site', { trusted: true });
+
     registrar.filter('content.html', (value) => {
       expect(value.context).toBe(context);
+
       return {
         ...value,
         html: '<p>Changed <strong>body</strong></p><script>alert(1)</script><img src="javascript:alert(2)" onerror="alert(3)">',
@@ -31,6 +33,7 @@ for (const context of ['single', 'feed', 'preview'] as const) {
       html: '<p>Wrong</p>',
     }));
     const html = await filterHtml(hooks, '<p>Body</p>', content, context);
+
     expect(html).toContain('<strong>body</strong>');
     expect(html).not.toMatch(/<script|onerror|javascript:|Wrong/);
   });
@@ -42,5 +45,6 @@ test('HTML without handlers preserves rendered core markup byte for byte', async
     logger: recordingLogger().logger,
   });
   const html = '<nav class="cms-toc"><a href="#a">A</a></nav><h2 id="a">A</h2>';
+
   expect(await filterHtml(hooks, html, content, 'single')).toBe(html);
 });

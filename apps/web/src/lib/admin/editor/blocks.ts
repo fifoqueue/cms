@@ -66,17 +66,21 @@ export const blockTargets = (editor: Editor) => {
     node && configurable.has(node.type.name)
       ? [{ node, pos: selection.from }]
       : [];
+
   for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
     const parent = selection.$from.node(depth);
+
     if (configurable.has(parent.type.name))
       targets.push({ node: parent, pos: selection.$from.before(depth) });
   }
+
   return targets;
 };
 
 /** Reducing the number of columns moves removed content into the last retained column. */
 export const resizeColumns = (editor: Editor, pos: number, count: number) => {
   const node = editor.state.doc.nodeAt(pos);
+
   if (
     node?.type.name !== 'columns' ||
     !Number.isInteger(count) ||
@@ -85,9 +89,11 @@ export const resizeColumns = (editor: Editor, pos: number, count: number) => {
   )
     return;
   const columns = node.toJSON().content as JSONContent[];
+
   while (columns.length < count)
     columns.push({ type: 'column', content: [{ type: 'paragraph' }] });
   const removed = columns.splice(count);
+
   if (removed.length)
     columns[count - 1]!.content = [
       ...(columns[count - 1]!.content ?? []),

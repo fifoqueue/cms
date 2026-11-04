@@ -35,6 +35,7 @@ export const signInOutcomeSchema = z.discriminatedUnion('kind', [
     // Zod runs this refinement even when `z.url()` already failed; unparsable URLs are refused.
     url: z.url().refine((value) => {
       const url = URL.parse(value);
+
       return (
         url !== null &&
         ['https:', 'http:'].includes(url.protocol) &&
@@ -54,6 +55,7 @@ export const coreSignInOutcomeSchema = z
   .unknown()
   .transform((value): CoreSignInOutcome => {
     const outcome = signInOutcomeSchema.parse(value);
+
     if (outcome.kind !== 'user') return outcome;
     const extra = z
       .object({
@@ -65,5 +67,6 @@ export const coreSignInOutcomeSchema = z
           .optional(),
       })
       .parse(value);
+
     return { ...outcome, ...extra };
   });

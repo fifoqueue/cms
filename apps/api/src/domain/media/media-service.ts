@@ -100,8 +100,10 @@ const displayName = (name: string) =>
 export class MediaService {
   get storageSettings() {
     if (!this.deps.storageSettings) throw new Error(Errors.MediaDriverInvalid);
+
     return this.deps.storageSettings;
   }
+
   private derivatives = 0;
   private readonly processors: MediaProcessors;
   constructor(private readonly deps: MediaServiceDeps) {
@@ -135,6 +137,7 @@ export class MediaService {
       page,
       pageSize,
     });
+
     return {
       items: await Promise.all(
         items.map(async (item) =>
@@ -179,6 +182,7 @@ export class MediaService {
     authorize(actor, 'media.upload');
     if (options?.rateLimit === false) authorize(actor, 'tools.manage');
     const limits = await this.deps.limits();
+
     if (
       options?.rateLimit !== false &&
       limits.uploadsPerHour > 0 &&
@@ -199,6 +203,7 @@ export class MediaService {
         withParams(Errors.MediaTooLarge, { maxBytes: this.deps.maxBytes }),
       );
     const mime = sniffMediaType(bytes);
+
     if (!mime) throw invalidInput(Errors.MediaTypeUnsupported);
     const types = Object.keys(MEDIA_TYPES) as MediaType[];
     const admitted = await this.deps.hooks.applyFilter(
@@ -210,6 +215,7 @@ export class MediaService {
         new Set(value).size === value.length &&
         value.every((type) => types.includes(type)),
     );
+
     if (!admitted.includes(mime))
       throw invalidInput(Errors.MediaTypeUnsupported);
 
@@ -220,6 +226,7 @@ export class MediaService {
       originalName: filename,
     });
     let allowed = true;
+
     await this.deps.hooks.applyFilter(
       'media.uploadAllowed',
       {
@@ -231,6 +238,7 @@ export class MediaService {
       (value) => {
         if (!value || typeof value !== 'object') return false;
         const result = value as Record<string, unknown>;
+
         if (
           typeof result.allowed !== 'boolean' ||
           result.filename !== displayName(filename) ||
@@ -239,6 +247,7 @@ export class MediaService {
         )
           return false;
         allowed = result.allowed;
+
         return true;
       },
       undefined,
@@ -271,8 +280,10 @@ export class MediaService {
       .strict();
     const acceptKey = (value: unknown) => {
       const parsed = keySchema.safeParse(value);
+
       if (!parsed.success) return false;
       const candidate = parsed.data;
+
       if (
         candidate.extension !== extension ||
         !candidate.key.endsWith(`.${extension}`) ||
@@ -284,6 +295,7 @@ export class MediaService {
         return false;
       const key = storageKeyOf(candidate, initialKey, extension);
       const base = key.slice(0, -extension.length - 1);
+
       return (
         safeMediaKey(key) &&
         registeredSizes.every(({ name }) =>
@@ -321,9 +333,11 @@ export class MediaService {
     const variants: Partial<Record<ImageSizeName, StoredVariant>> = {};
     const files: { key: string; bytes: Uint8Array }[] = [];
     const written: string[] = [];
+
     try {
       if (mime === 'image/svg+xml') {
         const sanitized = sanitizeSvg(bytes);
+
         original = sanitized.bytes;
         size = sanitized;
       } else if (isImage) {
@@ -335,6 +349,7 @@ export class MediaService {
         if (original.byteLength > this.deps.maxBytes)
           original = await this.deps.images.clean(bytes, mime);
         const dimensions = await this.deps.images.dimensions(original);
+
         size = dimensions;
         const registered = registeredSizes;
         const plan = await this.deps.hooks.applyFilter(
@@ -369,8 +384,10 @@ export class MediaService {
               })
               .safeParse(value).success,
         );
+
         for (const definition of plan.sizes) {
           const { name, width, height, crop } = definition;
+
           if (
             size.width === null ||
             (size.width <= width &&
@@ -385,6 +402,7 @@ export class MediaService {
             plan.quality,
           );
           const key = `${base}-${name}.webp`;
+
           files.push({ key, bytes: resized.bytes });
           variants[name] = {
             key,
@@ -398,40 +416,51 @@ export class MediaService {
           };
         }
       }
+
       files.push({ key: storageKey, bytes: original });
+
       for (let suffix = 0; ; suffix++) {
         if (suffix > 10000) throw conflict(Errors.MediaStorageBusy);
         const candidateBase = requestedBase + (suffix ? `-${suffix}` : '');
         const keys = files.map(
           ({ key }) => candidateBase + key.slice(requestedBase.length),
         );
+
         if (!keys.every(safeMediaKey))
           throw invalidInput(Errors.MediaKeyInvalid);
         if (!(await this.deps.repository.reserveKeys(id, keys))) continue;
         const occupied = await Promise.all(
           keys.map(async (key) => {
             const file = await destination.storage.read(key);
+
             if (!file) return false;
             await file.body.cancel();
+
             return true;
           }),
         );
+
         if (occupied.some(Boolean)) continue;
         for (let index = 0; index < files.length; index++)
           files[index]!.key = keys[index]!;
+
         for (const [name, variant] of Object.entries(variants)) {
           if (!variant) continue;
           const key = `${candidateBase}-${name}.webp`;
+
           variant.key = key;
           variant.storageKey = key;
           variant.publicUrl = destination.url(key);
         }
+
         storageKey = `${candidateBase}.${extension}`;
         break;
       }
+
       written.push(...files.map(({ key }) => key));
       const freeBytes = limits.freeSpaceMb * 1024 * 1024;
       const stored = await destination.storage.commit(files, freeBytes);
+
       if (stored === 'low_space') throw conflict(Errors.MediaStorageLow);
       if (stored === 'busy') throw conflict(Errors.MediaStorageBusy);
       const metadata = await this.deps.hooks.applyFilter(
@@ -468,6 +497,7 @@ export class MediaService {
         variants,
         createdAt: now,
       };
+
       await this.deps.repository.insert(record);
     } catch (error) {
       if (this.deps.cleanup)
@@ -482,10 +512,13 @@ export class MediaService {
       else if (written.length) await destination.storage.remove(written);
       throw error;
     }
+
     const media = toAdminMedia(
       await projectMedia(await this.require(id), this.deps.hooks),
     );
+
     void this.deps.hooks.emit('media.uploaded', media);
+
     return media;
   }
 
@@ -498,11 +531,14 @@ export class MediaService {
         (value) => mediaUpdateSchema.safeParse(value).success,
       ),
     );
+
     await this.deps.repository.update(media.id, changes);
     const updated = toAdminMedia(
       await projectMedia(await this.require(id), this.deps.hooks),
     );
+
     void this.deps.hooks.emit('media.updated', updated);
+
     return updated;
   }
 
@@ -512,17 +548,21 @@ export class MediaService {
     const size = (this.deps.sizes ?? new ImageSizes())
       .list()
       .find((size) => size.name === name);
+
     if (!size) throw notFound(Errors.MediaNotFound);
     if (!CLEANED.includes(media.mime))
       throw invalidInput(Errors.MediaTypeUnsupported);
     if (this.derivatives >= 2) throw rateLimited(Errors.MediaStorageBusy);
     this.derivatives += 1;
+
     try {
       const file = await (
         await this.storage(media.storageDriver ?? 'local')
       ).storage.read(media.storageKey);
+
       if (!file) throw notFound(Errors.MediaNotFound);
       const bytes = new Uint8Array(await new Response(file.body).arrayBuffer());
+
       return await this.deps.images.resize(
         bytes,
         size.width,
@@ -538,14 +578,17 @@ export class MediaService {
   async edit(id: string, input: unknown, actor: Actor): Promise<AdminMedia> {
     const media = await this.editable(id, actor);
     const changes = parseInput(imageEditSchema, input);
+
     if (!CLEANED.includes(media.mime))
       throw invalidInput(Errors.MediaTypeUnsupported);
     const file = await (
       await this.storage(media.storageDriver ?? 'local')
     ).storage.read(media.storageKey);
+
     if (!file) throw notFound(Errors.MediaNotFound);
     const bytes = new Uint8Array(await new Response(file.body).arrayBuffer());
     const size = await this.deps.images.dimensions(bytes);
+
     if (
       changes.crop &&
       (changes.crop.left + changes.crop.width > size.width ||
@@ -560,6 +603,7 @@ export class MediaService {
       media.filename.replace(/\.[^.]+$/, '') + '-edited.webp',
       actor,
     );
+
     return this.update(
       copy.id,
       {
@@ -582,6 +626,7 @@ export class MediaService {
       undefined,
       [{ media: toAdminMedia(await projectMedia(media, this.deps.hooks)) }],
     );
+
     if (!allowed)
       throw conflict(
         Errors.MediaInUse,
@@ -596,13 +641,16 @@ export class MediaService {
   /** Idempotent queue handler; unavailable drivers leave the row and job retryable. */
   async cleanup(id: string): Promise<void> {
     const media = await this.deps.repository.get(id);
+
     if (!media) return;
     const groups = new Map<string, string[]>();
     const add = (driver: string, key: string) => {
       const keys = groups.get(driver) ?? [];
+
       keys.push(key);
       groups.set(driver, keys);
     };
+
     add(media.storageDriver ?? 'local', media.storageKey);
     for (const variant of Object.values(media.variants))
       if (variant)
@@ -610,6 +658,7 @@ export class MediaService {
           variant.storageDriver ?? media.storageDriver ?? 'local',
           variant.storageKey ?? variant.key,
         );
+
     if (this.deps.cleanup) {
       await this.deps.cleanup.deletion(
         id,
@@ -617,8 +666,10 @@ export class MediaService {
           keys.map((key) => ({ driver, key })),
         ),
       );
+
       return;
     }
+
     for (const [driver, keys] of groups)
       await (await this.storage(driver)).storage.remove(keys);
     await this.finalizeDeletion(id);
@@ -626,6 +677,7 @@ export class MediaService {
 
   async finalizeDeletion(id: string) {
     const media = await this.deps.repository.get(id);
+
     if (!media) return;
     await this.deps.repository.delete(id);
     void this.deps.hooks.emit(
@@ -638,11 +690,14 @@ export class MediaService {
   async file(key: string, range?: { start: number; end?: number }) {
     if (!safeMediaKey(key)) return null;
     const media = await this.deps.repository.getByKey(key);
+
     if (!media) return null;
     const variant = Object.values(media.variants).find(
       (item) => item?.key === key,
     );
+
     if (media.storageKey !== key && !variant) return null;
+
     return (
       await this.storage(
         variant?.storageDriver ?? media.storageDriver ?? 'local',
@@ -668,6 +723,7 @@ export class MediaService {
     const media = await this.require(id);
     const capability =
       media.uploaderId === actor.id ? 'media.upload' : 'media.manage';
+
     await authorizeObject(
       this.deps.hooks,
       actor,
@@ -679,12 +735,15 @@ export class MediaService {
       }),
       can(actor, 'media.upload') && can(actor, capability),
     );
+
     return media;
   }
 
   private async require(id: string) {
     const media = await this.deps.repository.get(id);
+
     if (!media) throw notFound(Errors.MediaNotFound);
+
     return media;
   }
 

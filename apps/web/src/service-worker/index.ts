@@ -24,12 +24,15 @@ self.addEventListener('install', () => void self.skipWaiting());
 
 self.addEventListener('push', (event) => {
   let data: unknown = null;
+
   try {
     data = event.data?.json();
   } catch {
     // Not JSON: nothing to show.
   }
+
   const message = pushMessage(data, origin);
+
   if (!message) return;
   event.waitUntil(
     self.registration.showNotification(message.title, {
@@ -50,8 +53,10 @@ self.addEventListener('notificationclick', (event) => {
     typeof stored === 'string'
       ? pushMessage({ title: '-', body: '', url: stored, tag: '' }, origin)
       : null;
+
   if (!message) return;
   const target = new URL(message.url);
+
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({
@@ -60,13 +65,18 @@ self.addEventListener('notificationclick', (event) => {
       });
       const open = windows.find((client) => {
         const url = new URL(client.url);
+
         return url.origin === origin && url.pathname === target.pathname;
       });
+
       if (!open) {
         await self.clients.openWindow(target.href);
+
         return;
       }
+
       const focused = await open.focus();
+
       if (focused.url !== target.href)
         await focused.navigate(target.href).catch(() => null);
     })(),
@@ -79,6 +89,7 @@ self.addEventListener('pushsubscriptionchange', (event) => {
   // Renewal must prove possession of the old subscription; without its auth secret, skip it
   // (the page re-sync or the next registration refreshes the server).
   const auth = old ? keyText(old.getKey('auth')) : null;
+
   if (!old || !auth) return;
   change.waitUntil(
     (async () => {
@@ -92,6 +103,7 @@ self.addEventListener('pushsubscriptionchange', (event) => {
             })
           : null);
       const subscription = next && subscriptionValue(next.toJSON());
+
       if (!subscription) return;
       await fetch(PUSH_RENEW_PATH, {
         method: 'POST',

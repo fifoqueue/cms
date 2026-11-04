@@ -41,5 +41,6 @@ export const toErrorResponse = (error: unknown, logger: Logger) => {
       error.issues,
     );
   logger.error('Unhandled error', error);
+
   return errorResponse(500, 'internal', Errors.Internal);
 };

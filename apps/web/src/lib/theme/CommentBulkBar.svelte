@@ -61,9 +61,12 @@
       // Layout height and CSS offset, not the bounding box: the bar slides in with a transform.
       const offset =
         section.offsetHeight + parseFloat(getComputedStyle(section).bottom);
+
       root.style.setProperty('--cms-bulk-bar-offset', `${offset}px`);
     });
+
     observer.observe(section);
+
     return () => {
       observer.disconnect();
       root.style.removeProperty('--cms-bulk-bar-offset');

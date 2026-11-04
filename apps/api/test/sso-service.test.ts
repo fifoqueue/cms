@@ -42,6 +42,7 @@ class FakeProvider implements OidcProvider {
 
   async authorize() {
     this.issued++;
+
     return {
       url: `${ISSUER}/authorize?state=state-${this.issued}`,
       state: `state-${this.issued}`,
@@ -52,8 +53,10 @@ class FakeProvider implements OidcProvider {
 
   async verify(query: string, checks: OidcChecks): Promise<VerifiedIdentity> {
     const params = new URLSearchParams(query);
+
     if (params.get('state') !== checks.state || !params.get('code'))
       throw unauthorized('Single sign-on failed. Please try again.');
+
     return { issuer: ISSUER, subject: params.get('code')! };
   }
 }
@@ -123,11 +126,13 @@ const fixture = async () => {
   ).user;
 
   const other = profile({ id: 'other', name: 'Other' });
+
   await users.insert(userRecord({ ...other, createdAt: clock.now() }));
 
   /** Signs in through single sign-on as whoever `subject` resolves to. */
   const signIn = async (subject: string, client = CLIENT) => {
     const start = await sso.start({}, null, client);
+
     return sso.complete(
       callback(start.transaction, `state-${provider.issued}`, subject),
       null,
@@ -145,6 +150,7 @@ const callback = (transaction: string, state: string, subject: string) => ({
 describe('SsoService', () => {
   test('never links by email: an unlinked subject is rejected even if it claims an admin email', async () => {
     const { signIn } = await fixture();
+
     await expect(signIn('admin@example.com')).rejects.toMatchObject({
       code: 'unauthorized',
     });
@@ -158,17 +164,20 @@ describe('SsoService', () => {
     ).rejects.toMatchObject({ code: 'unauthorized' });
 
     const hijacked = await sso.start({ intent: 'link' }, admin, CLIENT);
+
     await expect(
       sso.complete(callback(hijacked.transaction, 'state-1', 'sub-x'), other),
     ).rejects.toMatchObject({ code: 'unauthorized' });
 
     const signedOut = await sso.start({ intent: 'link' }, admin, CLIENT);
+
     await expect(
       sso.complete(callback(signedOut.transaction, 'state-2', 'sub-x'), null),
     ).rejects.toMatchObject({ code: 'unauthorized' });
     expect(identities.rows.size).toBe(0);
 
     const link = await sso.start({ intent: 'link' }, admin, CLIENT);
+
     expect(
       await sso.complete(callback(link.transaction, 'state-3', 'sub-x'), admin),
     ).toEqual({ kind: 'linked' });

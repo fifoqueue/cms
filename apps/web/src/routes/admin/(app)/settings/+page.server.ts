@@ -15,6 +15,7 @@ export const load: PageServerLoad = async (event) => {
     adminFor(event).site.get(),
     adminFor(event).reading.get(),
   ]);
+
   return {
     dates: {
       timeZone: reading.timeZone,
@@ -36,6 +37,7 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   site: async (event) => {
     const form = await event.request.formData();
+
     return submitAction(() =>
       adminFor(event).site.update({
         title: text(form, 'title'),
@@ -57,6 +59,7 @@ export const actions: Actions = {
     const dateFormat = DATE_FORMATS.find(
       (format) => format === text(form, 'dateFormat'),
     );
+
     return submitAction(() =>
       adminFor(event).reading.update({
         ...current,

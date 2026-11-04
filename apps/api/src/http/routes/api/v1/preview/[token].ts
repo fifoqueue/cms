@@ -8,7 +8,9 @@ export const routes = (app: ApiApp) =>
     '',
     async ({ previews, params }) => {
       const response = json(await previews.render(params.token));
+
       response.headers.set('cache-control', 'no-store');
+
       return response;
     },
     tokenParams,

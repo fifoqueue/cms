@@ -20,13 +20,17 @@ export const embedView = (hint: () => string) =>
         let current: Node = node;
         let editing = false;
         const dom = document.createElement('figure');
+
         dom.className = 'embed';
         dom.contentEditable = 'false';
         const field = document.createElement('label');
+
         field.className = 'not-prose grid gap-1 text-sm';
         const text = document.createElement('span');
+
         text.className = 'text-muted-foreground';
         const input = document.createElement('input');
+
         input.type = 'url';
         input.maxLength = 2048;
         input.placeholder = 'https://';
@@ -34,6 +38,7 @@ export const embedView = (hint: () => string) =>
         input.className = INPUT_CLASS;
         field.append(text, input);
         const link = document.createElement('a');
+
         link.rel = 'noopener nofollow';
 
         const url = () =>
@@ -47,12 +52,15 @@ export const embedView = (hint: () => string) =>
         const render = () => {
           if (editing || !url()) {
             text.textContent = hint();
+
             if (!field.isConnected) {
               reset();
               dom.replaceChildren(field);
             }
+
             return;
           }
+
           link.href = url();
           link.textContent = url();
           dom.replaceChildren(link);
@@ -68,24 +76,31 @@ export const embedView = (hint: () => string) =>
           editing = false;
           render();
           const pos = getPos();
+
           if (typeof pos === 'number')
             editor.chain().focus().setNodeSelection(pos).run();
         };
         const commit = (leaving: boolean) => {
           const value = input.value.trim();
           const valid = /^https:\/\//i.test(value) ? safeHttpsUrl(value) : null;
+
           if (!valid) {
             // Leaving an untouched field is not an error; a filled block keeps its address.
             if (leaving && !value) {
               editing = false;
               render();
+
               return;
             }
+
             input.setAttribute('aria-invalid', 'true');
             text.classList.replace('text-muted-foreground', 'text-destructive');
+
             return;
           }
+
           const pos = getPos();
+
           editing = false;
           if (typeof pos !== 'number') return;
           editor.view.dispatch(
@@ -101,6 +116,7 @@ export const embedView = (hint: () => string) =>
           // The editor's own key handlers (and the slash menu) stay out of the field.
           event.stopPropagation();
           if (event.isComposing) return;
+
           if (event.key === 'Enter') {
             // Enter in a field would submit the content form.
             event.preventDefault();
@@ -132,12 +148,15 @@ export const embedView = (hint: () => string) =>
           requestAnimationFrame(() => {
             if (editor.view.hasFocus() && field.isConnected) edit();
           });
+
         return {
           dom,
           update(next) {
             if (next.type !== current.type) return false;
             const changed = next.attrs.url !== current.attrs.url;
+
             current = next;
+
             // A new address (the options panel, undo, or this field's own commit) replaces
             // whatever the field holds. Editing ends and the field is reset before the swap,
             // so a blur it causes finds nothing to store.
@@ -145,7 +164,9 @@ export const embedView = (hint: () => string) =>
               editing = false;
               reset();
             }
+
             render();
+
             return true;
           },
           selectNode: () => dom.classList.add('ProseMirror-selectednode'),

@@ -48,6 +48,7 @@ export const routePattern = (id: string) => {
     .map((segment) => {
       if (/^\[\.\.\.[^\]]+\]$/.test(segment)) return '(?:/[^]*)?';
       if (/^\[\[[^\]]+\]\]$/.test(segment)) return '(?:/[^/]+)?';
+
       return `/${segment
         .split(/(\[\[[^\]]+\]\]|\[\.\.\.[^\]]+\]|\[(?![ux]\+)[^\]]+\])/)
         .map((part, index) =>
@@ -62,6 +63,7 @@ export const routePattern = (id: string) => {
         .join('')}`;
     })
     .join('');
+
   // A root group such as `/(site)` is the root route.
   return body ? new RegExp(`^${body}/?$`) : /^\/$/;
 };
@@ -72,15 +74,18 @@ export const routePattern = (id: string) => {
  */
 export const routeMatcher = (ids: Iterable<string>) => {
   const patterns = [...ids].map(routePattern);
+
   return (pathname: string, base = '') => {
     if (base && pathname !== base && !pathname.startsWith(`${base}/`))
       return false;
     let path: string;
+
     try {
       path = decodePathname(pathname.slice(base.length) || '/');
     } catch {
       return false;
     }
+
     return patterns.some((pattern) => pattern.test(path));
   };
 };

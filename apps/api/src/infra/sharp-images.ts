@@ -11,7 +11,9 @@ let imageQueue: Promise<unknown> = Promise.resolve();
 /** libvips work is memory-heavy; run one transform at a time per API process. */
 const runImage = <T>(task: () => Promise<T>): Promise<T> => {
   const run = imageQueue.then(task, task);
+
   imageQueue = run.catch(() => undefined);
+
   return run;
 };
 
@@ -28,11 +30,13 @@ export const sharpImages: ImageProcessor = {
     return new Uint8Array(
       await runImage(async () => {
         let image = sharp(bytes, LIMIT).autoOrient();
+
         if (changes.crop) image = image.extract(changes.crop);
         image = image
           .rotate(changes.rotate)
           .flip(changes.flip)
           .flop(changes.flop);
+
         return image.webp({ quality: 90 }).toBuffer();
       }),
     );
@@ -41,15 +45,19 @@ export const sharpImages: ImageProcessor = {
     const { width, height, autoOrient } = await runImage(() =>
       sharp(bytes, LIMIT).metadata(),
     );
+
     if (!width || !height) throw new Error(Errors.MediaTypeUnsupported);
+
     return { width: autoOrient.width, height: autoOrient.height };
   },
   async clean(bytes, mime) {
     const format = FORMATS[mime];
+
     if (!format) return bytes;
     const output = await runImage(() =>
       sharp(bytes, LIMIT).rotate().toFormat(format).toBuffer(),
     );
+
     return new Uint8Array(output);
   },
   async resize(bytes, width, height, crop = false, quality = 82) {
@@ -65,6 +73,7 @@ export const sharpImages: ImageProcessor = {
         .webp({ quality })
         .toBuffer({ resolveWithObject: true }),
     );
+
     return {
       bytes: new Uint8Array(data),
       width: info.width,

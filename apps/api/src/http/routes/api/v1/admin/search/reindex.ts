@@ -6,5 +6,6 @@ import { session } from '#api/http/session';
 export const routes = (app: ApiApp) =>
   session(app, 'settings.manage').post('', async ({ search }) => {
     await search.reindex();
+
     return noContent();
   });

@@ -26,6 +26,7 @@ export function createEmailDelivery(deps: {
 } {
   const http = createHttpMailer(deps.egressFetch('email-api'));
   const mailer = new MailTransportRegistry();
+
   mailer.register('smtp', {
     send: async (transport, message) => {
       if (transport.kind === 'smtp') await deps.smtp.send(transport, message);
@@ -37,6 +38,7 @@ export function createEmailDelivery(deps: {
         if (transport.kind === 'http') await http.send(transport, message);
       },
     });
+
   return {
     mailer,
     checkDestination: async (settings) => {

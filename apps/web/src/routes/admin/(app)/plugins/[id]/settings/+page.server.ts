@@ -14,7 +14,9 @@ const pluginOf = async (event: {
   const plugin = (await adminFor(event).plugins.list()).find(
     (candidate) => candidate.id === event.params.id,
   );
+
   if (!plugin) error(404, Errors.PluginNotFound);
+
   return plugin;
 };
 
@@ -22,6 +24,7 @@ const pluginOf = async (event: {
 export const load: PageServerLoad = async (event) => {
   requireCapability(event.locals, 'plugins.manage');
   const { id, name, version, status, settings, values } = await pluginOf(event);
+
   return { plugin: { id, name, version, status, settings, values } };
 };
 
@@ -32,8 +35,10 @@ export const actions: Actions = {
       event.request.formData(),
       pluginOf(event),
     ]);
+
     if (!plugin.settings.length)
       return fail(404, { message: Errors.PluginNotFound });
+
     try {
       await adminFor(event).plugins.updateSettings(
         plugin.id,
@@ -42,6 +47,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'saved' };
   },
 };

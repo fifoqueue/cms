@@ -27,6 +27,7 @@ import type { Request } from '#sdk/transport';
 export const toolsAdminClient = (request: Request) => {
   const hookPath = (id: string) =>
     `/api/v1/admin/webhooks/${encodeURIComponent(id)}`;
+
   return {
     databaseCleanup: {
       preview: (options: DatabaseCleanupOptions = {}) =>

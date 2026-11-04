@@ -13,12 +13,14 @@ export const regeneratePaths = async <T, R>(
 ) => {
   for (;;) {
     const items = await port.load();
+
     if (!items.length) return;
     if (items.length > 200) throw invalidInput(Errors.InvalidInput);
     const result = await isolate(
       () => Promise.all(items.map((item) => port.resolve(item))),
       budgetMs,
     );
+
     if (!result.ok) throw result.error;
     await port.commit(items, result.value);
     port.progress(items.length);

@@ -9,9 +9,11 @@ export const GET: RequestHandler = async (event) => {
   requireCapability(event.locals, 'media.upload');
   const params = event.url.searchParams;
   const id = params.get('id');
+
   if (id) return json(await adminFor(event).media.get(id.slice(0, 36)));
   const kind = MEDIA_KINDS.find((option) => option === params.get('kind')) as
     MediaKind | undefined;
+
   return json(
     await adminFor(event).media.list({
       kind,

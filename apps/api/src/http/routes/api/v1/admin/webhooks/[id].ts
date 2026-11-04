@@ -16,6 +16,7 @@ export const routes = (app: ApiApp) =>
       '',
       async ({ webhooks, params, user }) => {
         await webhooks.remove(params.id, user);
+
         return noContent();
       },
       idParams,

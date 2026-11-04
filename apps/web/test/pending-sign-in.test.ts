@@ -32,6 +32,7 @@ const { POST: logout } = await import('#web/routes/admin/logout/+server.js');
 const cookies = (initial: Record<string, string> = {}) => {
   const values = new Map(Object.entries(initial));
   const options = new Map<string, Parameters<Cookies['set']>[2]>();
+
   return {
     values,
     options,
@@ -73,12 +74,14 @@ const locationOf = async (run: () => Promise<unknown>) => {
   } catch (thrown) {
     return (thrown as { location?: string }).location ?? thrown;
   }
+
   return null;
 };
 
 test('sign-in callbacks honor filtered destinations while preserving the no-hook return path', async () => {
   for (const redirectTo of ['/welcome?from=login', undefined]) {
     const state = cookies();
+
     setPending(state.api, plain, {
       transaction: 'login-step',
       flow: 'login',
@@ -95,6 +98,7 @@ test('sign-in callbacks honor filtered destinations while preserving the no-hook
               description: '',
               locale: 'en',
             });
+
           return Response.json({
             kind: 'session',
             redirectTo,
@@ -121,6 +125,7 @@ test('sign-in callbacks honor filtered destinations while preserving the no-hook
         setHeaders: () => {},
       }),
     );
+
     expect(location).toBe(redirectTo ?? '/saved');
     expect(state.values.get('cms_session')).toBe('secret');
   }
@@ -129,6 +134,7 @@ test('sign-in callbacks honor filtered destinations while preserving the no-hook
 describe('pending sign-in cookie', () => {
   test('is host-bound on HTTPS, encrypted, and taken once', () => {
     const state = cookies({ cms_sso: 'planted' });
+
     setPending(
       state.api,
       secure,
@@ -143,9 +149,11 @@ describe('pending sign-in cookie', () => {
       '2030-01-01T00:00:00.000Z',
     );
     const value = state.values.get('__Host-cms_sso')!;
+
     expect(value.startsWith('v3.')).toBe(true);
     // Neither readable as is nor after decoding: the secret is sealed.
     const bytes = Buffer.from(value.slice(3), 'base64url').toString('latin1');
+
     for (const secret of ['real-handle', 'TOTP-SECRET', 'enroll'])
       expect(value + bytes).not.toContain(secret);
     expect(state.options.get('__Host-cms_sso')).toMatchObject({
@@ -167,6 +175,7 @@ describe('pending sign-in cookie', () => {
 
   test('forged, moved, legacy or oversized values are no pending step', () => {
     const state = cookies();
+
     setPending(state.api, secure, {
       transaction: 't',
       flow: 'login',
@@ -175,9 +184,11 @@ describe('pending sign-in cookie', () => {
       step: null,
     });
     const value = state.values.get('__Host-cms_sso')!;
+
     expect(readPending(state.api, secure)?.back).toBe('/blog');
 
     const flipped = `${value.slice(0, -2)}${value.endsWith('AA') ? 'BB' : 'AA'}`;
+
     expect(
       readPending(cookies({ '__Host-cms_sso': flipped }).api, secure),
     ).toBeNull();
@@ -198,6 +209,7 @@ describe('pending sign-in cookie', () => {
 describe('pending steps belong to who started them', () => {
   const enrolled = () => {
     const state = cookies();
+
     setPending(state.api, plain, {
       transaction: 'step-1',
       flow: 'enroll',
@@ -205,6 +217,7 @@ describe('pending steps belong to who started them', () => {
       back: null,
       step: totp,
     });
+
     return state;
   };
 
@@ -215,6 +228,7 @@ describe('pending steps belong to who started them', () => {
       url: plain,
       locals: asUser(id),
     });
+
     expect(pendingEnrollment(event('u1'))).toEqual({
       step: totp,
       owner: null,
@@ -263,6 +277,7 @@ describe('pending steps belong to who started them', () => {
         setHeaders: () => {},
       } as never),
     );
+
     expect(location).toBe('/admin/(app)/account#two-step');
     expect(readPending(state.api, plain)?.step).toEqual(totp);
   });

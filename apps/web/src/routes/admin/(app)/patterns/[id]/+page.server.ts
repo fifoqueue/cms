@@ -12,6 +12,7 @@ export const load: PageServerLoad = async (event) => {
     id === 'new'
       ? null
       : await adminFor(event).patterns.get(id).catch(notFoundFrom);
+
   return {
     pattern: pattern && {
       id: pattern.id,
@@ -36,14 +37,17 @@ export const actions: Actions = {
     } as PatternInput;
     const admin = adminFor(event);
     let id = event.params.id;
+
     try {
       if (id === 'new') ({ id } = await admin.patterns.create(input));
       else await admin.patterns.update(id, input);
     } catch (caught) {
       return failFrom(caught);
     }
+
     if (event.params.id === 'new')
       redirect(303, `/admin/patterns/${encodeURIComponent(id)}?notice=saved`);
+
     return { notice: 'saved' };
   },
 };

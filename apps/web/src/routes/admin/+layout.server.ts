@@ -12,6 +12,7 @@ export const load: LayoutServerLoad = ({
   request,
 }) => {
   depends(COLOR_MODE_DEPENDENCY);
+
   return {
     colorMode: colorModeOf(cookies.get(COLOR_MODE_COOKIE)),
     /** For admin error screens, which render above the layouts that load the site language. */

@@ -23,6 +23,7 @@ const ids = (form: FormData, key: string) =>
 export const readBulkChanges = (form: FormData): BulkChanges => {
   const flag = (key: string, on: string, off: string) =>
     text(form, key) === on ? true : text(form, key) === off ? false : undefined;
+
   return {
     categoryIds: ids(form, 'categoryIds'),
     tagIds: ids(form, 'tagIds'),
@@ -70,5 +71,6 @@ export const bulkEditInput = (
     expectedUpdatedAt,
     preserveAutosave: true,
   });
+
   return result.success ? result.data : null;
 };

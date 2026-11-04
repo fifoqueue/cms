@@ -25,6 +25,7 @@ export const linkSso = async (
   provider: string,
 ) => {
   let start: SsoStart;
+
   try {
     start = await ssoApi(event.fetch, event.locals.token).start(
       { provider, intent: 'link' },
@@ -33,10 +34,12 @@ export const linkSso = async (
   } catch (caught) {
     return failFrom(caught);
   }
+
   const target = redirectTarget({
     url: start.authorizationUrl,
     expiresAt: start.expiresAt,
   });
+
   if (!target) error(502, Errors.SignInRedirectInvalid);
   setPending(
     event.cookies,

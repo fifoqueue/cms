@@ -20,7 +20,9 @@ export class CapabilityRegistry implements CapabilityCatalog {
   register(input: CapabilityDefinition, source = 'core') {
     const definition = parseInput(capabilityDefinitionSchema, input);
     const token = {};
+
     this.entries.set(token, { ...definition, source });
+
     return () => {
       this.entries.delete(token);
     };
@@ -32,9 +34,11 @@ export class CapabilityRegistry implements CapabilityCatalog {
 
   list(): CapabilityDefinition[] {
     const definitions = new Map<string, CapabilityDefinition>();
+
     for (const definition of this.entries.values())
       if (!definitions.has(definition.key))
         definitions.set(definition.key, { ...definition });
+
     return [...definitions.values()];
   }
 }

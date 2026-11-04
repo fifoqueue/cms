@@ -15,6 +15,7 @@ export class PrismaSetupTokens implements SetupTokens {
     const { count } = await this.db.passwordToken.deleteMany({
       where: { tokenHash, userId, expiresAt: { gt: now } },
     });
+
     return count === 1;
   }
 }

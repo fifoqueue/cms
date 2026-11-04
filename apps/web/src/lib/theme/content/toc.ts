@@ -1,6 +1,7 @@
 /** Moves focus to a heading a TOC link jumped to; the page scroll stays the link's own. */
 export const focusHeading = (heading: HTMLElement) => {
   const hadTabindex = heading.hasAttribute('tabindex');
+
   if (!hadTabindex) heading.setAttribute('tabindex', '-1');
   heading.focus({ preventScroll: true });
   if (!hadTabindex)
@@ -18,14 +19,17 @@ export const fragmentTarget = (href: string, root: Element) => {
   if (!href.startsWith('#')) return null;
   const raw = href.slice(1);
   let decoded = raw;
+
   try {
     decoded = decodeURIComponent(raw);
   } catch {
     // A malformed escape is looked up as written.
   }
+
   const document = root.ownerDocument;
   const target =
     document.getElementById(decoded) ?? document.getElementById(raw);
+
   return target && root.contains(target) ? target : null;
 };
 
@@ -40,6 +44,7 @@ export const collapseToc = (element: HTMLElement) => {
     view.CSS.supports('interpolate-size', 'allow-keywords') &&
     view.CSS.supports('selector(::details-content)');
   const reduced = view.matchMedia('(prefers-reduced-motion: reduce)');
+
   type Run = { animation: Animation; closing: boolean };
   const runs = new Map<HTMLDetailsElement, Run>();
   /** Ends a run in its target state and drops the temporary clipping. */
@@ -54,6 +59,7 @@ export const collapseToc = (element: HTMLElement) => {
     if (native || reduced.matches) return;
     const summary = (event.target as Element).closest('summary');
     const details = summary?.parentElement;
+
     if (
       !summary ||
       !(details instanceof view.HTMLDetailsElement) ||
@@ -65,11 +71,13 @@ export const collapseToc = (element: HTMLElement) => {
     const running = runs.get(details);
     const from = details.getBoundingClientRect().height;
     const closing = running ? !running.closing : details.open;
+
     running?.animation.cancel();
     details.open = true;
     const to = closing
       ? summary.getBoundingClientRect().height
       : details.getBoundingClientRect().height;
+
     details.style.overflow = 'hidden';
     const run = {
       animation: details.animate(
@@ -78,11 +86,13 @@ export const collapseToc = (element: HTMLElement) => {
       ),
       closing,
     };
+
     runs.set(details, run);
     run.animation.onfinish = () => settle(details, run);
   };
 
   element.addEventListener('click', toggle);
+
   return {
     destroy() {
       element.removeEventListener('click', toggle);
@@ -94,6 +104,7 @@ export const collapseToc = (element: HTMLElement) => {
 /** Native links/details remain usable without this progressive enhancement. */
 export const enhanceToc = (element: HTMLElement) => {
   const view = element.ownerDocument.defaultView!;
+
   type Target = { heading: HTMLElement; links: HTMLAnchorElement[] };
   let targets: Target[] = [];
   let groups = new Map<Element, Target[]>();
@@ -112,14 +123,17 @@ export const enhanceToc = (element: HTMLElement) => {
     // Reads first, once per heading: targets are in document order, so the first heading still
     // below the sticky-header line ends the passed run.
     const passed = new Set<Target>();
+
     for (const target of targets) {
       if (target.heading.getBoundingClientRect().top > offset + 1) break;
       passed.add(target);
     }
+
     // Then writes, only for TOCs whose current heading changed.
     for (const [nav, items] of groups) {
       const current =
         items.findLast((target) => passed.has(target)) ?? items[0];
+
       if (marked.has(nav) && marked.get(nav) === current) continue;
       for (const link of nav.querySelectorAll('a[aria-current]'))
         link.removeAttribute('aria-current');
@@ -133,16 +147,20 @@ export const enhanceToc = (element: HTMLElement) => {
     // Computed CSS resolves rem/calc values, unlike parsing custom-property text.
     offset =
       Number.parseFloat(view.getComputedStyle(element).scrollMarginTop) || 10;
+
     for (const header of headers) {
       const style = view.getComputedStyle(header);
+
       if (style.position !== 'sticky' && style.position !== 'fixed') continue;
       const top = Number.parseFloat(style.top);
+
       if (Number.isFinite(top))
         offset = Math.max(
           offset,
           top + header.getBoundingClientRect().height + 10,
         );
     }
+
     element.style.setProperty('--cms-toc-offset', `${offset}px`);
     active();
   };
@@ -163,11 +181,14 @@ export const enhanceToc = (element: HTMLElement) => {
     ];
     // Whatever the TOC links to (any heading level), one target per heading, in document order.
     const byHeading = new Map<HTMLElement, HTMLAnchorElement[]>();
+
     for (const link of links) {
       const heading = fragmentTarget(link.getAttribute('href')!, element);
+
       if (heading)
         byHeading.set(heading, [...(byHeading.get(heading) ?? []), link]);
     }
+
     targets = [...byHeading]
       .map(([heading, links]) => ({ heading, links }))
       .sort((a, b) =>
@@ -200,6 +221,7 @@ export const enhanceToc = (element: HTMLElement) => {
     const link = (event.target as Element).closest<HTMLAnchorElement>(
       '.cms-toc a',
     );
+
     if (
       !link ||
       !element.contains(link) ||
@@ -208,6 +230,7 @@ export const enhanceToc = (element: HTMLElement) => {
     )
       return;
     const target = targets.find((item) => item.links.includes(link));
+
     if (!target) return;
     measure();
     focusHeading(target.heading);
@@ -216,12 +239,14 @@ export const enhanceToc = (element: HTMLElement) => {
   const collapse = collapseToc(element);
   const mutations = new view.MutationObserver(prepare);
   const sizes = new view.ResizeObserver(measure);
+
   prepare();
   mutations.observe(element, { childList: true, subtree: true });
   headers.forEach((header) => sizes.observe(header));
   view.addEventListener('resize', measure);
   view.addEventListener('scroll', scroll, { passive: true });
   element.addEventListener('click', click);
+
   return {
     destroy() {
       mutations.disconnect();

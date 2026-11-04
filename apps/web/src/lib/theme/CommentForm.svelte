@@ -78,7 +78,9 @@
   /** Answers to the site's comment fields, by key: a refused submission's, else none. */
   const echoed = (failure: Record<string, unknown> | null) => {
     const answers = failure?.fields;
+
     if (!answers || typeof answers !== 'object') return {};
+
     return Object.fromEntries(
       Object.entries(answers).filter(
         ([, value]) => typeof value === 'string' || typeof value === 'boolean',
@@ -94,13 +96,17 @@
   const submit: SubmitFunction<CommentActionResult> = ({ cancel }) => {
     if (submitting || locked || (showCaptcha && !captchaReady)) {
       cancel();
+
       return;
     }
+
     // Asked within the submit gesture, without waiting: the comment goes out either way.
     const key = section.notifications.push;
     const permission = key ? askPush() : null;
+
     submitting = true;
     onbusy(true);
+
     return async ({ result, update }) => {
       try {
         if (result.type === 'success' && result.data?.commented) {
@@ -108,12 +114,14 @@
           answers = {};
           generation += 1;
           const token = result.data.pushToken;
+
           if (permission && key && token)
             void enablePush(permission, key, (subscription) =>
               sendJson(COMMENT_PUSH_PATH, 'POST', { token, subscription }),
             );
           await onposted(result.data);
         }
+
         if (result.type === 'failure' && result.data)
           notifyFailure(errorMessage(m, i18n.language, result.data));
         if (result.type === 'error') notifyFailure(m.commentSubmitFailed);

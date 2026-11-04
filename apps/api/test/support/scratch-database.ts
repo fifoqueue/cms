@@ -14,10 +14,13 @@ export const scratchDatabase = async (serverUrl: string, prefix: string) => {
   const name = `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`;
   const urlFor = (database: string) => {
     const url = new URL(serverUrl);
+
     url.pathname = `/${database}`;
+
     return url.href.replace(/^mariadb:/, 'mysql:');
   };
   const server = createDatabase(urlFor('information_schema'));
+
   await server.$executeRawUnsafe(
     `CREATE DATABASE \`${name}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
   );
@@ -28,6 +31,7 @@ export const scratchDatabase = async (serverUrl: string, prefix: string) => {
     stdout: 'pipe',
     stderr: 'pipe',
   });
+
   if ((await child.exited) !== 0) {
     await server.$executeRawUnsafe(`DROP DATABASE \`${name}\``);
     await server.$disconnect();
@@ -35,7 +39,9 @@ export const scratchDatabase = async (serverUrl: string, prefix: string) => {
       `migrate deploy failed\n${await new Response(child.stderr).text()}`,
     );
   }
+
   const db: Database = createDatabase(urlFor(name));
+
   return {
     db,
     drop: async () => {

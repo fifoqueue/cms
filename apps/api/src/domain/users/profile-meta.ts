@@ -15,14 +15,17 @@ export class ProfileMeta {
     >,
     private readonly store: ProfileMetaStore,
   ) {}
+
   async get(userId: string) {
     return {
       fields: this.fields.list(),
       values: this.fields.visible(await this.store.read(userId)),
     };
   }
+
   async save(userId: string, input: unknown) {
     await this.store.save(userId, this.fields.validate(input));
+
     return this.get(userId);
   }
 }

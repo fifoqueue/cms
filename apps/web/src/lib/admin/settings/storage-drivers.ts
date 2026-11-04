@@ -42,10 +42,12 @@ export const splitStorageIssues = (
   ]);
   const fields: Partial<Record<string, string>> = {};
   const rest: { path: string; message: string }[] = [];
+
   for (const issue of issues)
     if (paths.has(issue.path)) fields[issue.path] ??= issue.message;
     // The leftover test file is named in the refusal itself (`storageFailureTitle`).
     else if (issue.path !== 'probe') rest.push(issue);
+
   return { fields, rest };
 };
 

@@ -10,11 +10,14 @@ test('content.beforeSave never sees or sets the password; trash/restore emit com
   });
   const service = testContentService({ hooks });
   const seen: unknown[] = [];
+
   hooks.registrar('observer').filter('content.beforeSave', (data) => {
     seen.push(data);
+
     return { ...data, password: 'forged' } as typeof data;
   });
   const lifecycle: { trashedAt: string | null }[] = [];
+
   for (const name of ['content.trashed', 'content.restored'] as const)
     hooks.registrar('observer').on(name, (entry) => {
       lifecycle.push(entry);
@@ -28,6 +31,7 @@ test('content.beforeSave never sees or sets the password; trash/restore emit com
     { type: 'post', title: 'Open', document },
     ADMIN,
   );
+
   expect(JSON.stringify(seen)).not.toContain('open-sesame');
   expect(seen.every((data) => !Object.hasOwn(data as object, 'password'))).toBe(
     true,

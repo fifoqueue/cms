@@ -21,9 +21,12 @@
   // Submitted while shown, the value would otherwise be offered to the browser as plain text.
   $effect(() => {
     const form = input?.form;
+
     if (!form) return;
     const hide = () => (visible = false);
+
     form.addEventListener('submit', hide);
+
     return () => form.removeEventListener('submit', hide);
   });
 </script>

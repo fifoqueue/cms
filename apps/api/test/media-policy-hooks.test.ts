@@ -30,6 +30,7 @@ test('media policies validate MIME, transform plans, metadata and bidirectional 
       ...fakeImages,
       resize: async (bytes, width, height, crop, quality) => {
         qualities.push(quality);
+
         return fakeImages.resize(bytes, width, height, crop, quality);
       },
     },
@@ -48,12 +49,14 @@ test('media policies validate MIME, transform plans, metadata and bidirectional 
   ]);
   const actor = { id: 'a', role: 'author' };
   const narrow = site.filter('media.allowedTypes', () => []);
+
   await expect(media.upload(bytes, 'test.png', actor)).rejects.toThrow();
   narrow();
   const invalid = site.filter(
     'media.allowedTypes',
     () => ['application/x-unknown'] as never,
   );
+
   site.filter('media.imageSizes', (plan) => ({
     ...plan,
     quality: 55,
@@ -82,6 +85,7 @@ test('media policies validate MIME, transform plans, metadata and bidirectional 
     20,
   );
   const uploaded = await media.upload(bytes, 'test.png', actor);
+
   invalid();
   expect(qualities).toEqual([55]);
   expect(uploaded.variants).toHaveLength(1);
@@ -92,14 +96,17 @@ test('media policies validate MIME, transform plans, metadata and bidirectional 
   expect(uploaded.title).toBe('title');
   expect(uploaded.description).toBe('description');
   const deny = site.filter('media.deleteAllowed', () => false);
+
   await expect(media.remove(uploaded.id, true, actor)).rejects.toThrow();
   expect(await repository.exists(uploaded.id)).toBe(true);
   repository.usages.set(uploaded.id, 1);
   let observed = '';
+
   site.filter(
     'media.deleteAllowed',
     (_allowed, context) => {
       observed = context.media.id;
+
       return true;
     },
     20,

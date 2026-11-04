@@ -6,6 +6,7 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
   const settings = await adminFor(event).embeds.get();
+
   return {
     settings: embedSettingsSchema.parse({
       providers: settings.providers.map(
@@ -35,6 +36,7 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   save: async (event) => {
     const form = await event.request.formData();
+
     return submitAction(() =>
       adminFor(event).embeds.update(jsonField(form, 'settings')),
     );

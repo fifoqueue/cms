@@ -15,13 +15,17 @@ export class MemoryMediaRepository implements MediaRepository {
   private readonly owners = new Map<string, string>();
   async getByKey(key: string) {
     const id = this.owners.get(key);
+
     return id ? this.get(id) : null;
   }
+
   async reserveKeys(uploadId: string, keys: readonly string[]) {
     for (const key of keys) if (this.reserved.has(key)) return false;
     for (const key of keys) this.reserved.set(key, uploadId);
+
     return true;
   }
+
   readonly rows = new Map<string, MediaWrite>();
   readonly usages = new Map<string, number>();
 
@@ -32,18 +36,22 @@ export class MemoryMediaRepository implements MediaRepository {
         variant ? [variant.key] : [],
       ),
     ];
+
     for (const key of keys)
       if (this.reserved.has(key) && this.reserved.get(key) !== media.id)
         throw conflict(Errors.MediaKeyInvalid);
+
     for (const key of keys) {
       this.reserved.set(key, media.id);
       this.owners.set(key, media.id);
     }
+
     this.rows.set(media.id, structuredClone(media));
   }
 
   async get(id: string) {
     const row = this.rows.get(id);
+
     return row ? this.toRecord(row) : null;
   }
 
@@ -83,6 +91,7 @@ export class MemoryMediaRepository implements MediaRepository {
       )
       .filter((row) => !unattached || !this.usages.get(row.id))
       .reverse();
+
     return {
       items: items
         .slice((page - 1) * pageSize, page * pageSize)
@@ -95,7 +104,9 @@ export class MemoryMediaRepository implements MediaRepository {
   async neighbors(id: string) {
     const ids = [...this.rows.keys()].reverse();
     const index = ids.indexOf(id);
+
     if (index < 0) return { newer: null, older: null };
+
     return { newer: ids[index - 1] ?? null, older: ids[index + 1] ?? null };
   }
 
@@ -113,8 +124,10 @@ export class MemoryMediaRepository implements MediaRepository {
 
   async publicImages(ids: readonly string[]) {
     const images = new Map<string, PublicImage>();
+
     for (const id of ids) {
       const row = this.rows.get(id);
+
       if (row)
         images.set(id, {
           url: `/media/${row.storageKey}`,
@@ -124,6 +137,7 @@ export class MemoryMediaRepository implements MediaRepository {
           sizes: [],
         });
     }
+
     return images;
   }
 
@@ -137,6 +151,7 @@ export class MemoryMediaRepository implements MediaRepository {
     },
   ) {
     const row = this.rows.get(id)!;
+
     if (changes.alt !== undefined) row.alt = changes.alt;
     if (changes.caption !== undefined) row.caption = changes.caption;
     if (changes.title !== undefined) row.title = changes.title;
@@ -167,17 +182,21 @@ export class MemoryMediaStorage implements MediaStorage {
     freeBytes: number,
   ) {
     const bytes = files.reduce((total, file) => total + file.bytes.length, 0);
+
     if (this.freeBytes < freeBytes + bytes) return 'low_space' as const;
     for (const file of files) this.files.set(file.key, file.bytes);
     this.freeBytes -= bytes;
+
     return 'stored' as const;
   }
 
   async read(key: string, range?: { start: number; end?: number }) {
     const bytes = this.files.get(key);
+
     if (!bytes) return null;
     const start = range?.start ?? 0;
     const end = Math.min(range?.end ?? bytes.length - 1, bytes.length - 1);
+
     return {
       body: new Blob([bytes.slice(start, end + 1)]).stream(),
       size: bytes.length,

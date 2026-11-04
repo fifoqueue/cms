@@ -56,6 +56,7 @@ export const signInValues = (
 export const readSignInForm = (form: FormData): SignInFormValues => {
   const order = unique(strings(form, 'order'));
   const allowed = new Set(strings(form, 'methods'));
+
   return {
     order,
     methods: order.filter((id) => allowed.has(id)),
@@ -77,6 +78,7 @@ export const moveItem = <T>(
   offset: -1 | 1,
 ) => {
   const target = index + offset;
+
   if (
     index < 0 ||
     index >= order.length ||
@@ -85,13 +87,16 @@ export const moveItem = <T>(
   )
     return [...order];
   const moved = [...order];
+
   [moved[index], moved[target]] = [moved[target]!, moved[index]!];
+
   return moved;
 };
 
 /** A `move` button's value, `<index>:up` or `<index>:down`. */
 export const readMove = (value: string) => {
   const match = /^(\d+):(up|down)$/.exec(value);
+
   return match
     ? {
         index: Number(match[1]),
@@ -107,6 +112,7 @@ export const methodRows = (
 ): SignInRow[] =>
   order.map((id) => {
     const method = available.find((entry) => entry.id === id);
+
     return method
       ? { id, label: method.label, source: method.source, ready: method.ready }
       : { id, label: id, source: null, ready: false };
@@ -122,6 +128,7 @@ export const factorRows = (
 ): SignInRow[] =>
   unique([...chosen, ...available.map(({ id }) => id)]).map((id) => {
     const factor = available.find((entry) => entry.id === id);
+
     return factor
       ? { id, label: factor.label, source: factor.source, ready: true }
       : { id, label: id, source: null, ready: false };
@@ -136,10 +143,13 @@ export const signInIssueTarget = (
   values: SignInFormValues,
 ): { list: SignInList; id: string | null } | null => {
   const [root, index, ...rest] = path.split('.');
+
   if (!(SIGN_IN_LISTS as readonly string[]).includes(root ?? '')) return null;
   const list = root as SignInList;
+
   if (index === undefined) return { list, id: null };
   if (rest.length || !/^\d+$/.test(index)) return null;
   const id = values[list][Number(index)];
+
   return id === undefined ? null : { list, id };
 };

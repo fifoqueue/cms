@@ -20,10 +20,12 @@ export const loadPatterns = async (
     `${resolve('/admin/(app)/patterns/api')}?${query}`,
     { signal },
   ).catch(() => null);
+
   if (!response?.ok || response.redirected) return null;
   const parsed = patternListSchema.safeParse(
     await response.json().catch(() => null),
   );
+
   return parsed.success ? parsed.data : null;
 };
 
@@ -36,10 +38,12 @@ export const patternContent = async (
   const response = await fetch(
     `${resolve('/admin/(app)/patterns/api')}?id=${encodeURIComponent(pattern.id)}`,
   ).catch(() => null);
+
   if (!response?.ok || response.redirected) return null;
   const parsed = adminPatternSchema
     .pick({ id: true, title: true, synced: true, status: true, document: true })
     .safeParse(await response.json().catch(() => null));
+
   return parsed.success
     ? ((parsed.data.document.content ?? []) as JSONContent[])
     : null;
@@ -61,8 +65,10 @@ export const loadContributedPatterns = async (): Promise<
   const response = await fetch(
     `${resolve('/admin/(app)/patterns/api')}?contributions`,
   ).catch(() => null);
+
   if (!response?.ok || response.redirected) return [];
   const list = (await response.json().catch(() => null)) as unknown;
+
   return Array.isArray(list) ? (list as ContributedPattern[]) : [];
 };
 
@@ -72,6 +78,7 @@ export const matchContributed = (
   search: string,
 ) => {
   const query = search.trim().toLowerCase();
+
   return patterns.filter((pattern) =>
     `${pattern.title} ${pattern.source}`.toLowerCase().includes(query),
   );
@@ -93,13 +100,16 @@ export const editorExtensions = (
             () =>
             ({ node }) => {
               const dom = document.createElement('div');
+
               dom.contentEditable = 'false';
               dom.className =
                 'my-3 rounded-md border border-dashed px-3 py-2 text-center text-xs font-medium tracking-wide text-muted-foreground uppercase';
               const ref =
                 typeof node.attrs.ref === 'string' ? node.attrs.ref : null;
+
               if (ref) dom.dataset.patternRef = ref;
               dom.textContent = label(node.type.name, ref);
+
               return { dom };
             },
         })

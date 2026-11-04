@@ -36,6 +36,7 @@ const text = (
   fallback: string,
 ) => {
   const value = key && m[key];
+
   return typeof value === 'string' ? value : fallback;
 };
 

@@ -168,6 +168,7 @@ export type ImageEdit = z.output<typeof imageEditSchema>;
 // Zod runs this refinement even when `z.url()` already failed, so unparsable input is refused here.
 const storageUrl = z.url().refine((value) => {
   const url = URL.parse(value);
+
   return (
     url !== null &&
     ['https:', 'http:'].includes(url.protocol) &&
@@ -198,6 +199,7 @@ const storageValues = z.record(
   z.string(),
   z.union([z.string().max(10000), z.number().finite(), z.boolean()]),
 );
+
 export const mediaStorageSettingsSchema = z.object({
   driver: storageDriverId,
   availableDrivers: z

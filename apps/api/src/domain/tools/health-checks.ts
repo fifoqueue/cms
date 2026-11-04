@@ -25,6 +25,7 @@ export class HealthChecks {
   plugin(owner: string, key: string, check: Check) {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(key) || key.length > 64)
       throw new Error(Errors.InvalidInput);
+
     return this.add(this.plugins, `plugin:${owner}:${key}`, check);
   }
 
@@ -39,9 +40,12 @@ export class HealthChecks {
         [...this.plugins].map(async ([key, check]) => {
           const result = await isolate(async () => {
             const value = await check();
+
             return healthCheckSchema.parse({ ...(value as object), key });
           }, this.timeoutMs);
+
           if (this.plugins.get(key) !== check) return null;
+
           return result.ok
             ? structuredClone(result.value)
             : {
@@ -54,6 +58,7 @@ export class HealthChecks {
         }),
       ),
     ]);
+
     return [...core, ...plugins.filter((result) => result !== null)];
   }
 
@@ -65,6 +70,7 @@ export class HealthChecks {
     if (this.core.has(key) || this.plugins.has(key))
       throw new Error(Errors.InvalidInput);
     table.set(key, check);
+
     return () => {
       if (table.get(key) === check) table.delete(key);
     };

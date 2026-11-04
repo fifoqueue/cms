@@ -163,6 +163,7 @@
     if (!keyword) return [];
     const slugWords = keywordSlug(keyword);
     const inBody = occurrences(source.body, keyword);
+
     return [
       {
         label: m.seoInSearchTitle,

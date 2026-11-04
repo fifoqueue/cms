@@ -29,6 +29,7 @@ export const Footnote = Node.create({
         default: '',
         parseHTML: (element: HTMLElement) => {
           const name = element.getAttribute('data-footnote-name') ?? '';
+
           return isFootnoteName(name) ? name : '';
         },
         rendered: false,
@@ -40,6 +41,7 @@ export const Footnote = Node.create({
   },
   renderHTML({ node }) {
     const name = String(node.attrs.name ?? '');
+
     return [
       'sup',
       {
@@ -55,6 +57,7 @@ export const Footnote = Node.create({
         find: (text) => {
           const match = typedPattern.exec(text);
           const data = match && parseFootnote(match[0]);
+
           return match && data
             ? { index: match.index, text: match[0], data }
             : null;
@@ -75,6 +78,7 @@ export const Footnote = Node.create({
         find: (text) =>
           [...text.matchAll(pastedPattern)].flatMap((match) => {
             const data = parseFootnote(match[0]);
+
             return data ? [{ index: match.index, text: match[0], data }] : [];
           }),
         handler: ({ state, range, match }) => {

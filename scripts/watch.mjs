@@ -6,9 +6,11 @@ import { watch } from 'node:fs';
 
 const args = process.argv.slice(2);
 const separator = args.indexOf('--');
+
 if (separator < 1 || separator === args.length - 1) {
   throw new Error('Usage: watch.mjs <directories...> -- <bun arguments...>');
 }
+
 const watchers = [];
 let child;
 let stopping = false;
@@ -18,6 +20,7 @@ let deadline;
 
 const forceStop = () => {
   if (!child) return;
+
   if (process.platform === 'win32') {
     spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
       stdio: 'inherit',
@@ -74,15 +77,18 @@ const shutdown = (code = 0, consoleInterrupt = false) => {
 
 process.on('SIGINT', () => shutdown(0, true));
 process.on('SIGTERM', () => shutdown());
+
 for (const directory of args.slice(0, separator)) {
   const watcher = watch(directory, { recursive: true }, () => {
     clearTimeout(timer);
     timer = setTimeout(restart, 150);
   });
+
   watcher.on('error', (error) => {
     console.error(error);
     shutdown(1);
   });
   watchers.push(watcher);
 }
+
 start();

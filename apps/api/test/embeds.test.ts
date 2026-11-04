@@ -9,6 +9,7 @@ import type { EmbedPreset } from '#api/domain/content/embeds';
 /** The figure the editor stores for an embed block. */
 const figure = (url: string) => {
   const escaped = url.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+
   return `<figure data-embed-url="${escaped}" class="embed"><a href="${escaped}">${escaped}</a></figure>`;
 };
 
@@ -21,6 +22,7 @@ describe('default embed presets', () => {
   test('YouTube accepts short, watch, shorts, embed and live addresses on the privacy domain', async () => {
     const id = 'aqz-KE-bpKQ';
     const player = `https://www.youtube-nocookie.com/embed/${id}`;
+
     for (const url of [
       `https://youtu.be/${id}`,
       `https://www.youtube.com/watch?v=${id}`,
@@ -41,6 +43,7 @@ describe('default embed presets', () => {
 
   test('YouTube keeps a 16:9 player with the media permissions', async () => {
     const html = await expand('https://youtu.be/aqz-KE-bpKQ');
+
     expect(html).toBe(
       '<figure class="embed"><iframe src="https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ" title="YouTube video" loading="lazy" allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="aspect-ratio: 16 / 9; width: 100%; display: block; margin-inline: auto; border: 0"></iframe></figure>',
     );
@@ -76,6 +79,7 @@ describe('default embed presets', () => {
       '<figure class="embed"><iframe src="https://platform.twitter.com/embed/Tweet.html?id=20&amp;dnt=true" title="X post" loading="lazy" data-embed-height-path="/twttr.embed/params/0/height" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="height: 600px; width: 100%; max-width: 550px; display: block; margin-inline: auto; border: 0"></iframe></figure>',
     );
     const instagram = await expand('https://www.instagram.com/p/C1a2b3/');
+
     expect(instagram).toContain('data-embed-height-path="/details/height"');
     expect(instagram).toContain(
       'style="height: 700px; width: 100%; max-width: 540px; display: block; margin-inline: auto; border: 0"',
@@ -92,6 +96,7 @@ describe('default embed presets', () => {
 
   test('an unknown address stays a plain link', async () => {
     const stored = figure('https://example.com/watch?v=aqz-KE-bpKQ');
+
     expect(await core.expand(stored)).toBe(stored);
   });
 });
@@ -117,6 +122,7 @@ describe('presetProvider', () => {
       allow: 'fullscreen',
     });
     const html = await expand('https://example.com/a?x=1&y=2', embeds);
+
     expect(html).toContain(
       'src="https://player.example/a?q=1&amp;u=https%3A%2F%2Fexample.com%2Fa%3Fx%3D1%26y%3D2"',
     );
@@ -133,6 +139,7 @@ describe('presetProvider', () => {
           'camera *; autoplay; microphone *; fullscreen https://example.com; web-share; fullscreen "x"',
       }),
     );
+
     expect(html).toContain(' allow="autoplay; web-share"');
     expect(html).not.toContain('camera');
     expect(html).not.toContain('microphone');
@@ -148,7 +155,9 @@ describe('presetProvider', () => {
     });
     const boundary =
       'https://example.com/' + 'a'.repeat(2048 - 'https://example.com/'.length);
+
     expect(await provider.render(new URL(boundary))).not.toBeNull();
+
     for (const url of [
       boundary + 'a',
       'https://example.com/' + '한'.repeat(300),
@@ -162,6 +171,7 @@ describe('presetProvider', () => {
           },
         },
       ]);
+
       expect(await embeds.expand(figure(url))).toBe(figure(url));
     }
   });
@@ -169,6 +179,7 @@ describe('presetProvider', () => {
   test('captures cannot move the address off its origin or segment', async () => {
     const preset = (src: string) =>
       custom({ urlPattern: '^https://example\\.com/(?<v>.*)$', src });
+
     // Host change through a raw capture next to the authority.
     expect(
       await srcOf(

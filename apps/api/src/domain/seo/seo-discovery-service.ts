@@ -31,6 +31,7 @@ export class SeoDiscoveryService {
     const criteria = parseInput(seoSitemapQuerySchema, query);
     const { kind, page, pageSize } = criteria;
     const settings = await this.settings.getPublic();
+
     if (
       !settings.indexingEnabled ||
       (kind === 'category' && !settings.indexCategories) ||
@@ -71,6 +72,7 @@ export class SeoDiscoveryService {
         }),
       ) ??
       [];
+
     return {
       items: seoSitemapEntrySchema.array().parse(
         await this.settings.filterOutput({

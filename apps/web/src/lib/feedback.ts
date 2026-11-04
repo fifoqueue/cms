@@ -62,14 +62,17 @@ export const noticeText = (
   data: Pick<ActionData, 'notice' | 'count'>,
 ) => {
   const { notice, count } = data;
+
   if (!notice) return '';
   const entry = (m as Record<string, unknown>)[notice];
+
   if (typeof entry === 'string') return entry;
   // A counted notice without its count has no text to show.
   if (typeof entry === 'function')
     return typeof count === 'number'
       ? (entry as (count: number) => string)(count)
       : '';
+
   return notice;
 };
 
@@ -83,6 +86,7 @@ let forgetting: Promise<unknown> = Promise.resolve();
 export const forgetParams = (...names: string[]) => {
   const run = async () => {
     const url = new URL(location.href);
+
     if (!names.some((name) => url.searchParams.has(name))) return;
     for (const name of names) url.searchParams.delete(name);
     await goto(resolve(`${url.pathname}${url.search}${url.hash}` as Path), {
@@ -91,6 +95,7 @@ export const forgetParams = (...names: string[]) => {
       replace: true,
     });
   };
+
   forgetting = forgetting.then(run, run);
 };
 
@@ -100,6 +105,7 @@ const announced = new WeakSet<object>();
 const first = (result: object) => {
   if (announced.has(result)) return false;
   announced.add(result);
+
   return true;
 };
 
@@ -110,6 +116,7 @@ export const announceBulk = (
 ) => {
   if (!first(result)) return;
   const done = m.bulkDone(result.done);
+
   if (result.failed.length)
     notifyFailure(`${done} · ${m.bulkFailed(result.failed.length)}`);
   else notifySuccess(done);
@@ -125,10 +132,14 @@ export const announceResult = (
   action?: ToastAction,
 ) => {
   if (!data || !first(data)) return;
+
   if (data.message) {
     notifyFailure(errorMessage(i18n.m, i18n.language, data));
+
     return;
   }
+
   const text = noticeText(i18n.m, data);
+
   if (text) notifySuccess(text, { action });
 };

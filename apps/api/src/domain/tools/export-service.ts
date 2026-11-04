@@ -149,6 +149,7 @@ export class ExportService {
       categories: categories.map(term),
       tags: tags.map(term),
     };
+
     return readable(this.parts(header, can(actor, 'comments.moderate')));
   }
 
@@ -162,32 +163,41 @@ export class ExportService {
     moderator: boolean,
   ): AsyncGenerator<string> {
     const names = wxrTermNames(header);
+
     yield wxrHeader(header);
     for (const pattern of (await this.deps.patterns?.()) ?? [])
       yield wxrItemStart(patternItem(pattern), header, names) + wxrItemEnd;
 
     let afterContent: string | null = null;
+
     for (;;) {
       const records = await this.deps.content.exportPage(afterContent, PAGE);
+
       if (!records.length) break;
+
       for (const record of records) {
         yield wxrItemStart(toItem(record, header.link), header, names);
         let afterComment: string | null = null;
+
         for (;;) {
           const comments = await this.deps.comments.exportPage(
             record.id,
             afterComment,
             PAGE,
           );
+
           for (const comment of comments)
             yield wxrComment(toComment(comment, moderator));
           if (comments.length < PAGE) break;
           afterComment = comments.at(-1)!.id;
         }
+
         yield wxrItemEnd;
       }
+
       afterContent = records.at(-1)!.id;
     }
+
     const extras =
       (await this.deps.hooks?.applyFilter(
         'export.data',
@@ -197,6 +207,7 @@ export class ExportService {
           new TextEncoder().encode(JSON.stringify(value)).byteLength <=
             16 * 1024 * 1024,
       )) ?? [];
+
     for (const item of platformWxrItemSchema.array().parse(extras)) {
       yield wxrItemStart(item, header, names);
       for (const { authorIp, authorUserAgent, ...comment } of item.comments)
@@ -205,6 +216,7 @@ export class ExportService {
         );
       yield wxrItemEnd;
     }
+
     yield wxrFooter;
     void this.deps.hooks?.emit('export.generated', { format: 'wxr' });
   }

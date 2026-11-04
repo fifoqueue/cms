@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { archivePath } from '#sdk/archive-links';
+
 export { archivePath } from '#sdk/archive-links';
 import { Errors } from '#sdk/errors';
 import {
@@ -45,6 +46,7 @@ const baseSchema = z
       RESERVED.has(segments[0]!.toLowerCase())
     ) {
       context.addIssue({ code: 'custom', message: Errors.BlockAttrFormat });
+
       return z.NEVER;
     }
 
@@ -82,6 +84,7 @@ export type ArchivePathsState = z.output<typeof archivePathsStateSchema>;
 export const resolveArchivePath = (state: ArchivePathsState, path: string) => {
   if (path.length > MAX_PERMALINK_PATH_LENGTH) return null;
   const canonical = canonicalPermalinkPath(path)?.replace(/\/$/, '');
+
   if (!canonical) return null;
 
   for (const historical of [false, true]) {
@@ -89,13 +92,17 @@ export const resolveArchivePath = (state: ArchivePathsState, path: string) => {
       const bases = historical
         ? state.history[taxonomy]
         : [state.bases[taxonomy]];
+
       for (const base of bases) {
         if (!canonical.startsWith(`${base}/`)) continue;
         const segment = canonical.slice(base.length + 1);
+
         if (!segment || segment.includes('/')) continue;
         const slug = decodeURIComponent(segment);
+
         if (/[\\/?#\p{Cc}]/u.test(slug)) continue;
         const target = archivePath(state.bases, taxonomy, slug);
+
         return { taxonomy, slug, path: target, redirect: target !== path };
       }
     }

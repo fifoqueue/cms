@@ -94,6 +94,7 @@ export const publicEntriesClient = (request: Request) => ({
 export const contentWorkflowClient = (request: Request) => {
   const path = (id: string) =>
     `/api/v1/admin/content/${encodeURIComponent(id)}`;
+
   return {
     trash: (id: string) => request<void>('POST', `${path(id)}/trash`),
     restore: (id: string) => request<void>('POST', `${path(id)}/restore`),

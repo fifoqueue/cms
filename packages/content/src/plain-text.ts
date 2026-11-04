@@ -22,18 +22,22 @@ export const plainText = (document: ContentDocument): string => {
       parts.push(' ');
       continue;
     }
+
     if (typeof frame.node !== 'object' || frame.node === null) continue;
     const { type, text, content, attrs } = frame.node as Record<
       string,
       unknown
     >;
+
     if (type === 'text') {
       if (typeof text === 'string') parts.push(text);
       continue;
     }
+
     const visible = (attrs as Record<string, unknown> | undefined)?.[
       VISIBLE[String(type)] ?? ''
     ];
+
     if (!Array.isArray(content) && typeof visible !== 'string') continue;
     parts.push(' ');
     stack.push({ node: null, close: true });
@@ -53,6 +57,7 @@ export const summarize = (text: string, words = 55): string => {
   const parts = text.split(' ').filter(Boolean);
   const head = parts.slice(0, words).join(' ');
   const clipped = head.length > 300 ? `${head.slice(0, 299).trimEnd()}…` : head;
+
   return parts.length > words && !clipped.endsWith('…')
     ? `${clipped}…`
     : clipped;
@@ -68,25 +73,34 @@ export const keywordParagraph = (
 ): string => {
   const fold = (value: string) => value.normalize('NFKC').toLowerCase();
   const needle = fold(keyword.trim());
+
   if (!needle) return '';
+
   const find = (node: unknown): string | null => {
     if (typeof node !== 'object' || node === null) return null;
     const { type, content } = node as { type?: unknown; content?: unknown };
+
     if (type === 'paragraph') {
       const text = plainText({
         ...document,
         content: [node] as ContentDocument['content'],
       });
+
       return fold(text).includes(needle) ? text : null;
     }
+
     if (!Array.isArray(content)) return null;
+
     for (const child of content) {
       const found = find(child);
+
       if (found !== null) return found;
     }
+
     return null;
   };
   const text = find(document) ?? '';
+
   return text.length > 300 ? `${text.slice(0, 299).trimEnd()}…` : text;
 };
 
@@ -98,10 +112,12 @@ export const teaserOf = (document: ContentDocument): string | null => {
   const index = (document.content ?? []).findIndex(
     (node) => (node as { type?: unknown }).type === 'more',
   );
+
   if (index < 0) return null;
   const text = plainText({
     ...document,
     content: (document.content ?? []).slice(0, index),
   }).trim();
+
   return text.length > 1000 ? `${text.slice(0, 999).trimEnd()}…` : text;
 };

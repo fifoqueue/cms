@@ -53,6 +53,7 @@ export const createPasswordMethod = (deps: {
       !!(await deps.users.findById(user.id))?.passwordHash,
     begin: async (request) => {
       const parsed = loginSchema.safeParse(request.values);
+
       if (!parsed.success) return { kind: 'failed' };
       const user = await deps.users.findByEmail(
         parsed.data.email.toLowerCase(),
@@ -61,6 +62,7 @@ export const createPasswordMethod = (deps: {
         user?.passwordHash ??
         (await (dummyHash ??= deps.hasher.hash('dummy-password')));
       const valid = await deps.hasher.verify(parsed.data.password, hash);
+
       return user && valid
         ? { kind: 'user', userId: user.id }
         : { kind: 'failed' };

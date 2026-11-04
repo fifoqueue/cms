@@ -18,8 +18,10 @@ export const load: LayoutServerLoad = async ({ fetch, request, locals }) => {
     api.site().catch(() => null),
   ]);
   const language = languageOf(site?.locale ?? fallbackLanguage);
+
   // `<html lang>` names the catalog language the screen is written in.
   locals.lang = language;
+
   return {
     privacyPolicy,
     language,

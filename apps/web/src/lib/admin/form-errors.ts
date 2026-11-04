@@ -15,6 +15,7 @@ type Entry = { web: false; key: ApiErrorKey } | { web: true; key: WebErrorKey };
  * unique (tested); the SDK's would win for text both shared.
  */
 const KEYS = new Map<string, Entry>();
+
 for (const key of Object.keys(SdkErrors) as ApiErrorKey[])
   KEYS.set(SdkErrors[key], { web: false, key });
 for (const key of Object.keys(WebErrors) as WebErrorKey[])
@@ -30,6 +31,7 @@ const localized = (
   params?: ApiErrorParams,
 ): string | undefined => {
   const entry = KEYS.get(message);
+
   if (!entry) return undefined;
   const values =
     params &&
@@ -39,6 +41,7 @@ const localized = (
         (typeof value === 'string' && localized(m, value)) || value,
       ]),
     );
+
   return entry.web
     ? m.webError(entry.key, values)
     : m.apiError(entry.key, values);
@@ -90,6 +93,7 @@ export type FormMessages = ErrorLookup &
 
 const text = (m: FormMessages, key: keyof FormMessages | undefined) => {
   const value = key && m[key];
+
   return typeof value === 'string' ? value : undefined;
 };
 
@@ -152,6 +156,7 @@ export const statusLine = (
 ) => {
   const { message, params } =
     typeof line === 'string' ? { message: line, params: undefined } : line;
+
   return localized(m, message, params) ?? message;
 };
 
@@ -183,6 +188,7 @@ export const issueLines = (
         FIELDS[(path.split('.')[0] ?? '') as keyof typeof FIELDS],
       );
       const detail = issueText(m, language, message, params);
+
       return label
         ? `${label}: ${detail}`
         : language === 'en' && path

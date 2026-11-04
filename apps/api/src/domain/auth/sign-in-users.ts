@@ -12,11 +12,13 @@ export const createSignInUsers = (
     user: UserRecord | null,
   ): Promise<UserProfile | null> => {
     if (!user) return null;
+
     return {
       ...toProfile(user),
       capabilities: await roles.capabilities(user.role),
     };
   };
+
   return {
     findById: async (id) => profile(await users.findById(id)),
     findByEmail: async (email) => profile(await users.findByEmail(email)),

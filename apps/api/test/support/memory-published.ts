@@ -15,8 +15,10 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
 
   async excerptBodies(ids: readonly string[], types?: readonly string[]) {
     const bodies = new Map<string, string>();
+
     for (const id of ids) {
       const row = this.content.rows.get(id);
+
       if (
         row?.status === 'published' &&
         row.passwordHash === null &&
@@ -25,6 +27,7 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
       )
         bodies.set(id, row.html);
     }
+
     return bodies;
   }
 
@@ -34,6 +37,7 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
 
   async privateById(id: string) {
     const record = await this.content.findById(id);
+
     return record?.status === 'private' && !record.trashedAt
       ? this.ancestry({
           ...project(record),
@@ -49,6 +53,7 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
 
   async summariesByIds(ids: readonly string[]) {
     const records = await Promise.all(ids.map((id) => this.byId(id)));
+
     return records
       .filter((record) => record !== null)
       .map(({ html: _html, fields: _fields, ...summary }) => summary);
@@ -56,6 +61,7 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
 
   async passwordHash(id: string) {
     const record = await this.content.findById(id);
+
     return record?.status === 'published' && !record.trashedAt
       ? record.passwordHash
       : null;
@@ -63,10 +69,12 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
 
   async list(criteria: PublishedCriteria) {
     const { items, total } = await this.summaries(criteria);
+
     return {
       items: await Promise.all(
         items.map(async (item) => {
           const record = (await this.content.findById(item.id))!;
+
           return { ...item, html: record.html, fields: record.fields };
         }),
       ),
@@ -77,6 +85,7 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
   async months(types: readonly string[], limit: number) {
     const { items } = await this.summaries({ types, page: 1, pageSize: 1e6 });
     const counts: MonthCounts = new Map();
+
     for (const { publishedAt } of items)
       if (publishedAt)
         countMonth(
@@ -84,11 +93,13 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
           publishedAt.getUTCFullYear(),
           publishedAt.getUTCMonth() + 1,
         );
+
     return newestMonths(counts, limit);
   }
 
   async adjacent(id: string) {
     const entry = await this.byId(id);
+
     if (!entry?.publishedAt) return { previous: null, next: null };
     const { items } = await this.summaries({
       type: entry.type,
@@ -96,6 +107,7 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
       pageSize: 1e6,
     });
     const index = items.findIndex((item) => item.id === id);
+
     return {
       previous: items[index + 1] ?? null,
       next: items[index - 1] ?? null,
@@ -124,6 +136,7 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
     const after = months
       .filter((entry) => order(entry) > anchor)
       .sort((a, b) => order(a) - order(b));
+
     return { previous: before[0] ?? null, next: after[0] ?? null };
   }
 
@@ -134,6 +147,7 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
       view: 'active',
       orderBy: criteria.orderBy ?? 'publishedAt',
     });
+
     return {
       items: items.map((item) => this.ancestry(project(item))!),
       total,
@@ -148,6 +162,7 @@ export class MemoryPublishedContentRepository implements PublishedContentReposit
       parent?.status === 'published' &&
       !this.content.trashed.has(parent.id) &&
       parent.passwordHash === null;
+
     return open ? record : { ...record, parentId: null };
   }
 }

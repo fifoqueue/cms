@@ -22,6 +22,7 @@
   const id = $props.id();
   const query = $derived.by(() => {
     const page = scope().page;
+
     return page.kind === 'search' ? page.query : '';
   });
   const bases = $derived(
@@ -35,6 +36,7 @@
 
   const place = () => {
     const anchor = button?.closest('header') ?? button;
+
     top = Math.max(0, anchor?.getBoundingClientRect().bottom ?? 0);
   };
   const show = () => {

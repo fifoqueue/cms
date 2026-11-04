@@ -31,9 +31,11 @@ process.on('SIGTERM', stopOthers);
 
 const pipe = (from, to, label) => {
   let rest = '';
+
   from.setEncoding('utf8');
   from.on('data', (chunk) => {
     const lines = (rest + chunk).split(/\r?\n/);
+
     rest = lines.pop() ?? '';
     for (const line of lines) to.write(`${label}${line}\n`);
   });
@@ -46,11 +48,13 @@ for (const name of names) {
     env: { ...process.env, FORCE_COLOR: process.env.FORCE_COLOR ?? '1' },
   });
   const label = `${name.padEnd(width)} | `;
+
   pipe(child.stdout, process.stdout, label);
   pipe(child.stderr, process.stderr, label);
   running.set(name, child);
   child.on('exit', (code, signal) => {
     running.delete(name);
+
     // One server stopping on its own leaves the rest useless; stop them as well.
     if (!interrupted && running.size) {
       exitCode = code || 1;
@@ -59,6 +63,7 @@ for (const name of names) {
       );
       stopOthers();
     }
+
     if (!running.size) process.exit(interrupted ? 0 : exitCode || code || 0);
   });
 }

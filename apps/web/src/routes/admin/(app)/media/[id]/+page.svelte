@@ -59,6 +59,7 @@
   let cropFor = untrack(() => data.media.id);
   $effect(() => {
     const { id, width, height } = media;
+
     if (id === cropFor) return;
     cropFor = id;
     cropping = false;

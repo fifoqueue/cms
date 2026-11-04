@@ -9,16 +9,19 @@ export class PrismaCleanupCatalog {
       SELECT \`key\`, value FROM settings WHERE \`key\` LIKE 'media.cleanup.%'
       AND JSON_TYPE(value) = 'OBJECT' AND \`key\` > ${after}
       ORDER BY \`key\` LIMIT ${limit}`;
+
     return rows.map((row) => ({
       key: row.key,
       value: JSON.parse(row.value) as unknown,
     }));
   }
+
   async attention() {
     const [row] = await this.db.$queryRaw<{ total: bigint }[]>`
       SELECT COUNT(*) AS total FROM settings WHERE \`key\` LIKE 'media.cleanup.%'
       AND JSON_TYPE(value) = 'OBJECT'
       AND JSON_EXTRACT(value, '$.attempts') >= ${CLEANUP_MAX_ATTEMPTS}`;
+
     return Number(row?.total ?? 0);
   }
 }

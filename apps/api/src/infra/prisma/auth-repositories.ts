@@ -22,11 +22,13 @@ export class PrismaRecoveryCodeRepository implements RecoveryCodeRepository {
       where: { userId },
       select: { createdAt: true },
     });
+
     return {
       remaining: rows.length,
       createdAt: rows[0]?.createdAt.toISOString() ?? null,
     };
   }
+
   async replace(userId: string, codes: RecoveryCodeRecord[]) {
     await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
@@ -34,6 +36,7 @@ export class PrismaRecoveryCodeRepository implements RecoveryCodeRepository {
       if (codes.length) await tx.recoveryCode.createMany({ data: codes });
     });
   }
+
   async consume(userId: string, codeHash: string) {
     return (
       (await this.db.recoveryCode.deleteMany({ where: { userId, codeHash } }))

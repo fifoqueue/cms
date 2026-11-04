@@ -7,10 +7,12 @@ export const mediaIdsOf = (document: ContentDocument): string[] => {
 
   while (stack.length) {
     const node = stack.pop();
+
     if (typeof node !== 'object' || node === null) continue;
     const { type, attrs, content } = node as Record<string, unknown>;
     const { mediaId, posterId } =
       (attrs as { mediaId?: unknown; posterId?: unknown } | undefined) ?? {};
+
     if (
       ['image', 'audio', 'video', 'file'].includes(String(type)) &&
       typeof mediaId === 'string'
@@ -21,5 +23,6 @@ export const mediaIdsOf = (document: ContentDocument): string[] => {
       for (let index = content.length - 1; index >= 0; index -= 1)
         stack.push(content[index]);
   }
+
   return [...ids];
 };

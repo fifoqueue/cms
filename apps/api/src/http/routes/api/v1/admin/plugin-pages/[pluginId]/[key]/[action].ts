@@ -17,6 +17,7 @@ export const routes = (app: ApiApp) =>
         await readJson(request),
         user,
       );
+
       return result
         ? json(result)
         : errorResponse(502, 'plugin_error', Errors.PluginPageFailed);

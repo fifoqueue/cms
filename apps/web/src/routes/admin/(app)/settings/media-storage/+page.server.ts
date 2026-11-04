@@ -13,6 +13,7 @@ import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 export const load: PageServerLoad = async (event) => {
   const storage = await adminFor(event).media.storage.get();
+
   return { storage, values: storageFormValues(storage) };
 };
 
@@ -29,6 +30,7 @@ const attempt = async (
   const { availableDrivers } = await adminFor(event).media.storage.get();
   const { values, input } = readMediaStorageForm(form, availableDrivers);
   const result = mediaStorageInputSchema.safeParse(input);
+
   if (!result.success)
     return {
       values,
@@ -39,11 +41,13 @@ const attempt = async (
         issues: issuesOf(result.error.issues),
       } satisfies FormFailure & { values: MediaStorageFormValues }),
     };
+
   try {
     await call(result.data);
   } catch (caught) {
     return { values, failure: failFrom(caught, { values }) };
   }
+
   return { values, failure: null };
 };
 
@@ -52,6 +56,7 @@ export const actions: Actions = {
     const { failure } = await attempt(event, (input) =>
       adminFor(event).media.storage.update(input),
     );
+
     return failure ?? { notice: 'saved' };
   },
   /** Probes without saving; what was typed stays in the form. */
@@ -59,6 +64,7 @@ export const actions: Actions = {
     const { values, failure } = await attempt(event, (input) =>
       adminFor(event).media.storage.test(input),
     );
+
     return failure ?? { values, notice: 'mediaStorageTested' };
   },
 };

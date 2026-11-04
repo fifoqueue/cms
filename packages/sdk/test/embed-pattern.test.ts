@@ -12,6 +12,7 @@ test('RE2 supports both named group spellings and optional captures', () => {
 
 test('review patterns reject or match a 2048-character near miss within 50ms', () => {
   const url = 'https://a/' + 'a'.repeat(2048 - 'https://a/'.length);
+
   for (const source of [
     '^https://a/(?<x>[a-z]*[a-z]*[a-z]*)!$',
     '^https://a/(?<x>(?:(a|a)?){0,1000})!$',
@@ -21,6 +22,7 @@ test('review patterns reject or match a 2048-character near miss within 50ms', (
   ]) {
     const matcher = compileEmbedPattern(source);
     const start = performance.now();
+
     expect(matcher?.match(url) ?? null).toBeNull();
     expect(performance.now() - start).toBeLessThan(50);
   }
@@ -49,6 +51,7 @@ test('all unchanged default providers match their documented URL forms', () => {
       (kind) => `https://instagram.com/${kind}/C1a_b-3?igsh=x`,
     ),
   };
+
   for (const provider of DEFAULT_EMBED_PROVIDERS)
     for (const url of urls[provider.id]!)
       expect(compileEmbedPattern(provider.urlPattern)?.match(url)).toBeTruthy();

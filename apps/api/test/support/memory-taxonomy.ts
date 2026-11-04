@@ -26,6 +26,7 @@ export class MemoryTaxonomyRepository implements TaxonomyRepository {
     filter: TermListFilter = {},
   ) {
     const search = filter.search?.toLowerCase();
+
     return sortTerms(
       [...this.terms.values()]
         .filter(
@@ -45,6 +46,7 @@ export class MemoryTaxonomyRepository implements TaxonomyRepository {
 
   async findById(id: string, scope: TermCountScope) {
     const term = this.terms.get(id);
+
     return term ? this.counted(term, scope) : null;
   }
 
@@ -56,6 +58,7 @@ export class MemoryTaxonomyRepository implements TaxonomyRepository {
     const term = [...this.terms.values()].find(
       (term) => term.taxonomy === taxonomy && term.slug === slug,
     );
+
     return term ? this.counted(term, scope) : null;
   }
 
@@ -80,8 +83,10 @@ export class MemoryTaxonomyRepository implements TaxonomyRepository {
 
   async update(record: TaxonomyTermRecord, media?: TermMediaLinks) {
     const current = this.terms.get(record.id);
+
     if (!current) return;
     const next = { ...structuredClone(record), taxonomy: current.taxonomy };
+
     await this.check(next);
     this.terms.set(record.id, next);
     if (media)
@@ -97,10 +102,13 @@ export class MemoryTaxonomyRepository implements TaxonomyRepository {
 
   async delete(id: string) {
     const term = this.terms.get(id);
+
     if (!term) return [];
     const affected: string[] = [];
+
     for (const child of this.terms.values())
       if (child.parentId === id) child.parentId = term.parentId;
+
     for (const row of this.content.rows.values()) {
       if (
         [
@@ -114,8 +122,10 @@ export class MemoryTaxonomyRepository implements TaxonomyRepository {
       row.tagIds = row.tagIds.filter((other) => other !== id);
       row.extraTermIds = row.extraTermIds?.filter((other) => other !== id);
     }
+
     this.terms.delete(id);
     this.media.delete(id);
+
     return affected;
   }
 
@@ -127,6 +137,7 @@ export class MemoryTaxonomyRepository implements TaxonomyRepository {
         term.taxonomy === record.taxonomy &&
         term.slug === record.slug,
     );
+
     if (taken) throw conflict('Slug is already in use');
   }
 
@@ -143,6 +154,7 @@ export class MemoryTaxonomyRepository implements TaxonomyRepository {
           ...(row.extraTermIds ?? []),
         ].includes(term.id),
     ).length;
+
     return { ...structuredClone(term), count };
   }
 }

@@ -182,6 +182,7 @@ export type { ClientOptions, Request } from '#sdk/transport';
 /** Read-only access to published content. Needs no credentials. */
 export const createContentClient = (options: ClientOptions, token?: string) => {
   const request = createTransport(options, token);
+
   return {
     ...captchaClient(request),
     ...publicPrivacyClient(request),
@@ -326,6 +327,7 @@ export const createContentClient = (options: ClientOptions, token?: string) => {
 /** Session handling. `token` is required for `logout` and `me`. */
 export const createAuthClient = (options: ClientOptions, token?: string) => {
   const request = createTransport(options, token);
+
   return {
     status: () =>
       request<SetupStatus>('GET', '/api/v1/auth/status', {
@@ -447,6 +449,7 @@ export const createAdminClient = (
     `/api/v1/admin/plugin-pages/${encodeURIComponent(id)}/${encodeURIComponent(key)}`;
   const themePath = (id: string) =>
     `/api/v1/admin/themes/${encodeURIComponent(id)}`;
+
   return {
     functions: {
       read: () =>
@@ -783,6 +786,7 @@ export type AdminClient = ReturnType<typeof createAdminClient>;
 /** First-run installation. Mutations require the key printed by the API server. */
 export const createInstallationClient = (options: ClientOptions) => {
   const request = createTransport(options);
+
   return {
     status: () =>
       request<InstallationStatus>('GET', '/api/v1/install/status', {

@@ -58,6 +58,7 @@ export class PrismaPushSubscriptionRepository implements PushSubscriptionReposit
     const owner = record.commentId
       ? { commentId: record.commentId }
       : { userId: record.userId };
+
     await this.db.$transaction(async (tx) => {
       await lockSetting(tx, LOCK);
       const existing = await tx.pushSubscription.findFirst({
@@ -65,6 +66,7 @@ export class PrismaPushSubscriptionRepository implements PushSubscriptionReposit
         select: { id: true },
       });
       const data = refreshed(record, record.lastSeenAt);
+
       if (existing)
         await tx.pushSubscription.update({ where: { id: existing.id }, data });
       else
@@ -83,6 +85,7 @@ export class PrismaPushSubscriptionRepository implements PushSubscriptionReposit
         skip: cap,
         select: { id: true },
       });
+
       if (surplus.length)
         await tx.pushSubscription.deleteMany({
           where: { id: { in: surplus.map((row) => row.id) } },
@@ -95,6 +98,7 @@ export class PrismaPushSubscriptionRepository implements PushSubscriptionReposit
       where: { id },
       select: columns,
     });
+
     return row ? toRecord(row) : null;
   }
 
@@ -103,12 +107,14 @@ export class PrismaPushSubscriptionRepository implements PushSubscriptionReposit
       ...(owner.commentId ? [{ commentId: owner.commentId }] : []),
       ...(owner.userId ? [{ userId: owner.userId }] : []),
     ];
+
     if (!or.length) return [];
     const rows = await this.db.pushSubscription.findMany({
       where: { status: 'active', OR: or },
       select: columns,
       orderBy: { id: 'asc' },
     });
+
     return rows.map(toRecord);
   }
 
@@ -126,6 +132,7 @@ export class PrismaPushSubscriptionRepository implements PushSubscriptionReposit
       // Every candidate is compared, so the time taken does not reveal which secret matched.
       const rows = candidates.filter((row) => sameAuth(row.auth, old.auth));
       const data = refreshed(next, at);
+
       for (const row of rows) {
         const duplicate =
           next.endpoint === old.endpoint
@@ -139,6 +146,7 @@ export class PrismaPushSubscriptionRepository implements PushSubscriptionReposit
                 },
                 select: { id: true },
               });
+
         if (duplicate) {
           await tx.pushSubscription.delete({ where: { id: row.id } });
           await tx.pushSubscription.update({
@@ -148,6 +156,7 @@ export class PrismaPushSubscriptionRepository implements PushSubscriptionReposit
         } else
           await tx.pushSubscription.update({ where: { id: row.id }, data });
       }
+
       return rows.length;
     });
   }
@@ -181,6 +190,7 @@ export class PrismaPushSubscriptionRepository implements PushSubscriptionReposit
       orderBy: { id: 'asc' },
       take: limit,
     });
+
     return rows.map(toRecord);
   }
 
@@ -188,6 +198,7 @@ export class PrismaPushSubscriptionRepository implements PushSubscriptionReposit
     const { count } = await this.db.pushSubscription.deleteMany({
       where: { status: 'invalid', invalidatedAt: { lt: before } },
     });
+
     return count;
   }
 }

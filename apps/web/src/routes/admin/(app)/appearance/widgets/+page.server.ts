@@ -10,6 +10,7 @@ export const load: PageServerLoad = async (event) => {
     admin.widgets.types(),
     admin.menus.get(),
   ]);
+
   return {
     widgets,
     types,
@@ -21,6 +22,7 @@ export const actions: Actions = {
   /** Both areas are sent as one JSON document; the API validates it. */
   save: async (event) => {
     const form = await event.request.formData();
+
     try {
       await adminFor(event).widgets.update(
         jsonField(form, 'widgets') as WidgetsSettingsInput,
@@ -28,6 +30,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'saved' };
   },
 };

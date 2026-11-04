@@ -36,8 +36,10 @@
   const restoreRevision: SubmitFunction = ({ cancel }) => {
     if (!confirm(m.revisionRestoreConfirm)) {
       cancel();
+
       return;
     }
+
     return async ({ result, update }) => {
       await update();
       if (result.type === 'success') restored++;

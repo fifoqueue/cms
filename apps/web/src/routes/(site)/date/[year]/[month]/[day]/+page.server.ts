@@ -5,11 +5,13 @@ import { Errors } from '#lib/server/errors.js';
 import { loadSlots } from '#lib/server/slots.js';
 import { withSeoMeta } from '#lib/server/page-meta.js';
 import type { PageServerLoad } from './$types';
+
 export const load: PageServerLoad = async (event) => {
   const { fetch, params, url, parent } = event;
   const year = Number(params.year),
     month = Number(params.month),
     day = Number(params.day);
+
   if (
     !/^\d{4}$/.test(params.year) ||
     !/^(0[1-9]|1[0-2])$/.test(params.month) ||
@@ -25,6 +27,7 @@ export const load: PageServerLoad = async (event) => {
     { type: 'post', year, month, day },
     (await parent()).reading.postsPerPage,
   );
+
   return withSeoMeta(event, parent, {
     kind: 'date' as const,
     date: { year, month, day },

@@ -1,6 +1,7 @@
 import type { ApiApp } from '#api/http/services';
 import { session } from '#api/http/session';
 import { idParams } from '#api/http/params';
+
 export const routes = (app: ApiApp) =>
   session(app, 'users.manage').post(
     '',

@@ -60,8 +60,10 @@ const httpsUrl = z
   .max(2048)
   .refine((value) => {
     if (UNSAFE_URL.test(value)) return false;
+
     try {
       const url = new URL(value);
+
       return (
         url.protocol === 'https:' &&
         !!url.hostname &&
@@ -145,6 +147,7 @@ export const siteFontsSchema = z
   .superRefine((fonts, ctx) => {
     const slugs = new Set(fonts.map((font) => font.slug));
     const families = new Set(fonts.map((font) => font.family.toLowerCase()));
+
     if (slugs.size !== fonts.length || families.size !== fonts.length)
       ctx.addIssue({ code: 'custom', message: Errors.FontDuplicate });
   });
@@ -181,6 +184,7 @@ const publicFontSchema = z.strictObject({
     }),
   ),
 });
+
 export type PublicFont = z.output<typeof publicFontSchema>;
 
 /** Palette slugs every theme defines; the site's interface colors come from these. */
@@ -208,6 +212,7 @@ const paletteSchema = z
   .max(32)
   .superRefine((palette, ctx) => {
     const slugs = palette.map((entry) => entry.slug);
+
     if (new Set(slugs).size !== slugs.length)
       ctx.addIssue({ code: 'custom', message: Errors.ThemePaletteDuplicate });
     for (const role of THEME_COLOR_ROLES)
@@ -290,6 +295,7 @@ export const themeManifestSchema = z
         .map((entry) => entry.slug)
         .sort()
         .join();
+
     if (
       color.alternatePalette &&
       slugs(color.alternatePalette) !== slugs(color.palette)
@@ -306,8 +312,10 @@ export const themeManifestSchema = z
         message: Errors.ThemeAlternatePalette,
       });
     const fonts = manifest.settings.typography.fontFamilies.map((f) => f.slug);
+
     for (const key of ['fontFamily', 'headingFontFamily'] as const) {
       const value = manifest.styles[key];
+
       if (value && !fonts.includes(value))
         ctx.addIssue({
           code: 'custom',
@@ -324,6 +332,7 @@ export type ThemePaletteColor =
 /** A block list, validated by `parseBlocks` with every problem reported. */
 export const blockListSchema = z.unknown().transform((value, ctx): Block[] => {
   const { blocks, issues } = parseBlocks(value);
+
   // The block's place in the tree travels as `params.block`, beside the message's own values.
   for (const issue of issues.slice(0, 20))
     ctx.addIssue({
@@ -331,6 +340,7 @@ export const blockListSchema = z.unknown().transform((value, ctx): Block[] => {
       message: issue.message,
       params: { block: issue.path, ...issue.params },
     });
+
   return issues.length ? z.NEVER : blocks;
 });
 
@@ -362,6 +372,7 @@ export const cssProblem = (css: string): string | null => {
   if (css.length > THEME_CSS_MAX) return 'The stylesheet is too large';
   if (/[<\\]/.test(css)) return 'Markup and escapes are not allowed';
   const plain = css.replace(/\/\*[\s\S]*?\*\//g, '');
+
   if (plain.includes('/*')) return 'Unclosed comment';
   if (
     /@import|url\s*\(|image-set\s*\(|expression\s*\(|javascript:|@charset|@namespace|behavior\s*:|-moz-binding/i.test(
@@ -371,6 +382,7 @@ export const cssProblem = (css: string): string | null => {
     return 'The stylesheet may not load other resources';
   let depth = 0;
   let quote = '';
+
   for (const char of plain) {
     if (quote) {
       if (char === quote) quote = '';
@@ -379,7 +391,9 @@ export const cssProblem = (css: string): string | null => {
     else if (char === '{') depth++;
     else if (char === '}' && --depth < 0) return 'Unbalanced braces';
   }
+
   if (quote) return 'Unclosed string';
+
   return depth === 0 ? null : 'Unbalanced braces';
 };
 
@@ -388,6 +402,7 @@ export const themeCssSchema = z
   .string()
   .superRefine((css, ctx) => {
     const problem = cssProblem(css);
+
     if (problem) ctx.addIssue({ code: 'custom', message: problem });
   })
   .transform((css) => css.replace(/\/\*[\s\S]*?\*\//g, '').trim());

@@ -35,6 +35,7 @@ export class SiteHealthService {
     this.checks = deps.checks ?? new HealthChecks();
     this.checks.registerCore('siteUrl', async () => {
       const url = await deps.siteUrl();
+
       return { status: url ? 'good' : 'recommended', detail: url ? [url] : [] };
     });
     this.checks.registerCore('email', async () => ({
@@ -43,6 +44,7 @@ export class SiteHealthService {
     }));
     this.checks.registerCore('search', async () => {
       const search = await deps.search();
+
       return {
         status:
           search.state === 'failing'
@@ -75,6 +77,7 @@ export class SiteHealthService {
           deps.clock.now().getTime() - task.nextRunAt.getTime() > OVERDUE_MS,
       );
       const erring = tasks.filter((task) => task.lastError);
+
       return {
         status: overdue.length
           ? 'critical'
@@ -89,6 +92,7 @@ export class SiteHealthService {
         (failure) =>
           deps.clock.now().getTime() - failure.failedAt.getTime() < DAY_MS,
       );
+
       return {
         status: failures.length ? 'recommended' : 'good',
         // Job errors are catalog text (`JobFailed`); the kind travels as a param.
@@ -102,6 +106,7 @@ export class SiteHealthService {
       const failed = (await deps.plugins()).filter(
         (plugin) => plugin.status === 'failed',
       );
+
       return {
         status: failed.length ? 'recommended' : 'good',
         detail: failed.map((plugin) => plugin.id),
@@ -119,6 +124,7 @@ export class SiteHealthService {
       this.checks.run(),
       this.deps.info.database().catch(() => 'unknown'),
     ]);
+
     return {
       checks,
       info: {

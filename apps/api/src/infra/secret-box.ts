@@ -18,6 +18,7 @@ export const aesSecretBox = (secret: string, previous?: string): SecretBox => {
   const keys = [secret, previous]
     .filter((value): value is string => !!value)
     .map((value) => createHash('sha256').update(value).digest());
+
   return {
     seal(plain) {
       const iv = randomBytes(12);
@@ -26,6 +27,7 @@ export const aesSecretBox = (secret: string, previous?: string): SecretBox => {
         cipher.update(plain, 'utf8'),
         cipher.final(),
       ]);
+
       return [VERSION, iv, cipher.getAuthTag(), body]
         .map((part) =>
           typeof part === 'string' ? part : part.toString('base64url'),
@@ -34,7 +36,9 @@ export const aesSecretBox = (secret: string, previous?: string): SecretBox => {
     },
     open(sealed) {
       const [version, iv, tag, body] = sealed.split(':');
+
       if (version !== VERSION || !iv || !tag || body === undefined) return null;
+
       for (const key of keys) {
         try {
           const decipher = createDecipheriv(
@@ -42,7 +46,9 @@ export const aesSecretBox = (secret: string, previous?: string): SecretBox => {
             key,
             Buffer.from(iv, 'base64url'),
           );
+
           decipher.setAuthTag(Buffer.from(tag, 'base64url'));
+
           return Buffer.concat([
             decipher.update(Buffer.from(body, 'base64url')),
             decipher.final(),
@@ -51,6 +57,7 @@ export const aesSecretBox = (secret: string, previous?: string): SecretBox => {
           // Try the previous key during an intentional rotation.
         }
       }
+
       return null;
     },
   };
@@ -59,8 +66,10 @@ export const aesSecretBox = (secret: string, previous?: string): SecretBox => {
 /** The configured key, else the key file at `path`, created (0600) with a random key if missing. */
 export const secretKey = (configured: string | undefined, path: string) => {
   if (configured) return configured;
+
   if (!existsSync(path)) {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+
     try {
       writeFileSync(path, randomBytes(32).toString('base64url'), {
         mode: 0o600,
@@ -71,5 +80,6 @@ export const secretKey = (configured: string | undefined, path: string) => {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
     }
   }
+
   return readFileSync(path, 'utf8').trim();
 };

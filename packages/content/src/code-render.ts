@@ -38,6 +38,7 @@ export const renderCodeBlock = (
     : codeBlockAttributesSchema.parse({});
   const marked = highlightedRows(attrs.highlightLines);
   let tokens: ReturnType<typeof highlighter.codeToTokens> | null = null;
+
   try {
     if (new TextEncoder().encode(code).length <= 100_000)
       tokens = highlighter.codeToTokens(code, {
@@ -52,6 +53,7 @@ export const renderCodeBlock = (
   } catch {
     // Grammar failures must not prevent saving otherwise valid content.
   }
+
   const lines = code
     .split('\n')
     .map((line, index) => {
@@ -68,6 +70,7 @@ export const renderCodeBlock = (
           ).join('')
         : escape(line);
       const highlighted = marked(index + 1);
+
       return `<span class="cms-code-line${highlighted ? ' is-highlighted' : ''}">${attrs.lineNumbers ? `<span aria-hidden="true" class="cms-code-number" data-line="${attrs.startLine + index}"></span>` : ''}${body}</span>`;
     })
     .join('\n');
@@ -75,6 +78,7 @@ export const renderCodeBlock = (
     typeof raw.language === 'string' && raw.language
       ? ` class="language-${escape(raw.language)}"`
       : '';
+
   return `<figure class="cms-code not-prose${attrs.theme ? '' : ' cms-code-auto'}"${tokens && attrs.theme ? ` style="background:${escape(tokens.bg ?? '')};color:${escape(tokens.fg ?? '')}"` : ''}>${attrs.label ? `<figcaption>${escape(attrs.label)}</figcaption>` : ''}${attrs.copyButton ? '<button type="button" data-code-copy hidden></button><span class="sr-only" role="status"></span>' : ''}<pre tabindex="0"><code${language}>${lines}</code></pre></figure>`;
 };
 

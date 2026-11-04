@@ -24,7 +24,9 @@ export class MemorySsoAccessTransactions implements SsoAccessTransactions {
   constructor(private readonly context: SsoAccessContext) {}
   run<T>(work: (context: SsoAccessContext) => Promise<T>) {
     const next = this.tail.then(() => work(this.context));
+
     this.tail = next.catch(() => undefined);
+
     return next;
   }
 }
@@ -54,6 +56,7 @@ export class MemoryUsers implements UserRepository {
 
   async setPassword(id: string, passwordHash: string) {
     const row = this.rows.get(id);
+
     if (row) row.passwordHash = passwordHash;
   }
 
@@ -82,6 +85,7 @@ export class MemorySessions implements SessionRepository {
   async find(tokenHash: string) {
     const session = this.rows.get(tokenHash);
     const user = session && this.users.rows.get(session.userId);
+
     return user ? structuredClone({ ...session, user }) : null;
   }
 
@@ -143,11 +147,13 @@ export class MemoryIdentities implements ExternalIdentityRepository {
 
   async claimUser(tokenHash: string, now: Date) {
     const token = this.tokens.rows.get(tokenHash);
+
     return token && token.expiresAt > now ? token.userId : null;
   }
 
   async claim(identity: ExternalIdentityRecord, tokenHash: string, now: Date) {
     const token = this.tokens.rows.get(tokenHash);
+
     if (!token || token.userId !== identity.userId || token.expiresAt <= now)
       return false;
     if (
@@ -160,6 +166,7 @@ export class MemoryIdentities implements ExternalIdentityRepository {
     this.setLink(identity);
     for (const [hash, row] of this.tokens.rows)
       if (row.userId === identity.userId) this.tokens.rows.delete(hash);
+
     return true;
   }
 
@@ -170,15 +177,18 @@ export class MemoryIdentities implements ExternalIdentityRepository {
   private setLink(identity: ExternalIdentityRecord) {
     const key = `${identity.issuer}\n${identity.subject}`;
     const owner = this.rows.get(key)?.userId;
+
     if (owner && owner !== identity.userId)
       throw conflict(
         'This single sign-on account is already linked to another administrator.',
       );
+
     for (const [key, row] of this.rows)
       if (row.userId === identity.userId && row.issuer === identity.issuer) {
         this.rows.delete(key);
         this.sessions.deleteByIdentity(row.id);
       }
+
     this.rows.set(key, structuredClone(identity));
   }
 
@@ -227,7 +237,9 @@ export class MemorySsoTransactions implements SsoTransactionRepository {
 
   async take(handleHash: string) {
     const row = this.rows.get(handleHash) ?? null;
+
     this.rows.delete(handleHash);
+
     return row;
   }
 }

@@ -43,6 +43,7 @@ export interface RuntimeStorage {
 
 export const createStorage = (): RuntimeStorage => {
   const data = new MemoryPluginData();
+
   return {
     data,
     state: new MemoryPluginState(data),
@@ -82,6 +83,7 @@ export const createRuntime = ({
   const scheduler: TaskScheduler = {
     add: (task) => {
       tasks.set(task.name, task);
+
       return () => void tasks.delete(task.name);
     },
   };
@@ -141,6 +143,7 @@ export const createRuntime = ({
     logger,
     timeoutMs,
   });
+
   return {
     host,
     healthChecks,

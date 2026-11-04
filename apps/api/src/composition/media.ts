@@ -29,10 +29,12 @@ export const createImages = (
   logger: Logger,
 ): { mediaProcessors: MediaProcessors; imageSizes: ImageSizes } => {
   const mediaProcessors = new MediaProcessors(timeoutMs);
+
   mediaProcessors.registerCore({
     process: ({ bytes, mime }) => sharpImages.clean(bytes, mime),
   });
   const imageSizes = new ImageSizes(logger);
+
   return { mediaProcessors, imageSizes };
 };
 
@@ -97,13 +99,16 @@ export const createMedia = ({
         await new S3MediaStorage(s3, egressFetch('media-storage')).test();
       else if (driver.startsWith('plugin:')) {
         const storage = storageDrivers.get(driver, pluginSettings);
+
         if (!storage) throw new Error(Errors.MediaDriverInvalid);
         const key = '.cms-probe';
+
         if (
           (await storage.commit([{ key, bytes: new Uint8Array([0]) }], 0)) !==
           'stored'
         )
           throw invalidInput(Errors.MediaStorageBusy);
+
         try {
           await storage.remove([key]);
         } catch {
@@ -120,7 +125,9 @@ export const createMedia = ({
   });
   const remoteStorage = async () => {
     const { s3 } = await mediaStorageSettings.configuration();
+
     if (!s3) throw new Error(Errors.MediaStorageSecret);
+
     return new S3MediaStorage(s3, egressFetch('media-storage'));
   };
   const reconciler = wrap(
@@ -145,11 +152,14 @@ export const createMedia = ({
           ? (await mediaStorageSettings.configuration(driver)).pluginSettings
           : undefined,
       );
+
       if (!storage) throw new Error(Errors.MediaDriverInvalid);
+
       return storage;
     },
     finalize,
   });
+
   storageDrivers.onRegistered = (driver) => mediaCleanup.recover(driver);
   const storageResync = new StorageResync({
     settings: settingsRepository,
@@ -164,6 +174,7 @@ export const createMedia = ({
     reconcile: (driver, startedAt, signal) =>
       reconciler.run(driver, startedAt, signal),
   });
+
   mediaStorageSettings.resync = storageResync;
   jobs.handle(MEDIA_RESYNC_JOB, (payload) => storageResync.run(payload));
   storageDrivers.registerCore('local', localMediaStorage);
@@ -188,7 +199,9 @@ export const createMedia = ({
           ? (await mediaStorageSettings.configuration(driver)).pluginSettings
           : undefined,
       );
+
       if (!storage) throw new Error(Errors.MediaDriverInvalid);
+
       return {
         driver,
         storage,
@@ -206,6 +219,7 @@ export const createMedia = ({
     limits,
     maxBytes: config.MEDIA_MAX_MB * 1024 * 1024,
   });
+
   jobs.handle('media.delete', async (payload) => {
     if (
       !payload ||
@@ -226,5 +240,6 @@ export const createMedia = ({
       throw new Error(Errors.InvalidInput);
     await mediaCleanup.run(payload.id);
   });
+
   return { media };
 };

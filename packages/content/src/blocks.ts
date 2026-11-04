@@ -163,9 +163,11 @@ export const Details = Node.create({
           const element = dom as HTMLElement;
           const summary = element.querySelector(':scope > summary');
           const body = element.ownerDocument.createElement('div');
+
           for (const child of Array.from(element.childNodes))
             if (child !== summary) body.appendChild(child.cloneNode(true));
           const content = DOMParser.fromSchema(schema).parse(body).content;
+
           return Fragment.fromArray([
             schema.nodes.detailsSummary!.create(
               null,
@@ -190,12 +192,14 @@ export const Details = Node.create({
   addNodeView() {
     return () => {
       const dom = document.createElement('details');
+
       dom.className = 'cms-details';
       dom.open = true;
       // Editing keeps the body reachable; the stored open preference affects public output only.
       dom.addEventListener('toggle', () => {
         dom.open = true;
       });
+
       return { dom, contentDOM: dom };
     };
   },
@@ -237,8 +241,10 @@ export const Pullquote = Node.create({
         const element = dom as HTMLElement;
         const quote = element.querySelector('blockquote')?.cloneNode(true) as
           HTMLElement | undefined;
+
         if (!quote) return Fragment.from(schema.nodes.paragraph!.create());
         for (const cite of quote.querySelectorAll('cite')) cite.remove();
+
         return DOMParser.fromSchema(schema).parse(quote).content;
       },
     })),
@@ -263,6 +269,7 @@ export const Spacer = Node.create({
         const height =
           element.getAttribute('data-height') ??
           element.style.height.replace(/px$/, '');
+
         return /^\d+$/.test(height) ? Number(height) : 48;
       },
     },
@@ -301,6 +308,7 @@ export const ContentTable = Table.extend({
   }),
   renderHTML(props) {
     const output = this.parent!(props) as readonly unknown[];
+
     return props.node.attrs.caption
       ? ([
           output[0],
@@ -318,6 +326,7 @@ const pluginAttrs = (element: HTMLElement) => {
     const value: unknown = JSON.parse(
       element.getAttribute('data-attrs') ?? '{}',
     );
+
     return value && typeof value === 'object' && !Array.isArray(value)
       ? value
       : {};

@@ -13,6 +13,7 @@
 
   onMount(() => {
     ready = true;
+
     return () => clearTimeout(timer);
   });
 

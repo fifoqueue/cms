@@ -52,6 +52,7 @@ export class AuthService {
   /** Creates the first user. Allowed only while no user exists. */
   async setup(input: unknown): Promise<SessionGrant> {
     const { name, email, password } = parseInput(setupSchema, input);
+
     if ((await this.deps.users.count()) > 0)
       throw conflict(Errors.SetupCompleted);
     const id = this.deps.ids.next();
@@ -67,7 +68,9 @@ export class AuthService {
       locale: '',
       createdAt: this.deps.clock.now(),
     };
+
     await this.deps.users.insert(user);
+
     return this.startSession(user);
   }
 
@@ -76,6 +79,7 @@ export class AuthService {
     const session = this.deps.hooks?.has('user.signedOut')
       ? await this.deps.sessions.find(hash)
       : null;
+
     await this.deps.sessions.delete(hash);
     if (session)
       await this.deps.hooks!.emit('user.signedOut', {
@@ -93,6 +97,7 @@ export class AuthService {
   /** The signed-in user's own sessions, marking the one making this request. */
   async sessions(actor: Actor, token: string): Promise<SessionInfo[]> {
     const current = this.deps.tokens.digest(token);
+
     return (
       await this.deps.sessions.listForUser(actor.id, this.deps.clock.now())
     ).map((session) => ({
@@ -108,6 +113,7 @@ export class AuthService {
     const session = (
       await this.deps.sessions.listForUser(actor.id, this.deps.clock.now())
     ).find((candidate) => this.sessionId(candidate.tokenHash) === id);
+
     if (!session) throw notFound(Errors.SessionNotFound);
     await this.deps.sessions.delete(session.tokenHash);
     await this.signedOut(actor.id, 'other', actor.id);
@@ -129,6 +135,7 @@ export class AuthService {
   ) {
     if (!this.deps.hooks?.has('user.signedOut')) return;
     const user = await this.deps.users.findById(userId);
+
     if (user)
       await this.deps.hooks.emit('user.signedOut', {
         user: toProfile(user),
@@ -140,14 +147,19 @@ export class AuthService {
   /** The user of a session token or, when enabled, an application password. */
   async authenticate(token: string): Promise<UserProfile | null> {
     const apiUser = await this.deps.apiTokens?.authenticate(token);
+
     if (apiUser) return this.sessionAllowed(apiUser, 'apiToken');
     const tokenHash = this.deps.tokens.digest(token);
     const session = await this.deps.sessions.find(tokenHash);
+
     if (!session) return null;
+
     if (session.expiresAt <= this.deps.clock.now()) {
       await this.deps.sessions.delete(tokenHash);
+
       return null;
     }
+
     return this.sessionAllowed(session.user, 'session');
   }
 
@@ -156,6 +168,7 @@ export class AuthService {
     kind: 'session' | 'apiToken',
   ): Promise<UserProfile | null> {
     const profile = await this.profile(user);
+
     if (!this.deps.hooks?.has('user.sessionAllowed')) return profile;
     const snapshot = JSON.stringify(profile);
     const schema = z.strictObject({
@@ -168,16 +181,19 @@ export class AuthService {
       { user: profile, kind, allowed: true },
       (value) => schema.safeParse(value).success,
     );
+
     return result.allowed ? profile : null;
   }
 
   private async profile(user: UserRecord): Promise<UserProfile> {
     const profile = toProfile(user);
+
     if (this.deps.roles)
       profile.capabilities = await this.deps.roles.capabilities(
         user.role,
         user.id,
       );
+
     return profile;
   }
 
@@ -192,6 +208,7 @@ export class AuthService {
     const token = this.deps.tokens.issue();
     const now = this.deps.clock.now();
     let ttlMs = this.deps.sessionTtlMs;
+
     if (this.deps.hooks?.has('user.sessionLifetime')) {
       const profile = await this.profile(user);
       const snapshot = JSON.stringify(profile);
@@ -200,15 +217,19 @@ export class AuthService {
         { user: profile, ttlMs },
         (value) => {
           const parsed = sessionLifetimeSchema.safeParse(value);
+
           return (
             parsed.success &&
             JSON.stringify((value as { user: UserProfile }).user) === snapshot
           );
         },
       );
+
       ttlMs = result.ttlMs;
     }
+
     const expiresAt = new Date(now.getTime() + ttlMs);
+
     await this.deps.sessions.insert({
       tokenHash: this.deps.tokens.digest(token),
       userId: user.id,
@@ -216,6 +237,7 @@ export class AuthService {
       createdAt: now,
       expiresAt,
     });
+
     return {
       token,
       expiresAt: expiresAt.toISOString(),

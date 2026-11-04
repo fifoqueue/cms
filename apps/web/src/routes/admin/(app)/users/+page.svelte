@@ -60,6 +60,7 @@
 
   const roleName = (key: string) => {
     const label = roleLabel(m, key);
+
     return label === key
       ? (data.roles.find((role) => role.key === key)?.name ?? key)
       : label;
@@ -92,6 +93,7 @@
       !confirm(m.usersBulkDeleteConfirm)
     )
       return cancel();
+
     return async ({ update }) => {
       selected = [];
       await update();
@@ -460,6 +462,7 @@
         use:enhance={({ cancel }) => {
           if (!confirm(m.rolesDeleteConfirm(selectedRole.name)))
             return cancel();
+
           return async ({ update }) => {
             roleKey = '';
             await update();

@@ -12,6 +12,7 @@ const timeZoneSchema = z
   .refine((zone) => {
     try {
       new Intl.DateTimeFormat('en', { timeZone: zone });
+
       return true;
     } catch {
       return false;

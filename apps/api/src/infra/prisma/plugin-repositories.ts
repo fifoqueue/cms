@@ -42,6 +42,7 @@ export class PrismaPluginDataRepository implements PluginDataRepository {
     const row = await this.db.pluginData.findUnique({
       where: { pluginId_scope_key: { pluginId, scope, key } },
     });
+
     return row ? (JSON.parse(row.value) as unknown) : undefined;
   }
 
@@ -52,6 +53,7 @@ export class PrismaPluginDataRepository implements PluginDataRepository {
     value: unknown,
   ) {
     const json = stringifyJson(value);
+
     await this.db.pluginData.upsert({
       where: { pluginId_scope_key: { pluginId, scope, key } },
       create: { pluginId, scope, key, value: json },
@@ -67,6 +69,7 @@ export class PrismaPluginDataRepository implements PluginDataRepository {
     const rows = await this.db.pluginData.findMany({
       where: { pluginId, scope },
     });
+
     return Object.fromEntries(
       rows.map(({ key, value }) => [key, JSON.parse(value) as unknown]),
     );

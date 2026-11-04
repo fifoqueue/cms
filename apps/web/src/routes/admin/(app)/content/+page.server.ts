@@ -100,7 +100,9 @@ export const load: PageServerLoad = async (event) => {
     }),
     admin.content.counts(type),
   ]);
+
   clampPage(event.url, content);
+
   return {
     filter: {
       type,
@@ -138,11 +140,13 @@ const rowAction =
   (run: 'trash' | 'restore' | 'remove', notice: string) =>
   async (event: Parameters<Actions[string]>[0]) => {
     const id = text(await event.request.formData(), 'id');
+
     try {
       await adminFor(event).content[run](id);
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice };
   };
 
@@ -150,12 +154,15 @@ export const actions: Actions = {
   /** The notice and its Undo (restore) travel in the address, shown by `FlashNotice`. */
   trash: async (event) => {
     const id = text(await event.request.formData(), 'id');
+
     try {
       await adminFor(event).content.trash(id);
     } catch (caught) {
       return failFrom(caught);
     }
+
     const params = new URLSearchParams(event.url.search);
+
     params.delete('/trash');
     params.set('notice', 'entryTrashed');
     params.set('undo', id);
@@ -168,16 +175,19 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const id = text(form, 'id');
     const admin = adminFor(event);
+
     try {
       const { input, failure } = readQuickEdit(
         await admin.content.get(id),
         form,
       );
+
       if (failure) return failure;
       await admin.content.update(id, input);
     } catch (caught) {
       return failFrom(caught, { quickEdit: id });
     }
+
     return { notice: 'saved' };
   },
   /** Applies one action to every selected entry and reports the ones that failed. */
@@ -185,6 +195,7 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const action = pick(BULK, text(form, 'action'));
     const selection = readSelection(form);
+
     if (selection.failure) return selection.failure;
     if (!action) return {};
     const content = adminFor(event).content;
@@ -198,6 +209,7 @@ export const actions: Actions = {
             : content.remove(id),
       selection.invalid,
     );
+
     return { bulk: result };
   },
   /**
@@ -207,6 +219,7 @@ export const actions: Actions = {
   bulkEdit: async (event) => {
     const form = await event.request.formData();
     const selection = readSelection(form);
+
     if (selection.failure) return selection.failure;
     const changes = readBulkChanges(form);
     const admin = adminFor(event);
@@ -220,11 +233,13 @@ export const actions: Actions = {
           changes,
           text(form, `version:${id}`) || entry.updatedAt,
         );
+
         if (!input) return Errors.FormInvalid;
         await admin.content.update(id, input);
       },
       selection.invalid,
     );
+
     return { bulk: result };
   },
 };

@@ -15,20 +15,25 @@ export const toRows = (items: readonly MenuItem[], depth = 0): MenuRow[] =>
 export const toItems = (rows: readonly MenuRow[]): MenuItem[] => {
   const root: MenuItem[] = [];
   const parents: MenuItem[][] = [root];
+
   for (const { depth, ...row } of rows) {
     const item: MenuItem = { ...row, children: [] };
     const level = Math.min(depth, parents.length - 1);
+
     parents[level]!.push(item);
     parents.length = level + 1;
     parents.push(item.children);
   }
+
   return root;
 };
 
 /** Index just past the row's subtree. */
 const blockEnd = (rows: readonly MenuRow[], index: number) => {
   let end = index + 1;
+
   while (end < rows.length && rows[end]!.depth > rows[index]!.depth) end += 1;
+
   return end;
 };
 
@@ -44,6 +49,7 @@ const moveBlock = (
     .map((row) => ({ ...row, depth: row.depth + shift }));
   const rest = [...rows.slice(0, from), ...rows.slice(end)];
   const at = to > from ? to - block.length : to;
+
   return [...rest.slice(0, at), ...block, ...rest.slice(at)];
 };
 
@@ -51,7 +57,9 @@ const moveBlock = (
 export const moveUp = (rows: readonly MenuRow[], index: number) => {
   const depth = rows[index]!.depth;
   let previous = index - 1;
+
   while (previous >= 0 && rows[previous]!.depth > depth) previous -= 1;
+
   return previous >= 0 && rows[previous]!.depth === depth
     ? moveBlock(rows, index, previous)
     : [...rows];
@@ -60,6 +68,7 @@ export const moveUp = (rows: readonly MenuRow[], index: number) => {
 /** Swaps the row (with its children) with the next sibling; unchanged at the bottom. */
 export const moveDown = (rows: readonly MenuRow[], index: number) => {
   const next = blockEnd(rows, index);
+
   return rows[next]?.depth === rows[index]!.depth
     ? moveBlock(rows, index, blockEnd(rows, next))
     : [...rows];
@@ -69,6 +78,7 @@ export const moveDown = (rows: readonly MenuRow[], index: number) => {
 export const indent = (rows: readonly MenuRow[], index: number) => {
   const end = blockEnd(rows, index);
   const deepest = Math.max(...rows.slice(index, end).map((row) => row.depth));
+
   return index > 0 &&
     rows[index - 1]!.depth >= rows[index]!.depth &&
     deepest < MAX_DEPTH
@@ -79,9 +89,12 @@ export const indent = (rows: readonly MenuRow[], index: number) => {
 /** Moves the row out of its parent, right after the parent's subtree. */
 export const outdent = (rows: readonly MenuRow[], index: number) => {
   const depth = rows[index]!.depth;
+
   if (depth === 0) return [...rows];
   let after = blockEnd(rows, index);
+
   while (after < rows.length && rows[after]!.depth >= depth) after += 1;
+
   return moveBlock(rows, index, after, -1);
 };
 
@@ -98,10 +111,13 @@ export const removeRow = (rows: readonly MenuRow[], index: number) => [
  */
 export const moveTo = (rows: readonly MenuRow[], from: number, to: number) => {
   const end = blockEnd(rows, from);
+
   if (to >= from && to < end) return [...rows];
   const depth = to < rows.length ? rows[to]!.depth : 0;
   const shift = depth - rows[from]!.depth;
   const deepest = Math.max(...rows.slice(from, end).map((row) => row.depth));
+
   if (deepest + shift > MAX_DEPTH) return [...rows];
+
   return moveBlock(rows, from, to, shift);
 };

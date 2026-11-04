@@ -31,6 +31,7 @@ export const load: PageServerLoad = async (event) => {
   const theme = siteLayout(event);
   const { reading } = await theme;
   const pageSize = reading?.postsPerPage ?? 10;
+
   if (search) {
     const query = (url.searchParams.get('q') ?? '').trim().slice(0, 200);
     const [posts, loaded] = await Promise.all([
@@ -38,6 +39,7 @@ export const load: PageServerLoad = async (event) => {
       slots!,
       theme,
     ]);
+
     return withTemplateData(publicApi, event, {
       kind: 'search' as const,
       query,
@@ -45,6 +47,7 @@ export const load: PageServerLoad = async (event) => {
       slots: loaded,
     });
   }
+
   if (reading?.frontPagePath && !url.searchParams.has('type')) {
     const types = api.contentTypes().catch(() => []);
     const [{ content }] = await Promise.all([
@@ -53,6 +56,7 @@ export const load: PageServerLoad = async (event) => {
         .catch(notFoundFrom),
       theme,
     ]);
+
     return entryPage(
       api,
       event,
@@ -63,6 +67,7 @@ export const load: PageServerLoad = async (event) => {
       '/',
     );
   }
+
   const [{ type, posts }, loaded] = await Promise.all([
     homePosts(
       api,
@@ -74,6 +79,7 @@ export const load: PageServerLoad = async (event) => {
     loadSlots(api, { path: url.pathname }),
     theme,
   ]);
+
   return withTemplateData(publicApi, event, {
     kind: 'home' as const,
     type,

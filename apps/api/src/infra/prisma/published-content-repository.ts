@@ -41,6 +41,7 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
       },
       select: { id: true, html: true },
     });
+
     return new Map(rows.map((row) => [row.id, row.html]));
   }
 
@@ -52,6 +53,7 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
       'private',
       this.hooks,
     );
+
     return rows[0] ?? null;
   }
 
@@ -84,9 +86,11 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
       status: 'published',
       view: 'active',
     });
+
     if (!where) return { items: [], total: 0 };
     const total = await this.db.content.count({ where });
     const skip = (page - 1) * pageSize;
+
     if (skip >= total) return { items: [], total };
     const rows = await this.db.content.findMany({
       where,
@@ -95,18 +99,22 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
       skip,
       take: pageSize,
     });
+
     if (!rows.length) return { items: [], total };
     const filter = Prisma.sql`c.id IN (${Prisma.join(rows.map(({ id }) => id))})`;
     const items = body
       ? await projectContent(this.db, filter, true, undefined, this.hooks)
       : await projectContent(this.db, filter, false, undefined, this.hooks);
     const positions = new Map(rows.map(({ id }, index) => [id, index]));
+
     items.sort((a, b) => positions.get(a.id)! - positions.get(b.id)!);
+
     return { items: items as T[], total };
   }
 
   async summariesByIds(ids: readonly string[]) {
     if (!ids.length) return [];
+
     return projectContent(
       this.db,
       Prisma.sql`c.id IN (${Prisma.join([...ids])})`,
@@ -142,6 +150,7 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
     const termIds = category
       ? await termScope(this.db, 'category', category)
       : null;
+
     if (termIds && !termIds.length) return { items: [], total: 0 };
 
     const filters: Prisma.Sql[] = [
@@ -149,13 +158,16 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
       Prisma.sql`c.trashed_at IS NULL`,
       Prisma.sql`MATCH(c.title, c.excerpt, c.search_text) AGAINST (${search} IN NATURAL LANGUAGE MODE)`,
     ];
+
     if (taxonomy && term) {
       const ids = await termScope(this.db, taxonomy, term);
+
       if (!ids.length) return { items: [], total: 0 };
       filters.push(
         Prisma.sql`EXISTS (SELECT 1 FROM content_terms ct WHERE ct.content_id = c.id AND ct.term_id IN (${Prisma.join(ids)}))`,
       );
     }
+
     if (include?.length)
       filters.push(Prisma.sql`c.id IN (${Prisma.join([...include])})`);
     if (exclude?.length)
@@ -170,12 +182,15 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
     else if (types)
       filters.push(Prisma.sql`c.type IN (${Prisma.join([...types])})`);
     if (sticky) filters.push(Prisma.sql`c.sticky = ${sticky === 'only'}`);
+
     if (year) {
       const range = publishedIn(year, month, day, await siteTimeZone(this.db));
+
       filters.push(
         Prisma.sql`c.published_at >= ${range.gte} AND c.published_at < ${range.lt}`,
       );
     }
+
     if (author)
       filters.push(Prisma.sql`EXISTS (
         SELECT 1 FROM users u WHERE u.id = c.author_id AND u.slug = ${author}
@@ -198,6 +213,7 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
     `);
     const total = Number(counts[0]!.total);
     const skip = (page - 1) * pageSize;
+
     if (skip >= total) return { items: [], total };
     const column = {
       publishedAt: Prisma.sql`c.published_at`,
@@ -214,7 +230,9 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
     `);
     const order = new Map(rows.map((row, index) => [row.id, index]));
     const items = await this.summariesByIds(rows.map((row) => row.id));
+
     items.sort((a, b) => order.get(a.id)! - order.get(b.id)!);
+
     return { items, total };
   }
 
@@ -223,6 +241,7 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
     const parts = calendar(await siteTimeZone(this.db));
     const counts: MonthCounts = new Map();
     let cursor: { id: string; publishedAt: Date } | null = null;
+
     for (;;) {
       const rows: { id: string; publishedAt: Date | null }[] =
         await this.db.content.findMany({
@@ -241,14 +260,19 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
           orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
           take: 1000,
         });
+
       for (const row of rows) {
         const { year, month } = parts(row.publishedAt!);
+
         countMonth(counts, year, month);
       }
+
       if (rows.length < 1000 || counts.size > limit) break;
       const last = rows.at(-1)!;
+
       cursor = { id: last.id, publishedAt: last.publishedAt! };
     }
+
     return newestMonths(counts, limit);
   }
 
@@ -258,6 +282,7 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
       select: { type: true, publishedAt: true },
     });
     const at = entry?.publishedAt;
+
     if (!entry || !at) return { previous: null, next: null };
     // Ties on `publishedAt` fall back to the id, like the list order.
     const near = (direction: 'lt' | 'gt') =>
@@ -284,6 +309,7 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
         )
       ).map((item) => [item.id, item]),
     );
+
     return {
       previous: previous ? (items.get(previous.id) ?? null) : null,
       next: next ? (items.get(next.id) ?? null) : null,
@@ -316,6 +342,7 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
             month: parts(row.publishedAt).month,
           }
         : null;
+
     return { previous: monthOf(previous), next: monthOf(next) };
   }
 
@@ -324,6 +351,7 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
       where: { id, ...PUBLIC_CONTENT },
       select: { passwordHash: true },
     });
+
     return row?.passwordHash ?? null;
   }
 
@@ -339,6 +367,7 @@ export class PrismaPublishedContentRepository implements PublishedContentReposit
       undefined,
       this.hooks,
     );
+
     return rows[0] ?? null;
   }
 }

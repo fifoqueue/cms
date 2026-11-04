@@ -56,6 +56,7 @@ export const siteView = ({
 export const seoSettingsView = (settings: PublicSeoSettings) => {
   const { allowAiSearch, allowAiTraining, llmsIntro, ...view } =
     publicSeoSettingsFields(settings);
+
   return { ...view, sameAs: [...settings.sameAs] };
 };
 
@@ -189,6 +190,7 @@ export type PostList = ReturnType<typeof listView>;
 /** `?page=` (or another page parameter) as a positive integer (1 when missing or invalid). */
 export const pageParam = (url: URL, key = 'page') => {
   const page = Math.trunc(Number(url.searchParams.get(key)));
+
   return Number.isSafeInteger(page) && page > 0
     ? Math.min(page, PAGINATION_MAX_PAGE)
     : 1;
@@ -228,6 +230,7 @@ export const menuView = (items: readonly PublicMenuItem[]): MenuItemView[] =>
 
 const widgetView = (widget: PublicWidget) => {
   const base = { id: widget.id, title: widget.title };
+
   switch (widget.kind) {
     case 'recentPosts':
       return {

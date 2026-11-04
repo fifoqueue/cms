@@ -12,6 +12,7 @@ type Fetch = (input: string, init: RequestInit) => Promise<Response>;
 
 export function emailEndpoint(settings: HttpSettings): string {
   const eu = settings.region === 'eu' ? '.eu' : '';
+
   switch (settings.provider) {
     case 'sendgrid':
       return `https://api${eu}.sendgrid.com/v3/mail/send`;
@@ -49,14 +50,17 @@ const sesSender = (from: HttpTransport['from']) =>
     ? `${Array.from(from.name)
         .reduce<string[]>((parts, char) => {
           const last = parts.length - 1;
+
           if (last < 0 || Buffer.byteLength(parts[last]! + char) > 42)
             parts.push(char);
           else parts[last] += char;
+
           return parts;
         }, [])
         .map((part) => `=?UTF-8?B?${Buffer.from(part).toString('base64')}?=`)
         .join(' ')} <${from.email}>`
     : sender(from);
+
 type Adapter = (
   transport: HttpTransport,
   message: EmailMessage,
@@ -82,6 +86,7 @@ const adapters: Record<HttpTransport['provider'], Adapter> = {
       text: m.text,
     }).reduce((form, [key, value]) => {
       form.set(key, value);
+
       return form;
     }, new FormData()),
   }),
@@ -173,6 +178,7 @@ const adapters: Record<HttpTransport['provider'], Adapter> = {
           ? JSON.stringify(values[name as keyof typeof values])
           : match,
     );
+
     try {
       return {
         headers: t.authHeader ? { [t.authHeader]: t.secret } : {},
@@ -193,15 +199,18 @@ async function excerpt(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let text = '';
+
   try {
     while (text.length < 32768) {
       const { value, done } = await reader.read();
+
       if (done) break;
       text += decoder.decode(value.subarray(0, 65536), { stream: true });
     }
   } finally {
     await reader.cancel();
   }
+
   for (const credential of credentials
     .filter(Boolean)
     .sort((a, b) => b.length - a.length))
@@ -212,6 +221,7 @@ async function excerpt(
       Buffer.from(credential).toString('base64'),
     ])
       text = text.replaceAll(value, '[redacted]');
+
   return text.slice(0, 500);
 }
 
@@ -227,6 +237,7 @@ export const createHttpMailer = (fetch: Fetch, now = () => new Date()) => ({
       ...(!request.form && { 'content-type': 'application/json' }),
       ...request.headers,
     };
+
     if (transport.provider === 'ses')
       headers = signAws({
         url,
@@ -247,13 +258,18 @@ export const createHttpMailer = (fetch: Fetch, now = () => new Date()) => ({
       signal: AbortSignal.timeout(10_000),
       redirect: 'error',
     }).catch((error: unknown) => failureOf(error)?.reason ?? 'network');
+
     if (typeof response === 'string')
       throw new Error(Errors.EmailNetworkFailed, { cause: response });
+
     if (response.ok) {
       await response.body?.cancel();
+
       return;
     }
+
     let detail = '';
+
     try {
       detail = await excerpt(response, [
         transport.secret,
@@ -266,7 +282,9 @@ export const createHttpMailer = (fetch: Fetch, now = () => new Date()) => ({
     } catch {
       /* The status still determines retryability if reading the body fails. */
     }
+
     const error = Errors.EmailHttpFailed(response.status, detail);
+
     if (
       response.status >= 400 &&
       response.status < 500 &&

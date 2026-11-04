@@ -4,6 +4,7 @@ const WORD = /[\p{L}\p{N}]+/gu;
 
 export const readingMinutes = (html: string, wordsPerMinute: number) => {
   const words = html.replace(/<[^>]*>/g, ' ').match(WORD)?.length ?? 0;
+
   return Math.max(1, Math.round(words / Math.max(1, wordsPerMinute)));
 };
 
@@ -60,6 +61,7 @@ export const plugin = definePlugin({
         '{minutes}',
         String(await minutesFor(content.html)),
       );
+
       return `<p class="cms-reading-time" style="font-size:.875rem;opacity:.7">${escapeHtml(label)}</p>`;
     });
   },

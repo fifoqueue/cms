@@ -8,6 +8,7 @@ export const routes = (app: ApiApp) =>
     '',
     async ({ sso, user, params }) => {
       await sso.unlink(user.id, params.id);
+
       return noContent();
     },
     idParams,

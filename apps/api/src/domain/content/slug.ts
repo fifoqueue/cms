@@ -21,5 +21,6 @@ export const uniqueSlug = async (
     index === 0 ? base : `${base}-${index + 1}`,
   );
   const used = await taken(candidates);
+
   return candidates.find((slug) => !used.has(slug)) ?? `${base}-${fallback()}`;
 };

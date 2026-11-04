@@ -14,6 +14,7 @@ export class PrismaSignInTransactions implements SignInTransactions {
 
   admit(record: SignInTransaction, now: Date, limits: AdmissionLimits) {
     const state = JSON.stringify(signInStateSchema.parse(record.state ?? null));
+
     return this.db.$transaction(async (tx) => {
       await lockSetting(tx, 'signIn.transactions');
       await tx.signInTransaction.deleteMany({
@@ -36,6 +37,7 @@ export class PrismaSignInTransactions implements SignInTransactions {
       await tx.signInTransaction.create({
         data: { ...record, state },
       });
+
       return true;
     });
   }
@@ -46,6 +48,7 @@ export class PrismaSignInTransactions implements SignInTransactions {
     now: Date,
   ): Promise<SignInTransaction | null> {
     const row = await this.acquire(handleHash, clientKey, now);
+
     return row && (await this.replace(handleHash, null, now)) ? row : null;
   }
 
@@ -59,9 +62,12 @@ export class PrismaSignInTransactions implements SignInTransactions {
       where: { ...where, inProgress: false },
       data: { inProgress: true },
     });
+
     if (count !== 1) return null;
     const row = await this.db.signInTransaction.findFirst({ where });
+
     if (!row) return null;
+
     return {
       handleHash: row.handleHash,
       stage: z.enum(SIGN_IN_STAGES).parse(row.stage),
@@ -90,17 +96,20 @@ export class PrismaSignInTransactions implements SignInTransactions {
     const state = next
       ? JSON.stringify(signInStateSchema.parse(next.state ?? null))
       : null;
+
     return this.db.$transaction(async (tx) => {
       await lockSetting(tx, 'signIn.transactions');
       if (next && next.expiresAt <= now) return false;
       const { count } = await tx.signInTransaction.deleteMany({
         where: { handleHash, inProgress: true, expiresAt: { gt: now } },
       });
+
       if (count !== 1) return false;
       if (next)
         await tx.signInTransaction.create({
           data: { ...next, state: state!, inProgress: false },
         });
+
       return true;
     });
   }

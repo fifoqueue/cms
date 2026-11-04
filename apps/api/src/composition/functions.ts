@@ -32,6 +32,7 @@ export const createFunctions = ({
     sources: async () => {
       const theme = await themes.activeFunctions();
       const source = await siteSource.source();
+
       return [
         ...(theme
           ? [versionedSource(siteSource.directory, theme.owner, theme.text)]
@@ -66,5 +67,6 @@ export const createFunctions = ({
     functionsHost,
     logger,
   );
+
   return { functionsHost, functionsWatch, functionsEditor };
 };

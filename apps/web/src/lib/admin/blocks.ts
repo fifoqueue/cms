@@ -6,10 +6,14 @@ const spec = (name: BlockName): BlockSpec => BLOCKS[name];
 /** Blocks that may be added at the top level (`null`) or inside `parent`. */
 export const allowedBlocks = (parent: BlockName | null): BlockName[] => {
   const children = parent ? spec(parent).children : 'any';
+
   if (!children) return [];
+
   return BLOCK_NAMES.filter((name) => {
     const own = spec(name).parent;
+
     if (own && (!parent || !own.includes(parent))) return false;
+
     return children === 'any' || children.includes(name);
   });
 };
@@ -41,6 +45,7 @@ export const newBlock = (name: BlockName): Block => {
             make('query-pagination'),
           ]
         : [];
+
   return make(name, children);
 };
 
@@ -72,17 +77,22 @@ export const pathKey = (path: BlockPath) => path.join('.');
 /** The list a block at `path` sits in, with its index; null when the path is gone. */
 export const slotAt = (tree: Block[], path: BlockPath) => {
   let list = tree;
+
   for (const index of path.slice(0, -1)) {
     const block = list[index];
+
     if (!block) return null;
     list = block.children;
   }
+
   const index = path[path.length - 1];
+
   return index !== undefined && list[index] ? { list, index } : null;
 };
 
 export const blockAt = (tree: Block[], path: BlockPath) => {
   const slot = slotAt(tree, path);
+
   return slot ? slot.list[slot.index]! : null;
 };
 
@@ -96,14 +106,17 @@ export const insertionPoint = (
   name: BlockName,
 ): BlockPath => {
   const block = selected && blockAt(tree, selected);
+
   if (block && selected) {
     if (allowedBlocks(block.name).includes(name))
       return [...selected, block.children.length];
     const parent =
       selected.length > 1 ? blockAt(tree, selected.slice(0, -1)) : null;
+
     if (allowedBlocks(parent?.name ?? null).includes(name))
       return [...selected.slice(0, -1), selected[selected.length - 1]! + 1];
   }
+
   return [tree.length];
 };
 
@@ -111,5 +124,6 @@ export const insertionPoint = (
 export const insertAt = (tree: Block[], path: BlockPath, block: Block) => {
   const list =
     path.length > 1 ? blockAt(tree, path.slice(0, -1))?.children : tree;
+
   list?.splice(path[path.length - 1]!, 0, block);
 };

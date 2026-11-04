@@ -147,6 +147,7 @@ export const createContent = ({
     content: contentRepository,
     settings: async () => {
       const [settings, display] = await Promise.all([writing(), site()]);
+
       return { writing: settings, locale: display.locale };
     },
   });
@@ -205,6 +206,7 @@ export const createContent = ({
     defaultCategory: async () => {
       const id = (await writing()).defaultCategoryId;
       const term = id && (await taxonomyRepository.findById(id, 'all'));
+
       return term && term.taxonomy === 'category' ? term.id : null;
     },
   });
@@ -251,6 +253,7 @@ export const createContent = ({
       run: () => content.emptyTrash(30),
     });
   };
+
   return {
     embedSettings,
     archivePaths,

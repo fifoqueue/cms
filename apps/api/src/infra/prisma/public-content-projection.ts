@@ -61,6 +61,7 @@ const summary = async (
   hooks?: HookDispatcher,
 ): Promise<PublishedSummaryRecord> => {
   if (!row.path) throw new Error(Errors.ContentPathMissing);
+
   return {
     id: row.id,
     type: row.type,
@@ -161,6 +162,7 @@ export async function projectContent(
     LEFT JOIN contents parent ON parent.id = c.parent_id
     WHERE c.status = ${visibility} AND c.trashed_at IS NULL AND (${where})
     ORDER BY c.id`);
+
   if (!rows.length) return [];
 
   const links = await db.$queryRaw<(Term & { contentId: string })[]>(Prisma.sql`
@@ -171,14 +173,18 @@ export async function projectContent(
       AND ct.content_id IN (${Prisma.join(rows.map(({ id }) => id))})
     ORDER BY ct.content_id, ct.term_id`);
   const terms = new Map<string, { term: Term }[]>();
+
   for (const { contentId, id, name, slug, taxonomy } of links) {
     const assigned = terms.get(contentId) ?? [];
+
     assigned.push({ term: { id, name, slug, taxonomy } });
     terms.set(contentId, assigned);
   }
+
   return Promise.all(
     rows.map(async (row) => {
       const item = await summary(row, terms.get(row.id) ?? [], hooks);
+
       return body
         ? { ...item, html: row.html!, fields: parseFields(row.fields!) }
         : item;

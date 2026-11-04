@@ -13,8 +13,10 @@ export const GET: RequestHandler = async ({ fetch, params, locals }) => {
     { headers: { authorization: `Bearer ${locals.token}` } },
   );
   const type = response.headers.get('content-type');
+
   if (!response.ok || (type !== 'image/png' && type !== 'image/webp'))
     error(404, Errors.NotFound);
+
   return new Response(response.body, {
     headers: {
       'content-type': type,

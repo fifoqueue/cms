@@ -83,5 +83,6 @@ export const readMediaStorageForm = (form: FormData, drivers: Drivers = []) => {
         : null,
     ...(fields && { pluginSettings: { ...fields.values, ...fields.secrets } }),
   };
+
   return { values, input };
 };

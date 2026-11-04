@@ -10,8 +10,10 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const file = form.get('file');
     const authors = text(form, 'authors');
+
     if (!(file instanceof File) || file.size === 0)
       return fail(400, { message: Errors.ImportFileRequired });
+
     try {
       const result = await adminFor(event).importWxr(await file.text(), {
         downloadAttachments: form.get('downloadAttachments') === 'on',
@@ -19,6 +21,7 @@ export const actions: Actions = {
           ? (authors as ImportAuthorMode)
           : 'me',
       });
+
       return {
         notice: 'importDone',
         result: {

@@ -27,20 +27,26 @@ export class RoleService {
   async list(): Promise<RoleDefinition[]> {
     const stored = await this.settings.list('role.');
     const roles = new Map(this.defaults.list().map((role) => [role.key, role]));
+
     for (const [setting, value] of Object.entries(stored)) {
       const key = setting.slice('role.'.length);
+
       if ((ROLES as readonly string[]).includes(key)) continue;
+
       if (value === null) {
         roles.delete(key);
         continue;
       }
+
       const parsed = roleDefinitionSchema.safeParse(value);
+
       if (
         parsed.success &&
         !ROLES.includes(parsed.data.key as (typeof ROLES)[number])
       )
         roles.set(parsed.data.key, { ...parsed.data, source: 'admin' });
     }
+
     return [...roles.values()];
   }
 
@@ -48,6 +54,7 @@ export class RoleService {
     const capabilities = (
       (await this.list()).find((role) => role.key === key)?.capabilities ?? []
     ).filter((capability) => this.catalog.has(capability));
+
     return userId && this.resolver
       ? this.resolver.resolve({ id: userId, role: key }, capabilities)
       : capabilities;
@@ -150,6 +157,7 @@ export class RoleService {
     authorize(actor, 'users.manage');
     const { reassignTo } = parseInput(roleDeleteSchema, input);
     const roles = await this.list();
+
     if ((ROLES as readonly string[]).includes(key))
       throw invalidInput(Errors.RoleBuiltin);
     if (!roles.some((role) => role.key === key))

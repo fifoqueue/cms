@@ -75,6 +75,7 @@ export const actions: Actions = {
         freeSpaceMb: Math.max(0, integer(form, 'media.freeSpaceMb')),
       },
     };
+
     return submitAction(() => adminFor(event).security.update(input));
   },
 };

@@ -18,6 +18,7 @@ test('definition filters customize builtins but cannot change their identity', a
     hooks,
   );
   const registrar = hooks.registrar('functions:site', { trusted: true });
+
   registrar.filter('contentType.definition', (value) => ({
     ...value,
     name: 'Display',

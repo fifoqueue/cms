@@ -44,7 +44,9 @@ import { authorizeObject } from '#api/domain/auth/object-authorization';
 /** The taxonomy named in a URL. Unknown taxonomies do not exist (`not_found`). */
 const taxonomyOf = (value: string): TaxonomyType => {
   const result = taxonomyTypeSchema.safeParse(value);
+
   if (!result.success) throw notFound(Errors.TaxonomyNotFound);
+
   return result.data;
 };
 
@@ -89,17 +91,21 @@ export class TaxonomyService {
       'all',
       filterOf(query),
     );
+
     return terms.map(toAdminTerm);
   }
 
   async create(taxonomy: string, input: unknown): Promise<AdminTaxonomyTerm> {
     const kind = await this.kind(taxonomy);
     const data = await this.prepare(input);
+
     await this.assertParent(kind, data.parentId);
     const id = this.deps.ids.next();
     const now = this.deps.clock.now();
+
     if (data.slug) await this.assertSlugFree(kind, data.slug);
     const fields = await this.fields(kind, data.fields ?? {}, {});
+
     await this.deps.repository.insert(
       {
         id,
@@ -122,7 +128,9 @@ export class TaxonomyService {
       fields.media?.ids,
     );
     const term = toAdminTerm(await this.require(kind, id));
+
     void this.deps.hooks?.emit('term.created', term);
+
     return term;
   }
 
@@ -135,20 +143,24 @@ export class TaxonomyService {
   ): Promise<AdminTaxonomyTerm> {
     const kind = await this.kind(taxonomy);
     const current = await this.require(kind, id);
+
     if (actor)
       await authorizeObject(this.deps.hooks, actor, 'taxonomy.manage', () => ({
         kind: 'term',
         id,
       }));
     const data = await this.prepare(input);
+
     await this.assertParent(kind, data.parentId);
     const slug = data.slug ?? current.slug;
+
     if (slug !== current.slug) await this.assertSlugFree(kind, slug);
     // Omitted values keep the stored ones and their media links.
     const fields =
       data.fields === undefined
         ? { values: current.fields }
         : await this.fields(kind, data.fields, current.fields);
+
     await this.deps.repository.update(
       {
         id,
@@ -165,7 +177,9 @@ export class TaxonomyService {
       fields.media,
     );
     const term = toAdminTerm(await this.require(kind, id));
+
     void this.deps.hooks?.emit('term.updated', term);
+
     return term;
   }
 
@@ -175,6 +189,7 @@ export class TaxonomyService {
    */
   async remove(taxonomy: string, id: string, actor?: Actor): Promise<void> {
     const term = toAdminTerm(await this.require(await this.kind(taxonomy), id));
+
     if (actor)
       await authorizeObject(this.deps.hooks, actor, 'taxonomy.manage', () => ({
         kind: 'term',
@@ -187,11 +202,15 @@ export class TaxonomyService {
       undefined,
       [{ term }],
     );
+
     if (allowed === false) throw forbidden();
     const affected = await this.deps.repository.delete(id);
+
     void this.deps.hooks?.emit('term.deleted', term);
+
     for (const contentId of affected) {
       const content = await this.deps.content?.findById(contentId);
+
       if (content)
         void this.deps.hooks?.emit('content.termsChanged', toEntry(content));
     }
@@ -204,6 +223,7 @@ export class TaxonomyService {
       data,
       (value) => taxonomyInputSchema.safeParse(value).success,
     );
+
     return taxonomyInputSchema.parse(filtered ?? data);
   }
 
@@ -219,6 +239,7 @@ export class TaxonomyService {
     if (!this.deps.fields) return { values: stored };
     const checked = await this.deps.fields.validateTerm(kind, values, stored);
     const definitions = await this.deps.fields.forTaxonomy(kind);
+
     return {
       values: checked,
       media: {
@@ -232,6 +253,7 @@ export class TaxonomyService {
     if (this.deps.types) return (await this.deps.types.require(taxonomy)).key;
     if (taxonomy !== 'category' && taxonomy !== 'tag')
       throw notFound(Errors.TaxonomyNotFound);
+
     return taxonomyOf(taxonomy);
   }
 
@@ -241,7 +263,9 @@ export class TaxonomyService {
     id: string,
   ): Promise<CountedTermRecord> {
     const record = await this.deps.repository.findById(id, 'all');
+
     if (record?.taxonomy !== taxonomy) throw notFound(Errors.TermNotFound);
+
     return record;
   }
 
@@ -280,6 +304,7 @@ export class PublicTaxonomyService {
     if (this.types) return (await this.types.require(taxonomy)).key;
     if (taxonomy !== 'category' && taxonomy !== 'tag')
       throw notFound(Errors.TaxonomyNotFound);
+
     return taxonomyOf(taxonomy);
   }
 
@@ -295,14 +320,17 @@ export class PublicTaxonomyService {
       'published',
       filterOf(query),
     );
+
     return this.presentAll(query.taxonomy, terms);
   }
 
   async getBySlug(taxonomy: string, slug: string): Promise<PublicTaxonomyTerm> {
     const kind = await this.kind(taxonomy);
     const record = await this.repository.findBySlug(kind, slug, 'published');
+
     if (!record) throw notFound(Errors.TermNotFound);
     const [term] = await this.presentAll(kind, [record]);
+
     return term!;
   }
 
@@ -311,6 +339,7 @@ export class PublicTaxonomyService {
       kind,
       records.map((record) => record.fields),
     );
+
     return Promise.all(
       records.map((record, index) =>
         this.present(toPublicTerm(record, fields?.[index] ?? {})),
@@ -324,6 +353,7 @@ export class PublicTaxonomyService {
       term,
       (value) => publicTaxonomyTermSchema.safeParse(value).success,
     );
+
     return publicTaxonomyTermSchema.parse(filtered ?? term);
   }
 }

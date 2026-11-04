@@ -9,11 +9,14 @@
   /** The widest `srcset` candidate and its declared width, else `src` with an unknown width. */
   const widest = (item: LightboxItem) => {
     let best = { url: item.src, width: 0 };
+
     for (const candidate of item.srcset?.split(',') ?? []) {
       const [url, descriptor = ''] = candidate.trim().split(/\s+/);
       const width = Number.parseInt(descriptor, 10);
+
       if (url && width > best.width) best = { url, width };
     }
+
     return best;
   };
 
@@ -139,6 +142,7 @@
   const measure = (): Geometry | null => {
     if (!image || !stage) return null;
     const origin = stage.getBoundingClientRect();
+
     return {
       width: image.offsetWidth,
       height: image.offsetHeight,
@@ -156,6 +160,7 @@
   ) => {
     const low = size / 2 - center;
     const high = viewport - size / 2 - center;
+
     return clamp(offset, Math.min(low, high), Math.max(low, high));
   };
 
@@ -196,13 +201,17 @@
     if (requested || !item || !image) return;
     requested = true;
     const urls = originals(item);
+
     if (urls.length === 1 && urls[0] === image.currentSrc) return;
     const current = ticket;
     const pending = urls.map((url) => {
       const loader = new Image();
+
       loader.src = url;
+
       return loader;
     });
+
     loaders = pending;
     void Promise.allSettled(pending.map((loader) => loader.decode())).then(
       (results) => {
@@ -216,6 +225,7 @@
             null,
           );
         const geometry = measure();
+
         // The displayed candidate stays when no candidate could load.
         if (!best || !geometry) return;
         pixels = best.naturalWidth;
@@ -236,6 +246,7 @@
     geometry: Geometry,
   ) => {
     const target = clamp(next, 1, MAX_SCALE);
+
     if (target === 1) return fit();
     x = bound(
       screenX - geometry.centerX - target * anchorX,
@@ -255,6 +266,7 @@
 
   const zoomTo = (next: number, screenX: number, screenY: number) => {
     const geometry = measure();
+
     if (!geometry) return;
     place(
       next,
@@ -273,6 +285,7 @@
 
   const panBy = (deltaX: number, deltaY: number) => {
     const geometry = measure();
+
     if (!geometry) return;
     smooth = true;
     x = bound(x + deltaX, geometry.width * scale, geometry.centerX, innerWidth);
@@ -289,26 +302,33 @@
     smooth = true;
     if (zoomed) return fit();
     const geometry = measure();
+
     if (!geometry) return;
     const natural = Math.max(
       source?.width ?? 0,
       pixels,
       item?.srcset ? 0 : (image?.naturalWidth ?? 0),
     );
+
     zoomTo(clamp(natural / geometry.width, 2, MAX_SCALE), screenX, screenY);
   };
 
   const begin = (rebased: boolean) => {
     const [first, second] = [...pointers.entries()];
+
     if (second && first) {
       const geometry = measure();
+
       if (!geometry) {
         gesture = null;
+
         return;
       }
+
       const [a, b] = [first[1], second[1]];
       const midX = (a.x + b.x) / 2;
       const midY = (a.y + b.y) / 2;
+
       gesture = {
         kind: 'pinch',
         distance: Math.hypot(a.x - b.x, a.y - b.y) || 1,
@@ -319,6 +339,7 @@
       };
     } else if (first) {
       const [id, point] = first;
+
       gesture = {
         kind: 'pan',
         id,
@@ -335,12 +356,15 @@
 
   const update = () => {
     frame = 0;
+
     if (wheel) {
       zoomTo(scale * wheel.factor, wheel.x, wheel.y);
       wheel = null;
     }
+
     if (gesture?.kind === 'pinch') {
       const [a, b] = [...pointers.values()];
+
       if (!a || !b) return;
       place(
         (gesture.from * Math.hypot(a.x - b.x, a.y - b.y)) / gesture.distance,
@@ -352,11 +376,14 @@
       );
     } else if (gesture?.kind === 'pan') {
       const point = pointers.get(gesture.id);
+
       if (!point) return;
       const deltaX = point.x - gesture.startX;
       const deltaY = point.y - gesture.startY;
+
       if (Math.hypot(deltaX, deltaY) > DRAG) gesture.moved = true;
       const geometry = gesture.geometry;
+
       if (!gesture.moved || !zoomed || !geometry) return;
       x = bound(
         gesture.fromX + deltaX,
@@ -379,11 +406,13 @@
 
   const press = (event: PointerEvent) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
+
     if (!pointers.size) {
       suppressClick = false;
       pressedImage = event.target === image;
       pressedBackdrop = event.target === stage;
     }
+
     stage?.setPointerCapture(event.pointerId);
     pointers.set(event.pointerId, {
       x: event.clientX,
@@ -396,6 +425,7 @@
 
   const move = (event: PointerEvent) => {
     const point = pointers.get(event.pointerId);
+
     if (!point) return;
     point.x = event.clientX;
     point.y = event.clientY;
@@ -404,15 +434,19 @@
 
   const release = (event: PointerEvent) => {
     if (!pointers.has(event.pointerId)) return;
+
     if (frame) {
       cancelAnimationFrame(frame);
       update();
     }
+
     pointers.delete(event.pointerId);
     const ended = gesture;
+
     if (event.type === 'pointerup' && ended?.kind === 'pan') {
       const deltaX = event.clientX - ended.startX;
       const deltaY = event.clientY - ended.startY;
+
       if (ended.moved) {
         suppressClick = true;
         if (
@@ -435,6 +469,7 @@
           tap = { time: event.timeStamp, x: event.clientX, y: event.clientY };
       }
     }
+
     if (ended?.kind === 'pinch') suppressClick = true;
     begin(true);
   };
@@ -449,6 +484,7 @@
     event.preventDefault();
     // Trackpad pinches arrive as ctrl+wheel with small deltas; line deltas come from some mice.
     const speed = event.ctrlKey ? 0.01 : event.deltaMode === 1 ? 0.05 : 0.002;
+
     wheel = {
       factor: (wheel?.factor ?? 1) * Math.exp(-event.deltaY * speed),
       x: event.clientX,
@@ -465,6 +501,7 @@
       ArrowUp: [0, KEY_PAN],
       ArrowDown: [0, -KEY_PAN],
     };
+
     if (event.key === '+' || event.key === '=') zoomBy(KEY_STEP);
     else if (event.key === '-' || event.key === '_') zoomBy(1 / KEY_STEP);
     else if (event.key === '0') {
@@ -482,18 +519,22 @@
     void index;
     void open;
     untrack(reset);
+
     return stop;
   });
 
   $effect(() => {
     if (!open) return;
     const resize = () => reset();
+
     addEventListener('resize', resize);
+
     return () => removeEventListener('resize', resize);
   });
 
   $effect(() => {
     const element = stage;
+
     if (!element) return;
     element.addEventListener('pointerdown', press);
     element.addEventListener('pointermove', move);
@@ -501,6 +542,7 @@
     element.addEventListener('pointercancel', release);
     element.addEventListener('click', click);
     element.addEventListener('wheel', scroll, { passive: false });
+
     return () => {
       // A frame queued during the closing animation must not run against an unmounted stage.
       stop();

@@ -42,14 +42,17 @@ export const createTotpFactor = (deps: TotpDeps): SecondFactorDefinition => ({
   challenge: () => prompt(),
   verify: async (user, step) => {
     const record = await deps.secrets.find(user.id);
+
     if (!record) return false;
     const secret = deps.box.open(record.sealedSecret);
+
     if (!secret) return false;
     const matched = deps.totp.match(
       secret,
       step.values.code ?? '',
       deps.clock.now(),
     );
+
     return (
       matched !== null &&
       (await deps.secrets.consume(record.id, matched, deps.box.seal(secret)))
@@ -70,6 +73,7 @@ export const createTotpFactor = (deps: TotpDeps): SecondFactorDefinition => ({
       })
         .map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
         .join('&');
+
       return {
         ...prompt(),
         display: [
@@ -84,12 +88,16 @@ export const createTotpFactor = (deps: TotpDeps): SecondFactorDefinition => ({
     },
     finish: async (user, step) => {
       const state = pending.safeParse(step.state);
+
       if (!state.success || state.data.userId !== user.id) return false;
       const secret = deps.box.open(state.data.sealed);
+
       if (!secret || !/^[A-Z2-7]{32}$/.test(secret)) return false;
       const now = deps.clock.now();
       const matched = deps.totp.match(secret, step.values.code ?? '', now);
+
       if (matched === null) return false;
+
       return deps.secrets.insert({
         id: deps.ids.next(),
         userId: user.id,
@@ -101,6 +109,7 @@ export const createTotpFactor = (deps: TotpDeps): SecondFactorDefinition => ({
   },
   credentials: async (user) => {
     const record = await deps.secrets.find(user.id);
+
     return record
       ? [
           {

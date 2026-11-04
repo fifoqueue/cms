@@ -47,6 +47,7 @@ test('footnotes escape text and render page-local lists alongside automatic TOCs
     },
     { enabled: true, attrs: { minHeadings: 1 } },
   );
+
   expect(html).toContain('id="heading-fn-1-1"');
   expect(html).toContain('class="cms-toc"');
   expect(html).toContain('id="fn-ref-1-2"');
@@ -88,6 +89,7 @@ test('footnote shortcuts parse like the board: names, reuses and anonymous notes
       { name: '', text: 'other' },
     ].map((source) => ({ text: '', ...source })),
   );
+
   expect(groups).toEqual([
     { label: 'a', text: 'later', references: [0, 2] },
     { label: '2', text: 'same', references: [1] },
@@ -102,6 +104,7 @@ test('footnote names validate, survive reloads and keep old anonymous notes', ()
     type: 'doc' as const,
     content: [paragraph(...notes)],
   });
+
   for (const attrs of [
     { name: '', text: '' },
     { name: 'a b', text: 'x' },
@@ -113,6 +116,7 @@ test('footnote names validate, survive reloads and keep old anonymous notes', ()
   ])
     expect(() => parseDocument(doc({ type: 'footnote', attrs }))).toThrow();
   const stored = doc(named('이름', 'ㅁㅁㅁ'), named('이름'));
+
   expect(parseDocument(stored).toJSON()).toMatchObject(stored);
   expect(parseDocument(doc(note('old'))).toJSON()).toMatchObject(
     doc(named('', 'old')),
@@ -144,6 +148,7 @@ test('named footnotes share one page-local item with a back link per reference',
     ],
   });
   const [first, second] = html.split(PAGE_BREAK_HTML);
+
   expect(first).toContain(
     '<sup id="fn-ref-1-1-1"><a data-footnote-ref data-footnote-label="a&lt;&quot;" href="#fn-1-1" aria-label="Footnote a&lt;&quot;">a&lt;&quot;</a></sup>',
   );

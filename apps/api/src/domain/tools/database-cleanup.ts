@@ -77,6 +77,7 @@ export class DatabaseCleanupService {
     const policy = this.policy(options.keepLatest);
     const counts = await this.deps.store.counts(policy);
     const tables = await this.deps.store.tables();
+
     return { counts, tables, options };
   }
 
@@ -88,6 +89,7 @@ export class DatabaseCleanupService {
     );
     const { leases, clock, store } = this.deps;
     const owner = this.deps.ids.next();
+
     await leases.ensure(LEASE_NAME);
     if (
       !(await leases.claim(LEASE_NAME, owner, LEASE_MS, clock.now(), {
@@ -112,29 +114,38 @@ export class DatabaseCleanupService {
       if (lost) throw conflict(Errors.DatabaseCleanupBusy);
       await renew();
     };
+
     try {
       const policy = this.policy(options.keepLatest);
       const deleted = emptyCounts();
       let optimization: DatabaseCleanupResult['optimization'] = null;
+
       // Deterministic order: dependent rows first, table maintenance last.
       for (const category of databaseCleanupCategorySchema.options) {
         if (!categories.includes(category) || category === 'optimize') continue;
+
         for (;;) {
           await guard();
           const count = await store.batch(category, policy, actor, BATCH_SIZE);
+
           deleted[category] += count;
           if (!count) break;
         }
       }
+
       if (categories.includes('optimize')) {
         const before = await store.tables();
+
         for (const { table } of before) {
           await guard();
           await store.optimize(table);
         }
+
         optimization = { before, after: await store.tables() };
       }
+
       await guard();
+
       return { deleted, optimization };
     } finally {
       clearInterval(timer);
@@ -145,6 +156,7 @@ export class DatabaseCleanupService {
 
   private policy(keepLatest: number): CleanupPolicy {
     const now = this.deps.clock.now();
+
     return {
       keepLatest,
       now,

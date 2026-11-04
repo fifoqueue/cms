@@ -14,6 +14,7 @@ export const adminFor = (
   } & Partial<ProofEvent>,
 ) => {
   const { fetch, locals } = event;
+
   if (!locals.token) error(404, Errors.NotFound);
   const proof =
     event.request && event.getClientAddress
@@ -22,6 +23,7 @@ export const adminFor = (
           getClientAddress: event.getClientAddress,
         })
       : undefined;
+
   return adminApi(fetch, locals.token, proof);
 };
 

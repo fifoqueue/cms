@@ -51,12 +51,14 @@ export const createEmail = async ({
     sealedJobs,
     logger,
   });
+
   await egress.initialize(async () => {
     const [searchSettings, emailSettings] = await Promise.all([
       search.getAdmin(),
       email.getAdmin(),
     ]);
     const rules: EgressRule[] = [];
+
     if (searchSettings.host) {
       const url = new URL(searchSettings.host);
       const rule = await outbound.compatibilityRule(
@@ -64,10 +66,13 @@ export const createEmail = async ({
         url.hostname,
         url.port ? Number(url.port) : url.protocol === 'https:' ? 443 : 80,
       );
+
       if (rule) rules.push(rule);
     }
+
     if (emailSettings.transport === 'http') {
       const endpoint = emailEndpoint(emailSettings.http);
+
       if (endpoint) {
         const url = new URL(endpoint);
         const rule = await outbound.compatibilityRule(
@@ -75,6 +80,7 @@ export const createEmail = async ({
           url.hostname,
           url.port ? Number(url.port) : 443,
         );
+
         if (rule) rules.push(rule);
       }
     } else if (emailSettings.smtp.host) {
@@ -83,10 +89,13 @@ export const createEmail = async ({
         emailSettings.smtp.host,
         emailSettings.smtp.port,
       );
+
       if (rule) rules.push(rule);
     }
+
     return rules;
   });
   jobs.handle(EMAIL_JOB, (payload) => email.deliver(payload));
+
   return { delivery, email };
 };

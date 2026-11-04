@@ -7,6 +7,7 @@ export const dynamicImportLoader: PluginModuleLoader = {
       string,
       unknown
     >;
+
     return module.plugin;
   },
 };

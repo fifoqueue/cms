@@ -8,11 +8,15 @@ export const relayFile = (
   status?: number,
 ) => {
   const headers = new Headers();
+
   for (const name of passed) {
     const value = response.headers.get(name);
+
     if (value) headers.set(name, value);
   }
+
   if (!response.ok)
     return new Response(null, { status: response.status === 404 ? 404 : 502 });
+
   return new Response(response.body, { status, headers });
 };

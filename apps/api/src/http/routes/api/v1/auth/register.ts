@@ -12,6 +12,7 @@ export const routes = (app: ApiApp) =>
           await readJson(request, SMALL_BODY_BYTES),
           clients.attempt(request),
         );
+
         return noContent();
       }),
     );

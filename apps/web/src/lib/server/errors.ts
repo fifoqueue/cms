@@ -33,6 +33,7 @@ export interface FormFailure {
  */
 export const safeIssues = (issues: unknown): FormIssue[] | undefined => {
   const parsed = formIssuesSchema.safeParse(issues);
+
   return parsed.success
     ? parsed.data.map(({ path, message, params }) =>
         params ? { path, message, params: { ...params } } : { path, message },
@@ -64,8 +65,10 @@ export const failFrom = <Extra extends object = Record<never, never>>(
       issues: safeIssues(caught.issues),
       ...(caught.code === CAPTCHA_REQUIRED && { captcha: true }),
     };
+
     return fail(caught.status, { ...extra, ...failure } as Extra & FormFailure);
   }
+
   throw caught;
 };
 
@@ -78,6 +81,7 @@ export const notFoundFrom = (caught: unknown): never => {
 
 export const text = (form: FormData, key: string) => {
   const value = form.get(key);
+
   return typeof value === 'string' ? value : '';
 };
 

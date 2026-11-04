@@ -21,6 +21,7 @@ export const lockPublicPaths = (tx: Prisma.TransactionClient) =>
 
 const loginPath = async (db: Pick<Database, 'setting'>) => {
   const row = await db.setting.findUnique({ where: { key: SITE_KEY } });
+
   return readSiteSettings(row ? JSON.parse(row.value) : undefined).loginPath;
 };
 
@@ -31,6 +32,7 @@ const archives = async (
   const parsed = archivePathsStateSchema.safeParse(
     row ? JSON.parse(row.value) : {},
   );
+
   return parsed.success ? parsed.data : archivePathsStateSchema.parse({});
 };
 
@@ -53,6 +55,7 @@ const contentOwns = async (db: Pick<Database, 'contentPath'>, path: string) => {
     },
     select: { path: true },
   });
+
   return (
     !!row &&
     row.path.length === expected.length &&
@@ -66,6 +69,7 @@ const fallbackLoginPath = async (
 ) => {
   for (let suffix = 0; ; suffix += 1) {
     const path = suffix ? `/cms-login-${suffix}` : '/cms-login';
+
     if (!underArchive(path, state) && !(await contentOwns(db, path)))
       return path;
   }
@@ -90,6 +94,7 @@ export const checkLoginPath = async (
     await loginPath(tx),
     await archives(tx),
   );
+
   if (paths.includes(reserved)) throw conflict(Errors.PathConflict);
 };
 
@@ -103,6 +108,7 @@ export const checkLoginArchives = async (
   const occupied =
     (await contentOwns(tx, configured)) || underArchive(configured, current);
   const reserved = await effectiveLoginPath(tx, configured, current);
+
   if (
     (!occupied && underArchive(configured, state)) ||
     underArchive(reserved, state)

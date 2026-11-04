@@ -30,6 +30,7 @@ const decode = (value: string) => {
   const bytes = Uint8Array.from(value.match(/.{2}/g) ?? [], (part) =>
     Number.parseInt(part, 16),
   );
+
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
@@ -60,16 +61,19 @@ export class AvatarService {
     const id = encode(key);
     const signature = this.signer.sign(`avatar:v1:${id}`);
     const url = `/avatars/${id}.${signature}?s=96`;
+
     return this.policy?.hooks.has('avatar.url') ? this.filtered(key, url) : url;
   }
 
   private async filtered(key: string, fallback: string): Promise<string> {
     const policy = this.policy!;
     const email = await this.directory.email(key);
+
     if (!email) return fallback;
     const emailHash = policy.hash(email.trim().toLowerCase());
     const origin = await policy.siteUrl();
     const base = avatarUrlFilterSchema.shape.url.safeParse(origin);
+
     if (!base.success) return fallback;
     const url = new URL(fallback, base.data).href;
     const result = await policy.hooks.applyFilter(
@@ -77,6 +81,7 @@ export class AvatarService {
       { emailHash, size: 96, url },
       (value) => {
         const parsed = avatarUrlFilterSchema.safeParse(value);
+
         return (
           parsed.success &&
           parsed.data.emailHash === emailHash &&
@@ -84,6 +89,7 @@ export class AvatarService {
         );
       },
     );
+
     return result.url === url ? fallback : result.url;
   }
 
@@ -94,15 +100,20 @@ export class AvatarService {
   ): Promise<AvatarImage | null> {
     if (!settings.showAvatars || token.length > 1_000) return null;
     const separator = token.lastIndexOf('.');
+
     if (separator < 1) return null;
     const id = token.slice(0, separator);
     const signature = token.slice(separator + 1);
+
     if (!this.signer.verify(`avatar:v1:${id}`, signature)) return null;
     const key = decode(id);
+
     if (!key) return null;
     const email = await this.directory.email(key);
+
     if (!email) return null;
     const requested = Math.trunc(size);
+
     return this.source.image(
       email.trim().toLowerCase(),
       settings.avatarDefault,

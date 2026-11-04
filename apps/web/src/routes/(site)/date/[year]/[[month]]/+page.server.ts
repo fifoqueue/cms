@@ -16,6 +16,7 @@ export const load: PageServerLoad = async (event) => {
       : /^(0[1-9]|1[0-2])$/.test(params.month)
         ? Number(params.month)
         : NaN;
+
   if (!(year >= 1970) || Number.isNaN(month)) error(404, Errors.NotFound);
   const api = contentApi(fetch);
   const slots = loadSlots(api, { path: url.pathname });
@@ -25,6 +26,7 @@ export const load: PageServerLoad = async (event) => {
     { type: 'post', year, month: month ?? undefined },
     (await parent()).reading.postsPerPage,
   );
+
   return withTemplateData(api, event, {
     kind: 'date' as const,
     date: { year, month },

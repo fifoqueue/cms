@@ -19,6 +19,7 @@
         step === 'next'
           ? element.nextElementSibling
           : element.previousElementSibling;
+
     return element instanceof HTMLElement ? element : null;
   };
 
@@ -34,6 +35,7 @@
         },
       );
     }
+
     target.focus({ preventScroll: true });
   };
 
@@ -42,30 +44,35 @@
     const callout = (event.currentTarget as HTMLElement).closest<HTMLElement>(
       '.cms-callout',
     );
+
     if (!callout) return;
     callout.hidden = true;
     const target =
       visible(callout.nextElementSibling, 'next') ??
       visible(callout.previousElementSibling, 'previous') ??
       callout.parentElement;
+
     if (target) focus(target);
   };
 
   $effect(() => {
     void html;
     if (!container) return;
+
     for (const callout of container.querySelectorAll<HTMLElement>(
       '.cms-callout',
     )) {
       const variant = /(?:^|\s)cms-callout-([a-z]+)(?=\s|$)/.exec(
         callout.className,
       )?.[1];
+
       if (variant)
         callout.setAttribute(
           'aria-label',
           m.contentCalloutVariantName(variant),
         );
     }
+
     for (const button of container.querySelectorAll<HTMLButtonElement>(
       '.cms-callout-close[hidden]',
     )) {

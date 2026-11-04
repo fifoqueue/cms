@@ -10,6 +10,7 @@ export class PrismaPasskeyRepository implements PasskeyRepository {
   constructor(
     private readonly db: Pick<Database, 'passkey' | '$transaction'>,
   ) {}
+
   private record(
     row: Omit<PasskeyRecord, 'counter' | 'transports'> & {
       counter: bigint;
@@ -22,10 +23,13 @@ export class PrismaPasskeyRepository implements PasskeyRepository {
       transports: z.array(z.string()).parse(JSON.parse(row.transports)),
     };
   }
+
   async find(credentialId: Uint8Array<ArrayBuffer>) {
     const row = await this.db.passkey.findUnique({ where: { credentialId } });
+
     return row ? this.record(row) : null;
   }
+
   async list(userId: string) {
     return (
       await this.db.passkey.findMany({
@@ -34,6 +38,7 @@ export class PrismaPasskeyRepository implements PasskeyRepository {
       })
     ).map((row) => this.record(row));
   }
+
   async insert(record: PasskeyRecord) {
     try {
       await this.db.passkey.create({
@@ -43,6 +48,7 @@ export class PrismaPasskeyRepository implements PasskeyRepository {
           transports: JSON.stringify(record.transports),
         },
       });
+
       return true;
     } catch (error) {
       if (
@@ -53,6 +59,7 @@ export class PrismaPasskeyRepository implements PasskeyRepository {
       throw error;
     }
   }
+
   async use(
     id: string,
     previous: number,
@@ -66,14 +73,17 @@ export class PrismaPasskeyRepository implements PasskeyRepository {
       where: { id, counter: BigInt(previous) },
       data: { counter: BigInt(counter), backedUp, lastUsedAt: at },
     });
+
     return result.count === 1;
   }
+
   async register(record: PasskeyRecord, tokenHash: string, now: Date) {
     try {
       return await this.db.$transaction(async (tx) => {
         const { count } = await tx.passwordToken.deleteMany({
           where: { tokenHash, userId: record.userId, expiresAt: { gt: now } },
         });
+
         if (count !== 1) return false;
         await tx.passkey.create({
           data: {
@@ -83,6 +93,7 @@ export class PrismaPasskeyRepository implements PasskeyRepository {
           },
         });
         await tx.passwordToken.deleteMany({ where: { userId: record.userId } });
+
         return true;
       });
     } catch (error) {
@@ -94,6 +105,7 @@ export class PrismaPasskeyRepository implements PasskeyRepository {
       throw error;
     }
   }
+
   async remove(userId: string, id: string) {
     await this.db.passkey.deleteMany({ where: { userId, id } });
   }

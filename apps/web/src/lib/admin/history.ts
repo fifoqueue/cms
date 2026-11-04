@@ -22,10 +22,12 @@ export class History {
   /** Records `next` as the current state; redo is lost, as in every editor. */
   record(next: string, now = Date.now()) {
     if (next === this.current) return;
+
     if (!this.past.length || now - this.changedAt > MERGE_MS) {
       this.past.push(this.current);
       if (this.past.length > LIMIT) this.past.shift();
     }
+
     this.changedAt = now;
     this.current = next;
     this.future = [];
@@ -34,19 +36,23 @@ export class History {
   /** The state to restore, or null when there is nothing to undo. */
   undo(): string | null {
     const previous = this.past.pop();
+
     if (previous === undefined) return null;
     this.future.push(this.current);
     this.current = previous;
     this.changedAt = 0;
+
     return previous;
   }
 
   redo(): string | null {
     const next = this.future.pop();
+
     if (next === undefined) return null;
     this.past.push(this.current);
     this.current = next;
     this.changedAt = 0;
+
     return next;
   }
 }
@@ -55,9 +61,12 @@ export class History {
 export const historyKey = (event: KeyboardEvent): 'undo' | 'redo' | null => {
   if (!(event.ctrlKey || event.metaKey) || event.altKey) return null;
   const target = event.target as HTMLElement | null;
+
   if (target?.closest('input:not([type=checkbox]):not([type=color]), textarea'))
     return null;
   const key = event.key.toLowerCase();
+
   if (key === 'z') return event.shiftKey ? 'redo' : 'undo';
+
   return key === 'y' ? 'redo' : null;
 };

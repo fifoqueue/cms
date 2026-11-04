@@ -16,14 +16,17 @@ const schemeOf = (hex: string) => {
   const full = digits.length <= 4 ? digits.replace(/./g, '$&$&') : digits;
   const [r, g, b] = [0, 2, 4].map((at) => {
     const value = Number.parseInt(full.slice(at, at + 2), 16) / 255;
+
     return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
   }) as [number, number, number];
+
   return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.18 ? 'dark' : 'light';
 };
 
 /** The site's color scheme, from its palette's base color; `null` without one. */
 export const siteScheme = ({ settings }: Pick<ThemeView, 'settings'>) => {
   const base = settings.palette.find((entry) => entry.slug === 'base')?.color;
+
   return base ? schemeOf(base) : null;
 };
 
@@ -33,6 +36,7 @@ type Palette = ThemeView['settings']['palette'];
 const paletteVars = (palette: Palette): [string, string][] => {
   const color = (slug: string) =>
     palette.find((entry) => entry.slug === slug)?.color ?? '';
+
   return [
     ...palette.map((entry): [string, string] => [
       `--cms-color-${entry.slug}`,
@@ -99,6 +103,7 @@ export const themeStyle = ({
     ['--cms-font-size', SIZE[styles.fontSize]],
     ['--cms-line-height', LEADING[styles.lineHeight]],
   ];
+
   return declarations(vars);
 };
 
@@ -116,6 +121,7 @@ export const alternateScheme = ({ settings }: Pick<ThemeView, 'settings'>) => {
   const base = settings.alternatePalette.find(
     (entry) => entry.slug === 'base',
   )?.color;
+
   return base ? schemeOf(base) : null;
 };
 
@@ -127,6 +133,7 @@ export const alternateScheme = ({ settings }: Pick<ThemeView, 'settings'>) => {
 export const schemeCss = (theme: Pick<ThemeView, 'settings'>) => {
   const scheme = alternateScheme(theme);
   const { colorScheme, alternatePalette } = theme.settings;
+
   if (!scheme || !(colorScheme.auto || colorScheme.toggle)) return '';
   const vars = declarations(paletteVars(alternatePalette), ' !important');
   const chosen = colorScheme.toggle
@@ -135,6 +142,7 @@ export const schemeCss = (theme: Pick<ThemeView, 'settings'>) => {
   const system = colorScheme.auto
     ? `@media (prefers-color-scheme: ${scheme}) { :root:not([${SCHEME_ATTRIBUTE}]) .cms-site { ${vars} } }`
     : '';
+
   return [chosen, system].filter(Boolean).join('\n');
 };
 
@@ -148,6 +156,7 @@ export const rootCss = (theme: Pick<ThemeView, 'settings'>) => {
   const base = (palette: Palette) =>
     palette.find((entry) => entry.slug === 'base')?.color;
   const main = base(theme.settings.palette);
+
   if (!main) return '';
   const rule = (selector: string, color: string, suffix = '') =>
     `${selector} { background-color: ${color}${suffix}; color-scheme: ${schemeOf(color)}${suffix} }`;
@@ -155,6 +164,7 @@ export const rootCss = (theme: Pick<ThemeView, 'settings'>) => {
   const { colorScheme } = theme.settings;
   const chosen = `:root[${SCHEME_ATTRIBUTE}='alternate']`;
   const system = `:root:not([${SCHEME_ATTRIBUTE}])`;
+
   return [
     rule(':root, :root > body', main),
     alternate && colorScheme.toggle
@@ -178,8 +188,10 @@ export const rememberedScheme = (
   stored: string | null,
 ): 'alternate' | 'default' | null => {
   const scheme = alternateScheme(theme);
+
   if (!scheme || !theme.settings.colorScheme.toggle) return null;
   if (stored !== 'light' && stored !== 'dark') return null;
+
   return stored === scheme ? 'alternate' : 'default';
 };
 
@@ -189,7 +201,9 @@ export const rememberedScheme = (
  */
 export const schemeScript = (theme: Pick<ThemeView, 'settings'>) => {
   const scheme = alternateScheme(theme);
+
   if (!scheme || !theme.settings.colorScheme.toggle) return '';
+
   return `<script>try{var s=localStorage.getItem(${JSON.stringify(SCHEME_KEY)});if(s==='light'||s==='dark')document.documentElement.setAttribute(${JSON.stringify(SCHEME_ATTRIBUTE)},s===${JSON.stringify(scheme)}?'alternate':'default')}catch(e){}</script>`;
 };
 
@@ -209,6 +223,7 @@ export const fontFaceCss = (fonts: readonly PublicFont[]) =>
             : /\.otf$/i.test(face.src)
               ? 'opentype'
               : 'truetype';
+
         return `@font-face { font-family: "${font.family}"; src: url("${face.src}") format("${format}"); font-weight: ${face.weight}; font-style: ${face.style}; font-display: ${face.display}; }`;
       }),
     )

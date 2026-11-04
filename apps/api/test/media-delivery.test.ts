@@ -44,6 +44,7 @@ test('SVG originals are sanitized, bounded and served with sandboxed image heade
   });
   const actor = { id: 'author', role: 'author' };
   const encode = (value: string) => new TextEncoder().encode(value);
+
   await expect(
     media.upload(
       encode(`<svg>${' '.repeat(SVG_MAX_BYTES)}</svg>`),
@@ -64,6 +65,7 @@ test('SVG originals are sanitized, bounded and served with sandboxed image heade
     'fake.jpg',
     actor,
   );
+
   expect(result.variants).toEqual([]);
   expect(storage.files.size).toBe(1);
   const key = result.url.slice('/media/'.length);
@@ -73,12 +75,14 @@ test('SVG originals are sanitized, bounded and served with sandboxed image heade
       media,
     ) as unknown as ApiApp,
   );
+
   for (const range of [undefined, 'bytes=0-15']) {
     const response = await app.handle(
       new Request(`http://localhost/files/${key}`, {
         headers: range ? { range } : {},
       }),
     );
+
     expect(response.status).toBe(range ? 206 : 200);
     expect(response.headers.get('content-type')).toBe('image/svg+xml');
     expect(response.headers.get('content-disposition')).toBe(
@@ -89,7 +93,9 @@ test('SVG originals are sanitized, bounded and served with sandboxed image heade
       "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
     );
     const body = await response.text();
+
     expect(body).not.toContain('evil.test');
+
     if (!range) {
       expect(body).toContain('style=""');
       expect([...encode(body)]).toEqual([...storage.files.get(key)!]);

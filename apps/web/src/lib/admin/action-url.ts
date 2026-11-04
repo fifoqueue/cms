@@ -5,8 +5,10 @@
  */
 export const actionUrl = (search: string, action: string) => {
   const params = new URLSearchParams(search);
+
   for (const key of [...params.keys()])
     if (key.startsWith('/') || key === 'notice') params.delete(key);
   const query = params.toString();
+
   return `?${query ? `${query}&` : ''}/${action}`;
 };

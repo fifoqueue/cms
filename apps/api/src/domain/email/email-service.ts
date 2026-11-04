@@ -29,6 +29,7 @@ import type { Logger } from '#api/shared/logger';
 import type { MailTransportRegistry } from '#api/domain/email/transport-registry';
 
 const KEY = 'email';
+
 /** Job kind of queued messages. */
 export const EMAIL_JOB = 'email.send';
 
@@ -73,6 +74,7 @@ export class EmailService {
 
   async getAdmin(): Promise<AdminEmailSettings> {
     const { settings, password, secret, pluginSecrets } = await this.stored();
+
     return adminEmailSettingsSchema.parse({
       ...settings,
       availableTransports: this.deps.transports?.available() ?? [],
@@ -108,11 +110,14 @@ export class EmailService {
       selected?.id === current.settings.pluginTransport?.id
         ? { ...current.pluginSecrets }
         : {};
+
     if (pluginTransport) {
       const definition = this.deps.transports
         ?.available()
         .find((entry) => entry.id === pluginTransport.id);
+
       if (!definition) throw invalidInput(Errors.EmailDisabled);
+
       for (const [key, value] of Object.entries(pluginTransport.secrets)) {
         if (
           !definition.fields.some(
@@ -123,6 +128,7 @@ export class EmailService {
         if (value) pluginSecrets[key] = this.deps.secrets.seal(value);
         else delete pluginSecrets[key];
       }
+
       if (
         Object.keys(pluginTransport.values).some((key) =>
           definition.fields.some(
@@ -137,11 +143,13 @@ export class EmailService {
           this.deps.secrets.open(value) ?? '',
         ]),
       );
+
       this.deps.transports!.validate(pluginTransport.id, {
         ...pluginTransport.values,
         ...opened,
       });
     }
+
     const settings = {
       ...common,
       smtp,
@@ -154,6 +162,7 @@ export class EmailService {
           }
         : null,
     };
+
     if (
       current.secret &&
       secret === undefined &&
@@ -170,6 +179,7 @@ export class EmailService {
         : secret
           ? this.deps.secrets.seal(secret)
           : '';
+
     if (
       settings.enabled &&
       !selected &&
@@ -193,7 +203,9 @@ export class EmailService {
             : '',
     } satisfies Stored);
     const result = await this.getAdmin();
+
     void this.deps.hooks?.emit('email.settingsUpdated', result);
+
     return result;
   }
 
@@ -207,6 +219,7 @@ export class EmailService {
   async test(input: unknown, site: { title: string; locale: string }) {
     const { to } = parseInput(emailTestSchema, input);
     const transport = await this.transport();
+
     if (!transport) throw invalidInput(Errors.EmailDisabled);
     await this.send(transport, {
       to,
@@ -216,6 +229,7 @@ export class EmailService {
       // The server's answer may quote credentials or provider bodies; only the log keeps it.
       this.deps.logger?.warn(Errors.EmailSendFailed, error);
       const failure = failureOf(error);
+
       throw invalidInput(
         Errors.EmailSendFailed,
         failure && withParams(Errors.EmailSendFailed, { ...failure }),
@@ -234,6 +248,7 @@ export class EmailService {
    */
   async sendNow(message: EmailMessage): Promise<void> {
     const transport = await this.transport();
+
     // Disabled or misconfigured mail fails for now; enabling it lets queued messages go out.
     if (!transport) throw new Error(Errors.EmailDisabled);
     await this.send(transport, message);
@@ -249,6 +264,7 @@ export class EmailService {
             original,
             (value) => {
               const parsed = outgoingEmailSchema.safeParse(value);
+
               return parsed.success && parsed.data.to === original.to;
             },
           )
@@ -258,6 +274,7 @@ export class EmailService {
       ...outgoingEmailSchema.parse(filtered),
     };
     let allowed = true;
+
     await this.deps.hooks?.applyFilter(
       'email.sendAllowed',
       { to: outgoing.to, subject: outgoing.subject, allowed: true },
@@ -269,11 +286,14 @@ export class EmailService {
             allowed: z.boolean(),
           })
           .safeParse(value);
+
         if (!parsed.success) return false;
         allowed = parsed.data.allowed;
+
         return true;
       },
     );
+
     try {
       if (!allowed) throw new PermanentJobError(Errors.EmailDisabled);
       await this.deps.mailer.send(transport, outgoing);
@@ -281,13 +301,16 @@ export class EmailService {
       void this.deps.hooks?.emit('email.failed', { to: outgoing.to });
       throw error;
     }
+
     void this.deps.hooks?.emit('email.sent', { to: outgoing.to });
   }
 
   /** Opens sealed envelopes and accepts plaintext jobs queued before this upgrade. */
   private message(payload: unknown): EmailMessage {
     const legacy = messageSchema.safeParse(payload);
+
     if (legacy.success) return legacy.data;
+
     try {
       return this.deps.sealedJobs.open(payload, messageSchema);
     } catch (error) {
@@ -299,15 +322,20 @@ export class EmailService {
 
   private async transport(): Promise<MailTransport | null> {
     const { settings, password, secret, pluginSecrets } = await this.stored();
+
     if (!settings.enabled || !settings.fromEmail) return null;
     const from = { name: settings.fromName, email: settings.fromEmail };
+
     if (settings.pluginTransport) {
       const values = { ...settings.pluginTransport.values };
+
       for (const [key, sealed] of Object.entries(pluginSecrets ?? {})) {
         const value = this.deps.secrets.open(sealed);
+
         if (value === null) throw new Error(Errors.EmailSecretRequired);
         values[key] = value;
       }
+
       return {
         kind: 'plugin',
         id: settings.pluginTransport.id,
@@ -315,9 +343,12 @@ export class EmailService {
         from,
       };
     }
+
     if (settings.transport === 'http') {
       const opened = secret ? this.deps.secrets.open(secret) : null;
+
       if (!opened) throw new Error(Errors.EmailSecretRequired);
+
       return {
         kind: 'http',
         ...settings.http,
@@ -325,7 +356,9 @@ export class EmailService {
         from,
       };
     }
+
     if (!settings.smtp.host) return null;
+
     return {
       kind: 'smtp',
       ...settings.smtp,
@@ -371,6 +404,7 @@ export class EmailService {
       http: { secretConfigured: _secret, ...http },
       ...common
     } = parsed.success ? parsed.data : DEFAULT_EMAIL_SETTINGS;
+
     return {
       settings: { ...common, smtp, http },
       password: typeof raw?.password === 'string' ? raw.password : '',

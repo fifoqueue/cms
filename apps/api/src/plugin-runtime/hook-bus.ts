@@ -38,6 +38,7 @@ user.signedOut user.created user.updated user.roleChanged user.deleted role.crea
     /\s+/,
   ),
 );
+
 for (const name of [
   'media.allowedTypes',
   'media.storageKey',
@@ -82,28 +83,37 @@ const isolatedCopy = <T>(value: T): T => {
     seen.add(item);
     if (item instanceof SharedArrayBuffer)
       throw new Error(Errors.HookValueInvalid);
+
     if (ArrayBuffer.isView(item)) {
       visit(item.buffer);
+
       return;
     }
+
     if (item instanceof Map)
       for (const [key, entry] of item) {
         visit(key);
         visit(entry);
       }
+
     if (item instanceof Set) for (const entry of item) visit(entry);
+
     for (const key of Reflect.ownKeys(item)) {
       const descriptor = Object.getOwnPropertyDescriptor(item, key);
+
       if (descriptor && 'value' in descriptor) visit(descriptor.value);
     }
   };
+
   visit(copy);
+
   return copy;
 };
 
 const activeParent = (frame?: DispatchFrame): DispatchFrame | undefined => {
   while (frame && !frame.active) frame = frame.parent;
   if (frame) frame.parent = activeParent(frame.parent);
+
   return frame;
 };
 
@@ -117,6 +127,7 @@ const snapshot = async (
 ): Promise<{ value: unknown } | undefined> => {
   try {
     const candidate = isolatedCopy(value);
+
     return (await accept(candidate)) ? { value: candidate } : undefined;
   } catch {
     return undefined;
@@ -149,6 +160,7 @@ export class HookBus implements HookDispatcher {
       active: true,
       parent: activeParent(this.dispatchContext.getStore()),
     };
+
     try {
       return await this.dispatchContext.run(frame, run);
     } finally {
@@ -191,6 +203,7 @@ export class HookBus implements HookDispatcher {
 
   registrar(owner: string, options: { trusted?: boolean } = {}): HookRegistrar {
     const generation = {};
+
     return {
       define: (name, contract) =>
         this.define(owner, name, contract, options.trusted, generation),
@@ -198,15 +211,18 @@ export class HookBus implements HookDispatcher {
       apply: (name, value, ...args) => this.apply(name, value, ...args),
       current: () => {
         const frame = this.dispatchContext.getStore();
+
         return frame?.active ? frame.name : undefined;
       },
       doing: (name) => {
         let frame = this.dispatchContext.getStore();
+
         while (frame) {
           if (frame.active && (name === undefined || frame.name === name))
             return true;
           frame = frame.parent;
         }
+
         return false;
       },
       remove: (name, handler) => {
@@ -301,6 +317,7 @@ export class HookBus implements HookDispatcher {
     generation: object = {},
   ): Unsubscribe {
     const previous = this.definitions.get(name);
+
     if (
       !name ||
       coreNames.has(name) ||
@@ -318,15 +335,20 @@ export class HookBus implements HookDispatcher {
       active: true,
       previous,
     };
+
     this.definitions.set(name, entry);
+
     return () => {
       if (!entry.active) return;
       entry.active = false;
       let current = this.definitions.get(name);
+
       while (current && !current.active) current = current.previous;
+
       if (current) {
         this.definitions.set(name, current);
         let ancestor = current;
+
         while (ancestor.previous) {
           if (!ancestor.previous.active)
             ancestor.previous = ancestor.previous.previous;
@@ -336,6 +358,7 @@ export class HookBus implements HookDispatcher {
         this.definitions.delete(name);
         this.counts.delete(name);
       }
+
       for (const table of [this.actions, this.filters])
         this.update(
           table,
@@ -349,17 +372,21 @@ export class HookBus implements HookDispatcher {
 
   async do(name: string, payload: unknown): Promise<void> {
     const entry = this.definitions.get(name);
+
     if (
       !entry ||
       entry.contract.kind !== 'action' ||
       !this.actions.get(name)?.length
     ) {
       this.count(name);
+
       return;
     }
+
     const accepted = await snapshot(payload, (candidate) =>
       this.valid(entry.contract, candidate, entry.trusted),
     );
+
     if (!accepted) return;
     if (this.definitions.get(name) !== entry) return;
     await this.emit(name as ActionName, accepted.value as never);
@@ -371,19 +398,24 @@ export class HookBus implements HookDispatcher {
     ...args: readonly unknown[]
   ): Promise<unknown> {
     const entry = this.definitions.get(name);
+
     if (
       !entry ||
       entry.contract.kind !== 'filter' ||
       !this.filters.get(name)?.length
     ) {
       this.count(name);
+
       return value;
     }
+
     const accepted = await snapshot(value, (candidate) =>
       this.valid(entry.contract, candidate, entry.trusted),
     );
+
     if (!accepted) return value;
     if (this.definitions.get(name) !== entry) return value;
+
     return this.applyFilter(
       name as FilterName,
       accepted.value as never,
@@ -406,12 +438,15 @@ export class HookBus implements HookDispatcher {
           () => contract.validate(isolatedCopy(value)),
           this.options.timeoutMs,
         );
+
         if (result.ok && result.value === true) return true;
       }
     } catch {
       // A validator is extension code too.
     }
+
     this.options.logger.warn(Errors.HookValueInvalid);
+
     return false;
   }
 
@@ -430,17 +465,22 @@ export class HookBus implements HookDispatcher {
     const dispatched = this.within(name, () =>
       this.dispatch(name, payload),
     ).finally(() => this.options.publicCache?.invalidate());
+
     dispatched.catch(() => {});
+
     return dispatched;
   }
 
   private async dispatch(name: ActionName, payload: unknown): Promise<void> {
     const registrations = [...(this.actions.get(name) ?? [])];
     const failures: unknown[] = [];
+
     for (const entry of registrations) {
       const { owner, handler } = entry;
+
       if (entry.trusted) {
         if (!this.actions.get(name)?.includes(entry)) continue;
+
         try {
           await handler(payload);
         } catch (error) {
@@ -448,10 +488,13 @@ export class HookBus implements HookDispatcher {
             `Functions "${owner}" failed on "${name}": ${error instanceof Error ? error.message : String(error)}`,
           );
         }
+
         continue;
       }
+
       if (entry.core) {
         if (!this.actions.get(name)?.includes(entry)) continue;
+
         try {
           await handler(payload);
         } catch (error) {
@@ -460,8 +503,10 @@ export class HookBus implements HookDispatcher {
           );
           failures.push(error);
         }
+
         continue;
       }
+
       const result = await isolate(
         () =>
           this.actions.get(name)?.includes(entry)
@@ -469,11 +514,13 @@ export class HookBus implements HookDispatcher {
             : undefined,
         this.options.timeoutMs,
       );
+
       if (!result.ok)
         this.options.logger.warn(
           `Plugin "${owner}" failed on "${name}": ${result.error.message}`,
         );
     }
+
     if (failures.length) throw failures[0];
   }
 
@@ -490,6 +537,7 @@ export class HookBus implements HookDispatcher {
   ): Promise<FilterHookMap[K]> {
     this.count(name);
     if (!this.filters.get(name)?.length) return value;
+
     return this.within(name, () =>
       this.filterValue(name, value, accept, observe, args),
     );
@@ -509,16 +557,22 @@ export class HookBus implements HookDispatcher {
     args: readonly unknown[],
   ): Promise<FilterHookMap[K]> {
     let current = value;
+
     for (const entry of [...(this.filters.get(name) ?? [])]) {
       const { owner, handler } = entry;
+
       if (!this.filters.get(name)?.includes(entry)) continue;
+
       if (entry.trusted) {
         try {
           const input = current;
+
           // Only the value needs rollback protection; context bytes stay borrowed.
           current = structuredClone(input);
           const next = await handler(input, ...args);
+
           if (!this.filters.get(name)?.includes(entry)) continue;
+
           if (await accept(next)) {
             if (!this.filters.get(name)?.includes(entry)) continue;
             observe?.(owner, current, next as FilterHookMap[K]);
@@ -533,8 +587,10 @@ export class HookBus implements HookDispatcher {
             `Functions "${owner}" failed on "${name}": ${error instanceof Error ? error.message : String(error)}`,
           );
         }
+
         continue;
       }
+
       const result = await isolate(
         () =>
           this.filters.get(name)?.includes(entry)
@@ -542,6 +598,7 @@ export class HookBus implements HookDispatcher {
             : current,
         this.options.timeoutMs,
       );
+
       if (!result.ok) {
         this.options.logger.warn(
           `Plugin "${owner}" failed on "${name}": ${result.error.message}`,
@@ -551,10 +608,12 @@ export class HookBus implements HookDispatcher {
 
       if (!this.filters.get(name)?.includes(entry)) continue;
       const accepted = await snapshot(result.value, accept);
+
       if (!this.filters.get(name)?.includes(entry)) continue;
 
       if (accepted) {
         const next = accepted.value as FilterHookMap[K];
+
         observe?.(owner, structuredClone(current), structuredClone(next));
         current = next;
       } else
@@ -562,6 +621,7 @@ export class HookBus implements HookDispatcher {
           `Plugin "${owner}" returned an invalid value for "${name}"; ignored`,
         );
     }
+
     return current;
   }
 
@@ -585,6 +645,7 @@ export class HookBus implements HookDispatcher {
       trusted,
     };
     const list = [...(table.get(name) ?? []), registration];
+
     this.options.publicCache?.invalidate();
     table.set(
       name,
@@ -595,6 +656,7 @@ export class HookBus implements HookDispatcher {
           a.sequence - b.sequence,
       ),
     );
+
     return () =>
       this.update(
         table,

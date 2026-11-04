@@ -51,8 +51,10 @@
   const placement = $derived.by(() => {
     const placed: Partial<Record<string, string>> = {};
     const apart: typeof posted = [];
+
     for (const issue of posted) {
       const target = ssoIssueField(issue.path);
+
       if (target && target.index < values.length)
         placed[`${target.index}.${target.field}`] ??= issueText(
           m,
@@ -61,6 +63,7 @@
         );
       else apart.push(issue);
     }
+
     return { placed, apart };
   });
   const summary = $derived(
@@ -92,6 +95,7 @@
     if (items.length >= SSO_PROVIDERS_MAX) return;
     added += 1;
     const draft = `client-${Date.now().toString(36)}-${added}`;
+
     items = [...items, { ...blankProvider(draft), key: draft, issues: {} }];
   };
   const remove = (event: MouseEvent, key: string) => {
@@ -113,6 +117,7 @@
     help?: string,
   ) => {
     const ids = [help, item.issues[field] && `${id}-error`].filter(Boolean);
+
     return {
       'aria-invalid': item.issues[field] ? true : undefined,
       'aria-describedby': ids.length ? ids.join(' ') : undefined,

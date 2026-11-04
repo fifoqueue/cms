@@ -67,10 +67,12 @@ export class ApiTokenService {
         ? new Date(now.getTime() + expiresInDays * DAY)
         : null,
     };
+
     await this.deps.tokens.insert({
       ...record,
       tokenHash: this.deps.issuer.digest(token),
     });
+
     return { ...toDto(record), token };
   }
 
@@ -87,7 +89,9 @@ export class ApiTokenService {
       this.deps.issuer.digest(token),
       now,
     );
+
     if (!found) return null;
+
     return found.user;
   }
 }

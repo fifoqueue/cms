@@ -45,6 +45,7 @@ export const load: PageServerLoad = async (event) => {
       terms: (await site.taxonomy.list(key).catch(() => [])).map(term),
     }),
   );
+
   return {
     menus,
     itemTypes: itemTypes.map(({ key, label, source, searchable }) => ({
@@ -74,6 +75,7 @@ export const actions: Actions = {
       search: search || undefined,
       pageSize: 50,
     });
+
     return {
       found: found.items.map(({ id, title, type }) => ({ id, title, type })),
     };
@@ -82,11 +84,13 @@ export const actions: Actions = {
   objects: async (event) => {
     const form = await event.request.formData();
     const search = text(form, 'q').trim().slice(0, 200);
+
     try {
       const found = await adminFor(event).menus.objects(text(form, 'type'), {
         search: search || undefined,
         pageSize: 50,
       });
+
       return {
         objects: found.items.map(({ id, label }) => ({ id, label })),
       };
@@ -97,6 +101,7 @@ export const actions: Actions = {
   /** The editor sends every menu and location as one JSON document; the API validates it. */
   save: async (event) => {
     const form = await event.request.formData();
+
     try {
       await adminFor(event).menus.update(
         jsonField(form, 'menus') as MenusSettingsInput,
@@ -104,6 +109,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'saved' };
   },
 };

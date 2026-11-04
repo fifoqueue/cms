@@ -12,6 +12,7 @@ export const routes = (app: ApiApp) =>
       '',
       async ({ comments, query, auth, request, set }) => {
         set.headers['cache-control'] = 'private, no-store';
+
         return json(
           await comments.publicPage(
             query.contentId,
@@ -31,6 +32,7 @@ export const routes = (app: ApiApp) =>
     )
     .post('', async ({ comments, clients, auth, request, set }) => {
       set.headers['cache-control'] = 'private, no-store';
+
       return json(
         await comments.submit(
           await readJson(request, SMALL_BODY_BYTES),

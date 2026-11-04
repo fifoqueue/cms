@@ -40,6 +40,7 @@ test('plugin mail selection seals secrets, preserves omitted credentials and fai
     },
   };
   const admin = await email.update(input);
+
   expect(JSON.stringify(admin)).not.toContain('private-token');
   expect(JSON.stringify(await settings.get('email'))).not.toContain(
     'private-token',
@@ -50,6 +51,7 @@ test('plugin mail selection seals secrets, preserves omitted credentials and fai
     pluginTransport: { ...input.pluginTransport, secrets: {} },
   });
   const message = { to: 'reader@example.com', subject: 'Hi', text: 'Body' };
+
   await email.deliver(message);
   expect(sent).toEqual([
     {

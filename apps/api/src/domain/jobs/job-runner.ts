@@ -68,6 +68,7 @@ export const failureSummary = (error: unknown) => {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, FAILURE_TEXT_MAX);
+
   return `${error.name}${codes.length ? ` [${codes.join(' ')}]` : ''}: ${message}`;
 };
 
@@ -87,6 +88,7 @@ export class JobRunner {
 
   handle(kind: string, handler: JobHandler): () => void {
     this.handlers.set(kind, handler);
+
     return () => {
       if (this.handlers.get(kind) === handler) this.handlers.delete(kind);
     };
@@ -100,6 +102,7 @@ export class JobRunner {
   /** Scrubs historical plaintext payloads, then removes expired failure metadata. */
   async purge(): Promise<number> {
     await this.deps.queue.scrubFailed([Errors.JobPayloadUnreadable], 500);
+
     return this.deps.queue.purge(
       new Date(this.deps.clock.now().getTime() - FAILED_RETENTION_MS),
     );
@@ -108,9 +111,11 @@ export class JobRunner {
   async drain(): Promise<void> {
     const { queue, clock, logger, owner, maxAttempts = 8 } = this.deps;
     const jobs = await queue.claim(BATCH, owner, LEASE_MS, clock.now());
+
     await Promise.all(
       jobs.map(async (job) => {
         const handler = this.handlers.get(job.kind);
+
         try {
           if (!handler)
             throw new PermanentJobError(Errors.JobKindUnknown(job.kind));
@@ -125,6 +130,7 @@ export class JobRunner {
             attempt < maxAttempts
               ? new Date(clock.now().getTime() + backoffMs(attempt))
               : null;
+
           logger.warn(
             `Job ${job.kind} failed (attempt ${attempt}): ${Errors.JobFailed} (${failureSummary(error)})`,
           );

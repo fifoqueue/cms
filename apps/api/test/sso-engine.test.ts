@@ -27,11 +27,13 @@ import { unauthorized } from '#api/shared/errors';
 const visitor = { client: 'client', address: null, captchaToken: null };
 const handle = (step: SignInStep) => {
   if (!('transaction' in step)) throw new Error('Expected transaction');
+
   return step.transaction;
 };
 const fixture = async () => {
   const users = new MemoryUsers();
   const owner = userRecord({ id: 'owner', email: 'owner@example.com' });
+
   await users.insert(owner);
   const { sessions, identities } = createMemoryAuthStore(users);
   const settings = new MemorySettings();
@@ -67,6 +69,7 @@ const fixture = async () => {
       verify: async (query: string, checks: unknown) => {
         checked.push({ id, checks });
         if (!query.startsWith('?code=')) throw unauthorized('Bad callback');
+
         return { issuer: `https://${id}.example/`, subject: query.slice(6) };
       },
     },
@@ -90,6 +93,7 @@ const fixture = async () => {
   const { logger } = recordingLogger();
   const directory = createSignInUsers(users, { capabilities: async () => [] });
   const registry = new SignInRegistry({ logger, timeoutMs: 10 });
+
   registry.core(directory).signInMethod(
     'sso',
     createSsoMethod({
@@ -102,6 +106,7 @@ const fixture = async () => {
     }),
   );
   let enrolled = false;
+
   registry.core(directory).secondFactor('totp', {
     label: 'TOTP',
     enrolled: () => enrolled,
@@ -144,6 +149,7 @@ const fixture = async () => {
   const start = (option = 'a') => engine.start('sso', { option }, visitor);
   const finish = (step: SignInStep, query = '?code=subject') =>
     engine.continue({ transaction: handle(step), query }, visitor);
+
   return {
     engine,
     owner,
@@ -164,14 +170,17 @@ const fixture = async () => {
 
 test('SSO engine binds verified identities through the factor step to sessions', async () => {
   const f = await fixture();
+
   await f.link();
   f.enroll();
   const start = await f.start();
+
   expect(start).toMatchObject({
     kind: 'redirect',
     url: 'https://a.example/authorize',
   });
   const choice = await f.finish(start);
+
   expect(choice.kind).toBe('secondFactor');
   expect(f.sessions.rows.size).toBe(0);
   expect([...f.transactions.rows.values()][0]!.identityId).toBe('identity');
@@ -187,6 +196,7 @@ test('SSO engine binds verified identities through the factor step to sessions',
     { transaction: handle(prompt), values: { code: 'correct' } },
     visitor,
   );
+
   if (result.kind !== 'session') throw new Error('Expected session');
   expect(
     f.sessions.rows.get(f.tokens.digest(result.session.token))!.identityId,

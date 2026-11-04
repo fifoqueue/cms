@@ -9,6 +9,7 @@ export const routes = (app: ApiApp) =>
     '',
     async ({ roles, params, query, user }) => {
       await roles.remove(params.key, query, user);
+
       return noContent();
     },
     keyParams,

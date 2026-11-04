@@ -54,8 +54,10 @@
       Object.fromEntries(Object.entries(links).filter(([, value]) => value)),
     );
     const issues: Partial<Record<string, string>> = {};
+
     for (const issue of result.error?.issues ?? [])
       issues[String(issue.path[0] ?? '')] = issue.message;
+
     return issues;
   });
 

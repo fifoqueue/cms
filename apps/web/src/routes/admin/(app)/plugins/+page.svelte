@@ -73,6 +73,7 @@
   const confirmBulk: SubmitFunction = ({ formData, cancel }) => {
     if (formData.get('action') === 'remove' && !confirm(m.pluginRemoveConfirm))
       return cancel();
+
     return async ({ update }) => {
       selected = [];
       await update();
@@ -87,6 +88,7 @@
     event.preventDefault();
     dragging = false;
     const files = event.dataTransfer?.files;
+
     if (!files?.length || !bundleInput) return;
     bundleInput.files = files;
     installForm.requestSubmit();

@@ -216,11 +216,13 @@ export const PUSH_SERVICE_HOSTS = [
 /** Whether `endpoint` belongs to an allowed push service. */
 export const isPushEndpoint = (endpoint: string): boolean => {
   let url: URL;
+
   try {
     url = new URL(endpoint);
   } catch {
     return false;
   }
+
   if (
     url.protocol !== 'https:' ||
     url.username ||
@@ -230,6 +232,7 @@ export const isPushEndpoint = (endpoint: string): boolean => {
   )
     return false;
   const host = url.hostname;
+
   return PUSH_SERVICE_HOSTS.some((allowed) =>
     allowed.startsWith('*.')
       ? host.endsWith(allowed.slice(1)) && host.length > allowed.length - 1

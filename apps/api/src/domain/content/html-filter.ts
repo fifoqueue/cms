@@ -34,12 +34,16 @@ export const filterHtml = async (
     { html, content, context },
     (value) => {
       const result = schema.safeParse(value);
+
       if (!result.success) return false;
       const next = result.data.html;
+
       if (!sanitized.has(next))
         sanitized.set(next, renderDocument(parseHtml(next)));
+
       return true;
     },
   );
+
   return sanitized.get(filtered.html)!;
 };

@@ -442,24 +442,34 @@ export const parseBlocks = (
   ): Block[] => {
     if (!Array.isArray(value)) {
       issues.push({ path, message: Errors.BlocksNotList });
+
       return [];
     }
+
     if (depth > BLOCK_LIMITS.depth) {
       issues.push({ path, message: Errors.BlocksTooDeep });
+
       return [];
     }
+
     const blocks: Block[] = [];
+
     value.forEach((entry, index) => {
       const at = `${path}[${index}]`;
+
       if (++nodes > BLOCK_LIMITS.nodes) {
         if (nodes === BLOCK_LIMITS.nodes + 1)
           issues.push({ path: at, message: Errors.BlocksTooMany });
+
         return;
       }
+
       if (!isRecord(entry)) {
         issues.push({ path: at, message: Errors.BlockInvalid });
+
         return;
       }
+
       for (const key of Object.keys(entry))
         if (key !== 'name' && key !== 'attrs' && key !== 'children')
           issues.push({
@@ -467,19 +477,25 @@ export const parseBlocks = (
             message: Errors.BlockPropertyUnknown,
           });
       const name = entry.name;
+
       if (typeof name !== 'string' || !Object.hasOwn(BLOCKS, name)) {
         issues.push({ path: `${at}.name`, message: Errors.BlockUnknown });
+
         return;
       }
+
       const spec: BlockSpec = BLOCKS[name as BlockName];
+
       if (spec.parent && (!parent || !spec.parent.includes(parent)))
         issues.push({
           path: at,
           message: Errors.BlockParent,
           params: { parents: spec.parent.join(' or ') },
         });
+
       if (parent) {
         const allowed = (BLOCKS[parent as BlockName] as BlockSpec).children;
+
         if (Array.isArray(allowed) && !allowed.includes(name))
           issues.push({
             path: at,
@@ -487,8 +503,10 @@ export const parseBlocks = (
             params: { parent },
           });
       }
+
       const attrs: Record<string, unknown> = {};
       const given = entry.attrs ?? {};
+
       if (!isRecord(given))
         issues.push({ path: `${at}.attrs`, message: Errors.BlockAttrsInvalid });
       else
@@ -498,21 +516,25 @@ export const parseBlocks = (
               path: `${at}.attrs.${key}`,
               message: Errors.BlockAttrUnknown,
             });
+
       for (const [key, attr] of Object.entries(spec.attrs)) {
         const value =
           isRecord(given) && given[key] !== undefined
             ? given[key]
             : attr.default;
         const problem = attrIssue(attr, value);
+
         if (problem) issues.push({ path: `${at}.attrs.${key}`, ...problem });
         attrs[key] = value;
       }
+
       if (name === 'template-part' && !attrs.slug)
         issues.push({
           path: `${at}.attrs.slug`,
           message: Errors.BlockAttrRequired,
         });
       let children: Block[] = [];
+
       if (entry.children !== undefined) {
         if (!spec.children) {
           if (!Array.isArray(entry.children) || entry.children.length)
@@ -523,12 +545,15 @@ export const parseBlocks = (
         } else
           children = list(entry.children, `${at}.children`, depth + 1, name);
       }
+
       blocks.push({ name, attrs, children } as Block);
     });
+
     return blocks;
   };
 
   const blocks = list(input, '', 0, null);
+
   return { blocks, issues };
 };
 

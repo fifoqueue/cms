@@ -27,23 +27,30 @@ export const pluginBlockView = (
   const label = (dom: HTMLElement, block: string) => {
     dom.textContent = title(block) ?? inactive();
   };
+
   return {
     extension: PluginBlock.extend({
       addNodeView() {
         return ({ node, editor, getPos }) => {
           const dom = document.createElement('div');
+
           dom.className =
             'my-3 cursor-pointer rounded-md border border-dashed p-3 text-sm text-muted-foreground';
           dom.contentEditable = 'false';
+
           dom.onmousedown = (event) => {
             const pos = getPos();
+
             if (typeof pos !== 'number') return;
             event.preventDefault();
             editor.chain().focus().setNodeSelection(pos).run();
           };
+
           const block = String(node.attrs.block ?? '');
+
           shown.set(dom, block);
           label(dom, block);
+
           return { dom, destroy: () => void shown.delete(dom) };
         };
       },

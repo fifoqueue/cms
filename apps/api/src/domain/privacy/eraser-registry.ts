@@ -14,13 +14,17 @@ export class EraserRegistry {
     object,
     { id: string; eraser: PrivacyEraser; core: boolean }
   >();
+
   constructor(
     private readonly options: { timeoutMs: number; logger: Logger },
   ) {}
+
   register(owner: string, key: string, eraser: PrivacyEraser) {
     const id = `${parseInput(extensionKeySchema, owner)}:${parseInput(extensionKeySchema, key)}`;
+
     return this.add(id, eraser, false);
   }
+
   registerCore(key: string, eraser: PrivacyEraser) {
     return this.add(
       `core:${parseInput(extensionKeySchema, key)}`,
@@ -28,20 +32,25 @@ export class EraserRegistry {
       true,
     );
   }
+
   private add(id: string, eraser: PrivacyEraser, core: boolean) {
     const token = {};
+
     this.entries.set(token, {
       id,
       core,
       eraser: { erase: eraser.erase.bind(eraser) },
     });
+
     return () => {
       this.entries.delete(token);
     };
   }
+
   async erase(request: PrivacyRequest) {
     const results: Record<string, PrivacyErasureResult> = {};
     const failed: string[] = [];
+
     // Core errors preserve the existing transactional safeguards. Plugin failures never suppress core.
     for (const [token, entry] of this.entries) {
       if (!entry.core || !this.entries.has(token)) continue;
@@ -49,6 +58,7 @@ export class EraserRegistry {
         await entry.eraser.erase(structuredClone(request)),
       );
     }
+
     for (const [token, entry] of [...this.entries]) {
       if (entry.core) continue;
       if (!this.entries.has(token)) continue;
@@ -56,13 +66,16 @@ export class EraserRegistry {
         () => entry.eraser.erase(structuredClone(request)),
         this.options.timeoutMs,
       );
+
       if (!this.entries.has(token)) {
         failed.push(entry.id);
         continue;
       }
+
       const parsed = result.ok
         ? privacyErasureResultSchema.safeParse(result.value)
         : null;
+
       if (parsed?.success) results[entry.id] = parsed.data;
       else {
         failed.push(entry.id);
@@ -71,6 +84,7 @@ export class EraserRegistry {
         );
       }
     }
+
     return { results, failed };
   }
 }

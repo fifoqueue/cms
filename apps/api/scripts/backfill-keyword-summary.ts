@@ -14,6 +14,7 @@ const config = loadConfig({
   DATABASE_URL:
     process.env.DATABASE_URL ?? readInstallationConfig()?.DATABASE_URL,
 });
+
 if (!config.DATABASE_URL)
   throw new Error('No database configured: finish the setup wizard first.');
 
@@ -21,6 +22,7 @@ const db = createDatabase(config.DATABASE_URL);
 const BATCH = 200;
 let cursor: string | undefined;
 let updated = 0;
+
 for (;;) {
   const rows = await db.content.findMany({
     select: {
@@ -34,7 +36,9 @@ for (;;) {
     take: BATCH,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
   });
+
   if (!rows.length) break;
+
   for (const row of rows) {
     const value =
       row.passwordHash === null
@@ -43,6 +47,7 @@ for (;;) {
             row.seoFocusKeyword,
           )
         : '';
+
     if (value === row.keywordSummary) continue;
     await db.content.update({
       where: { id: row.id },
@@ -50,7 +55,9 @@ for (;;) {
     });
     updated += 1;
   }
+
   cursor = rows.at(-1)!.id;
 }
+
 await db.$disconnect();
 console.log(`keyword_summary updated for ${updated} entries.`);

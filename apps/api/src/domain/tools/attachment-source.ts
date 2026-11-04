@@ -8,6 +8,7 @@ export const attachmentSource = (source: string, original = false) => {
     'NFC',
   );
   const size = /-(\d+)x(\d+)(?=\.[^.]+$)/.exec(filename);
+
   if (original && size) filename = filename.replace(size[0], '');
   filename = filename.replace(/-scaled(?=\.[^.]+$)/, '');
   url.pathname =
@@ -15,6 +16,7 @@ export const attachmentSource = (source: string, original = false) => {
   for (const key of [...url.searchParams.keys()])
     if (CACHE_PARAMS.has(key.toLowerCase())) url.searchParams.delete(key);
   url.hash = '';
+
   return {
     key: url.href,
     width: size ? Number(size[1]) : null,

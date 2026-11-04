@@ -35,6 +35,7 @@
       }));
       const [first] = items;
       const home = sections.find(({ key }) => key === section.key)?.items[0];
+
       return {
         key: section.key,
         icon: section.icon,
@@ -72,11 +73,13 @@
     const path = page.url.pathname;
     let best = '';
     let length = 0;
+
     for (const section of menu)
       for (const { href, type } of section.items) {
         const base = href.split('?')[0]!;
         const contains =
           path === base || (base !== '/admin' && path.startsWith(`${base}/`));
+
         if (
           contains &&
           (type === undefined || type === pageType) &&
@@ -86,6 +89,7 @@
           length = base.length + (type ? 1 : 0);
         }
       }
+
     return best;
   });
 
@@ -112,11 +116,14 @@
   const fitWindow = (node: HTMLElement) => {
     if (!matchMedia('(min-width: 48rem)').matches) return;
     const margin = 8;
+
     node.style.maxHeight = `${innerHeight - margin * 2}px`;
     node.style.overflowY = 'auto';
     const { top, bottom } = node.getBoundingClientRect();
     const overflow = bottom - (innerHeight - margin);
+
     if (overflow > 0) node.style.top = `${-Math.min(overflow, top - margin)}px`;
+
     return () => {
       node.style.removeProperty('top');
       node.style.removeProperty('max-height');
@@ -126,6 +133,7 @@
 
   const closeOnBlur = (event: FocusEvent, section: string) => {
     const target = event.currentTarget as HTMLElement;
+
     if (open === section && !target.contains(event.relatedTarget as Node))
       open = null;
   };

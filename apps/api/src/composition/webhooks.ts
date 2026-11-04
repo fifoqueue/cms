@@ -16,6 +16,7 @@ type Input = Pick<
     hooks: HookBus;
     jobs: Pick<JobRunner, 'handle'>;
   };
+
 export const createWebhooks = ({
   hooks,
   settings,
@@ -39,7 +40,9 @@ export const createWebhooks = ({
     clock: systemClock,
     logger,
   });
+
   webhooks.subscribe(hooks.core('core:webhooks'));
   jobs.handle(WEBHOOK_JOB, (payload) => webhooks.deliver(payload));
+
   return webhooks;
 };

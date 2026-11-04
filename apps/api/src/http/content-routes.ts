@@ -14,6 +14,7 @@ export const contentTrashRoutes =
           ip: clients.address(request),
           userAgent: clients.userAgent(request),
         });
+
         return noContent();
       },
       { ...idParams, parse: 'none' },
@@ -56,6 +57,7 @@ export const contentRoutes =
         '',
         async (context) => {
           await context[service].remove(context.params.id, context.user);
+
           return noContent();
         },
         { ...idParams, parse: 'none' },

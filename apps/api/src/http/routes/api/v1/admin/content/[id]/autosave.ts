@@ -14,6 +14,7 @@ export const routes = (app: ApiApp) =>
           params.id,
           user,
         );
+
         return autosave ? json(autosave) : noContent();
       },
       idParams,
@@ -30,6 +31,7 @@ export const routes = (app: ApiApp) =>
             userAgent: clients.userAgent(request),
           },
         );
+
         return noContent();
       },
       idParams,

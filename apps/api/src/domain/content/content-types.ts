@@ -75,7 +75,9 @@ export class ContentTypeService {
   /** Built-in types first, then custom ones in creation order. */
   async list(): Promise<ContentTypeDefinition[]> {
     const types = [...this.registry.list(), ...(await this.custom())];
+
     if (!this.hooks?.has('contentType.definition')) return types;
+
     return Promise.all(
       types.map(async (type) =>
         contentTypeSchema.parse(
@@ -84,6 +86,7 @@ export class ContentTypeService {
             type,
             (value) => {
               const result = contentTypeSchema.safeParse(value);
+
               return (
                 result.success &&
                 result.data.key === type.key &&
@@ -126,26 +129,32 @@ export class ContentTypeService {
   /** The type of an entry being saved; unknown keys are an input error. */
   async require(key: string): Promise<ContentTypeDefinition> {
     const type = await this.get(key);
+
     if (!type)
       throw invalidInput(Errors.ContentTypeUnknown, [
         { path: 'type', message: Errors.ContentTypeUnknown },
       ]);
+
     return type;
   }
 
   async create(input: unknown, actor: Actor): Promise<ContentTypeDefinition> {
     authorize(actor, 'fields.manage');
     const type = await this.prepare(input);
+
     if (isReservedTypeKey(type.key))
       throw invalidInput(Errors.ContentTypeReserved, [
         { path: 'key', message: Errors.ContentTypeReserved },
       ]);
     const custom = await this.custom();
+
     if (custom.some((existing) => existing.key === type.key))
       throw conflict(Errors.ContentTypeExists);
     const created = { ...type, builtin: false };
+
     await this.settings.set(KEY, [...custom, created]);
     void this.hooks?.emit('contentType.created', created);
+
     return created;
   }
 
@@ -158,15 +167,18 @@ export class ContentTypeService {
     authorize(actor, 'fields.manage');
     const custom = await this.custom();
     const index = custom.findIndex((type) => type.key === key);
+
     if (index === -1) throw notFound(Errors.ContentTypeNotFound);
     const updated = {
       ...(await this.prepare(input)),
       key,
       builtin: false,
     };
+
     custom[index] = updated;
     await this.settings.set(KEY, custom);
     void this.hooks?.emit('contentType.updated', updated);
+
     return updated;
   }
 
@@ -175,6 +187,7 @@ export class ContentTypeService {
     authorize(actor, 'fields.manage');
     const custom = await this.custom();
     const removed = custom.find((type) => type.key === key);
+
     if (!removed) throw notFound(Errors.ContentTypeNotFound);
     if (await this.inUse(key)) throw conflict(Errors.ContentTypeInUse);
     await this.settings.set(
@@ -191,6 +204,7 @@ export class ContentTypeService {
       data,
       (value) => contentTypeInputSchema.safeParse(value).success,
     );
+
     return contentTypeInputSchema.parse(filtered ?? data);
   }
 
@@ -198,8 +212,10 @@ export class ContentTypeService {
   private async custom(): Promise<ContentTypeDefinition[]> {
     const stored = await this.settings.get(KEY);
     const types: ContentTypeDefinition[] = [];
+
     for (const entry of Array.isArray(stored) ? stored : []) {
       const result = contentTypeSchema.safeParse(entry);
+
       if (
         result.success &&
         !(BUILTIN_CONTENT_TYPES as readonly string[]).includes(
@@ -209,6 +225,7 @@ export class ContentTypeService {
       )
         types.push({ ...result.data, builtin: false });
     }
+
     return types;
   }
 }

@@ -18,6 +18,7 @@ const parseRules = (value: string): EgressRule[] =>
     .filter(Boolean)
     .map((line) => {
       const [service, host = '', port = '', addresses = ''] = line.split(/\s+/);
+
       return {
         service: service as EgressService,
         host,
@@ -29,6 +30,7 @@ const parseRules = (value: string): EgressRule[] =>
 export const load: PageServerLoad = async (event) => {
   requireCapability(event.locals, 'egress.manage');
   const settings = await adminFor(event).egress.settings();
+
   return {
     rules: lines(settings.rules),
     environmentRules: lines(settings.environmentRules),
@@ -40,11 +42,13 @@ export const actions: Actions = {
     requireCapability(event.locals, 'egress.manage');
     const form = await event.request.formData();
     const rules = text(form, 'rules');
+
     try {
       await adminFor(event).egress.update({ rules: parseRules(rules) });
     } catch (caught) {
       return failFrom(caught, { rules });
     }
+
     return { notice: 'saved' };
   },
 };

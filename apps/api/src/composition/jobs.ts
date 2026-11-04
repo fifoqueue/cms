@@ -67,12 +67,14 @@ export const createJobs = ({
       intervalMs: 60 * 60 * 1000,
       run: async () => {
         const now = systemClock.now();
+
         await sessions.deleteExpired(now);
         await passwordTokens.purge(now);
         const resealed = await resealTotpSecrets({
           secrets: totpSecrets,
           box: secrets,
         });
+
         logger.info('TOTP secret maintenance', resealed);
         if (resealed.unreadable || resealed.skipped)
           logger.warn(
@@ -84,5 +86,6 @@ export const createJobs = ({
         await jobs.purge();
       },
     });
+
   return { sealedJobs, scheduler, jobs, catchUp, maintenance };
 };

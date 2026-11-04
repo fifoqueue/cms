@@ -19,6 +19,7 @@ export const inertOutside = (root: Element, allowed: Element[]) => {
   const walk = (parent: Element) => {
     for (const child of parent.children) {
       if (allowed.includes(child)) continue;
+
       if (allowed.some((element) => child.contains(element))) walk(child);
       else if (!child.hasAttribute('inert')) {
         child.setAttribute('inert', '');
@@ -26,7 +27,9 @@ export const inertOutside = (root: Element, allowed: Element[]) => {
       }
     }
   };
+
   walk(root);
+
   return () => {
     for (const element of changed) element.removeAttribute('inert');
   };
@@ -51,17 +54,21 @@ export const modal: Action<HTMLElement, ModalOptions> = (node, options) => {
   ]);
   const root = document.documentElement;
   const overflow = root.style.overflow;
+
   root.style.overflow = 'hidden';
   (
     node.querySelector<HTMLElement>('[data-autofocus]') ??
     node.querySelector<HTMLElement>(FOCUSABLE)
   )?.focus();
+
   const onKeydown = (event: KeyboardEvent) => {
     if (event.key !== 'Escape') return;
     event.preventDefault();
     current.close();
   };
+
   document.addEventListener('keydown', onKeydown);
+
   return {
     update(next) {
       current = next;

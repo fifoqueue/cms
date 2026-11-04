@@ -21,9 +21,12 @@ export class PluginRouteRegistry {
         if (!path.startsWith('/'))
           throw new Error(Errors.PluginRoutePathInvalid(path));
         const route: PluginRoute = { method, path, access, handler };
+
         this.routes.set(owner, [...this.list(owner), route]);
+
         return () => {
           const rest = this.list(owner).filter((entry) => entry !== route);
+
           if (rest.length === 0) this.routes.delete(owner);
           else this.routes.set(owner, rest);
         };

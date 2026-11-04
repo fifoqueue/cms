@@ -14,6 +14,7 @@ describe('scheduler and jobs', () => {
       owner: 'a',
     });
     let attempts = 0;
+
     runner.handle('flaky', async () => {
       if (++attempts < 2) throw new Error('later');
     });

@@ -45,14 +45,17 @@
   const placement = $derived.by(() => {
     const placed: Partial<Record<string, string>> = {};
     const apart: typeof posted = [];
+
     for (const issue of posted) {
       const target = signInIssueTarget(issue.path, values);
+
       if (target)
         placed[
           target.id === null ? target.list : `${target.list}:${target.id}`
         ] ??= issueText(m, i18n.language, issue.message);
       else apart.push(issue);
     }
+
     return { placed, apart };
   });
   const summary = $derived(

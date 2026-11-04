@@ -20,6 +20,7 @@ describe('outbound egress policy', () => {
       const policy = new EgressPolicy({
         resolver: async () => [{ address, family } as never],
       });
+
       await expect(policy.resolveHost('service.example', 443)).rejects.toThrow(
         Errors.OutboundAddressBlocked,
       );
@@ -39,6 +40,7 @@ describe('outbound egress policy', () => {
       fetcher: async (input, init) => {
         calls.push({ url: String(input), init });
         if (String(input).includes('2001:4860')) throw new Error('unreachable');
+
         return new Response(null, {
           status: 302,
           headers: { location: 'https://private.example/next' },

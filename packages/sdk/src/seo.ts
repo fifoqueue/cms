@@ -5,6 +5,7 @@ import { PAGINATION_MAX_PAGE } from '#sdk/common';
 const isHttpUrl = (value: string) => {
   try {
     const url = new URL(value);
+
     return (
       (url.protocol === 'https:' || url.protocol === 'http:') &&
       !url.username &&
@@ -75,6 +76,7 @@ const siteOriginSchema = z
     if (!value) return true;
     if (!isHttpUrl(value)) return false;
     const url = new URL(value);
+
     return url.pathname === '/' && !url.search && !url.hash;
   }, 'Enter the public site origin, without a path, query, or fragment')
   .transform((value) => (value ? new URL(value).origin : ''))

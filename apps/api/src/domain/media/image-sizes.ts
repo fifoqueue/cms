@@ -21,25 +21,34 @@ export class ImageSizes implements ImageSizeRegistrar {
     for (const [name, width] of Object.entries(IMAGE_SIZES))
       this.add(schema.parse({ name, width }));
   }
+
   register(input: ImageSize) {
     const size = schema.parse(input);
+
     if (this.core.has(size.name)) {
       this.logger?.warn(
         `Image size "${size.name}" is reserved by core; registration ignored`,
       );
+
       return () => undefined;
     }
+
     return this.add(size);
   }
+
   private add(size: ImageSize) {
     const token = {};
+
     this.entries.set(token, size);
+
     return () => {
       this.entries.delete(token);
     };
   }
+
   list() {
     const sizes = new Map<string, ImageSize>();
+
     for (const size of this.entries.values()) {
       if (!sizes.has(size.name) && sizes.size >= 32) {
         this.logger?.warn(
@@ -47,8 +56,10 @@ export class ImageSizes implements ImageSizeRegistrar {
         );
         continue;
       }
+
       sizes.set(size.name, { ...size });
     }
+
     return [...sizes.values()];
   }
 }

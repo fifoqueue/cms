@@ -73,6 +73,7 @@ export const loadRecent = async (
   const lists = await mapLimit(types ?? [undefined], (type) =>
     api.list({ ...filter, type, pageSize: limit }),
   );
+
   return lists
     .flatMap((list) => list.items)
     .filter((content) => isDiscoverable(content, settings))
@@ -96,6 +97,7 @@ export const xmlText = (value: string) =>
 
 const isoDate = (value: string) => {
   const time = Date.parse(value);
+
   return Number.isNaN(time) ? undefined : new Date(time).toISOString();
 };
 
@@ -147,8 +149,10 @@ export const robotsText = (settings: PublicSeoSettings) => {
     group('OAI-SearchBot', settings.indexingEnabled && settings.allowAiSearch),
     group('GPTBot', settings.indexingEnabled && settings.allowAiTraining),
   ];
+
   if (settings.indexingEnabled && settings.siteUrl)
     sections.push(`Sitemap: ${absoluteUrl(settings.siteUrl, '/sitemap.xml')}`);
+
   return `${sections.join('\n\n')}\n`;
 };
 
@@ -169,6 +173,7 @@ export const sitemapIndex = (
 ) => {
   const kinds = Object.keys(totals);
   const counts = kinds.map((kind) => sitemapChunkCount(kind, totals[kind]!));
+
   // Checked before any list is allocated; a non-numeric count fails the same way.
   if (!(counts.reduce((sum, count) => sum + count, 0) <= SITEMAP_INDEX_LIMIT))
     throw new Error(Errors.SitemapIndexTooLarge, {
@@ -184,6 +189,7 @@ export const sitemapIndex = (
     (path) =>
       `  <sitemap><loc>${xmlText(absoluteUrl(origin, path))}</loc></sitemap>`,
   );
+
   return xmlResponse(
     [
       '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
@@ -201,14 +207,17 @@ export const sitemapChunk = (
 ) => {
   const urls = entries.map(({ path, updatedAt }) => {
     const lastmod = isoDate(updatedAt);
+
     return `  <url><loc>${xmlText(absoluteUrl(origin, path))}</loc>${
       lastmod ? `<lastmod>${lastmod}</lastmod>` : ''
     }</url>`;
   });
+
   if (includeHome)
     urls.unshift(
       `  <url><loc>${xmlText(absoluteUrl(origin, '/'))}</loc></url>`,
     );
+
   return xmlResponse(
     [
       '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
@@ -240,8 +249,10 @@ const audioOf = async (html: string, size: MediaSize) => {
     .exec(html)?.[1]
     ?.replace(/&amp;/g, '&');
   const type = AUDIO_TYPES[src?.split('.').pop()?.toLowerCase() ?? ''];
+
   if (!src?.startsWith(MEDIA_PATH) || !type) return null;
   const length = await size(src.slice(MEDIA_PATH.length));
+
   return length ? { path: src, type, length } : null;
 };
 
@@ -262,6 +273,7 @@ export const loadBodies = async (
           ({ content }) => content.html,
           () => '',
         );
+
         return [item.id, { html, audio: await audioOf(html, size) }] as const;
       },
     ),
@@ -339,6 +351,7 @@ const element = (name: string, value: string) =>
 /** RFC 822 date of an item; left out when the (filtered) date does not parse. */
 const pubDate = (value: string) => {
   const time = Date.parse(value);
+
   return Number.isNaN(time)
     ? []
     : [element('pubDate', new Date(time).toUTCString())];
@@ -360,6 +373,7 @@ export const rssFeed = (
     const content = entriesById.get(item.id);
     const body = bodies?.get(item.id);
     const audio = body?.audio;
+
     return [
       '    <item>',
       `      ${element('title', item.title)}`,
@@ -384,6 +398,7 @@ export const rssFeed = (
       '    </item>',
     ].join('\n');
   });
+
   return xmlResponse(
     [
       '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/">',
@@ -452,9 +467,11 @@ export const llmsText = (
     const summary = markdownInline(
       content.seo.description || content.excerpt,
     ).trim();
+
     return `- [${markdownInline(content.title).trim()}](${url})${summary ? `: ${summary}` : ''}`;
   });
   const sitemap = absoluteUrl(origin, '/sitemap.xml');
+
   return `${[
     `# ${markdownInline(site.title).trim()}`,
     intro && `> ${intro}`,
@@ -479,10 +496,12 @@ export const markdownResponse = (
   const origin = settings.siteUrl;
   // Relative when no origin is configured: clients resolve it against the URL they requested.
   const links = [`<${absoluteUrl(origin, content.path)}>; rel="canonical"`];
+
   if (llmsEnabled(settings) && origin)
     links.push(
       `<${absoluteUrl(origin, '/llms.txt')}>; rel="describedby"; type="text/plain"`,
     );
+
   return new Response(markdown, {
     headers: {
       'content-type': 'text/markdown; charset=utf-8',

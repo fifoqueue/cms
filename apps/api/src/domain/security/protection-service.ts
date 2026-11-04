@@ -65,21 +65,26 @@ export class ProtectionService {
     const now = this.deps.clock.now();
 
     let limited = false;
+
     for (const { rule, key } of this.applicable(attempt, policy.rules)) {
       if (!(await this.deps.store.hit(key, rule, now))) continue;
+
       if (rule.enforcement === 'block' || !captchaOn) {
         this.blocked(attempt, 'rate_limited');
         throw rateLimited(Errors.TooManyAttempts);
       }
+
       limited = true;
     }
 
     if (!captchaOn) return;
     if (captcha.modes[attempt.action] === 'limited' && !limited) return;
+
     if (!attempt.captchaToken) {
       this.blocked(attempt, 'captcha_required');
       throw captchaRequired();
     }
+
     const solved = await this.deps.captcha.verify({
       provider: captcha.provider as Exclude<typeof captcha.provider, 'none'>,
       secret: captcha.secretKey!,
@@ -87,6 +92,7 @@ export class ProtectionService {
       address: attempt.address,
       minimumScore: captcha.minimumScore,
     });
+
     if (!solved) {
       this.blocked(attempt, 'captcha_invalid');
       throw captchaRequired(Errors.CaptchaInvalid);
@@ -101,6 +107,7 @@ export class ProtectionService {
       value
         ? (this.deps.signer?.sign(`protection:${kind}:${value}`) ?? null)
         : null;
+
     void this.deps.hooks?.emit('protection.blocked', {
       action: attempt.action,
       reason,
@@ -118,6 +125,7 @@ export class ProtectionService {
             ? (attempt.client ?? 'unproven')
             : attempt.client;
       const rule = rules[name];
+
       return rule.enabled && subject
         ? [{ rule, key: `${name}:${subject}` }]
         : [];

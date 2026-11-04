@@ -41,9 +41,11 @@ export class MemoryRevisionRepository implements RevisionRepository {
       const own = this.newestFirst(record.id).filter(
         (row) => row.kind === 'revision',
       );
+
       for (const stale of own.slice(revision.keep))
         this.rows.splice(this.rows.indexOf(stale), 1);
     }
+
     if (revision.clearAutosave)
       this.clearNow(record.id, revision.authorId, record.updatedAt);
   }
@@ -56,6 +58,7 @@ export class MemoryRevisionRepository implements RevisionRepository {
   private replaceAutosave(revision: RevisionWrite) {
     this.clearNow(revision.contentId, revision.authorId!);
     const saved = this.content.savedAt(revision.contentId);
+
     this.rows.push({
       ...structuredClone(revision),
       createdAt:
@@ -69,10 +72,12 @@ export class MemoryRevisionRepository implements RevisionRepository {
   delete(contentId: string, id: string, guard: RevisionDeleteGuard) {
     return this.content.exclusive(async () => {
       const current = this.content.snapshot(contentId);
+
       checkDeleteGuard(current, guard);
       const revision = this.rows.find(
         (row) => row.id === id && row.contentId === contentId,
       );
+
       if (!revision) throw notFound(Errors.RevisionNotFound);
       if (revision.kind !== 'revision')
         throw invalidInput(Errors.RevisionAutosaveDelete);
@@ -86,6 +91,7 @@ export class MemoryRevisionRepository implements RevisionRepository {
     const autosave = rows.find(
       (row) => row.kind === 'autosave' && row.authorId === authorId,
     );
+
     return autosave && autosave.createdAt > savedAt ? autosave : null;
   }
 

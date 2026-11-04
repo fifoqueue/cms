@@ -84,6 +84,7 @@ export const sortTerms = <T extends SortableTerm>(
   { orderBy = 'name', order = 'asc' }: TermListFilter = {},
 ): T[] => {
   const sign = order === 'desc' ? -1 : 1;
+
   return terms.sort(
     (a, b) => sign * (orderKeys[orderBy](a, b) || compareTerms(a, b)),
   );

@@ -67,6 +67,7 @@ type AddressClass = 'public' | 'private' | 'forbidden';
 const classifyV4 = (address: ParsedAddress): AddressClass => {
   if (V4_FORBIDDEN.some((range) => inRange(address, range))) return 'forbidden';
   if (V4_PRIVATE.some((range) => inRange(address, range))) return 'private';
+
   return 'public';
 };
 
@@ -75,21 +76,26 @@ const embeddedV4 = (address: ParsedAddress) => {
   const mapped = inRange(address, '::ffff:0:0/96');
   const nat64 = inRange(address, '64:ff9b::/96');
   const sixToFour = inRange(address, '2002::/16');
+
   if (!mapped && !nat64 && !sixToFour) return null;
   const value = sixToFour
     ? (address.value >> 80n) & 0xffff_ffffn
     : address.value & 0xffff_ffffn;
+
   return { family: 4 as const, value };
 };
 
 const classify = (value: Address): AddressClass => {
   const address = parseAddress(value.address);
+
   if (!address) return 'forbidden';
   if (address.family === 4) return classifyV4(address);
   const embedded = embeddedV4(address);
+
   if (embedded) return classifyV4(embedded);
   if (V6_FORBIDDEN.some((range) => inRange(address, range))) return 'forbidden';
   if (V6_PRIVATE.some((range) => inRange(address, range))) return 'private';
+
   return 'public';
 };
 
@@ -101,7 +107,9 @@ const hostnameOf = (value: string) =>
 const systemResolver: Resolver = async (hostname) => {
   const literal = hostnameOf(hostname);
   const family = isIP(literal);
+
   if (family) return [{ address: literal, family } as Address];
+
   return (await lookup(literal, { all: true, verbatim: true })).flatMap(
     ({ address, family }) =>
       family === 4 || family === 6 ? [{ address, family } as Address] : [],
@@ -117,6 +125,7 @@ const operationSignal = (
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ) => {
   const timeout = AbortSignal.timeout(timeoutMs);
+
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 };
 
@@ -125,9 +134,11 @@ const abortable = async <T>(task: Promise<T>, signal: AbortSignal) => {
   let stop: () => void = () => undefined;
   const aborted = new Promise<never>((_resolve, reject) => {
     const listener = () => reject(signal.reason);
+
     signal.addEventListener('abort', listener, { once: true });
     stop = () => signal.removeEventListener('abort', listener);
   });
+
   try {
     return await Promise.race([task, aborted]);
   } finally {
@@ -145,6 +156,7 @@ const ruleAllows = (
   access: EgressAccess,
 ) => {
   const parsed = parseAddress(address.address);
+
   return (
     !!parsed &&
     !!access.service &&
@@ -167,6 +179,7 @@ const connectionFailure = (error: unknown) => {
     candidate && typeof candidate === 'object' && 'code' in candidate
       ? String(candidate.code)
       : '';
+
   return ['ECONNREFUSED', 'ENETUNREACH', 'EHOSTUNREACH'].includes(code);
 };
 
@@ -186,27 +199,34 @@ export class EgressPolicy {
     access: EgressAccess = {},
   ): Promise<(Address & { serverName?: string })[]> {
     const host = hostnameOf(hostname);
+
     if (!host || host !== host.trim() || port < 1 || port > 65_535)
       throw invalidInput(Errors.OutboundUrlInvalid);
     const signal =
       access.signal ?? operationSignal(undefined, access.timeoutMs);
     let addresses: Address[];
+
     try {
       addresses = await abortable(this.resolver(host), signal);
     } catch {
       if (signal.aborted) throw signal.reason;
       throw invalidInput(Errors.OutboundHostUnresolved);
     }
+
     if (!addresses.length) throw invalidInput(Errors.OutboundHostUnresolved);
+
     for (const address of addresses) {
       const kind = classify(address);
+
       if (
         kind === 'forbidden' ||
         (kind === 'private' && !ruleAllows(address, host, port, access))
       )
         throw destinationBlocked();
     }
+
     const serverName = isIP(host) ? undefined : host;
+
     return addresses.map((address) => ({
       ...address,
       ...(serverName && { serverName }),
@@ -217,6 +237,7 @@ export class EgressPolicy {
   async check(input: string | URL, access: EgressAccess = {}) {
     const url = this.url(input);
     const signal = operationSignal(access.signal, access.timeoutMs);
+
     await this.resolveHost(url.hostname, portOf(url), { ...access, signal });
   }
 
@@ -229,16 +250,19 @@ export class EgressPolicy {
     const host = hostnameOf(hostname);
     const signal = operationSignal();
     let addresses: Address[];
+
     try {
       addresses = await abortable(this.resolver(host), signal);
     } catch {
       return null;
     }
+
     if (addresses.some((address) => classify(address) === 'forbidden'))
       return null;
     const privateAddresses = addresses
       .filter((address) => classify(address) === 'private')
       .map(({ address }) => address.split('%')[0]!);
+
     return privateAddresses.length
       ? { service, host, port, addresses: [...new Set(privateAddresses)] }
       : null;
@@ -256,6 +280,7 @@ export class EgressPolicy {
     );
     const sourceSignal = signals.length ? AbortSignal.any(signals) : undefined;
     const signal = operationSignal(sourceSignal, access.timeoutMs);
+
     return this.send(
       url,
       {
@@ -276,6 +301,7 @@ export class EgressPolicy {
 
   private url(input: string | URL) {
     const url = new URL(String(input));
+
     if (
       (url.protocol !== 'http:' && url.protocol !== 'https:') ||
       url.username ||
@@ -283,6 +309,7 @@ export class EgressPolicy {
       url.hash
     )
       throw invalidInput(Errors.OutboundUrlInvalid);
+
     return url;
   }
 
@@ -300,10 +327,13 @@ export class EgressPolicy {
 
     for (const [index, target] of targets.entries()) {
       const pinned = new URL(url);
+
       pinned.hostname =
         target.family === 6 ? `[${target.address}]` : target.address;
       const headers = new Headers(init.headers);
+
       headers.set('host', url.host);
+
       try {
         response = await this.fetcher(pinned, {
           ...init,
@@ -326,23 +356,28 @@ export class EgressPolicy {
           throw error;
       }
     }
+
     if (!response) throw failure;
 
     const mode = init.redirect ?? 'follow';
+
     if (!redirects.has(response.status) || mode === 'manual') return response;
     await response.body?.cancel();
     if (mode === 'error' || followed >= MAX_REDIRECTS)
       throw new Error(Errors.OutboundRedirectBlocked);
     const location = response.headers.get('location');
+
     if (!location || (method !== 'GET' && method !== 'HEAD'))
       throw new Error(Errors.OutboundRedirectBlocked);
 
     const next = this.url(new URL(location, url));
     const nextHeaders = new Headers(init.headers);
+
     if (next.origin !== url.origin)
       for (const name of ['authorization', 'cookie', 'proxy-authorization'])
         nextHeaders.delete(name);
     nextHeaders.delete('host');
+
     return this.send(
       next,
       { ...init, headers: nextHeaders, body: undefined, method },

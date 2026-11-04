@@ -98,5 +98,6 @@ export const readEmailForm = (form: FormData, transports: Transports = []) => {
       secret: secretInput(form, 'http.secret', 'http.secretRemove'),
     },
   };
+
   return { values, input };
 };

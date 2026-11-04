@@ -33,13 +33,16 @@ export class MediaReconciler {
       if (inventory.size > 5000 || Date.now() > deadline)
         throw new Error(Errors.MediaResyncFailed);
     };
+
     if (driver === 's3') {
       if (!s3) throw new Error(Errors.MediaStorageSecret);
       const storage = new S3MediaStorage(s3, this.transport);
       let cursor: string | undefined;
+
       for (let page = 0; ; page++) {
         if (page >= 50) throw new Error(Errors.MediaResyncFailed);
         const result = await storage.list(cursor, signal);
+
         for (const object of result.contents ?? []) {
           if (object.size === undefined)
             throw new Error(Errors.MediaResyncFailed);
@@ -48,6 +51,7 @@ export class MediaReconciler {
             etag: object.eTag ?? null,
           });
         }
+
         budget();
         if (!result.isTruncated) break;
         cursor = result.nextContinuationToken;
@@ -59,6 +63,7 @@ export class MediaReconciler {
         onlyFiles: true,
       })) {
         const file = await stat(join(this.root, key));
+
         inventory.set(key.replaceAll('\\', '/'), {
           size: file.size,
           etag: null,
@@ -66,6 +71,7 @@ export class MediaReconciler {
         budget();
       }
     }
+
     const counts = {
       scanned: inventory.size,
       refreshed: 0,
@@ -81,23 +87,29 @@ export class MediaReconciler {
           take: 5001,
           orderBy: { id: 'asc' },
         });
+
         budget();
+
         return result;
       },
       { timeout: Math.max(1, deadline - Date.now()), maxWait: 1000 },
     );
+
     if (rows.length > 5000) throw new Error(Errors.MediaResyncFailed);
     const url = (key: string) =>
       driver === 's3' && s3?.publicBaseUrl
         ? `${s3.publicBaseUrl.replace(/\/$/, '')}/${s3.prefix}${key}`
         : `/media/${key}`;
+
     for (const row of rows) {
       budget();
       const variants = parseVariants(row.variants);
+
       for (const variant of Object.values(variants)) {
         if (!variant) continue;
         if ((variant.storageDriver ?? row.storageDriver) !== driver) continue;
         const found = inventory.get(variant.key);
+
         variant.missingAt = found
           ? null
           : (variant.missingAt ?? startedAt.toISOString());
@@ -109,7 +121,9 @@ export class MediaReconciler {
           counts.refreshed++;
         } else counts.missing++;
       }
+
       const found = inventory.get(row.storageKey);
+
       if (found) {
         counts.refreshed++;
         inventory.delete(row.storageKey);
@@ -146,7 +160,9 @@ export class MediaReconciler {
         { timeout: Math.max(1, deadline - Date.now()), maxWait: 1000 },
       );
     }
+
     counts.untracked = inventory.size;
+
     return counts;
   }
 }

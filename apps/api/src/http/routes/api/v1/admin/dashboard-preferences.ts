@@ -8,6 +8,7 @@ export const routes = (app: ApiApp) =>
   session(app, 'content.create')
     .get('', async ({ dashboardPreferences, user, set }) => {
       set.headers['cache-control'] = 'private, no-store';
+
       return json(await dashboardPreferences.get(user));
     })
     .put('', async ({ dashboardPreferences, request, user }) =>

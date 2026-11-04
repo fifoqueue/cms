@@ -66,7 +66,9 @@ export const queueContentPaths = async (
     where,
     select: { id: true, type: true },
   });
+
   if (!rows.length) return;
+
   if (
     rows.every(({ type }) =>
       permalinkPatternFor(settings, type)
@@ -80,8 +82,10 @@ export const queueContentPaths = async (
     )
   ) {
     await refreshContentPaths(tx, where);
+
     return;
   }
+
   const stored = await tx.setting.findUnique({
     where: { key: REGENERATION_KEY },
   });
@@ -98,6 +102,7 @@ export const queueContentPaths = async (
         ? undefined
         : [...new Set([...(pending?.ids ?? []), ...rows.map(({ id }) => id)])],
   });
+
   await tx.setting.upsert({
     where: { key: REGENERATION_KEY },
     create: { key: REGENERATION_KEY, value },
@@ -141,19 +146,23 @@ export const lockPermalinks = async (
         )
       ).map((row) => row.id)
     : [];
+
   // A concurrent write invalidates the worker's snapshot instead of rejecting the editor.
   if (!regeneration) {
     const stored = await tx.setting.findUnique({
       where: { key: REGENERATION_KEY },
     });
+
     if (stored) {
       const pending = regenerationSchema.parse(JSON.parse(stored.value));
+
       await tx.setting.update({
         where: { key: REGENERATION_KEY },
         data: { value: JSON.stringify({ ...pending, cursor: null }) },
       });
     }
   }
+
   return locked;
 };
 
@@ -169,6 +178,7 @@ export const deleteEntries = async (
 ) => {
   if (!ids.length) return;
   const list = Prisma.join([...ids]);
+
   await tx.$executeRaw`UPDATE comments SET parent_id = NULL WHERE content_id IN (${list}) AND parent_id IS NOT NULL`;
   await tx.$executeRaw`DELETE FROM comments WHERE content_id IN (${list})`;
   await tx.$executeRaw`DELETE FROM contents WHERE id IN (${list})`;
@@ -247,6 +257,7 @@ const applyChanges = async (tx: Transaction, changes: PathChange[]) => {
     tx,
     changes.map((change) => change.to),
   );
+
   return applyPlan(
     tx,
     planPathChanges(
@@ -315,17 +326,21 @@ const addressEntries = async (
   ) => {
     const slugs: string[] = [];
     const seen = new Set<string>();
+
     while (id) {
       if (seen.has(id) || seen.size >= 100)
         throw new Error(Errors.ContentParentInvalid);
       seen.add(id);
       const node = nodes.get(id);
+
       if (!node) break;
       slugs.unshift(node.slug);
       id = node.parentId;
     }
+
     return slugs;
   };
+
   return rows.map(({ currentPath, author, terms, ...subject }) => {
     const category = terms
       .filter(({ term }) => term.taxonomy === 'category')
@@ -336,6 +351,7 @@ const addressEntries = async (
             ? 1
             : a.term.id.localeCompare(b.term.id),
       )[0]?.term.id;
+
     return regenerationEntry(
       {
         ...subject,
@@ -355,6 +371,7 @@ export const refreshContentPaths = async (
   tokens?: PermalinkTokenRegistry,
 ) => {
   const settings = await readSettings(tx);
+
   await applyChanges(
     tx,
     await resolvePathChanges(
@@ -379,6 +396,7 @@ export const assignContentPath = async (
     subject.type === 'page' ? { type: 'page' } : { id: subject.id },
   );
   const own = entries.find((entry) => entry.subject.id === subject.id)!;
+
   own.retainPrevious = retainPrevious;
   await applyChanges(
     tx,
@@ -388,7 +406,9 @@ export const assignContentPath = async (
     where: { currentFor: subject.id },
     select: { path: true },
   });
+
   if (!current) throw new Error(Errors.ContentPathMissing);
+
   return decodePath(current.path);
 };
 
@@ -403,13 +423,16 @@ export class PrismaPermalinkRepository
 
   async addRedirect(contentId: string, path: string) {
     if (permalinkPathIssue(path)) return false;
+
     return this.db.$transaction(async (tx) => {
       await lockPermalinks(tx);
+
       try {
         await checkArchivePaths(tx, [path]);
       } catch {
         return false;
       }
+
       if ((await findOwners(tx, [path])).has(path)) return false;
       await tx.contentPath.create({
         data: {
@@ -419,6 +442,7 @@ export class PrismaPermalinkRepository
           currentFor: null,
         },
       });
+
       return true;
     });
   }
@@ -432,6 +456,7 @@ export class PrismaPermalinkRepository
       where: { contentId },
       select: { path: true },
     });
+
     return rows.map(({ path }) => decodePath(path));
   }
 
@@ -450,6 +475,7 @@ export class PrismaPermalinkRepository
     const state = await this.db.setting.findUnique({
       where: { key: REGENERATION_KEY },
     });
+
     if (state)
       await this.saveSettings(
         regenerationSchema.parse(JSON.parse(state.value)).settings,
@@ -466,14 +492,18 @@ export class PrismaPermalinkRepository
     let cursor: string | null = null;
     let ids: string[] | undefined;
     let initialized = false;
+
     await this.db.$transaction(async (tx) => {
       await lockPermalinks(tx, true);
       const stored = await tx.setting.findUnique({
         where: { key: REGENERATION_KEY },
       });
+
       if (resume && !stored) return;
+
       if (stored) {
         const pending = regenerationSchema.parse(JSON.parse(stored.value));
+
         if (
           resume &&
           JSON.stringify(pending.settings) !== JSON.stringify(settings)
@@ -498,10 +528,12 @@ export class PrismaPermalinkRepository
           },
         });
       }
+
       initialized = true;
     });
     if (!initialized) return;
     const timeZone = await siteTimeZone(this.db);
+
     await regeneratePaths({
       load: () =>
         addressEntries(
@@ -521,6 +553,7 @@ export class PrismaPermalinkRepository
           });
           const pending =
             state && regenerationSchema.parse(JSON.parse(state.value));
+
           if (
             !pending ||
             pending.cursor !== cursor ||
@@ -531,10 +564,12 @@ export class PrismaPermalinkRepository
           const current = await addressEntries(tx, {
             id: { in: entries.map((entry) => entry.subject.id) },
           });
+
           if (JSON.stringify(current) !== JSON.stringify(entries))
             throw conflict(Errors.ContentChanged);
           await applyChanges(tx, changes.flat());
           const next = entries[entries.length - 1]!.subject.id;
+
           await tx.setting.update({
             where: { key: REGENERATION_KEY },
             data: { value: JSON.stringify({ settings, cursor: next, ids }) },
@@ -554,6 +589,7 @@ export class PrismaPermalinkRepository
       });
       const pending =
         state && regenerationSchema.parse(JSON.parse(state.value));
+
       if (
         !pending ||
         pending.cursor !== cursor ||

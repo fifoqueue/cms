@@ -58,6 +58,7 @@ export interface Failure {
  */
 export const failureOf = (error: unknown): Failure | undefined => {
   let node = error;
+
   for (let depth = 0; depth < 4 && node != null; depth++) {
     if (typeof node === 'number')
       return {
@@ -74,8 +75,10 @@ export const failureOf = (error: unknown): Failure | undefined => {
       code?: unknown;
       cause?: unknown;
     };
+
     if (typeof name === 'string' && /time-?out|abort/i.test(name))
       return { reason: 'timeout' };
+
     if (typeof code === 'string') {
       if (TLS_CODES.has(code) || code.startsWith('ERR_TLS'))
         return { reason: 'tls' };
@@ -84,8 +87,10 @@ export const failureOf = (error: unknown): Failure | undefined => {
       if (NETWORK_CODES.has(code)) return { reason: 'network' };
       if (REJECTED_CODES.has(code)) return { reason: 'rejected' };
     }
+
     node = cause;
   }
+
   return undefined;
 };
 
@@ -94,10 +99,12 @@ const CATALOG = new Set<string>(Object.values(SdkErrors));
 /** The first SDK catalog message among the error and its causes. */
 const catalogMessageOf = (error: unknown) => {
   let node = error;
+
   for (let depth = 0; depth < 4 && node instanceof Error; depth++) {
     if (CATALOG.has(node.message)) return node.message;
     node = node.cause;
   }
+
   return undefined;
 };
 
@@ -117,14 +124,18 @@ export const outboundFailure = (
 ): { message: string; params?: IssueParams } => {
   if (error instanceof DomainError) {
     const params = paramsOf(error);
+
     return { message: error.message, ...(params && { params }) };
   }
+
   const failure = failureOf(error);
+
   if (failure?.status !== undefined)
     return { message: messages.status, params: { status: failure.status } };
   if (failure?.reason === 'timeout') return { message: Errors.OutboundTimeout };
   if (failure?.reason === 'tls') return { message: Errors.OutboundTlsFailed };
   if (failure?.reason === 'network')
     return { message: Errors.OutboundNetworkFailed };
+
   return { message: catalogMessageOf(error) ?? messages.other };
 };

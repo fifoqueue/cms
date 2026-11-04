@@ -4,6 +4,7 @@ import { codeBlockAttributesSchema } from '@cms/sdk/code-block';
 export const EnhancedCodeBlock = CodeBlock.extend({
   addAttributes() {
     const defaults = codeBlockAttributesSchema.parse({});
+
     return Object.fromEntries(
       Object.entries(defaults).map(([key, value]) => [
         key,
@@ -17,6 +18,7 @@ export const EnhancedCodeBlock = CodeBlock.extend({
                     .querySelector('code')
                     ?.className.match(/language-(\S+)/)?.[1]
                 : null);
+
             if (raw === null || raw === undefined) return value;
             const candidate =
               typeof value === 'boolean'
@@ -27,6 +29,7 @@ export const EnhancedCodeBlock = CodeBlock.extend({
             const field =
               codeBlockAttributesSchema.shape[key as keyof typeof defaults];
             const parsed = field.safeParse(candidate);
+
             return parsed.success ? parsed.data : value;
           },
           renderHTML: (attrs: Record<string, unknown>) => ({

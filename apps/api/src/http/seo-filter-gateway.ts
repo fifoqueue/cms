@@ -17,17 +17,21 @@ export class SeoFilterGateway {
 
   async filter(request: Request) {
     const client = this.clients.resolve(request);
+
     if (client === UNVERIFIED_CLIENT) throw forbidden();
     if (!this.limiter.tryAcquire(client))
       throw rateLimited(Errors.TooManyAttempts);
     const input = await readJson(request, JSON_BODY_BYTES);
+
     if (Array.isArray(input)) {
       const batch = parseInput(
         discoveryFilterInputSchema.array().min(1).max(7),
         input,
       );
+
       return Promise.all(batch.map((entry) => this.seo.filterOutput(entry)));
     }
+
     return this.seo.filterOutput(input);
   }
 }

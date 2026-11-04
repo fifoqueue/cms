@@ -20,6 +20,7 @@ export const GET: RequestHandler = async ({ fetch, params, request }) => {
     params.key,
     request.headers.get('range'),
   );
+
   // Partial content (206) keeps its status.
   return relayFile(response, PASSED, response.status);
 };

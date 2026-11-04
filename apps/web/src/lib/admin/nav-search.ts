@@ -22,6 +22,7 @@ const INITIALS = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
 
 const initialOf = (char: string) => {
   const code = char.charCodeAt(0);
+
   return code >= SYLLABLE_FIRST && code <= SYLLABLE_LAST
     ? INITIALS[Math.floor((code - SYLLABLE_FIRST) / PER_INITIAL)]
     : char;
@@ -37,13 +38,16 @@ const find = (token: string[], text: string[], from = 0) => {
   for (let start = from; start + token.length <= text.length; start++)
     if (token.every((char, index) => same(char, text[start + index]!)))
       return start;
+
   return -1;
 };
 
 const inOrder = (token: string[], text: string[]) => {
   let at = 0;
+
   for (const char of text)
     if (at < token.length && same(token[at]!, char)) at++;
+
   return at === token.length;
 };
 
@@ -52,17 +56,22 @@ const WORD_START = /[\s\p{P}]/u;
 /** How well one query word fits one text: whole, start, word start, inside, scattered. */
 const fit = (token: string[], text: string[]): number => {
   const at = find(token, text);
+
   if (at === 0) return token.length === text.length ? 100 : 80;
+
   if (at > 0) {
     for (let start = at; start >= 0; start = find(token, text, start + 1))
       if (WORD_START.test(text[start - 1]!)) return 60;
+
     return 40;
   }
+
   return token.length > 1 && inOrder(token, text) ? 10 : 0;
 };
 
 const fitText = (token: string[], text: string) => {
   const plain = normalize(text);
+
   return Math.max(
     fit(token, [...plain]),
     fit(token, [...plain.replace(/\s+/g, '')]),
@@ -85,14 +94,17 @@ export const matchScore = (entry: Searchable, query: string): number | null => {
     ...entry.groups.map((text): [string, number] => [text, 0.5]),
   ];
   let total = 0;
+
   for (const word of normalize(query).split(/\s+/).filter(Boolean)) {
     const token = [...word];
     const best = Math.max(
       ...fields.map(([text, weight]) => fitText(token, text) * weight),
     );
+
     if (best === 0) return null;
     total += best;
   }
+
   return total;
 };
 

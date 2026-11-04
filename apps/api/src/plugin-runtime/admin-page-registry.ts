@@ -44,7 +44,9 @@ export class AdminPageRegistry {
         const capability = parseInput(pluginCapabilitySchema, page.capability);
         const actions = new Map(Object.entries(page.actions ?? {}));
         const registration = { owner, key, page, capability, actions };
+
         this.registrations = [...this.registrations, registration];
+
         return () => {
           this.registrations = this.registrations.filter(
             (entry) => entry !== registration,
@@ -73,8 +75,10 @@ export class AdminPageRegistry {
   ): Promise<PluginPage | null> {
     const entry = this.find(plugin, key, actor);
     const blocks = await this.blocks(entry);
+
     if (!this.registrations.includes(entry))
       throw notFound(Errors.PluginPageNotFound);
+
     return (
       blocks && {
         plugin,
@@ -101,6 +105,7 @@ export class AdminPageRegistry {
     const form = (await this.blocks(entry))?.find(
       (block) => block.kind === 'form' && block.action === action,
     );
+
     if (
       typeof handler !== 'function' ||
       form?.kind !== 'form' ||
@@ -111,19 +116,24 @@ export class AdminPageRegistry {
     const result = await isolate(() => {
       if (!this.registrations.includes(entry))
         throw notFound(Errors.PluginPageNotFound);
+
       return handler(structuredClone(parsed) as never);
     }, this.options.timeoutMs);
+
     // A dispatched action may already have committed; disposal must not imply it never ran.
     if (!result.ok) {
       this.options.logger.warn(
         `Plugin "${plugin}" page action "${action}" failed: ${result.error.message}`,
       );
+
       return null;
     }
+
     const answer = pluginPageResultSchema.safeParse({
       notice:
         (result.value as { notice?: unknown } | undefined)?.notice ?? null,
     });
+
     return answer.success ? answer.data : { notice: null };
   }
 
@@ -131,8 +141,10 @@ export class AdminPageRegistry {
     const entry = this.registrations.find(
       (candidate) => candidate.owner === plugin && candidate.key === key,
     );
+
     if (!entry) throw notFound(Errors.PluginPageNotFound);
     authorize(actor, entry.capability);
+
     return entry;
   }
 
@@ -145,12 +157,14 @@ export class AdminPageRegistry {
       this.options.timeoutMs,
     );
     const blocks = result.ok ? result.value : null;
+
     if (blocks?.success) return blocks.data;
     this.options.logger.warn(
       `Plugin "${entry.owner}" page "${entry.key}" failed: ${
         result.ok ? 'returned invalid blocks' : result.error.message
       }`,
     );
+
     return null;
   }
 }

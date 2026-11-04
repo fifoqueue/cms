@@ -14,6 +14,7 @@ test('avatar URL filters avoid identity reads without handlers and accept only f
     {
       email: async () => {
         reads++;
+
         return ' Person@Example.com ';
       },
     },
@@ -28,6 +29,7 @@ test('avatar URL filters avoid identity reads without handlers and accept only f
       hooks,
       hash: (email) => {
         expect(email).toBe('person@example.com');
+
         return 'email-hash';
       },
       siteUrl: async () => 'https://site.example',
@@ -35,12 +37,15 @@ test('avatar URL filters avoid identity reads without handlers and accept only f
   );
   const settings = discussionSettingsSchema.parse({ showAvatars: true });
   const original = await service.url('author:person', settings);
+
   expect(reads).toBe(0);
   const plugin = hooks.registrar('provider');
   const release = plugin.filter('avatar.url', (value) => {
     expect(Object.keys(value).sort()).toEqual(['emailHash', 'size', 'url']);
+
     return { ...value, url: 'https://images.example/avatar.png' };
   });
+
   expect(await service.url('author:person', settings)).toBe(
     'https://images.example/avatar.png',
   );
@@ -55,6 +60,7 @@ test('avatar URL filters avoid identity reads without handlers and accept only f
     .filter('avatar.url', (value) => {
       value.emailHash = 'changed';
       value.url = 'https://images.example/changed.png';
+
       return value;
     });
   expect(await service.url('author:person', settings)).toBe(original);

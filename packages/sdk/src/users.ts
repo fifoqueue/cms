@@ -4,6 +4,7 @@ import { adminLocaleSchema, roleSchema, userSlugSchema } from '#sdk/auth';
 const name = z.string().trim().min(1).max(191);
 const email = z.email().max(191);
 const bio = z.string().trim().max(2000);
+
 /** Same length bounds as setup; reused by password change and reset. */
 export const passwordSchema = z.string().min(8).max(200);
 

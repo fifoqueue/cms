@@ -46,7 +46,9 @@
   const outline = (list: Element | null): Item[] =>
     [...(list?.children ?? [])].flatMap((li) => {
       const link = li.querySelector<HTMLAnchorElement>(':scope > a[href^="#"]');
+
       if (!link) return [];
+
       return [
         {
           href: link.getAttribute('href')!,
@@ -59,6 +61,7 @@
   $effect(() => {
     void html;
     const element = container;
+
     items = [];
     open = false;
     visible = false;
@@ -66,8 +69,10 @@
     if (!element) return;
     const source = element.querySelector<HTMLElement>('.cms-toc');
     const list = source?.querySelector('ol') ?? null;
+
     if (!source || !source.querySelector('a[href^="#"]')) return;
     const view = element.ownerDocument.defaultView!;
+
     items = outline(list);
     title =
       source.getAttribute('aria-label') ||
@@ -81,6 +86,7 @@
         source.querySelector('a[aria-current]')?.getAttribute('href') ?? null;
     };
     const marks = new view.MutationObserver(mirror);
+
     marks.observe(source, {
       attributes: true,
       attributeFilter: ['aria-current'],
@@ -95,6 +101,7 @@
         Number.parseFloat(
           view.getComputedStyle(element).getPropertyValue('--cms-toc-offset'),
         ) || 0;
+
       visible =
         source.getBoundingClientRect().bottom <= offset &&
         element.getBoundingClientRect().bottom > view.innerHeight / 2;
@@ -104,9 +111,11 @@
     const schedule = () => {
       if (!frame) frame = view.requestAnimationFrame(measure);
     };
+
     view.addEventListener('scroll', schedule, { passive: true });
     view.addEventListener('resize', schedule, { passive: true });
     schedule();
+
     return () => {
       marks.disconnect();
       view.removeEventListener('scroll', schedule);
@@ -124,6 +133,7 @@
       const target =
         [...links].find((link) => link.hasAttribute('aria-current')) ??
         links[0];
+
       target?.focus();
     });
   };
@@ -135,11 +145,14 @@
   const close = (restore: boolean) => {
     const active = panel?.ownerDocument.activeElement;
     const within = !!active && (panel?.contains(active) || active === button);
+
     open = false;
     if (!restore || !within) return;
+
     if (visible) button?.focus();
     else {
       const heading = current && root ? fragmentTarget(current, root) : null;
+
       if (heading) focusHeading(heading);
     }
   };
@@ -161,9 +174,11 @@
     const focusin = (event: FocusEvent) => {
       if (!inside(event.target)) close(false);
     };
+
     view.addEventListener('keydown', keydown);
     view.addEventListener('pointerdown', pointerdown, true);
     view.addEventListener('focusin', focusin);
+
     return () => {
       view.removeEventListener('keydown', keydown);
       view.removeEventListener('pointerdown', pointerdown, true);
@@ -174,6 +189,7 @@
   /** The link scrolls natively (heading `scroll-margin-top` clears sticky headers); focus follows. */
   const follow = (event: MouseEvent) => {
     const link = event.currentTarget as HTMLAnchorElement;
+
     open = false;
     if (
       event.button !== 0 ||
@@ -186,6 +202,7 @@
     const heading = root
       ? fragmentTarget(link.getAttribute('href')!, root)
       : null;
+
     if (heading) focusHeading(heading);
   };
 </script>

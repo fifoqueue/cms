@@ -17,6 +17,7 @@ export const monthGrid = (
     ...Array.from<null>({ length: (first - weekStartsOn + 7) % 7 }).fill(null),
     ...Array.from({ length }, (_, index) => index + 1),
   ];
+
   return Array.from({ length: Math.ceil(cells.length / 7) }, (_, row) =>
     Array.from({ length: 7 }, (_, column) => cells[row * 7 + column] ?? null),
   );

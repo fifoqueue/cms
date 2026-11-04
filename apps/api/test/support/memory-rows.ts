@@ -12,9 +12,12 @@ export const takenSlugs = (
 /** Runs tasks one at a time, like a database write lock; a failed task does not block the next. */
 export const writeQueue = () => {
   let writing: Promise<unknown> = Promise.resolve();
+
   return <T>(task: () => Promise<T>): Promise<T> => {
     const run = writing.then(task, task);
+
     writing = run.catch(() => undefined);
+
     return run;
   };
 };

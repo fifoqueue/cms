@@ -9,6 +9,7 @@ export const staleNotices = (before: Date) =>
 /** Consumed password/SSO proofs and completed jobs are already physically removed. */
 const predicates = (now: Date) => {
   const retained = new Date(now.getTime() - 30 * 86400000);
+
   return {
     sessions: Prisma.sql`FROM sessions WHERE expires_at <= ${now}`,
     passwords: Prisma.sql`FROM password_tokens WHERE expires_at <= ${now}`,
@@ -32,23 +33,28 @@ export class PrismaExpiredCleanup {
 
   async count(now: Date) {
     let count = 0;
+
     for (const predicate of Object.values(predicates(now))) {
       const [row] = await this.db.$queryRaw<{ total: bigint }[]>(
         Prisma.sql`SELECT COUNT(*) AS total ${predicate}`,
       );
+
       count += Number(row!.total);
     }
+
     return count;
   }
 
   async batch(now: Date, limit: number) {
     let count = 0;
+
     for (const predicate of Object.values(predicates(now))) {
       count += await this.db.$executeRaw(
         Prisma.sql`DELETE ${predicate} LIMIT ${limit - count}`,
       );
       if (count === limit) break;
     }
+
     return count;
   }
 }

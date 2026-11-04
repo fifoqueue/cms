@@ -25,7 +25,9 @@ export class WidgetRegistry implements PluginWidgets {
       provide: (key, widget) => {
         if (!KEY.test(key)) throw new Error(Errors.PluginWidgetKeyInvalid(key));
         const registration = { type: `plugin:${owner}:${key}`, owner, widget };
+
         this.registrations = [...this.registrations, registration];
+
         return () => {
           this.registrations = this.registrations.filter(
             (entry) => entry !== registration,
@@ -46,6 +48,7 @@ export class WidgetRegistry implements PluginWidgets {
     const registration = this.registrations.find(
       (entry) => entry.type === type,
     );
+
     if (!registration) return null;
     const result = await isolate(
       () =>
@@ -54,11 +57,13 @@ export class WidgetRegistry implements PluginWidgets {
           : null,
       this.options.timeoutMs,
     );
+
     if (!this.registrations.includes(registration)) return null;
     if (result.ok && typeof result.value === 'string') return result.value;
     this.options.logger.warn(
       `Plugin "${registration.owner}" failed to render widget "${type}": ${result.ok ? 'returned a non-string value' : result.error.message}`,
     );
+
     return null;
   }
 }

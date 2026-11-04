@@ -78,6 +78,7 @@ export class ClientResolver {
   /** Whether the request carries the frontend secret, so its client headers are the web server's. */
   private trusted(request: Request) {
     const proof = request.headers.get(SSO_FRONTEND_SECRET_HEADER);
+
     return (
       !!this.secret &&
       proof !== null &&
@@ -88,15 +89,18 @@ export class ClientResolver {
   /** The browser's IP address, when the web server proved it. */
   address(request: Request): string | null {
     const address = request.headers.get(SSO_CLIENT_ADDRESS_HEADER);
+
     if (address === null || !this.trusted(request)) return null;
 
     this.proven = true;
+
     return clientNetwork(address) ? address : null;
   }
 
   /** The browser's user agent (cleaned for storage), when the web server vouched for it. */
   userAgent(request: Request): string | null {
     const agent = request.headers.get(CLIENT_USER_AGENT_HEADER);
+
     return agent !== null && this.trusted(request)
       ? cleanUserAgent(agent)
       : null;
@@ -105,6 +109,7 @@ export class ClientResolver {
   /** Who attempts a protected action, as `ProtectionService` counts it. */
   attempt(request: Request) {
     const client = this.resolve(request);
+
     return {
       client: client === UNVERIFIED_CLIENT ? null : client,
       address: this.address(request),

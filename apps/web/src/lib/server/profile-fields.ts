@@ -23,6 +23,7 @@ export const saveProfileFields = async (event: Event, id: string) => {
   const meta = await users.profileFields(id);
   const read = readProfileFields(await event.request.formData(), meta);
   const extra = { profileFields: true as const, typed: read.typed };
+
   if (read.invalid.length)
     return fail(400, {
       ...extra,
@@ -33,10 +34,12 @@ export const saveProfileFields = async (event: Event, id: string) => {
         message: Errors.ProfileNumberInvalid,
       })),
     } satisfies FormFailure & typeof extra);
+
   try {
     await users.saveProfileFields(id, read.values);
   } catch (caught) {
     return failFrom(caught, extra);
   }
+
   return { notice: 'saved' as const };
 };

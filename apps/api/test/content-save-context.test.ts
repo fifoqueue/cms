@@ -13,8 +13,10 @@ test('save context and update notifications retain the previous entry', async ()
   const previous: string[] = [];
   const transitions: unknown[] = [];
   const registrar = hooks.registrar('functions:site', { trusted: true });
+
   registrar.filter('content.beforeSave', (data, context) => {
     contexts.push(context);
+
     return data;
   });
   registrar.on('content.updated', (entry) => {
@@ -28,6 +30,7 @@ test('save context and update notifications retain the previous entry', async ()
     { type: 'post', title: 'Before', document },
     ADMIN,
   );
+
   await service.update(
     entry.id,
     { type: 'post', title: 'After', document, status: 'published' },
@@ -58,10 +61,12 @@ test('trash filters can reverse a refusal and transitions include trash', async 
     ADMIN,
   );
   const registrar = hooks.registrar('functions:site', { trusted: true });
+
   registrar.filter('content.trashAllowed', () => false);
   await expect(service.trash(entry.id, ADMIN)).rejects.toThrow();
   registrar.filter('content.trashAllowed', () => true, 20);
   const transitions: unknown[] = [];
+
   registrar.on('content.statusChanged', (value) => {
     transitions.push(value.previousStatus);
   });

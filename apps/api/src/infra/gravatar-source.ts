@@ -34,6 +34,7 @@ const fallback = (emailHash: string, style: AvatarDefault, size: number) => {
       ? ''
       : `<circle cx="${size / 2}" cy="${size * 0.36}" r="${size * 0.2}"/><path d="M${size * 0.16} ${size}a${size * 0.34} ${size * 0.34} 0 0 1 ${size * 0.68} 0"/>`;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" fill="${color}">${body}</svg>`;
+
   return {
     bytes: new TextEncoder().encode(svg),
     contentType: 'image/svg+xml',
@@ -42,27 +43,37 @@ const fallback = (emailHash: string, style: AvatarDefault, size: number) => {
 
 const limitedBody = async (response: Response) => {
   const length = Number(response.headers.get('content-length'));
+
   if (Number.isFinite(length) && length > MAX_BYTES) return null;
   const reader = response.body?.getReader();
+
   if (!reader) return null;
   const chunks: Uint8Array[] = [];
   let total = 0;
+
   for (;;) {
     const { done, value } = await reader.read();
+
     if (done) break;
     total += value.length;
+
     if (total > MAX_BYTES) {
       await reader.cancel();
+
       return null;
     }
+
     chunks.push(value);
   }
+
   const bytes = new Uint8Array(total);
   let offset = 0;
+
   for (const chunk of chunks) {
     bytes.set(chunk, offset);
     offset += chunk.length;
   }
+
   return bytes;
 };
 
@@ -77,14 +88,18 @@ export class GravatarSource implements AvatarSource {
     const emailHash = avatarEmailHash(email);
     const key = `${emailHash}:${style}:${size}`;
     const cached = this.cache.get(key);
+
     if (cached && cached.expires > Date.now()) return cached.image;
     const pending = this.pending.get(key);
+
     if (pending) return pending;
     const loading = this.load(emailHash, style, size).finally(() =>
       this.pending.delete(key),
     );
+
     this.pending.set(key, loading);
     const image = await loading;
+
     this.cache.set(key, {
       image,
       expires:
@@ -93,6 +108,7 @@ export class GravatarSource implements AvatarSource {
     });
     while (this.cache.size > MAX_CACHE_ITEMS)
       this.cache.delete(this.cache.keys().next().value!);
+
     return image;
   }
 
@@ -110,12 +126,16 @@ export class GravatarSource implements AvatarSource {
         ?.split(';')[0]
         ?.trim()
         .toLowerCase();
+
       if (!response.ok || !contentType || !ALLOWED_TYPES.has(contentType)) {
         await response.body?.cancel();
+
         return fallback(emailHash, style, size);
       }
+
       const bytes = await limitedBody(response);
       const detected = bytes && sniffMediaType(bytes);
+
       return bytes?.length && detected?.startsWith('image/')
         ? { bytes, contentType: detected }
         : fallback(emailHash, style, size);

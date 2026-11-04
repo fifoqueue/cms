@@ -13,6 +13,7 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
   const sso = await adminFor(event).ssoSettings.get();
+
   return {
     providers: ssoProviderValues(sso.providers),
     /** Saved provider IDs with a stored client secret. */
@@ -37,6 +38,7 @@ export const actions: Actions = {
     const { values, input: providers } = readSsoProviders(form);
     const admin = adminFor(event);
     const result = ssoSettingsInputSchema.safeParse({ providers });
+
     if (!result.success)
       return fail(400, {
         values,
@@ -44,16 +46,19 @@ export const actions: Actions = {
         code: 'invalid_input',
         issues: issuesOf(result.error.issues),
       } satisfies FormFailure & { values: SsoProviderValues[] });
+
     try {
       await admin.ssoSettings.update(result.data);
     } catch (caught) {
       return failFrom(caught, { values });
     }
+
     return { notice: 'saved' };
   },
   /** Adds an empty provider without saving; with scripts the page does this in place. */
   add: async (event) => {
     const { values } = readSsoProviders(await event.request.formData());
+
     return {
       values:
         values.length < SSO_PROVIDERS_MAX
@@ -66,6 +71,7 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const { values } = readSsoProviders(form);
     const index = Number(text(form, 'remove'));
+
     return { values: values.filter((_, at) => at !== index) };
   },
 };

@@ -21,6 +21,7 @@ const attempt = { client: 'visitor', address: null, captchaToken: null };
 test('recovery codes replace previous codes, store only digests and consume once under concurrency', async () => {
   const users = new MemoryUsers();
   const user = userRecord({ id: 'admin', email: 'admin@example.com' });
+
   await users.insert(user);
   const { sessions } = createMemoryAuthStore(users);
   const clock = fixedClock();
@@ -59,6 +60,7 @@ test('recovery codes replace previous codes, store only digests and consume once
   });
   const first = await service.generate(user, token);
   const second = await service.generate(user, token);
+
   expect(first.codes).toHaveLength(10);
   expect(await service.status(user)).toEqual({
     remaining: 10,
@@ -78,6 +80,7 @@ test('recovery codes replace previous codes, store only digests and consume once
     service.recover(input, attempt),
     service.recover(input, attempt),
   ]);
+
   expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
   expect((await service.status(user)).remaining).toBe(9);
   expect(checks).toContainEqual({

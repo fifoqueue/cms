@@ -22,8 +22,10 @@
       value = value.replace(/\s/g, '');
     if (key === 'startLine' && value === '') value = 1;
     const node = editor.state.doc.nodeAt(target.pos);
+
     if (node?.type.name !== 'codeBlock') return;
     const attrs = { ...node.attrs, [key]: value };
+
     invalid[key] = !codeBlockAttributesSchema.safeParse(attrs).success;
     if (invalid[key]) return;
     editor.view.dispatch(

@@ -32,6 +32,7 @@ export const createBootstrap = async () => {
   const connect = async (url: string, persist: boolean) => {
     await prepareDatabase(url);
     const candidate = await createContainer({ ...config, DATABASE_URL: url });
+
     try {
       await candidate.plugins.boot();
       await candidate.functionsWatch.start();
@@ -56,6 +57,7 @@ export const createBootstrap = async () => {
       throw invalidInput(Errors.InstallApplyFailed);
     }
   };
+
   if (config.DATABASE_URL) await connect(config.DATABASE_URL, false);
   const token = randomTokenIssuer.issue();
   const tokenHash = randomTokenIssuer.digest(token);
@@ -68,6 +70,7 @@ export const createBootstrap = async () => {
         initializeSite(runtime!.db, async ({ users, sessions, settings }) => {
           const auth = createAuth(users, sessions, config);
           const grant = await auth.setup(input.admin);
+
           // A new site has no media library yet, so no icon or logo can be chosen.
           await new SiteService(
             settings,
@@ -75,16 +78,19 @@ export const createBootstrap = async () => {
             async () => new Map(),
           ).update(input.site);
           const seo = new SeoSettingsService(settings);
+
           await seo.update({
             ...(await seo.getAdmin()),
             siteUrl: input.siteUrl,
           });
+
           return grant;
         }),
     },
     (value) => randomTokenIssuer.digest(value) === tokenHash,
     () => runtime?.hooks,
   );
+
   if ((await installation.status()).setupRequired)
     logger.info(`첫 설치: 웹사이트에 접속한 뒤 설치 키를 입력하세요: ${token}`);
   const installer = await createInstallerApp({
@@ -98,7 +104,9 @@ export const createBootstrap = async () => {
       '/api/v1/install/*',
       async ({ request }) => {
         const response = await installer.handle(request);
+
         response.headers.set('cache-control', 'no-store');
+
         return response;
       },
       { parse: 'none' },
@@ -111,6 +119,7 @@ export const createBootstrap = async () => {
           : errorResponse(503, 'installation_required', Errors.InstallRequired),
       { parse: 'none' },
     );
+
   return {
     port: config.API_PORT,
     hostname: config.API_HOST,

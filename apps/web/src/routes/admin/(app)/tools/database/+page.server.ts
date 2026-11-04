@@ -33,6 +33,7 @@ export const load: PageServerLoad = async (event) => {
   const preview = await adminFor(event).databaseCleanup.preview(
     options.success ? options.data : {},
   );
+
   return {
     counts: countsOf(preview.counts),
     tables: tablesOf(preview.tables),
@@ -46,6 +47,7 @@ export const actions: Actions = {
     const selected = form
       .getAll('category')
       .filter((value) => typeof value === 'string');
+
     if (selected.length === 0)
       return fail(400, { message: Errors.DatabaseCleanupNothingSelected });
     if (form.get('confirm') !== 'on')
@@ -54,14 +56,17 @@ export const actions: Actions = {
       categories: selected,
       options: { keepLatest: Number(text(form, 'keepLatest')) },
     });
+
     if (!input.success)
       return fail(400, {
         message: Errors.FormInvalid,
         code: 'invalid_input',
         issues: issuesOf(input.error.issues),
       } satisfies FormFailure);
+
     try {
       const result = await adminFor(event).databaseCleanup.run(input.data);
+
       return {
         notice: 'databaseCleanupDone',
         result: {

@@ -44,11 +44,15 @@
   const turnOff = async () => {
     busy = true;
     const done = await disablePush(forget).catch(() => false);
+
     busy = false;
+
     if (!done) {
       notifyFailure(m.pushDisableFailed);
+
       return;
     }
+
     subscribed = false;
     notifySuccess(m.pushDisabled);
   };

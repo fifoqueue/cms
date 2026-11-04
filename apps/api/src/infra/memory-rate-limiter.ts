@@ -43,15 +43,18 @@ export class MemoryRateLimiter implements RateLimiter {
 
   tryAcquire(key: string): boolean {
     const now = this.options.clock.now().getTime();
+
     this.forgetIdle(now);
 
     const overall = this.refill(this.overall, this.options.total, now);
+
     if (overall < 1) return false;
 
     const bucket = this.keys.get(key);
     const tokens = bucket
       ? this.refill(bucket, this.options.perKey, now)
       : this.options.perKey;
+
     if (tokens < 1) return false;
 
     this.overall.tokens = overall - 1;

@@ -32,6 +32,7 @@ const toRecord = ({ fields, ...row }: CommentRow): CommentRecord => ({
 /** Exclusive locks on entries, in id order, before their comments change. */
 const lockEntries = async (tx: Transaction, ids: Iterable<string>) => {
   const unique = [...new Set(ids)];
+
   if (unique.length)
     await tx.$queryRaw`SELECT id FROM contents WHERE id IN (${Prisma.join(unique)}) ORDER BY id FOR UPDATE`;
 };
@@ -116,8 +117,10 @@ export class PrismaCommentRepository implements CommentRepository {
         currentPath: { select: { path: true } },
       },
     });
+
     if (!row?.currentPath) return null;
     const { currentPath, passwordHash, ...target } = row;
+
     return {
       ...target,
       protected: passwordHash !== null,
@@ -130,6 +133,7 @@ export class PrismaCommentRepository implements CommentRepository {
       where: { id },
       select: ownColumns,
     });
+
     return row && toRecord(row);
   }
 
@@ -157,6 +161,7 @@ export class PrismaCommentRepository implements CommentRepository {
         ],
       },
     });
+
     return Math.floor(before / pageSize) + 1;
   }
 
@@ -165,17 +170,20 @@ export class PrismaCommentRepository implements CommentRepository {
       await lockSetting(tx, 'privacy.jobs');
       // Before any plain read, like the moderation writes (see `lockComments`).
       await lockEntries(tx, [record.contentId]);
+
       if (record.userId) {
         const user = await tx.user.findUnique({
           where: { id: record.userId },
           select: { email: true },
         });
+
         if (
           !user ||
           user.email.toLowerCase() !== record.authorEmail.toLowerCase()
         )
           throw unauthorized();
       }
+
       await tx.comment.create({
         data: { ...record, fields: JSON.stringify(record.fields) },
       });
@@ -208,6 +216,7 @@ export class PrismaCommentRepository implements CommentRepository {
     let parents = roots.map((root) => root.id);
     let remaining = THREAD_ITEMS_MAX - roots.length;
     let truncated = false;
+
     for (let level = 1; level < depth && parents.length; level += 1) {
       const found = await this.db.comment.findMany({
         where: { ...approved, parentId: { in: parents } },
@@ -215,24 +224,31 @@ export class PrismaCommentRepository implements CommentRepository {
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         take: remaining + 1,
       });
+
       if (found.length > remaining) truncated = true;
       const replies = found.slice(0, remaining).map(toRecord);
+
       for (const reply of replies) {
         const siblings = children.get(reply.parentId!) ?? [];
+
         siblings.push(reply);
         children.set(reply.parentId!, siblings);
       }
+
       remaining -= replies.length;
       parents = replies.map((reply) => reply.id);
       if (remaining === 0) break;
     }
+
     const items: ThreadRecord[] = [];
     const visit = (comment: CommentRecord, level: number) => {
       items.push({ ...comment, depth: level });
       for (const reply of children.get(comment.id) ?? [])
         visit(reply, level + 1);
     };
+
     for (const root of roots) visit(root, 0);
+
     return { items, total, truncated };
   }
 
@@ -259,6 +275,7 @@ export class PrismaCommentRepository implements CommentRepository {
     };
     const total = await this.db.comment.count({ where });
     const skip = (page - 1) * pageSize;
+
     if (skip >= total) return { items: [], total };
     const rows = await this.db.comment.findMany({
       where,
@@ -271,6 +288,7 @@ export class PrismaCommentRepository implements CommentRepository {
       skip,
       take: pageSize,
     });
+
     return {
       items: rows.map(({ content, parent, ...row }) => ({
         ...toRecord(row),
@@ -288,6 +306,7 @@ export class PrismaCommentRepository implements CommentRepository {
       orderBy: { id: 'asc' },
       take: limit,
     });
+
     return rows.map(toRecord);
   }
 
@@ -302,7 +321,9 @@ export class PrismaCommentRepository implements CommentRepository {
       spam: 0,
       trash: 0,
     };
+
     for (const row of rows) counts[row.status] = row._count._all;
+
     return counts;
   }
 
@@ -326,9 +347,11 @@ export class PrismaCommentRepository implements CommentRepository {
           })
         ).map((row) => row.contentId)
       : [];
+
     return this.db.$transaction(async (tx) => {
       await lockEntries(tx, entries);
       const rows = await lockComments(tx, unique);
+
       // Comments created after the read above (none in practice: ids are generated) lock late.
       await lockEntries(
         tx,
@@ -336,6 +359,7 @@ export class PrismaCommentRepository implements CommentRepository {
           .map((row) => row.contentId)
           .filter((entry) => !entries.includes(entry)),
       );
+
       return write(tx, rows);
     });
   }
@@ -350,6 +374,7 @@ export class PrismaCommentRepository implements CommentRepository {
         ),
         updatedAt: at,
       };
+
       await tx.$executeRaw`
         UPDATE comments SET status = ${after.status}, author_name = ${after.authorName},
           author_email = ${after.authorEmail}, author_url = ${after.authorUrl},
@@ -359,6 +384,7 @@ export class PrismaCommentRepository implements CommentRepository {
         tx,
         new Map([[after.contentId, statusDelta(before.status, after.status)]]),
       );
+
       return { before, after };
     });
   }
@@ -368,12 +394,14 @@ export class PrismaCommentRepository implements CommentRepository {
       if (before.length)
         await tx.$executeRaw`UPDATE comments SET status = ${status}, updated_at = ${at} WHERE id IN (${Prisma.join(before.map((row) => row.id))})`;
       const deltas = new Map<string, number>();
+
       for (const row of before)
         deltas.set(
           row.contentId,
           (deltas.get(row.contentId) ?? 0) + statusDelta(row.status, status),
         );
       await adjustCounts(tx, deltas);
+
       return before;
     });
   }
@@ -388,14 +416,17 @@ export class PrismaCommentRepository implements CommentRepository {
       // Replies move to the nearest ancestor that survives.
       const survivor = (id: string | null): string | null =>
         id && deleted.has(id) ? survivor(parentOf.get(id) ?? null) : id;
+
       for (const row of doomed)
         await tx.$executeRaw`UPDATE comments SET parent_id = ${survivor(row.parentId)} WHERE parent_id = ${row.id} AND id NOT IN (${doomedIds})`;
       await tx.$executeRaw`DELETE FROM comments WHERE id IN (${doomedIds})`;
       const deltas = new Map<string, number>();
+
       for (const row of doomed)
         if (row.status === 'approved')
           deltas.set(row.contentId, (deltas.get(row.contentId) ?? 0) - 1);
       await adjustCounts(tx, deltas);
+
       return doomed;
     });
   }
@@ -429,6 +460,7 @@ export class PrismaCommentRepository implements CommentRepository {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit,
     });
+
     return rows.flatMap(({ content, ...row }) =>
       content.currentPath
         ? [
@@ -461,6 +493,7 @@ export class PrismaCommentRepository implements CommentRepository {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit,
     });
+
     return rows.flatMap(
       ({ id, contentId, parentId, createdAt, authorName, content }) =>
         content.currentPath
@@ -485,6 +518,7 @@ export class PrismaCommentRepository implements CommentRepository {
       select: { id: true },
       take: limit,
     });
+
     return rows.length ? this.delete(rows.map((row) => row.id)) : [];
   }
 }

@@ -29,6 +29,7 @@ const paragraphs = (html: string) =>
 /** Imported values the schema bounds (seven gallery columns, an 800px spacer) fall back to defaults. */
 const withinBounds = (document: JSONContent) => {
   const stack = [document];
+
   while (stack.length) {
     const node = stack.pop()!;
     const validator =
@@ -36,11 +37,13 @@ const withinBounds = (document: JSONContent) => {
         node.type as keyof typeof contentAttributeSchemas
       ];
     const result = node.attrs && validator?.safeParse(node.attrs);
+
     if (result && !result.success)
       for (const { path } of result.error.issues)
         if (typeof path[0] === 'string') delete node.attrs![path[0]];
     stack.push(...(node.content ?? []), ...(node.marks ?? []));
   }
+
   return document as ContentDocument;
 };
 

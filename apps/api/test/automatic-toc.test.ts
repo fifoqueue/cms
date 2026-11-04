@@ -72,6 +72,7 @@ const setup = () => {
       },
       ADMIN,
     );
+
   return {
     repository,
     clock,
@@ -88,11 +89,14 @@ const setup = () => {
 
 test('public detail and body lists apply current policy without resaving', async () => {
   const { create, writing, reader } = setup();
+
   for (const override of ['default', 'always', 'never'] as const) {
     const entry = await create({ title: override, tocOverride: override });
+
     for (const enabled of [false, true]) {
       await writing.update({ autoToc: { enabled } });
       const html = (await reader.getById(entry.id))!.html;
+
       expect(html.includes('<nav')).toBe(
         override === 'always' || (override === 'default' && enabled),
       );
@@ -102,6 +106,7 @@ test('public detail and body lists apply current policy without resaving', async
       ).toBe(html);
     }
   }
+
   for (const [nodes, count] of [
     [[heading, heading], 0],
     [[{ type: 'tableOfContents' }, heading, heading, heading], 1],
@@ -121,6 +126,7 @@ test('public detail and body lists apply current policy without resaving', async
     const entry = await create({
       document: { type: 'doc', content: [...nodes] },
     });
+
     expect(
       (await reader.getById(entry.id))!.html.match(/<nav /g)?.length ?? 0,
     ).toBe(count);
@@ -130,15 +136,18 @@ test('public detail and body lists apply current policy without resaving', async
 test('inapplicable entries avoid authoring reads; locked entries never render', async () => {
   const { create, writing, reader, fetchBody, settings, renderBody } = setup();
   const never = await create({ tocOverride: 'never' });
+
   await reader.getById(never.id);
   expect(settings).not.toHaveBeenCalled();
   const normal = await create();
+
   await writing.update({ autoToc: { enabled: false } });
   await reader.getById(normal.id);
   await writing.update({ autoToc: { types: ['page'] } });
   await reader.getById(normal.id);
   expect(fetchBody).not.toHaveBeenCalled();
   const locked = await create({ password: 'secret', tocOverride: 'always' });
+
   renderBody.mockClear();
   expect((await reader.getById(locked.id))!.html).toBe('');
   expect((await reader.list({ include: [locked.id] })).items[0]!.html).toBe('');
@@ -160,6 +169,7 @@ test('concurrent changes cannot replace an authorized snapshot with new content'
     { protected: true },
     { html: '<p>new private text</p>' },
   ];
+
   for (const change of changes) {
     fetchBody.mockImplementation(async () =>
       change === null
@@ -181,16 +191,20 @@ test('placement and preview share current policy, including autosaved text', asy
   const { create, writing, reader, previews, repository, clock } = setup();
   const entry = await create();
   const { token } = await previews.create(entry.id, ADMIN);
+
   expect((await previews.render(token)).html).toBe(
     (await reader.getById(entry.id))!.html,
   );
+
   for (const position of ['top', 'beforeFirstHeading'] as const) {
     await writing.update({ autoToc: { position } });
     const html = (await reader.getById(entry.id))!.html;
+
     expect(html.startsWith('<nav')).toBe(position === 'top');
     expect(html.indexOf('<nav')).toBeLessThan(html.indexOf('<h2'));
     expect((await previews.render(token)).html).toBe(html);
   }
+
   clock.set('2026-01-01T00:01:00.000Z');
   await repository.revisions.autosave({
     id: 'toc-autosave',
@@ -216,6 +230,7 @@ test('each list reads settings once and fetches only eligible bodies in one batc
   const page = await create({ type: 'page' });
   const locked = await create({ password: 'secret' });
   const result = await reader.list();
+
   expect(settings).toHaveBeenCalledTimes(1);
   expect(fetchBody).toHaveBeenCalledTimes(1);
   expect(new Set(fetchBody.mock.calls[0]![0])).toEqual(

@@ -32,6 +32,7 @@ const legacySchema = z.object({
 export const migrateSignInPolicy = async (store: SettingsRepository) => {
   if ((await store.get('signIn')) != null) return;
   const legacy = legacySchema.safeParse(await store.get('sso'));
+
   await store.set(
     'signIn',
     signInSettingsSchema.parse({
@@ -56,9 +57,11 @@ export class SignInSettingsService {
 
   private async stored(store = this.deps.settings): Promise<SignInSettings> {
     const raw = await store.get('signIn');
+
     if (raw !== undefined && raw !== null)
       return parseInput(signInSettingsSchema, raw);
     const legacy = legacySchema.safeParse(await store.get('sso'));
+
     return signInSettingsSchema.parse({
       ...DEFAULT_SIGN_IN_SETTINGS,
       ...(legacy.success && !legacy.data.settings.passwordLogin
@@ -87,14 +90,17 @@ export class SignInSettingsService {
   ): Promise<AdminSignInSettings> {
     authorize(actor, 'settings.manage');
     const policy = parseInput(signInSettingsSchema, input);
+
     await this.deps.transactions.run('signIn.admission', async (store) => {
       const current = await this.stored(store);
       const available = await this.deps.registry.available();
+
       for (const key of ['methods', 'secondFactors'] as const) {
         const known = new Set([
           ...current[key],
           ...available[key].map((entry) => entry.id),
         ]);
+
         for (const [index, id] of policy[key].entries())
           if (!known.has(id))
             throw invalidInput(SignInErrors.SignInUnknown, [
@@ -104,7 +110,9 @@ export class SignInSettingsService {
               },
             ]);
       }
+
       let usable = false;
+
       if (
         policy.requireSecondFactor.length &&
         !policy.secondFactors.some(
@@ -117,14 +125,17 @@ export class SignInSettingsService {
             message: SignInErrors.SignInFactorRequired,
           },
         ]);
+
       for (const id of this.allowed(policy)) {
         if (!available.methods.some((entry) => entry.id === id && entry.ready))
           continue;
+
         if (await this.deps.registry.method(id)?.usableBy(actor)) {
           usable = true;
           break;
         }
       }
+
       if (!usable)
         throw invalidInput(SignInErrors.SignInAccessRequired, [
           {
@@ -134,6 +145,7 @@ export class SignInSettingsService {
         ]);
       await store.set('signIn', policy);
     });
+
     return this.getAdmin();
   }
 
@@ -143,6 +155,7 @@ export class SignInSettingsService {
   ): Promise<boolean> {
     const policy = await this.stored(store);
     const available = await this.deps.registry.available();
+
     // A temporary password fallback is not an explicitly permitted alternative:
     // enabling SSO must not silently withdraw the administrator's only way in.
     for (const id of this.allowed(policy).filter((id) =>
@@ -150,6 +163,7 @@ export class SignInSettingsService {
     ))
       if (id !== 'sso' && (await this.deps.registry.method(id)?.usableBy(user)))
         return true;
+
     return false;
   }
 
@@ -159,17 +173,21 @@ export class SignInSettingsService {
     const methods = policy.methods.filter((id) =>
       available.methods.some((entry) => entry.id === id && entry.ready),
     );
+
     if (this.deps.passwordForced && !methods.includes('password'))
       methods.push('password');
+
     if (!methods.length) {
       methods.push('password');
       this.deps.logger.warn(
         'No allowed sign-in method is available; falling back to password.',
       );
     }
+
     const secondFactors = policy.secondFactors.filter((id) =>
       available.secondFactors.some((entry) => entry.id === id),
     );
+
     if (
       policy.requireSecondFactor.length &&
       !secondFactors.some((id) => this.deps.registry.factor(id)?.enroll)
@@ -179,6 +197,7 @@ export class SignInSettingsService {
         'Required second factors are unavailable; falling back to core TOTP enrollment.',
       );
     }
+
     return {
       methods,
       secondFactors,

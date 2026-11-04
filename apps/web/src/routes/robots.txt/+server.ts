@@ -8,5 +8,6 @@ export const GET: RequestHandler = async (event) => {
   const [text] = await filterDiscovery(event, [
     { kind: 'robots.txt', value: robotsText(settings) },
   ]);
+
   return robotsTxt(settings, text);
 };

@@ -161,6 +161,7 @@ export const createUsers = ({
       userAdmin.completeRegistration(payload),
     );
   };
+
   return {
     apiTokens,
     roles,

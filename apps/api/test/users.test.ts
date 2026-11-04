@@ -53,8 +53,10 @@ const setup = async (overrides: Partial<UserServiceDeps> = {}) => {
     invitations: { available: async () => false, send: async () => {} },
     ...overrides,
   });
+
   await users.insert(userRecord({ id: 'admin' }));
   await users.insert(userRecord({ id: 'writer', role: 'author' }));
+
   return { content, directory, jobs, service, settings, users };
 };
 
@@ -234,6 +236,7 @@ describe('user administration', () => {
       ...value,
       roles: ['subscriber'],
     }));
+
     expect((await roles.assignable(admin)).map((role) => role.key)).toEqual([
       'subscriber',
     ]);
@@ -249,12 +252,14 @@ describe('user administration', () => {
       roles: ['invented'],
     }));
     const original = await roles.list();
+
     expect(await roles.assignable(admin)).toEqual(original);
     hooks
       .registrar('functions:site', { trusted: true })
       .filter('role.assignable', (value) => {
         value.actorId = 'other';
         value.roles = [];
+
         return value;
       });
     expect(await roles.assignable(admin)).toEqual(original);
@@ -272,6 +277,7 @@ describe('user administration', () => {
         ...value,
         allowed: value.userId === reader.id,
       }));
+
     expect(await codeOf(service.remove('writer', {}, admin))).toBe('forbidden');
     expect(await codeOf(service.remove('admin', {}, reader))).toBe('conflict');
     expect(await codeOf(service.remove('writer', {}, reader))).toBe('ok');
@@ -280,11 +286,13 @@ describe('user administration', () => {
   test('existing sessions lose custom permissions when their role changes', async () => {
     const { directory, service, settings, users } = await setup();
     const roles = new RoleService(settings, directory);
+
     await roles.save(
       { key: 'staff', name: 'Staff', capabilities: ['users.manage'] },
       admin,
     );
     const user = userRecord({ id: 'staff', role: 'staff' });
+
     await users.insert(user);
     const auth = new AuthService({
       roles,
@@ -298,12 +306,14 @@ describe('user administration', () => {
     });
 
     const grant = await auth.startSession(user);
+
     expect(can(grant.user, 'users.manage')).toBe(true);
     expect(can('constructor', 'users.manage')).toBe(false);
     expect(await codeOf(service.list(grant.user))).toBe('ok');
 
     await roles.save({ key: 'staff', name: 'Staff', capabilities: [] }, admin);
     const refreshed = await auth.authenticate(grant.token);
+
     expect(refreshed).not.toBeNull();
     expect(can(refreshed!, 'users.manage')).toBe(false);
     expect(await codeOf(service.list(refreshed!))).toBe('forbidden');
@@ -312,6 +322,7 @@ describe('user administration', () => {
   test('sessions are listed and revoked only by their owner; deleting a role moves its users', async () => {
     const { directory, settings, users } = await setup();
     const deletable = new RoleService(settings, directory);
+
     await deletable.save(
       { key: 'staff', name: 'Staff', capabilities: [] },
       admin,
@@ -332,8 +343,10 @@ describe('user administration', () => {
     });
     const writer = (await users.findById('writer'))!;
     const first = await auth.startSession(writer);
+
     await auth.startSession(writer);
     const listed = await auth.sessions(writer, first.token);
+
     expect(listed.map((session) => session.current).sort()).toEqual([
       false,
       true,
@@ -341,6 +354,7 @@ describe('user administration', () => {
     // Ids are opaque: neither the token nor its digest.
     expect(listed.map((session) => session.id)).not.toContain('#token-1');
     const other = listed.find((session) => !session.current)!;
+
     expect(await codeOf(auth.revokeSession(admin, other.id))).toBe('not_found');
     await auth.revokeSession(writer, other.id);
     expect(await auth.sessions(writer, first.token)).toHaveLength(1);
@@ -372,6 +386,7 @@ describe('user administration', () => {
       hasher: {
         hash: async (value) => {
           hashes += 1;
+
           return `hash:${value}`;
         },
         verify: async () => true,
@@ -405,6 +420,7 @@ describe('user administration', () => {
     );
     await service.completeRegistration([...jobs.rows.values()][0]!.payload);
     const reader = await users.findByEmail('reader@example.com');
+
     expect(reader?.role).toBe('subscriber');
     expect(reader?.passwordHash).toBe('hash:token');
     expect(invitations).toEqual(['reader@example.com']);
@@ -432,11 +448,13 @@ describe('user administration', () => {
       const plugin = hooks.registrar('policy');
       const release = plugin.filter('user.registrationAllowed', (value) => {
         calls++;
+
         return { ...value, allowed: true };
       });
       const results = await Promise.all(
         Array.from({ length: 20 }, () => service.registrationStatus()),
       );
+
       expect(results.every((value) => value.registrationOpen)).toBe(true);
       expect(calls).toBe(1);
       await service.configureMembership({ enabled: true }, admin);
@@ -469,14 +487,17 @@ describe('user administration', () => {
           },
         },
       });
+
       return { ...context, log };
     };
 
     test('rate-limited callers never reach registration handlers', async () => {
       const hooks = bus();
       const { jobs, log, service } = await registration(hooks, true);
+
       hooks.registrar('grant').filter('user.registrationAllowed', (value) => {
         log.push('grant');
+
         return { ...value, allowed: true };
       });
       expect(await codeOf(service.register(input, attempt))).toBe(
@@ -492,6 +513,7 @@ describe('user administration', () => {
     test('closed registration with no handlers fails at once without counting an attempt', async () => {
       for (const hooks of [undefined, bus()]) {
         const { log, service } = await registration(hooks);
+
         expect(await codeOf(service.register(input, attempt))).toBe(
           'invalid_input',
         );
@@ -502,8 +524,10 @@ describe('user administration', () => {
     test('a later handler can open closed membership after an earlier refusal', async () => {
       const hooks = bus();
       const { jobs, log, service } = await registration(hooks);
+
       hooks.registrar('deny').filter('user.registrationAllowed', (value) => {
         log.push('deny');
+
         return { ...value, allowed: false };
       });
       expect(await codeOf(service.register(input, attempt))).toBe(
@@ -512,6 +536,7 @@ describe('user administration', () => {
       hooks.registrar('grant').filter('user.registrationAllowed', (value) => {
         log.push('grant');
         expect(value).toEqual({ allowed: false, ...input });
+
         return { ...value, allowed: true };
       });
       await service.register(input, attempt);
@@ -522,6 +547,7 @@ describe('user administration', () => {
     test('registration discovery has no identity and context rewrites cannot open registration', async () => {
       const hooks = bus();
       const { service, log } = await registration(hooks);
+
       expect(await service.registrationStatus()).toEqual({
         enabled: false,
         registrationOpen: false,
@@ -530,8 +556,10 @@ describe('user administration', () => {
         .registrar('policy')
         .filter('user.registrationAllowed', (value) => {
           expect(value).toEqual({ allowed: false, email: null, name: null });
+
           return { ...value, allowed: true };
         });
+
       expect(await service.registrationStatus()).toEqual({
         enabled: false,
         registrationOpen: true,
@@ -543,6 +571,7 @@ describe('user administration', () => {
         .filter('user.registrationAllowed', (value) => {
           value.email = 'other@example.com';
           value.allowed = true;
+
           return value;
         });
       expect(await codeOf(service.register(input, attempt))).toBe(
@@ -605,8 +634,10 @@ describe('user administration', () => {
     const { service, users } = await setup();
     const writer = { id: 'writer', role: 'author' };
     const findByEmail = users.findByEmail.bind(users);
+
     users.findByEmail = async (email) => {
       users.rows.get('writer')!.role = 'editor';
+
       return findByEmail(email);
     };
 

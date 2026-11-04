@@ -12,6 +12,7 @@ export const load: PageServerLoad = async (event) => {
     // Both screens need `settings.manage`; an unreadable mail setup only drops the note.
     admin.email.settings().catch(() => null),
   ]);
+
   return { discussion, emailEnabled: email ? email.enabled : null };
 };
 
@@ -55,6 +56,7 @@ export const actions: Actions = {
       notifyCommenters: form.has('notifyCommenters'),
       pushNotifications: form.has('pushNotifications'),
     };
+
     return submitAction(() => adminFor(event).discussion.update(input));
   },
 };

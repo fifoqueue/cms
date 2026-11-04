@@ -165,6 +165,7 @@ export const pluginBlockValues = (
   Object.fromEntries(
     fields.flatMap((field) => {
       const value = stored[field.key] ?? field.default;
+
       return value === undefined ? [] : [[field.key, value as SettingValue]];
     }),
   );

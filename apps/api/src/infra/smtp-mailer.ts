@@ -26,6 +26,7 @@ export const createSmtpMailer = (resolve: Resolve) => ({
     const started = Date.now();
     const signal = AbortSignal.timeout(TIMEOUT_MS);
     const targets = await resolve(transport.host, transport.port, signal);
+
     for (const [index, target] of targets.entries()) {
       const remaining = Math.max(1, TIMEOUT_MS - (Date.now() - started));
       const client = createTransport({
@@ -41,6 +42,7 @@ export const createSmtpMailer = (resolve: Resolve) => ({
         connectionTimeout: remaining,
         socketTimeout: remaining,
       });
+
       try {
         await client.sendMail({
           from: { name: transport.from.name, address: transport.from.email },
@@ -48,6 +50,7 @@ export const createSmtpMailer = (resolve: Resolve) => ({
           subject: message.subject,
           text: message.text,
         });
+
         return;
       } catch (error) {
         if (index === targets.length - 1 || !connectionFailure(error))

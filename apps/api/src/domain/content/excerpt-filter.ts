@@ -33,12 +33,15 @@ export const filterExcerpt = async (
       [{ length: 55, more: '…' }],
     ),
   );
+
   if (record.protected) return { excerpt: '', generation: null };
   const length = filtered.length ?? 55;
   const more = filtered.more ?? '…';
+
   if (source === 'generated' && (length !== 55 || more !== '…')) {
     return { excerpt: '', generation: { length, more } };
   }
+
   return { excerpt: filtered.excerpt, generation: null };
 };
 
@@ -47,5 +50,6 @@ export const regenerateExcerpt = (
   { length, more }: { length: number; more: string },
 ) => {
   const excerpt = summarize(plainText(parseHtml(html)), length);
+
   return excerpt.endsWith('…') ? `${excerpt.slice(0, -1)}${more}` : excerpt;
 };

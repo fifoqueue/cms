@@ -41,18 +41,23 @@
     const y = window.scrollY;
     const view = window.innerHeight;
     const body = findBody();
+
     if (body) {
       const rect = body.getBoundingClientRect();
       const start = rect.top + y;
       const end = rect.bottom + y - view;
+
       progress = clamp(
         end > start ? (y - start) / (end - start) : y >= end ? 1 : 0,
       );
     } else {
       const end = document.documentElement.scrollHeight - view;
+
       progress = end > 0 ? clamp(y / end) : 0;
     }
+
     visible = y > SHOW_AFTER;
+
     // Client navigation can bring a new body; observe the current one.
     if (body !== observed) {
       resizes?.disconnect();
@@ -71,6 +76,7 @@
     window.addEventListener('scroll', schedule, { passive: true });
     window.addEventListener('resize', schedule, { passive: true });
     schedule();
+
     return () => {
       window.removeEventListener('scroll', schedule);
       window.removeEventListener('resize', schedule);
@@ -87,11 +93,13 @@
    */
   const toTop = () => {
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
     const target =
       document.getElementById('main') ??
       findBody() ??
       document.querySelector<HTMLElement>('.cms-site');
+
     if (!target) return;
     if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
     // Only this programmatic focus hides the outline; the skip link keeps its own behaviour.

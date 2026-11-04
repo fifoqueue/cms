@@ -33,7 +33,9 @@ const definitions = [
 
 const termForm = (entries: Record<string, string>) => {
   const form = new FormData();
+
   for (const [key, value] of Object.entries(entries)) form.set(key, value);
+
   return form;
 };
 
@@ -50,6 +52,7 @@ test('term forms send typed field values, required ones included, only when the 
     'create',
     definitions,
   );
+
   expect(filled.input?.fields).toEqual({
     rank: 3,
     featured: true,
@@ -63,10 +66,12 @@ test('term forms send typed field values, required ones included, only when the 
     'update',
     definitions,
   );
+
   expect(empty.input?.fields).toEqual({ featured: false });
 
   // Without term fields nothing is sent and the API keeps the stored values.
   const plain = readTermForm(termForm({ name: 'Plain' }), 'tag', 'update');
+
   expect(plain.input).toBeDefined();
   expect(plain.input?.fields).toBeUndefined();
   expect(plain.values.fields).toBeUndefined();

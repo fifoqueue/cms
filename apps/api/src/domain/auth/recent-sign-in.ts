@@ -18,6 +18,7 @@ export const requireRecentSignIn = async (
   if (token.startsWith('cms_pat_')) throw unauthorized(message);
   const session = await deps.sessions.find(deps.tokens.digest(token));
   const now = deps.clock.now();
+
   if (
     !session ||
     session.userId !== actor.id ||

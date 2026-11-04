@@ -17,8 +17,10 @@ export class StorageDrivers {
 
   plugin(owner: string, key: string, definition: PluginStorageDriver) {
     const id = pluginMailIdSchema.max(128).parse(`plugin:${owner}:${key}`);
+
     if (this.definitions.has(id)) throw new Error(Errors.MediaDriverDuplicate);
     const fields = mailFieldSchema.array().max(32).parse(definition.fields);
+
     if (new Set(fields.map((field) => field.key)).size !== fields.length)
       throw new Error(Errors.MediaDriverInvalid);
     const entry = {
@@ -26,10 +28,12 @@ export class StorageDrivers {
       fields,
       connect: definition.connect,
     };
+
     this.definitions.set(id, entry);
     void this.onRegistered?.(id).catch((error: unknown) =>
       this.logger?.warn(`Media cleanup recovery for ${id} failed`, error),
     );
+
     return () => {
       if (this.definitions.get(id) === entry) this.definitions.delete(id);
     };
@@ -49,19 +53,24 @@ export class StorageDrivers {
 
   fields(id: string) {
     const entry = this.definitions.get(id);
+
     if (!entry) throw invalidInput(Errors.MediaDriverInvalid);
+
     return entry.fields;
   }
 
   validate(id: string, values: MailValues) {
     const fields = this.fields(id);
+
     for (const key of Object.keys(values))
       if (!fields.some((field) => field.key === key))
         throw invalidInput(Errors.InvalidInput, [
           { path: `pluginSettings.${key}`, message: Errors.InvalidInput },
         ]);
+
     for (const field of fields) {
       const value = values[field.key];
+
       if (value === undefined || value === '') {
         if (field.required)
           throw invalidInput(Errors.InvalidInput, [
@@ -83,6 +92,7 @@ export class StorageDrivers {
         ]);
     }
   }
+
   private readonly core = new Map<string, MediaStorage>();
   private readonly plugins = new Map<
     object,
@@ -107,7 +117,9 @@ export class StorageDrivers {
           throw new Error(Errors.MediaDriverInvalid);
         const id = `plugin:${owner}:${key}`;
         const token = {};
+
         this.plugins.set(token, { id, driver });
+
         return () => {
           this.plugins.delete(token);
         };
@@ -117,8 +129,10 @@ export class StorageDrivers {
 
   get(id: string, values: MailValues = {}): MediaStorage | null {
     const definition = this.definitions.get(id);
+
     if (definition) {
       this.validate(id, values);
+
       return new IsolatedStorage(
         id,
         () => definition.connect(structuredClone(values)),
@@ -127,13 +141,18 @@ export class StorageDrivers {
         this.logger,
       );
     }
+
     const core = this.core.get(id);
+
     if (core) return core;
     let selected: object | undefined;
+
     for (const [token, entry] of this.plugins) {
       if (entry.id === id) selected = token;
     }
+
     const entry = selected && this.plugins.get(selected);
+
     if (entry)
       return new IsolatedStorage(
         id,
@@ -143,6 +162,7 @@ export class StorageDrivers {
         this.logger,
       );
     this.logger?.warn(`Media storage driver unavailable: ${id}`);
+
     return null;
   }
 }

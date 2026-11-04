@@ -32,6 +32,7 @@
     action={data.databaseConfigured ? '?/complete' : '?/database'}
     use:enhance={() => {
       pending = true;
+
       return async ({ update }) => {
         try {
           await update();

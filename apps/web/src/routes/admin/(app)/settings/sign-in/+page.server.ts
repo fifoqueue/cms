@@ -25,6 +25,7 @@ export const load: PageServerLoad = async (event) => {
       ? admin.roles.list()
       : null,
   ]);
+
   return {
     values: signInValues(settings),
     available: {
@@ -47,6 +48,7 @@ export const actions: Actions = {
     requireCapability(event.locals, 'settings.manage');
     const values = readSignInForm(await event.request.formData());
     const result = signInSettingsSchema.safeParse(signInInput(values));
+
     if (!result.success)
       return fail(400, {
         values,
@@ -54,11 +56,13 @@ export const actions: Actions = {
         code: 'invalid_input',
         issues: issuesOf(result.error.issues),
       } satisfies FormFailure & { values: SignInFormValues });
+
     try {
       await adminFor(event).signInSettings.update(result.data);
     } catch (caught) {
       return failFrom(caught, { values });
     }
+
     return { notice: 'saved' };
   },
   /** Moves a method up or down without saving; with scripts the page does this in place. */
@@ -67,8 +71,10 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const values = readSignInForm(form);
     const move = readMove(text(form, 'move'));
+
     if (!move) return { values };
     const order = moveItem(values.order, move.index, move.offset);
+
     return {
       values: {
         ...values,

@@ -36,6 +36,7 @@ const unescapeAttribute = (value: string) =>
 const storedAttrs = (raw: string): Record<string, unknown> => {
   try {
     const value: unknown = JSON.parse(unescapeAttribute(raw));
+
     return value && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};
@@ -65,6 +66,7 @@ export class BlockRegistry {
           description: definition.description,
           attributes: definition.attributes,
         });
+
         if (!KEY.test(key) || !declared.success)
           throw new Error(Errors.PluginBlockInvalid(key));
         const block = `plugin:${owner}:${key}`;
@@ -74,7 +76,9 @@ export class BlockRegistry {
           info: { ...declared.data, block },
           definition,
         };
+
         this.registrations = [...this.registrations, registration];
+
         return () => {
           this.registrations = this.registrations.filter(
             (entry) => entry !== registration,
@@ -99,16 +103,19 @@ export class BlockRegistry {
    */
   check(document: ContentDocument) {
     const stack: unknown[] = [document];
+
     while (stack.length) {
       const node = stack.pop() as {
         type?: unknown;
         attrs?: { block?: unknown; attrs?: unknown };
         content?: unknown;
       };
+
       if (!node || typeof node !== 'object') continue;
       if (Array.isArray(node.content)) stack.push(...node.content);
       if (node.type !== 'pluginBlock') continue;
       const registration = this.find(node.attrs?.block);
+
       if (
         registration &&
         !pluginBlockAttrsSchema(registration.info.attributes).safeParse(
@@ -139,14 +146,17 @@ export class BlockRegistry {
     const rendered = new Map<string, Promise<string>>();
     const render = (block: string, raw: string) => {
       const registration = this.find(unescapeAttribute(block));
+
       if (!registration) return Promise.resolve('');
       const key = `${registration.block}\n${raw}`;
       let output = rendered.get(key);
+
       if (!output) {
         const values = pluginBlockValues(
           registration.info.attributes,
           storedAttrs(raw),
         );
+
         output = isolate(
           () =>
             this.registrations.includes(registration)
@@ -160,10 +170,12 @@ export class BlockRegistry {
           this.options.logger.warn(
             `Plugin "${registration.owner}" failed to render block "${registration.block}": ${result.ok ? 'returned a non-string value' : result.error.message}`,
           );
+
           return '';
         });
         rendered.set(key, output);
       }
+
       return output;
     };
     const matches = [...html.matchAll(MARKER)];
@@ -171,6 +183,7 @@ export class BlockRegistry {
       matches.map(([, block, raw]) => render(block ?? '', raw ?? '')),
     );
     let index = 0;
+
     return html.replace(MARKER, () => outputs[index++] ?? '');
   }
 }

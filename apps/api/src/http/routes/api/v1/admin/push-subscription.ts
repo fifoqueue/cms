@@ -8,6 +8,7 @@ export const routes = (app: ApiApp) =>
   session(app, 'content.create')
     .get('', async ({ commentNotifier, set }) => {
       set.headers['cache-control'] = 'private, no-store';
+
       return json(await commentNotifier.publicKey());
     })
     .put('', async ({ commentNotifier, request, user }) =>
@@ -23,5 +24,6 @@ export const routes = (app: ApiApp) =>
         user.id,
         await readJson(request, SMALL_BODY_BYTES),
       );
+
       return noContent();
     });

@@ -8,6 +8,7 @@ export class PrismaSettingsRepository implements SettingsTransaction {
     const rows = await this.db.setting.findMany({
       where: { key: { startsWith: prefix } },
     });
+
     return Object.fromEntries(
       rows.map((row) => [row.key, JSON.parse(row.value) as unknown]),
     );
@@ -18,16 +19,19 @@ export class PrismaSettingsRepository implements SettingsTransaction {
     const [row] = await this.db.$queryRaw<{ total: bigint }[]>`
       SELECT COUNT(*) AS total FROM settings
       WHERE \`key\` LIKE ${pattern} AND JSON_TYPE(value) = 'OBJECT'`;
+
     return Number(row?.total ?? 0);
   }
 
   async get(key: string) {
     const row = await this.db.setting.findUnique({ where: { key } });
+
     return row ? (JSON.parse(row.value) as unknown) : undefined;
   }
 
   async set(key: string, value: unknown) {
     const json = JSON.stringify(value);
+
     await this.db.setting.upsert({
       where: { key },
       create: { key, value: json },

@@ -8,12 +8,14 @@ export const routes = (app: ApiApp) =>
   session(app)
     .get('', async ({ media, user }) => {
       authorize(user, 'settings.manage');
+
       return json(await media.storageSettings.get());
     })
     .put(
       '',
       async ({ media, user, request }) => {
         authorize(user, 'settings.manage');
+
         return json(
           await media.storageSettings.update(await readJson(request)),
         );

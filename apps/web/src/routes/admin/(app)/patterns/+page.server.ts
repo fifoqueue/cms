@@ -11,7 +11,9 @@ export const load: PageServerLoad = async (event) => {
   );
   const query = parsed.success ? parsed.data : patternListQuerySchema.parse({});
   const list = await adminFor(event).patterns.list(query);
+
   clampPage(event.url, list);
+
   return {
     patterns: list.items.map(
       ({ id, title, synced, status, authorId, updatedAt }) => ({
@@ -32,11 +34,13 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   delete: async (event) => {
     const form = await event.request.formData();
+
     try {
       await adminFor(event).patterns.remove(text(form, 'id'));
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'deleted' };
   },
 };

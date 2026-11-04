@@ -75,6 +75,7 @@ const UNSAFE_SEGMENT = /[\\/?#\p{Cc}\p{Zl}\p{Zp}]/u;
 const canonicalSegment = (segment: string): string | null => {
   try {
     const decoded = decodeURIComponent(segment);
+
     return !decoded ||
       decoded === '.' ||
       decoded === '..' ||
@@ -98,6 +99,7 @@ export const canonicalPermalinkPath = (path: string): string | null => {
   const segments: string[] = [];
 
   const trailing = path.endsWith('/');
+
   for (const segment of path.slice(1, trailing ? -1 : undefined).split('/')) {
     const canonical = canonicalSegment(segment);
 
@@ -114,6 +116,7 @@ const structureIssue = (path: string): string | undefined => {
     return Errors.PermalinkPathTooLong;
   if (canonicalPermalinkPath(path) !== path)
     return Errors.PermalinkPathNotCanonical;
+
   return undefined;
 };
 
@@ -182,6 +185,7 @@ const patternIssue = (pattern: string): string | undefined => {
   const path = canonicalPermalinkPath(
     parts.map((part, index) => (index % 2 === 1 ? 'x' : part)).join(''),
   );
+
   return path ? permalinkPathIssue(path) : 'Invalid path';
 };
 
@@ -286,9 +290,11 @@ export const renderPermalink = (
       if (index % 2 === 0) return part;
       if (!isToken(part))
         throw new TypeError(Errors.UnknownPermalinkToken, { cause: part });
+
       return tokens[part]();
     })
     .join('');
+
   return canonicalPermalinkPath(rendered) ?? rendered;
 };
 

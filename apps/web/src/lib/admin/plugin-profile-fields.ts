@@ -27,6 +27,7 @@ export const profileFieldRows = (
     const base = { key, label: definition.label, source: sourceOf(key) };
     const stored = meta.values[key];
     const echo = typed && Object.hasOwn(typed, key) ? typed[key] : undefined;
+
     if (definition.type === 'boolean')
       return {
         ...base,
@@ -39,6 +40,7 @@ export const profileFieldRows = (
         : stored === undefined || typeof stored === 'boolean'
           ? ''
           : String(stored);
+
     return definition.type === 'text'
       ? { ...base, type: 'text', maxLength: definition.maxLength, value }
       : {
@@ -70,21 +72,28 @@ export const readProfileFields = (
   const values: ProfileValues = {};
   const typed: Record<string, string | boolean> = {};
   const invalid: string[] = [];
+
   for (const { key, definition } of meta.fields) {
     const posted = form.get(PROFILE_FIELD_PREFIX + key);
+
     if (definition.type === 'boolean') {
       values[key] = typed[key] = posted !== null;
       continue;
     }
+
     const text = typeof posted === 'string' ? posted : '';
+
     typed[key] = text;
+
     if (definition.type === 'text') values[key] = text;
     else if (text.trim() !== '') {
       const number = Number(text);
+
       if (Number.isFinite(number)) values[key] = number;
       else invalid.push(key);
     }
   }
+
   return { values, typed, invalid };
 };
 
@@ -107,13 +116,16 @@ export const profileFieldsRefusal = (
 ): ProfileFieldsRefusal | null => {
   if (!form || typeof form !== 'object') return null;
   const result = form as Record<string, unknown>;
+
   if (result.profileFields !== true || typeof result.message !== 'string')
     return null;
   const typed: Record<string, string | boolean> = {};
+
   if (result.typed && typeof result.typed === 'object')
     for (const [key, value] of Object.entries(result.typed))
       if (typeof value === 'string' || typeof value === 'boolean')
         typed[key] = value;
+
   return {
     message: result.message,
     ...(typeof result.code === 'string' && { code: result.code }),
@@ -132,11 +144,14 @@ export const splitProfileIssues = (
 ) => {
   const placed: Partial<Record<string, string>> = {};
   const apart: { path: string; message: string }[] = [];
+
   for (const issue of issues) {
     const key = profileIssueKey(issue.path, meta);
+
     if (key) placed[key] ??= issue.message;
     else apart.push(issue);
   }
+
   return { placed, apart };
 };
 

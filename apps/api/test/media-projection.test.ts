@@ -43,6 +43,7 @@ const setup = () => {
       url: (key) => `/media/${key}`,
     }),
   });
+
   return { hooks, repository, storage, media };
 };
 const bytes = new Uint8Array([
@@ -53,6 +54,7 @@ const actor = { id: 'a', role: 'author' };
 test('invalid storage keys fall back, and plugin storage receives the accepted key', async () => {
   const { hooks, repository, storage, media } = setup();
   const site = hooks.registrar('functions:site', { trusted: true });
+
   for (const key of [
     '../bad.png',
     '/bad.png',
@@ -63,19 +65,23 @@ test('invalid storage keys fall back, and plugin storage receives the accepted k
   ]) {
     const release = site.filter('media.storageKey', (value) => {
       value.key = key;
+
       return value;
     });
     const uploaded = await media.upload(bytes, 'test.png', actor);
     const row = (await repository.get(uploaded.id))!;
+
     expect(row.storageKey.endsWith(`/${uploaded.id}.png`)).toBe(true);
     release();
   }
+
   site.filter('media.storageKey', (value) => ({
     ...value,
     basename: 'chosen',
   }));
   const uploaded = await media.upload(bytes, 'test.png', actor);
   const row = (await repository.get(uploaded.id))!;
+
   expect(row.storageDriver).toBe('plugin:test:storage');
   expect(row.storageKey.endsWith('/chosen.png')).toBe(true);
   expect(storage.files.has(row.storageKey)).toBe(true);
@@ -85,15 +91,19 @@ test('shared URL projection rewrites admin, public and responsive images safely'
   const { hooks, repository, media } = setup();
   const site = hooks.registrar('functions:site', { trusted: true });
   const seen: string[] = [];
+
   site.filter('media.url', (value) => {
     seen.push(value.driver);
+
     return { ...value, url: `https://cdn.example/${value.key}` };
   });
   const uploaded = await media.upload(bytes, 'test.png', actor);
   const row = (await repository.get(uploaded.id))!;
+
   expect(uploaded.url).toBe(`https://cdn.example/${row.storageKey}`);
   expect((await media.get(uploaded.id, actor)).url).toBe(uploaded.url);
   const image = toPublicImage(await projectMedia(row, hooks));
+
   expect(image.url).toBe(uploaded.url);
   expect(
     image.sizes.every((size) => size.url.startsWith('https://cdn.example/')),
@@ -101,6 +111,7 @@ test('shared URL projection rewrites admin, public and responsive images safely'
   const html = await new ResponsiveImages(
     async () => new Map([[row.id, image]]),
   ).expand(`<img data-media-id="${row.id}" src="/old.png" loading="lazy">`);
+
   expect(html).toContain(`src="${image.url}"`);
   expect(html).toContain('srcset="https://cdn.example/');
   expect(seen.every((driver) => driver === 'plugin:test:storage')).toBe(true);
@@ -110,6 +121,7 @@ test('shared URL projection rewrites admin, public and responsive images safely'
     variant: null,
     driver: 'local',
   };
+
   for (const url of [
     'javascript:alert(1)',
     '//evil.example/a',
@@ -120,22 +132,28 @@ test('shared URL projection rewrites admin, public and responsive images safely'
       timeoutMs: 50,
       logger: recordingLogger().logger,
     });
+
     bus
       .registrar('functions:site', { trusted: true })
       .filter('media.url', (value) => {
         value.url = url;
+
         return value;
       });
     expect(await projectMediaUrl({ ...initial }, bus)).toBe(initial.url);
   }
+
   const empty = new HookBus({
     timeoutMs: 50,
     logger: recordingLogger().logger,
   });
+
   expect(projectMediaUrl(initial, empty)).toBe(initial.url);
   const deletionUrls: string[] = [];
+
   site.filter('media.deleteAllowed', (allowed, { media: item }) => {
     deletionUrls.push(item.url);
+
     return allowed;
   });
   site.on('media.deleted', (item) => {

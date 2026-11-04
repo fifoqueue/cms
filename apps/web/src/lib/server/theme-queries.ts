@@ -116,6 +116,7 @@ const listAll = async (
     Array.from({ length: Math.max(pages - 1, 0) }, (_, index) => index + 2),
     (page) => api.list({ ...query, page, pageSize: 100 }),
   );
+
   return [first, ...rest].flatMap((list) => list.items);
 };
 
@@ -155,19 +156,23 @@ const includedParts = (blocks: Block[], parts: ThemeView['parts']) => {
         continue;
       seen.add(block.attrs.slug);
       const part = index.get(block.attrs.slug);
+
       if (part) {
         all.push(part);
         include(part.blocks);
       }
     }
   };
+
   include(blocks);
+
   return all;
 };
 
 /** Terms with published entries; categories as a tree (each term once, cycles ignored). */
 const termItems = (terms: PublicTaxonomyTerm[], tree: boolean): TermItem[] => {
   const used = terms.filter((term) => term.count > 0);
+
   if (!tree)
     return used.map(({ name, slug, count }) => ({
       name,
@@ -185,8 +190,10 @@ const termItems = (terms: PublicTaxonomyTerm[], tree: boolean): TermItem[] => {
     items.push({ name: term.name, slug: term.slug, count: term.count, depth });
     for (const child of children.get(term.id) ?? []) visit(child, depth + 1);
   };
+
   for (const term of used)
     if (!term.parentId || !ids.has(term.parentId)) visit(term, 0);
+
   return items;
 };
 
@@ -229,8 +236,10 @@ const toPageTree = (
     items.push({ title: page.title, path: page.path, depth });
     for (const child of children.get(page.id) ?? []) visit(child, depth + 1);
   };
+
   for (const page of pages)
     if (!page.parentId || !ids.has(page.parentId)) visit(page, 0);
+
   return items;
 };
 
@@ -238,14 +247,18 @@ const toPageTree = (
 export const blockNeeds = (blocks: Block[]) => {
   const all = [...walkBlocks(blocks)];
   const queries = new Map<string, QuerySelection>();
+
   for (const block of all)
     if (isIndependentQuery(block)) {
       const selection = selectionOf(
         block as Extract<Block, { name: 'query' | 'latest-posts' }>,
       );
+
       queries.set(queryKey(selection), selection);
     }
+
   const has = (name: Block['name']) => all.some((block) => block.name === name);
+
   return {
     queries,
     // The search panel lists the categories, like the categories block.
@@ -296,6 +309,7 @@ export const loadBlockData = async (
   known: Shared = {},
 ): Promise<BlockData> => {
   const needs = blockNeeds(blocks);
+
   if (needs.queries.size > 32) error(400, Errors.ThemeQueriesLimit);
   const missing = [...needs.queries].filter(([key]) => !known.queries?.[key]);
   const terms = (taxonomy: TaxonomyType) =>
@@ -386,12 +400,16 @@ export const loadBlockData = async (
         ])
           .then(([items, neighbours]) => {
             const days: Record<number, number> = {};
+
             for (const { publishedAt } of items) {
               const day = parts(new Date(publishedAt)).day;
+
               days[day] = (days[day] ?? 0) + 1;
             }
+
             const near = (entry: { year: number; month: number } | null) =>
               entry && { year: entry.year, month: entry.month };
+
             return {
               ...month,
               days,
@@ -431,6 +449,7 @@ export const loadBlockData = async (
         ),
       )
     : null;
+
   return {
     queries,
     terms: { category, tag },
@@ -482,6 +501,7 @@ export const loadErrorData = async (
     withParts(shared ? template : [...template, ...fallback], theme.parts),
     { ...NO_CONTEXT, timeZone },
   );
+
   return {
     ...data,
     template,
@@ -514,6 +534,7 @@ export const loadTemplateData = async (
     { ...contextOf(page), timeZone: layout.reading?.timeZone },
     layout,
   );
+
   return { ...data, template, parts };
 };
 
@@ -533,6 +554,7 @@ export const withTemplateData = async <P extends ThemePage>(
     loadTemplateData(api, layout, page),
     withSeoMeta(event, layout, page).then((data) => data.seoMeta),
   ]);
+
   return { ...page, ...blocks, seoMeta };
 };
 

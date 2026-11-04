@@ -26,8 +26,10 @@ interface Issue {
  */
 export const fontIssueField = (path: string): FontField | null => {
   const segments = path.split('.');
+
   if (segments[0] !== 'fonts') return null;
   const last = segments.at(-1) ?? '';
+
   return (FONT_FIELDS as readonly string[]).includes(last)
     ? (last as FontField)
     : null;
@@ -37,10 +39,13 @@ export const fontIssueField = (path: string): FontField | null => {
 export const fontIssues = (issues: readonly Issue[]) => {
   const fields: Partial<Record<FontField, Issue[]>> = {};
   const rest: Issue[] = [];
+
   for (const issue of issues) {
     const field = fontIssueField(issue.path);
+
     if (field) (fields[field] ??= []).push(issue);
     else rest.push(issue);
   }
+
   return { fields, rest };
 };

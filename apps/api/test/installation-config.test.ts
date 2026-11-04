@@ -13,11 +13,13 @@ describe('Installation configuration', () => {
     const directory = await mkdtemp(join(tmpdir(), 'cms-install-config-'));
     const path = join(directory, 'data/config.json');
     const url = 'mysql://cms:secret@localhost:3306/cms';
+
     try {
       expect(readInstallationConfig(path)).toBeUndefined();
       await saveInstallationConfig(url, path);
       expect(readInstallationConfig(path)).toEqual({ DATABASE_URL: url });
       const before = await readFile(path, 'utf8');
+
       await expect(
         saveInstallationConfig('mysql://other:other@localhost/other', path),
       ).rejects.toThrow();

@@ -35,6 +35,7 @@ test('all S3 operations enforce service-scoped DNS pinning and reject redirects'
         return new Response(
           '<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>uploads/a</Key><Size>1</Size><ETag>abc</ETag></Contents></ListBucketResult>',
         );
+
       return new Response(init?.method === 'GET' ? 'x' : null, {
         headers: { 'content-length': '1' },
       });
@@ -43,6 +44,7 @@ test('all S3 operations enforce service-scoped DNS pinning and reject redirects'
   const blocked = new S3MediaStorage(configuration, (input, init) =>
     policy.fetch(input, init),
   );
+
   await expect(blocked.test('probe')).rejects.toThrow();
   await expect(
     blocked.commit([{ key: 'a', bytes: new Uint8Array([1]) }]),
@@ -63,6 +65,7 @@ test('all S3 operations enforce service-scoped DNS pinning and reject redirects'
       ],
     }),
   );
+
   await storage.test('probe');
   await storage.commit([{ key: 'a', bytes: new Uint8Array([1]) }]);
   await storage.remove(['a']);
@@ -75,6 +78,7 @@ test('all S3 operations enforce service-scoped DNS pinning and reject redirects'
   address = '93.184.216.34';
   redirect = true;
   const before = sent.length;
+
   await expect(storage.list()).rejects.toThrow();
   expect(sent.length).toBe(before + 1);
 });

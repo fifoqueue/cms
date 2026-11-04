@@ -137,6 +137,7 @@ export const load: PageServerLoad = async (event) => {
             )
             .sort((a, b) => b.key.length - a.key.length)[0]?.key ?? 'post');
     const sample = (await api.list({ type, pageSize: 1 })).items[0];
+
     previewPage = sample
       ? {
           kind: 'content',
@@ -178,6 +179,7 @@ export const actions: Actions = {
   preview: async (event) => {
     const form = await event.request.formData();
     const read = readBlocks(form.get('blocks'));
+
     if ('failure' in read) return read.failure;
 
     try {
@@ -186,6 +188,7 @@ export const actions: Actions = {
       const { theme, reading } = await api.layout(preview.token);
       const kind = text(form, 'kind');
       const key = text(form, 'key');
+
       if (
         (kind !== 'template' && kind !== 'part') ||
         (kind === 'template' && !Object.hasOwn(theme.templates, key)) ||
@@ -196,6 +199,7 @@ export const actions: Actions = {
       // The public neighbour lookup answers for published entries only.
       const contentId = text(form, 'contentId');
       const author = text(form, 'author');
+
       return await loadThemeData(
         api,
         {
@@ -221,15 +225,18 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const theme = text(form, 'theme');
     const slug = text(form, 'slug').trim().toLowerCase();
+
     try {
       const admin = adminFor(event);
       const editor = await admin.themes.editor(theme);
+
       if (editor.parts.some((part) => part.slug === slug))
         return fail(400, { message: Errors.TemplateNameInvalid });
       await admin.themes.savePart(theme, slug, []);
     } catch (caught) {
       return failFrom(caught);
     }
+
     redirect(
       303,
       `?theme=${encodeURIComponent(theme)}&edit=${encodeURIComponent(`part:${slug}`)}`,
@@ -238,16 +245,19 @@ export const actions: Actions = {
   saveTemplate: async (event) => {
     const form = await event.request.formData();
     const read = readBlocks(form.get('blocks'));
+
     if ('failure' in read) return read.failure;
     const admin = adminFor(event);
     const theme = text(form, 'theme');
     const name = text(form, 'name');
+
     try {
       if (readOnly(await admin.themes.editor(theme), 'template', name))
         return readOnlyFailure();
     } catch (caught) {
       return failFrom(caught);
     }
+
     return submitAction(() =>
       admin.themes.saveTemplate(theme, name, read.blocks),
     );
@@ -262,10 +272,13 @@ export const actions: Actions = {
     const kind = text(form, 'kind') === 'part' ? 'part' : 'template';
     const key = text(form, 'key');
     const admin = adminFor(event);
+
     try {
       const editor = await admin.themes.editor(theme);
       const item = itemOf(editor, kind, key);
+
       if (!item) return fail(404, { message: Errors.NotFound });
+
       if (item.readOnly) {
         if (kind === 'part')
           await admin.themes.savePart(theme, key, item.blocks);
@@ -274,6 +287,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     redirect(
       303,
       `?theme=${encodeURIComponent(theme)}&edit=${encodeURIComponent(`${kind}:${key}`)}`,
@@ -281,6 +295,7 @@ export const actions: Actions = {
   },
   resetTemplate: async (event) => {
     const form = await event.request.formData();
+
     return submitAction(() =>
       adminFor(event).themes.resetTemplate(
         text(form, 'theme'),
@@ -291,20 +306,24 @@ export const actions: Actions = {
   savePart: async (event) => {
     const form = await event.request.formData();
     const read = readBlocks(form.get('blocks'));
+
     if ('failure' in read) return read.failure;
     const admin = adminFor(event);
     const theme = text(form, 'theme');
     const slug = text(form, 'slug');
+
     try {
       if (readOnly(await admin.themes.editor(theme), 'part', slug))
         return readOnlyFailure();
     } catch (caught) {
       return failFrom(caught);
     }
+
     return submitAction(() => admin.themes.savePart(theme, slug, read.blocks));
   },
   resetPart: async (event) => {
     const form = await event.request.formData();
+
     return submitAction(() =>
       adminFor(event).themes.resetPart(text(form, 'theme'), text(form, 'slug')),
     );
@@ -316,18 +335,22 @@ export const actions: Actions = {
     const kind = text(form, 'kind');
     const slug = text(form, 'slug').trim().toLowerCase();
     const name = slug ? `${kind}-${slug}` : kind;
+
     if (!TEMPLATE_NAME.test(name))
       return fail(400, { message: Errors.TemplateNameInvalid });
     const admin = adminFor(event);
+
     try {
       const editor = await admin.themes.editor(theme);
       const find = (key: string) =>
         editor.templates.find((template) => template.name === key)?.blocks;
       const start = find(name) ?? find(kind) ?? find('index') ?? [];
+
       await admin.themes.saveTemplate(theme, name, start);
     } catch (caught) {
       return failFrom(caught);
     }
+
     redirect(
       303,
       `?theme=${encodeURIComponent(theme)}&edit=${encodeURIComponent(`template:${name}`)}`,
@@ -336,9 +359,11 @@ export const actions: Actions = {
   saveStyles: async (event) => {
     const form = await event.request.formData();
     const colors: Record<string, string> = {};
+
     for (const [key, value] of form)
       if (key.startsWith('color.') && typeof value === 'string')
         colors[key.slice('color.'.length)] = value;
+
     return submitAction(() =>
       adminFor(event).themes.saveStyles(text(form, 'theme'), {
         colors,
@@ -357,9 +382,11 @@ export const actions: Actions = {
   saveFonts: async (event) => {
     const form = await event.request.formData();
     const admin = adminFor(event);
+
     try {
       const fonts = await admin.themes.fonts();
       const next = fontsAfter(fonts, form);
+
       if (next) await admin.themes.saveFonts({ fonts: next });
     } catch (caught) {
       // Shown inside the site fonts section, with what was entered kept.
@@ -369,6 +396,7 @@ export const actions: Actions = {
         ) as FontFormValues,
       });
     }
+
     // Back to the Styles panel of the theme being edited.
     redirect(
       303,
@@ -377,6 +405,7 @@ export const actions: Actions = {
   },
   resetStyles: async (event) => {
     const form = await event.request.formData();
+
     return submitAction(() =>
       adminFor(event).themes.resetStyles(text(form, 'theme')),
     );

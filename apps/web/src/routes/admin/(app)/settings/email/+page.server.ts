@@ -19,6 +19,7 @@ export const actions: Actions = {
     const { availableTransports } = await adminFor(event).email.settings();
     const { values, input } = readEmailForm(form, availableTransports);
     const result = emailSettingsInputSchema.safeParse(input);
+
     if (!result.success)
       return fail(400, {
         values,
@@ -26,15 +27,18 @@ export const actions: Actions = {
         code: 'invalid_input',
         issues: issuesOf(result.error.issues),
       } satisfies FormFailure & { values: EmailFormValues });
+
     try {
       await adminFor(event).email.update(result.data);
     } catch (caught) {
       return failFrom(caught, { values });
     }
+
     return { notice: 'saved' };
   },
   test: async (event) => {
     const form = await event.request.formData();
+
     return submitAction(
       () => adminFor(event).email.test(text(form, 'to')),
       'emailTestSent',

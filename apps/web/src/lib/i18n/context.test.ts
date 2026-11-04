@@ -9,6 +9,7 @@ import type { useI18n as useAdminI18n } from '#lib/i18n/index.js';
 import { messagesFor } from '#lib/i18n/admin.js';
 
 type Assert<T extends true> = T;
+
 export type PublicScope = Assert<
   Extract<
     'seoFocusKeyword' | 'fieldPublishAt' | 'fieldStatus' | 'seoTabs',
@@ -31,6 +32,7 @@ export type AdminScope = Assert<
 test('root authentication errors keep their translated help and unknown errors use the fallback', () => {
   const m = rootI18n.m;
   const full = messagesFor('en');
+
   equal(
     errorCopy(m, 401, SdkErrors.AuthenticationRequired).help,
     full.apiError('AuthenticationRequired'),

@@ -25,6 +25,7 @@ describe('embed settings', () => {
         }).success,
       ).toBe(false);
     }
+
     expect(
       embedSettingsSchema.safeParse({ providers: DEFAULT_EMBED_PROVIDERS })
         .success,
@@ -38,6 +39,7 @@ describe('embed settings', () => {
     const get = spyOn(repository, 'get');
     const embeds = new Embeds(() => service.providers());
     const x = figure('https://x.com/jack/status/20');
+
     expect(await embeds.expand(x)).toContain('<iframe');
     await writer.update({
       providers: [
@@ -59,10 +61,12 @@ describe('embed settings', () => {
     });
     get.mockClear();
     const html = await embeds.expand(x + figure('https://example.com/video'));
+
     expect(get).toHaveBeenCalledTimes(1);
     expect(html).toStartWith(x);
     expect(html).toContain('src="https://player.example/video"');
     const list = await service.list();
+
     expect(list.some(({ id }) => id === 'x')).toBe(false);
     expect(list.at(-1)).toEqual({
       id: 'custom',
@@ -76,6 +80,7 @@ describe('embed settings', () => {
         'urlPattern',
       ]);
     const reloaded = new EmbedService(repository);
+
     expect(await reloaded.list()).toEqual(list);
     expect((await reloaded.providers()).map(({ name }) => name)).not.toContain(
       'x',
@@ -94,6 +99,7 @@ describe('embed settings', () => {
       allow: '',
       sizing: { kind: 'height', height: 400 },
     };
+
     await repository.set('embeds', {
       providers: [
         ...DEFAULT_EMBED_PROVIDERS.map((provider) =>
@@ -112,6 +118,7 @@ describe('embed settings', () => {
       ],
     });
     const service = new EmbedService(repository);
+
     expect((await service.get()).providers).toEqual([
       ...DEFAULT_EMBED_PROVIDERS,
       custom,
@@ -119,6 +126,7 @@ describe('embed settings', () => {
     const html = await new Embeds(() => service.providers()).expand(
       figure('https://x.com/jack/status/20') + figure('https://example.com/a'),
     );
+
     expect(html).toContain('max-width: 550px');
     expect(html).toContain(
       'style="height: 400px; width: 100%; display: block; margin-inline: auto; border: 0"',
@@ -133,12 +141,14 @@ describe('embed settings', () => {
           }
         : provider,
     );
+
     await service.update(JSON.parse(JSON.stringify({ providers: cleared })));
     const stored = (await repository.get('embeds')) as {
       providers: EmbedProviderSettings[];
     };
     const x = (providers: EmbedProviderSettings[]) =>
       providers.find(({ id }) => id === 'x')!.sizing;
+
     expect(x(stored.providers)).toMatchObject({ maxWidth: null });
     expect(x((await new EmbedService(repository).get()).providers)).toEqual({
       kind: 'height',
@@ -149,6 +159,7 @@ describe('embed settings', () => {
     const uncapped = await new Embeds(() => service.providers()).expand(
       figure('https://x.com/jack/status/20'),
     );
+
     expect(uncapped).toContain(
       'style="height: 600px; width: 100%; display: block; margin-inline: auto; border: 0"',
     );
@@ -158,6 +169,7 @@ describe('embed settings', () => {
 
   test('rejects permission origin lists and unsupported directives at save', async () => {
     const service = new EmbedService(new MemorySettings());
+
     for (const allow of [
       'camera *; microphone *',
       'fullscreen *',
@@ -171,6 +183,7 @@ describe('embed settings', () => {
         }),
       ).rejects.toMatchObject({ code: 'invalid_input' });
     }
+
     await expect(
       service.update({
         providers: [
@@ -189,6 +202,7 @@ describe('embed settings', () => {
       embedSettingsSchema.safeParse({
         providers: [{ ...DEFAULT_EMBED_PROVIDERS[0], urlPattern }],
       }).success;
+
     for (const urlPattern of [
       '^https://example\\.com/(?<id>a)(?=b)$',
       '^https://example\\.com/(?<id>a)\\1$',

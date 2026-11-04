@@ -14,6 +14,7 @@ export class DashboardPreferencesService {
     const result = dashboardPreferencesSchema.safeParse(
       await this.settings.get(`dashboard.${actor.id}`),
     );
+
     return result.success
       ? { order: result.data.order, hidden: result.data.hidden }
       : { order: [], hidden: [] };
@@ -22,7 +23,9 @@ export class DashboardPreferencesService {
   async update(input: unknown, actor: Actor): Promise<DashboardPreferences> {
     authorize(actor, 'content.create');
     const { order, hidden } = parseInput(dashboardPreferencesSchema, input);
+
     await this.settings.set(`dashboard.${actor.id}`, { order, hidden });
+
     return { order, hidden };
   }
 }

@@ -30,7 +30,9 @@ const SLOW = 60_000;
 
 const urlFor = (database: string) => {
   const url = new URL(serverUrl!);
+
   url.pathname = `/${database}`;
+
   return url.href.replace(/^mariadb:/, 'mysql:');
 };
 
@@ -48,6 +50,7 @@ const prismaCli = async (...args: string[]) => {
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
   ]);
+
   return { code, output: `${stdout}\n${stderr}` };
 };
 
@@ -66,6 +69,7 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
     created = true;
 
     const deploy = await prismaCli('migrate', 'deploy');
+
     if (deploy.code !== 0)
       throw new Error(`migrate deploy failed\n${deploy.output}`);
 
@@ -80,6 +84,7 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
 
   const users = async (...ids: string[]) => {
     const repository = new PrismaUserRepository(db);
+
     for (const id of ids)
       await repository.insert(userRecord({ id, createdAt: new Date() }));
   };
@@ -95,6 +100,7 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
         'prisma/schema.prisma',
         '--exit-code',
       );
+
       expect({
         code: diff.code,
         output: diff.code === 0 ? '' : diff.output,
@@ -108,6 +114,7 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
 
   test('identities are stored, looked up and kept unique byte for byte', async () => {
     const identities = new PrismaIdentityRepository(db);
+
     await users('case-1', 'case-2', 'case-3', 'case-4', 'case-5');
 
     const link = (
@@ -171,8 +178,10 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
       purpose: 'invite' as const,
       expiresAt,
     }));
+
     await db.passwordToken.createMany({ data: tokens });
     const identities = new PrismaIdentityRepository(db);
+
     expect(await identities.claim(identity, tokens[0]!.tokenHash, now)).toBe(
       true,
     );
@@ -200,6 +209,7 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
         },
       });
     const credentials = new PrismaCredentialRepository(db);
+
     await addCode();
     await credentials.change(identity.userId, 'new-hash', null);
     expect(
@@ -223,6 +233,7 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
   test('sessions die with their identity, and a removed identity cannot get new ones', async () => {
     const identities = new PrismaIdentityRepository(db);
     const sessions = new PrismaSessionRepository(db);
+
     await users('rev-1', 'rev-2');
     const expiresAt = new Date(Date.now() + 60_000);
     const linkAs = (id: string, userId: string, subject: string) =>
@@ -237,6 +248,7 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
     await linkAs('rev-i1', 'rev-1', 'rev-subject-1');
     const pending = new PrismaSignInTransactions(db);
     const now = new Date();
+
     expect(
       await pending.admit(
         {
@@ -342,6 +354,7 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
           transactions.admit(pending(`adm-a${index}`, 'client-a'), now, limits),
         ),
       );
+
       expect(flood.filter(Boolean)).toHaveLength(2);
 
       const others = await Promise.all(
@@ -353,11 +366,13 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
           ),
         ),
       );
+
       expect(others.filter(Boolean)).toHaveLength(1);
       expect(await db.ssoTransaction.count()).toBe(3);
 
       // Once they expire, the next admission purges them first.
       const later = new Date(now.getTime() + 600_000);
+
       expect(
         await transactions.admit(
           pending('adm-c', 'client-a', new Date(later.getTime() + 600_000)),
@@ -372,6 +387,7 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
         transactions.take(hash('adm-c')),
         transactions.take(hash('adm-c')),
       ]);
+
       expect(taken.filter(Boolean)).toHaveLength(1);
     },
     SLOW,

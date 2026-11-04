@@ -47,6 +47,7 @@ export const entryPage = async (
   // `?page=N` shows the N-th part of an entry split by page breaks; each part is its own page.
   const parts = content.html.split(PAGE_BREAK_HTML);
   const current = pageParam(event.url);
+
   if (current > parts.length) error(404, Errors.NotFound);
   const view = {
     ...contentView(content),
@@ -65,8 +66,10 @@ export const entryPage = async (
       slots,
       withSeoMeta(event, () => event.parent(), page),
     ]);
+
   // The comment form or the unlock form may render the captcha widget.
   allowCaptcha(event, comments?.captcha ?? unlockCaptcha);
+
   return {
     kind: 'content' as const,
     content: view,

@@ -20,12 +20,15 @@ export const POST: RequestHandler = async (event) => {
       ? body.taxonomy
       : null;
   const input = termInputSchema.safeParse(body);
+
   if (!taxonomy || !input.success) return json({ ok: false }, { status: 400 });
+
   try {
     const { id, name, parentId } = await adminFor(event).taxonomy.create(
       taxonomy,
       input.data,
     );
+
     return json({ id, name, parentId }, { status: 201 });
   } catch (caught) {
     if (caught instanceof CmsApiError && caught.status < 500)

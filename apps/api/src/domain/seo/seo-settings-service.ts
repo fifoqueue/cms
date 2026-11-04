@@ -30,8 +30,10 @@ export class SeoSettingsService {
       initial,
       (result) => schema.safeParse(result).success,
     );
+
     return schema.parse(filtered ?? initial);
   }
+
   constructor(
     private readonly settings: SettingsRepository,
     private readonly hooks?: HookDispatcher,
@@ -51,6 +53,7 @@ export class SeoSettingsService {
       dto,
       (value) => publicSeoSettingsSchema.safeParse(value).success,
     );
+
     return publicSeoSettingsSchema.parse(filtered ?? dto);
   }
 
@@ -62,6 +65,7 @@ export class SeoSettingsService {
       ...SEO_SETTINGS_DEFAULTS,
       ...overrides,
     });
+
     return seoSettingsSchema.parse(
       toPublicSettings(result.success ? result.data : SEO_SETTINGS_DEFAULTS),
     );
@@ -76,8 +80,10 @@ export class SeoSettingsService {
     );
     const settings = seoSettingsSchema.parse(filtered ?? initial);
     const dto = seoSettingsSchema.parse(toPublicSettings(settings));
+
     await this.settings.set(SEO_KEY, dto);
     void this.hooks?.emit('seo.updated', dto);
+
     return dto;
   }
 }

@@ -27,6 +27,7 @@ export const initializeSite = (
       });
       if ((await transaction.user.count()) > 0)
         throw conflict(Errors.InstallCompleted);
+
       return initialize({
         users: new PrismaUserRepository(transaction),
         sessions: new PrismaSessionRepository({

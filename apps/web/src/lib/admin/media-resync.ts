@@ -35,6 +35,7 @@ export const resyncSummary = (
 ): ResyncSummary | null => {
   if (!job) return null;
   const finished = when(job.finishedAt ?? job.startedAt);
+
   switch (job.status) {
     case 'queued':
       return { tone: 'progress', title: m.mediaResyncQueued, counts: [] };

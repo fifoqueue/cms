@@ -14,6 +14,7 @@ export class PrismaPatternCatalog implements PatternCatalog {
     const filters = [
       Prisma.sql`\`key\` LIKE 'pattern.%' AND JSON_TYPE(value) = 'OBJECT'`,
     ];
+
     if (authorId !== undefined)
       filters.push(
         Prisma.sql`(JSON_VALUE(value, '$.status') = 'published' OR BINARY JSON_VALUE(value, '$.authorId') = ${authorId})`,
@@ -38,6 +39,7 @@ export class PrismaPatternCatalog implements PatternCatalog {
       FROM settings WHERE ${where}
       ORDER BY JSON_VALUE(value, '$.title'), \`key\`
       LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`);
+
     return {
       items: rows.map(({ summary }) =>
         patternSummarySchema.parse(JSON.parse(summary)),

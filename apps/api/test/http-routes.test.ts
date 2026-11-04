@@ -46,6 +46,7 @@ test('database cleanup routes require tools.manage and reject invalid retention'
       method === 'POST'
         ? JSON.stringify({ categories: ['expired'] })
         : undefined;
+
     expect(
       (await call(method, '/api/v1/admin/database-cleanup', { body })).status,
     ).toBe(401);
@@ -66,6 +67,7 @@ test('database cleanup routes require tools.manage and reject invalid retention'
       ).status,
     ).toBe(200);
   }
+
   expect(
     (
       await call('GET', '/api/v1/admin/database-cleanup?keepLatest=-1', {
@@ -225,11 +227,13 @@ const app = await createApiApp({
       continue: async (input: unknown, ...args: unknown[]) => {
         if ((input as { transaction?: string }).transaction === 'expired')
           throw expiredSignIn();
+
         return record('signIn.continue', { kind: 'done' })(input, ...args);
       },
       chooseFactor: async (input: unknown, ...args: unknown[]) => {
         if ((input as { transaction?: string }).transaction === 'expired')
           throw expiredSignIn();
+
         return record('signIn.chooseFactor')(input, ...args);
       },
       factors: record('signIn.factors'),
@@ -316,14 +320,17 @@ describe('API route compatibility', () => {
   });
   test('domain errors map to statuses and unexpected errors stay hidden', async () => {
     const conflicted = await call('GET', '/api/v1/content/taken');
+
     expect(conflicted.status).toBe(409);
     expect(await conflicted.json()).toMatchObject({
       error: { code: 'conflict' },
     });
 
     const crashed = await call('GET', '/api/v1/content/boom');
+
     expect(crashed.status).toBe(500);
     const text = await crashed.text();
+
     expect(text).toContain('internal');
     expect(text).not.toContain('secret failure');
     expect(errors).toHaveLength(1);
@@ -363,6 +370,7 @@ describe('API route compatibility', () => {
       type: 'application/json',
       body: JSON.stringify({ title: 'Hi' }),
     });
+
     expect(created.status).toBe(201);
     await call('PUT', '/api/v1/admin/content/abc', {
       token: TOKEN,

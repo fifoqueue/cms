@@ -41,18 +41,21 @@ export class ContentLocks {
     },
   ): Promise<ContentUnlocked> {
     const { password } = parseInput(contentUnlockSchema, input);
+
     await this.deps.protection?.check({
       ...attempt,
       action: 'contentUnlock',
       account: id,
     });
     const hash = await this.deps.repository.passwordHash(id);
+
     if (!hash) throw notFound(Errors.ContentNotFound);
     if (!(await this.deps.hasher.verify(password, hash)))
       throw invalidInput(Errors.ContentPasswordWrong, [
         { path: 'password', message: Errors.ContentPasswordWrong },
       ]);
     const expires = this.deps.clock.now().getTime() + LIFETIME_MS;
+
     return {
       token: `${expires}.${this.deps.signer.sign(`${id}:${expires}:${hash}`)}`,
       expiresAt: new Date(expires).toISOString(),
@@ -65,12 +68,16 @@ export class ContentLocks {
       .slice(0, MAX_PROOFS)
       .filter((proof) => proof.startsWith(`${id}.`))
       .map((proof) => proof.slice(id.length + 1));
+
     if (!tokens.length) return false;
     const hash = await this.deps.repository.passwordHash(id);
+
     if (!hash) return false;
     const now = this.deps.clock.now().getTime();
+
     return tokens.some((token) => {
       const [expires, signature] = token.split('.');
+
       return (
         !!signature &&
         Number(expires) > now &&

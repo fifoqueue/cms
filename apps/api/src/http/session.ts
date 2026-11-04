@@ -11,6 +11,8 @@ import type { ApiApp } from '#api/http/services';
 export const session = (app: ApiApp, capability?: Capability) =>
   app.resolve(async ({ auth, request }) => {
     const user = await requireUser(auth, request);
+
     if (capability) authorize(user, capability);
+
     return { user };
   });

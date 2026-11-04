@@ -93,6 +93,7 @@ export class SignInRegistry {
     core: boolean,
   ) {
     const id = core ? key : `plugin:${owner}:${key}`;
+
     if (
       !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(key) ||
       key.length > 64 ||
@@ -102,7 +103,9 @@ export class SignInRegistry {
     )
       throw new Error(Errors.SignInRegistrationInvalid);
     const entry = { id, owner, core, definition: { ...definition } };
+
     map.set(id, entry);
+
     return () => {
       if (map.get(id) === entry) map.delete(id);
     };
@@ -123,25 +126,31 @@ export class SignInRegistry {
     fallback: T,
   ): Promise<T> {
     if (map.get(entry.id) !== entry) return fallback;
+
     if (entry.core) {
       const value = schema.parse(await task());
+
       return map.get(entry.id) === entry ? value : fallback;
     }
+
     const result = await isolate(
       async () => schema.parse(await task()),
       this.options.timeoutMs,
     );
+
     if (map.get(entry.id) !== entry) return fallback;
     if (result.ok) return result.value;
     this.options.logger.warn(
       `Authentication extension "${entry.id}" failed`,
       result.error,
     );
+
     return fallback;
   }
 
   method(id: string): CoreSignInMethod | undefined {
     const entry = this.methods.get(id);
+
     if (!entry) return;
     const method = entry.definition;
     const call = <T>(task: () => unknown, schema: z.ZodType<T>, fallback: T) =>
@@ -152,13 +161,16 @@ export class SignInRegistry {
       });
     const fields = (value: unknown) => {
       const parsed = signInMethodSchema.shape.fields.safeParse(value ?? []);
+
       if (parsed.success) return parsed.data;
       if (entry.core) return signInMethodSchema.shape.fields.parse(value);
       this.options.logger.warn(
         `Authentication extension "${entry.id}" returned invalid fields`,
       );
+
       return [];
     };
+
     return {
       label: method.label,
       fields: fields(method.fields),
@@ -205,12 +217,15 @@ export class SignInRegistry {
   /** Failed challenges are null so callers must not offer or advance that factor. */
   factor(id: string) {
     const entry = this.factors.get(id);
+
     if (!entry) return;
     const factor = entry.definition;
     const call = <T>(task: () => unknown, schema: z.ZodType<T>, fallback: T) =>
       this.call(this.factors, entry, task, schema, fallback);
+
     type User = Parameters<SecondFactorDefinition['enrolled']>[0];
     type Step = Parameters<SecondFactorDefinition['verify']>[1];
+
     return {
       label: factor.label,
       enrolled: (user: User) =>
@@ -238,6 +253,7 @@ export class SignInRegistry {
             call(
               async () => {
                 await factor.remove!(structuredClone(user), credential);
+
                 return true;
               },
               z.boolean(),

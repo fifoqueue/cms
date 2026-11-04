@@ -81,12 +81,17 @@ export const filterWith = async <const T extends readonly FilterInput[]>(
   timeoutMs = SEO_FILTER_TIMEOUT_MS,
 ): Promise<Values<T>> => {
   const unfiltered = inputs.map((input) => input.value) as Values<T>;
+
   if (!inputs.length) return unfiltered;
+
   if (!proof) {
     logOnce('no frontend proof');
+
     return unfiltered;
   }
+
   const deadline = AbortSignal.timeout(timeoutMs);
+
   try {
     return (await contentApi(bounded(fetcher, deadline)).seo.filterBatch(
       [...inputs],
@@ -95,6 +100,7 @@ export const filterWith = async <const T extends readonly FilterInput[]>(
   } catch (error) {
     // Invalid filter output surfaces as the SDK's 502 `invalid_response`.
     logOnce(deadline.aborted ? 'timeout' : reasonOf(error), error);
+
     return unfiltered;
   }
 };

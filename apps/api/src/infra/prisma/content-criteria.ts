@@ -81,6 +81,7 @@ export const termScope = async (
     )
     SELECT id FROM category_tree
   `);
+
   return rows.map((row) => row.id);
 };
 
@@ -118,11 +119,14 @@ export const contentWhere = async (
   const filters: Prisma.ContentWhereInput[] = [
     { trashedAt: view === 'trash' ? { not: null } : null },
   ];
+
   if (taxonomy && term) {
     const ids = await termScope(db, taxonomy, term);
+
     if (!ids.length) return null;
     filters.push({ terms: { some: { termId: { in: ids } } } });
   }
+
   if (include) filters.push({ id: { in: [...include] } });
   if (exclude) filters.push({ id: { notIn: [...exclude] } });
   if (parent !== undefined) filters.push({ parentId: parent });
@@ -133,8 +137,10 @@ export const contentWhere = async (
     filters.push({
       publishedAt: publishedIn(year, month, day, await siteTimeZone(db)),
     });
+
   if (search) {
     const contains = literal(search);
+
     filters.push({
       OR: [
         { title: { contains } },
@@ -143,13 +149,17 @@ export const contentWhere = async (
       ],
     });
   }
+
   if (category) {
     const termIds = await termScope(db, 'category', category);
+
     if (!termIds.length) return null;
     filters.push({ terms: { some: { termId: { in: termIds } } } });
   }
+
   if (tag)
     filters.push({ terms: { some: { term: { taxonomy: 'tag', slug: tag } } } });
+
   return { type, status, AND: filters };
 };
 
@@ -189,6 +199,7 @@ export const featuredImageOf = async (
 export const parseFields = (raw: string): Record<string, unknown> => {
   try {
     const value = JSON.parse(raw) as unknown;
+
     return typeof value === 'object' && value !== null && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};

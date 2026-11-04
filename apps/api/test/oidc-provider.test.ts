@@ -33,6 +33,7 @@ const sign = async (key: CryptoKey, claims: Record<string, unknown>) => {
     key,
     new TextEncoder().encode(input),
   );
+
   return `${input}.${Buffer.from(signature).toString('base64url')}`;
 };
 
@@ -85,6 +86,7 @@ const createProvider = ({
 
     if (url.pathname === '/jwks') {
       const jwk = await crypto.subtle.exportKey('jwk', signingKey.publicKey);
+
       return Response.json({
         keys: [
           {
@@ -101,12 +103,14 @@ const createProvider = ({
 
     if (url.pathname === '/token') {
       const body = new URLSearchParams(await request.text());
+
       tokenRequests.push({
         body,
         authorization: request.headers.get('authorization'),
       });
       const grant = grants.get(body.get('code') ?? '');
       const verifier = body.get('code_verifier') ?? '';
+
       if (
         !grant ||
         grant.redirectUri !== body.get('redirect_uri') ||
@@ -126,6 +130,7 @@ const createProvider = ({
         email: 'admin@example.com',
         email_verified: true,
       });
+
       return Response.json({
         access_token: 'access',
         token_type: 'Bearer',
@@ -143,11 +148,13 @@ const createProvider = ({
   /** Simulates the user approving the request: returns the redirect URI query. */
   const approve = (authorizationUrl: string, code = 'code-1') => {
     const params = new URL(authorizationUrl).searchParams;
+
     grants.set(code, {
       challenge: params.get('code_challenge') ?? '',
       nonce: params.get('nonce') ?? '',
       redirectUri: params.get('redirect_uri') ?? '',
     });
+
     return `?code=${code}&state=${params.get('state')}`;
   };
 
@@ -172,6 +179,7 @@ const relyingParty = (
     },
     logger,
   );
+
   return { provider, lines };
 };
 
@@ -182,6 +190,7 @@ describe('OpenIdClientProvider', () => {
 
     const request = await provider.authorize();
     const params = new URL(request.url).searchParams;
+
     expect(request.url.startsWith(`${ISSUER}/authorize?`)).toBe(true);
     expect(Object.fromEntries(params)).toMatchObject({
       client_id: CLIENT_ID,
@@ -201,12 +210,14 @@ describe('OpenIdClientProvider', () => {
     });
 
     const [token] = op.tokenRequests;
+
     expect(token?.body.get('code_verifier')).toBe(request.codeVerifier);
     expect(token?.body.get('redirect_uri')).toBe(REDIRECT_URI);
     // RFC 6749 §2.3.1: credentials are form-encoded before Base64.
     const [id, secret] = atob(token?.authorization?.slice(6) ?? '')
       .split(':')
       .map(decodeURIComponent);
+
     expect(token?.authorization?.startsWith('Basic ')).toBe(true);
     expect([id, secret]).toEqual([CLIENT_ID, CLIENT_SECRET]);
   });
@@ -215,6 +226,7 @@ describe('OpenIdClientProvider', () => {
     const { provider, lines } = relyingParty(createProvider(), {
       issuer: `${ISSUER}/application/o/app/`,
     });
+
     await expect(provider.authorize()).rejects.toMatchObject({
       code: 'unauthorized',
     });
@@ -238,6 +250,7 @@ describe('OpenIdClientProvider', () => {
       const { provider, lines } = relyingParty(op);
       const request = await provider.authorize();
       const { query, checks } = respond(request.url, request);
+
       await expect(provider.verify(query, checks)).rejects.toMatchObject({
         code: 'unauthorized',
       });
@@ -261,61 +274,76 @@ describe('OpenIdClientProvider', () => {
 
   {
     const op = createProvider();
+
     rejects('a state mismatch', op, (url, checks) => ({
       query: op.approve(url),
       checks: { ...checks, state: 'other-state' },
     }));
   }
+
   {
     const op = createProvider();
+
     rejects('a wrong PKCE verifier', op, (url, checks) => ({
       query: op.approve(url),
       checks: { ...checks, codeVerifier: 'x'.repeat(43) },
     }));
   }
+
   {
     const op = createProvider();
+
     rejects('a nonce mismatch', op, (url, checks) => ({
       query: op.approve(url),
       checks: { ...checks, nonce: 'other-nonce' },
     }));
   }
+
   {
     const op = createProvider({
       tamper: (c) => ({ ...c, iss: 'https://evil.test' }),
     });
+
     rejects('an ID token from another issuer', op, (url, checks) => ({
       query: op.approve(url),
       checks,
     }));
   }
+
   {
     const op = createProvider({
       tamper: (c) => ({ ...c, aud: 'another-client' }),
     });
+
     rejects('an ID token for another audience', op, (url, checks) => ({
       query: op.approve(url),
       checks,
     }));
   }
+
   {
     const op = createProvider({
       tamper: (c) => ({ ...c, exp: Math.floor(Date.now() / 1000) - 3600 }),
     });
+
     rejects('an expired ID token', op, (url, checks) => ({
       query: op.approve(url),
       checks,
     }));
   }
+
   {
     const op = createProvider({ key: () => foreignKey.privateKey });
+
     rejects('an ID token with an invalid signature', op, (url, checks) => ({
       query: op.approve(url),
       checks,
     }));
   }
+
   {
     const op = createProvider();
+
     rejects('a provider error response', op, (_url, checks) => ({
       query: `?error=access_denied&state=${checks.state}`,
       checks,

@@ -9,6 +9,7 @@ export const routes = (app: ApiApp) =>
     '',
     async ({ signIn, user, params }) => {
       await signIn.removeFactor(user, params.factor, params.credential);
+
       return noContent();
     },
     factorCredentialParams,

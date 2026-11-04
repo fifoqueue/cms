@@ -107,6 +107,7 @@ export class SsoService {
 
   async info(): Promise<SsoInfo> {
     const { providers } = await this.deps.setup();
+
     return {
       providers: providers.map(({ id, name }) => ({ id, name })),
     };
@@ -146,6 +147,7 @@ export class SsoService {
           this.deps.clock.now(),
         )
       : null;
+
     if (claimTokenHash && !claimUser)
       throw invalidInput(Errors.PasswordTokenInvalid);
     const request = await provider.authorize();
@@ -199,6 +201,7 @@ export class SsoService {
     const { provider, subjects, issuer } = await this.enabled(
       pending.providerId,
     );
+
     if (
       pending.userId &&
       !pending.claimTokenHash &&
@@ -226,18 +229,22 @@ export class SsoService {
         userId: pending.userId,
         createdAt: now,
       };
+
       if (pending.claimTokenHash) {
         if (
           !(await this.deps.identities.claim(link, pending.claimTokenHash, now))
         )
           throw invalidInput(Errors.PasswordTokenInvalid);
         const owner = await this.deps.users.findById(link.userId);
+
         if (!owner) throw unauthorized();
+
         return {
           kind: 'session',
           session: await this.deps.sessions.startSession(owner, link.id),
         };
       }
+
       await this.deps.identities.link(link);
 
       return { kind: 'linked' };
@@ -280,7 +287,9 @@ export class SsoService {
 
   async unlink(userId: string, identityId: string): Promise<void> {
     const user = await this.deps.users.findById(userId);
+
     if (!user) throw notFound(Errors.UserNotFound);
+
     return this.deps.access.run((context) =>
       this.removeIdentity(toProfile(user), identityId, context),
     );
@@ -297,8 +306,10 @@ export class SsoService {
     );
     const { id: userId, email } = user;
     const links = await context.identities.findByUser(userId);
+
     if (!links.some((i) => i.id === identityId))
       throw notFound(Errors.SsoNotFound);
+
     if (!otherMethod) {
       if (
         !providers.some(
@@ -310,6 +321,7 @@ export class SsoService {
       )
         throw forbidden(Errors.SsoLastAccess);
     }
+
     await context.identities.unlink(userId, identityId);
   }
 
@@ -325,6 +337,7 @@ export class SsoService {
 
     if (email) {
       const user = await this.deps.users.findByEmail(email);
+
       return user?.email === email ? { user, identityId: null } : null;
     }
 
@@ -334,13 +347,16 @@ export class SsoService {
       return null;
 
     const user = await this.deps.users.findById(linked.userId);
+
     return user && { user, identityId: linked.id };
   }
 
   private async enabled(id: string) {
     const setup = await this.deps.setup();
     const provider = setup.providers.find((p) => p.id === id);
+
     if (!provider) throw notFound(Errors.SsoNotFound);
+
     return provider;
   }
 }

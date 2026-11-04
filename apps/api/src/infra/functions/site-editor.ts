@@ -29,8 +29,10 @@ export class SiteEditor implements FunctionsEditor {
 
   private async gate(): Promise<boolean> {
     if (this.enabled) return true;
+
     try {
       await access(join(this.directory, 'editor.enabled'));
+
       return true;
     } catch {
       return false;
@@ -43,6 +45,7 @@ export class SiteEditor implements FunctionsEditor {
 
   async read(): Promise<{ source: string }> {
     await this.requireGate();
+
     try {
       return {
         source: await readFile(join(this.directory, 'site.ts'), 'utf8'),
@@ -57,15 +60,19 @@ export class SiteEditor implements FunctionsEditor {
   async validate(input: unknown): Promise<{ valid: true }> {
     await this.requireGate();
     const { source } = parseInput(functionsInputSchema, input);
+
     validateFunctions(source);
+
     return { valid: true };
   }
 
   async write(input: unknown, actor: string) {
     await this.validate(input);
     const { source } = parseInput(functionsInputSchema, input);
+
     await mkdir(this.directory, { recursive: true });
     const temporary = join(this.directory, `.write-${randomUUID()}.ts`);
+
     try {
       await writeFile(temporary, source, { flag: 'wx', mode: 0o600 });
       await this.requireGate();
@@ -73,8 +80,10 @@ export class SiteEditor implements FunctionsEditor {
     } finally {
       await rm(temporary, { force: true });
     }
+
     this.logger.info('Site functions updated', { actor });
     await this.host.reconcile();
+
     return this.status();
   }
 

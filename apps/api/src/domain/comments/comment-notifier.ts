@@ -205,6 +205,7 @@ type Refusal = 'disabled' | 'recipient' | 'unsubscribed' | 'withdrawn';
 /** Plain text for a push body: whitespace collapsed, at most 140 UTF-16 units. */
 export const excerpt = (text: string) => {
   const plain = text.replace(/\s+/g, ' ').trim();
+
   return plain.length <= 140
     ? plain
     : `${plain.slice(0, 139).replace(/[\uD800-\uDBFF]$/, '')}…`;
@@ -276,7 +277,9 @@ export class CommentNotifier {
     viewer: boolean,
   ): Promise<PublicCommentPage['notifications']> {
     const site = await this.deps.site();
+
     if (!site.siteUrl) return { email: false, push: null };
+
     return {
       email:
         settings.notifyCommenters &&
@@ -378,6 +381,7 @@ export class CommentNotifier {
    */
   async claim(record: CommentRecord) {
     if (record.status !== 'approved') return false;
+
     return this.deps.state.claim(
       { id: record.id, contentId: record.contentId },
       this.deps.clock.now(),
@@ -400,12 +404,15 @@ export class CommentNotifier {
   async deliverNotice(payload: unknown) {
     const { commentId } = this.deps.jobs.open(payload, noticeJobSchema);
     let record = await this.deps.comments.findById(commentId);
+
     if (record && record.status !== 'approved') {
       if (await this.deps.state.release(commentId)) return;
       record = await this.deps.comments.findById(commentId);
     }
+
     if (record?.status !== 'approved') return;
     const target = await this.deps.comments.target(record.contentId);
+
     if (!target) return;
     await this.deps.outbox.dispatch(
       `notice:${record.id}`,
@@ -435,6 +442,7 @@ export class CommentNotifier {
         (value) => schema.safeParse(value).success,
       ),
     );
+
     return { ...input, ...output };
   }
 
@@ -447,6 +455,7 @@ export class CommentNotifier {
       this.deps.discussion(),
       this.deps.site(),
     ]);
+
     // Links (and unsubscribe links) must be absolute.
     if (!site.siteUrl) return [];
     const entry = `${site.siteUrl}${target.path}`;
@@ -518,9 +527,11 @@ export class CommentNotifier {
     const mailed = new Set<string>();
     const mailTo = (address: string, item: () => NoticeItem) => {
       const key = address.toLowerCase();
+
       if (mailed.has(key)) return false;
       mailed.add(key);
       items.push(item());
+
       return true;
     };
     /** A user a handler added: sent the entry author's notice. */
@@ -538,6 +549,7 @@ export class CommentNotifier {
     let muted: Promise<string[]> | undefined;
     const unsubscribed = () => (muted ??= this.muted(parent));
     let replyMailed = false;
+
     if (replyTo && reply && mail && (settings.notifyCommenters || filtered)) {
       const { kept, added } = await noticeRecipients(
         this.deps.hooks,
@@ -554,6 +566,7 @@ export class CommentNotifier {
         users,
         unsubscribed,
       );
+
       if (kept.length)
         replyMailed = mailTo(replyTo.authorEmail, () =>
           this.mailItem(
@@ -566,6 +579,7 @@ export class CommentNotifier {
         );
       for (const user of added) mailUser(user);
     }
+
     if (mail && (settings.notifyAuthors || filtered)) {
       const { kept, added } = await noticeRecipients(
         this.deps.hooks,
@@ -582,6 +596,7 @@ export class CommentNotifier {
         users,
         unsubscribed,
       );
+
       if (notified && writer && kept.length)
         mailTo(notified.email, () =>
           this.mailItem(notified.email, writer, authorContent, comments, [
@@ -594,8 +609,10 @@ export class CommentNotifier {
 
     if (!settings.pushNotifications) return items;
     let replyPushed = false;
+
     if (replyTo && reply) {
       const browsers = await this.browsers(reply);
+
       replyPushed = browsers.length > 0;
       if (replyPushed)
         items.push(
@@ -610,8 +627,10 @@ export class CommentNotifier {
           ),
         );
     }
+
     if (notified && writer && !(authorAnswered && replyPushed)) {
       const browsers = await this.browsers(writer);
+
       if (browsers.length)
         items.push(
           this.pushItem(
@@ -625,6 +644,7 @@ export class CommentNotifier {
           ),
         );
     }
+
     return items;
   }
 
@@ -633,6 +653,7 @@ export class CommentNotifier {
     await this.limit(`client:${client ?? 'unproven'}`);
     const { token, subscription } = parseInput(commentPushSchema, input);
     const [commentId] = this.verify('comment-push', token, 1) ?? [];
+
     if (!commentId)
       throw invalidInput(Errors.CommentPushTokenInvalid, [
         { path: 'token', message: Errors.CommentPushTokenInvalid },
@@ -641,6 +662,7 @@ export class CommentNotifier {
       this.deps.discussion(),
       this.deps.comments.findById(commentId),
     ]);
+
     if (
       settings.pushNotifications &&
       (comment?.status === 'approved' || comment?.status === 'pending')
@@ -650,6 +672,7 @@ export class CommentNotifier {
         subscription,
         PUSH_COMMENT_CAP,
       );
+
     return { ok: true as const };
   }
 
@@ -657,13 +680,16 @@ export class CommentNotifier {
   async saveForUser(userId: string, input: unknown) {
     await this.limit(`user:${userId}`);
     const { subscription } = parseInput(userPushSchema, input);
+
     await this.save({ commentId: null, userId }, subscription, PUSH_USER_CAP);
+
     return { ok: true as const };
   }
 
   async removeForUser(userId: string, input: unknown) {
     await this.limit(`user:${userId}`);
     const { endpoint } = parseInput(userPushRemovalSchema, input);
+
     await this.deps.subscriptions.removeForUser(userId, endpoint);
   }
 
@@ -674,11 +700,13 @@ export class CommentNotifier {
   async renew(input: unknown, client: string | null) {
     await this.limit(`client:${client ?? 'unproven'}`);
     const { old, subscription } = parseInput(pushRenewSchema, input);
+
     await this.deps.subscriptions.renew(
       old,
       keysOf(subscription),
       this.deps.clock.now(),
     );
+
     return { ok: true as const };
   }
 
@@ -690,12 +718,14 @@ export class CommentNotifier {
     await this.limit(`client:${client ?? 'unproven'}`);
     const { token } = parseInput(commentUnsubscribeSchema, input);
     const [channel, id] = this.verify('comment-unsubscribe', token, 2) ?? [];
+
     if (!id || (channel !== 'email' && channel !== 'push'))
       throw invalidInput(Errors.CommentUnsubscribeInvalid, [
         { path: 'token', message: Errors.CommentUnsubscribeInvalid },
       ]);
     if (channel === 'email') await this.deps.state.muteReplyMail(id);
     else await this.deps.subscriptions.delete(id);
+
     return { channel };
   }
 
@@ -707,9 +737,11 @@ export class CommentNotifier {
   async validate() {
     const now = this.deps.clock.now();
     const stale = new Date(now.getTime() - PUSH_STALE_DAYS * DAY);
+
     for (let after: string | null = null; ;) {
       const rows = await this.deps.subscriptions.page(after, 500);
       const invalid = new Map<PushInvalidReason, string[]>();
+
       for (const row of rows) {
         const reason: PushInvalidReason | null = !isPushEndpoint(row.endpoint)
           ? 'endpoint'
@@ -718,14 +750,17 @@ export class CommentNotifier {
             : row.lastSeenAt < stale
               ? 'stale'
               : null;
+
         if (reason)
           invalid.set(reason, [...(invalid.get(reason) ?? []), row.id]);
       }
+
       for (const [reason, ids] of invalid)
         await this.deps.subscriptions.invalidate(ids, reason, now);
       if (rows.length < 500) break;
       after = rows.at(-1)!.id;
     }
+
     await this.deps.subscriptions.purge(
       new Date(now.getTime() - PUSH_PURGE_DAYS * DAY),
     );
@@ -748,6 +783,7 @@ export class CommentNotifier {
     const refusal =
       (await this.mailRefusal(job, settings, site.siteUrl)) ??
       (await this.withdrawn(job.content));
+
     if (refusal) return this.dropped('email', refusal, job.content);
     const copy = templates(site.locale);
     const unsubscribe =
@@ -799,6 +835,7 @@ export class CommentNotifier {
                 },
                 content.link,
               );
+
     await this.deps.email.sendNow(
       await this.shaped({ to: job.to, subjects: job.subjects, ...message }),
     );
@@ -811,14 +848,18 @@ export class CommentNotifier {
    */
   async deliverPush(payload: unknown) {
     const job = this.deps.jobs.open(payload, pushJobSchema);
+
     if (!(await this.deps.discussion()).pushNotifications)
       return this.dropped('push', 'disabled', job.content);
     const row = await this.deps.subscriptions.findById(job.subscriptionId);
+
     if (!row || row.status !== 'active')
       return this.dropped('push', 'unsubscribed', job.content);
     const withdrawn = await this.withdrawn(job.content);
+
     if (withdrawn) return this.dropped('push', withdrawn, job.content);
     const now = this.deps.clock.now();
+
     if (!isPushEndpoint(row.endpoint))
       return this.deps.subscriptions.invalidate([row.id], 'endpoint', now);
     if (row.expiresAt && row.expiresAt <= now)
@@ -829,6 +870,7 @@ export class CommentNotifier {
       { subject: await this.subject(), ...(await this.deps.keys.pair()) },
       { ttl: PUSH_TTL_SECONDS, urgency: 'normal' },
     );
+
     if (status >= 200 && status < 300) return;
     if (status === 404 || status === 410)
       return this.deps.subscriptions.invalidate([row.id], 'gone', now);
@@ -851,8 +893,10 @@ export class CommentNotifier {
       count,
       link: job.link,
     });
+
     if (job.channel === 'email') {
       const to = job.to;
+
       if (to)
         await this.deps.outbox.collect(job.window, (count) => [
           this.job(COMMENT_MAIL_JOB, {
@@ -862,8 +906,10 @@ export class CommentNotifier {
             content: summary(count),
           }),
         ]);
+
       return;
     }
+
     const enabled = (await this.deps.discussion()).pushNotifications;
     const tag = job.tag;
     const browsers = enabled && tag ? await this.browsers(job.recipient) : [];
@@ -872,6 +918,7 @@ export class CommentNotifier {
         this.pushJob(row, job.recipient, tag!, 0, summary(held), job.subjects),
       ),
     );
+
     if (count && !browsers.length)
       this.dropped(
         'push',
@@ -888,6 +935,7 @@ export class CommentNotifier {
     lifetime = JOB_LIFETIME_MS,
   ): QueuedJob {
     const due = runAt ?? this.deps.clock.now();
+
     return {
       kind,
       payload: this.deps.jobs.seal(payload),
@@ -929,6 +977,7 @@ export class CommentNotifier {
     subjects: string[],
   ): NoticeItem {
     const window = `email:${to}`;
+
     return {
       subjects,
       window: {
@@ -1024,24 +1073,32 @@ export class CommentNotifier {
     )
       return 'disabled';
     const { recipient } = job;
+
     if (recipient.audience === 'user') {
       const user = await this.deps.users.get(recipient.userId);
+
       if (user?.email !== job.to) return 'recipient';
       const to = job.to.toLowerCase();
+
       return (await this.unsubscribed(recipient.parentId)).some(
         (address) => address.toLowerCase() === to,
       )
         ? 'unsubscribed'
         : null;
     }
+
     if (recipient.audience === 'author') {
       if (!settings.notifyAuthors) return 'disabled';
       const user = await this.deps.users.get(recipient.userId);
+
       return user?.email === job.to ? null : 'recipient';
     }
+
     if (!settings.notifyCommenters) return 'disabled';
     const parent = await this.deps.comments.findById(recipient.commentId);
+
     if (!parent || parent.authorEmail !== job.to) return 'recipient';
+
     return (await this.deps.state.replyMail(parent.id)) ? null : 'unsubscribed';
   }
 
@@ -1050,6 +1107,7 @@ export class CommentNotifier {
     if (recipient.audience !== 'user') return '';
 
     const user = await this.deps.users.get(recipient.userId);
+
     if (!user) return '';
 
     const moderator = can(
@@ -1059,6 +1117,7 @@ export class CommentNotifier {
       },
       'comments.moderate',
     );
+
     if (!moderator) return '';
 
     return (await this.deps.comments.findById(commentId))?.authorEmail ?? '';
@@ -1072,6 +1131,7 @@ export class CommentNotifier {
     if (content.kind === 'summary') return null;
     const record = await this.deps.comments.findById(content.commentId);
     const status = content.kind === 'pending' ? 'pending' : 'approved';
+
     return record?.status === status && record.body ? null : 'withdrawn';
   }
 
@@ -1117,6 +1177,7 @@ export class CommentNotifier {
       // Without a site icon the key must stay absent (a plugin may not add one).
       icon: payload.icon ? z.literal(payload.icon) : z.never().optional(),
     });
+
     return fixed.parse(
       await this.deps.hooks.applyFilter(
         'comment.push',
@@ -1128,6 +1189,7 @@ export class CommentNotifier {
 
   private async save(owner: Owner, subscription: Subscription, cap: number) {
     const now = this.deps.clock.now();
+
     await this.deps.subscriptions.save(
       {
         id: this.deps.ids.next(),
@@ -1146,11 +1208,14 @@ export class CommentNotifier {
   /** VAPID `sub`: the https site address, else an administrator's mailbox. */
   private async subject() {
     const { siteUrl } = await this.deps.site();
+
     if (siteUrl.startsWith('https://')) return new URL(siteUrl).origin;
     const admin = (await this.deps.users.list()).find(
       (user) => user.role === 'administrator',
     );
+
     if (!admin) throw new Error(Errors.PushSubjectMissing);
+
     return `mailto:${admin.email}`;
   }
 
@@ -1170,20 +1235,24 @@ export class CommentNotifier {
       ...parts,
       String(this.deps.clock.now().getTime() + lifetime),
     ];
+
     return `${signed.join('.')}.${this.deps.signer.sign(`${purpose}:${signed.join(':')}`)}`;
   }
 
   private verify(purpose: string, token: string, count: number) {
     const parts = token.split('.');
+
     if (token.length > 1024 || parts.length !== count + 2) return null;
     const signature = parts.pop()!;
     const expires = parts.at(-1)!;
+
     if (
       !/^\d{1,16}$/.test(expires) ||
       Number(expires) <= this.deps.clock.now().getTime() ||
       !this.deps.signer.verify(`${purpose}:${parts.join(':')}`, signature)
     )
       return null;
+
     return parts.slice(0, count);
   }
 }

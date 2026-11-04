@@ -19,10 +19,13 @@ export const clearBackups = (storage = session()) => {
   try {
     if (!storage) return;
     const keys: string[] = [];
+
     for (let index = 0; index < storage.length; index++) {
       const key = storage.key(index);
+
       if (key?.startsWith(PREFIX)) keys.push(key);
     }
+
     for (const key of keys) storage.removeItem(key);
     storage.removeItem(OWNER);
   } catch {
@@ -55,13 +58,16 @@ export const editorBackup = (
       // Nothing to clean up.
     }
   };
+
   return {
     read: (): string | null => {
       try {
         claimBackups(userId, storage);
         const raw = storage?.getItem(key);
+
         if (!raw) return null;
         const { owner, at, text } = JSON.parse(raw) as Record<string, unknown>;
+
         if (
           owner === userId &&
           typeof at === 'number' &&
@@ -72,7 +78,9 @@ export const editorBackup = (
       } catch {
         // An unreadable backup is dropped.
       }
+
       remove();
+
       return null;
     },
     write: (text: string) => {

@@ -9,6 +9,7 @@ export const routes = (app: ApiApp) =>
     '',
     async ({ passwords, params, user }) => {
       await passwords.sendReset(params.id, user);
+
       return noContent();
     },
     idParams,

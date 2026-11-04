@@ -44,10 +44,12 @@
     } catch {
       // Storage blocked: the full menu shows.
     }
+
     resyncPush();
   });
   const toggleCollapsed = () => {
     collapsed = !collapsed;
+
     try {
       localStorage.setItem(COLLAPSED, collapsed ? '1' : '0');
     } catch {

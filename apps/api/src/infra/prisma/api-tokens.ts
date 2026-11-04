@@ -34,6 +34,7 @@ export class PrismaApiTokenRepository implements ApiTokenRepository {
     const { count } = await this.db.apiToken.deleteMany({
       where: { id, userId },
     });
+
     return count === 1;
   }
 
@@ -42,6 +43,7 @@ export class PrismaApiTokenRepository implements ApiTokenRepository {
       where: { tokenHash },
       select: { id: true, expiresAt: true, lastUsedAt: true, user: true },
     });
+
     if (!row || (row.expiresAt && row.expiresAt <= now)) return null;
     if (
       row.lastUsedAt === null ||
@@ -57,6 +59,7 @@ export class PrismaApiTokenRepository implements ApiTokenRepository {
         },
         data: { lastUsedAt: now },
       });
+
     return { id: row.id, user: row.user };
   }
 }

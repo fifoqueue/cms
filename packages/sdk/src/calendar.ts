@@ -9,6 +9,7 @@ export const calendar = (timeZone = 'UTC') => {
     second: '2-digit',
     hourCycle: 'h23',
   });
+
   return (date: Date) =>
     Object.fromEntries(
       format
@@ -36,14 +37,18 @@ export const calendarBounds = (
       date.getUTCDate();
     let lo = date.getTime() - 2 * 86400000;
     let hi = date.getTime() + 2 * 86400000;
+
     while (hi - lo > 1) {
       const mid = Math.floor((lo + hi) / 2);
       const value = parts(new Date(mid));
+
       if (value.year * 10000 + value.month * 100 + value.day < target) lo = mid;
       else hi = mid;
     }
+
     return new Date(hi);
   };
+
   return {
     gte: start(new Date(Date.UTC(year, month ? month - 1 : 0, day || 1))),
     lt: start(

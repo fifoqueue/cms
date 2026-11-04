@@ -10,6 +10,7 @@ import {
 
 // SvelteKit provides `$app/env/private` at build time; point the SDK clients at a fake API.
 let requestEvent: unknown;
+
 Bun.plugin({
   name: 'sveltekit-env',
   setup(build) {
@@ -140,9 +141,12 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     url: new URL(request.url),
     authorization: request.headers.get('authorization'),
   };
+
   calls.push(call);
   const custom = override?.(call);
+
   if (custom) return custom;
+
   switch (call.url.pathname) {
     case '/api/v1/privacy':
       return json({ policy: null, commentCookies: true });
@@ -202,8 +206,10 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       });
     case '/api/v1/seo':
       return json(SEO_SETTINGS_DEFAULTS);
+
     case '/api/v1/resolve': {
       const path = call.url.searchParams.get('path');
+
       if (path === '/hello')
         return json({ content: content('hello'), redirect: false });
       if (path === '/search')
@@ -215,6 +221,7 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         });
       break;
     }
+
     case '/api/v1/theme':
       return json(theme);
     case '/api/v1/reading':
@@ -279,6 +286,7 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         count: 2,
         seo: publicSeo,
       });
+
     case '/api/v1/content': {
       const type = call.url.searchParams.get('type');
       // List items carry no body.
@@ -290,6 +298,7 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
             item.sticky === (call.url.searchParams.get('sticky') === 'only'),
         )
         .map(({ html: _html, fields: _fields, ...item }) => item);
+
       return json({
         items,
         total: items.length,
@@ -297,11 +306,13 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         pageSize: 10,
       });
     }
+
     case '/api/v1/content/hello':
       return json(content('hello'));
     case '/api/v1/content/search':
       return json(content('search', 'page'));
   }
+
   return json({ error: { code: 'not_found', message: 'Not found' } }, 404);
 }) as typeof fetch;
 
@@ -379,6 +390,7 @@ describe('public page data', () => {
       CMS_EGRESS_ALLOWLIST: '[{"host":"internal"}]',
       CMS_API_URL: 'http://api',
     };
+
     removeApiSecrets(env);
 
     expect(env).toEqual({ CMS_API_URL: 'http://api' });
@@ -399,14 +411,17 @@ describe('public page data', () => {
         },
       }),
     };
+
     requestEvent = event;
     const projected = await loadHome(event as never);
+
     expect(projected).toMatchObject({ template: [], parts: [] });
     expect(
       calls.filter(({ url }) => url.pathname === '/api/v1/layout'),
     ).toHaveLength(1);
     calls = [];
     layoutReading = { ...reading, frontPagePath: '/hello' };
+
     try {
       await loadHome({
         ...(publicEvent('/') as object),
@@ -415,6 +430,7 @@ describe('public page data', () => {
     } finally {
       layoutReading = reading;
     }
+
     expect(
       calls
         .filter(({ url }) => url.pathname === '/api/v1/slots')
@@ -463,10 +479,12 @@ describe('public page data', () => {
       },
     });
     expect(calls.length).toBeGreaterThan(0);
+
     for (const call of calls) {
       expect(call.authorization).toBeNull();
       expect(call.url.pathname).not.toContain('/admin/');
     }
+
     for (const data of pages)
       expect(JSON.stringify(data)).not.toContain(SECRET);
     expect(pages[1]).toMatchObject({
@@ -531,6 +549,7 @@ describe('public page data', () => {
         '/members/sign-in',
       ),
     );
+
     // Methods are projected field by field; nothing a plugin adds reaches the page.
     expect(JSON.stringify(data)).not.toContain(SECRET);
     expect(data).toMatchObject({
@@ -637,6 +656,7 @@ describe('public comment moderation', () => {
   /** The event with `setHeaders` recording into the returned `headers`. */
   const recordHeaders = (event: object) => {
     const headers = new Headers();
+
     return {
       headers,
       event: {
@@ -650,6 +670,7 @@ describe('public comment moderation', () => {
   };
   const entryEvent = (path: string, session: boolean, preview = false) => {
     const base = publicEvent(path) as { url: URL };
+
     return recordHeaders({
       ...base,
       request: new Request(base.url),
@@ -665,8 +686,10 @@ describe('public comment moderation', () => {
       )) as {
         comments: { management: { origins: object } | null };
       };
+
       return data.comments.management?.origins;
     };
+
     // The thread lookup fails: the held comments keep theirs.
     override = (call) =>
       call.url.searchParams.has('ids')
@@ -697,12 +720,14 @@ describe('public comment moderation', () => {
     const data = (await loadEntry(event)) as {
       comments: { management: unknown; customFields: unknown };
     };
+
     // The comment form gets the site's comment fields.
     expect(data.comments.customFields).toEqual([cityField]);
 
     const lists = calls.filter(
       ({ url }) => url.pathname === '/api/v1/admin/comments',
     );
+
     expect(lists.map(({ authorization }) => authorization)).toEqual([
       `Bearer ${TOKEN}`,
       `Bearer ${TOKEN}`,
@@ -735,6 +760,7 @@ describe('public comment moderation', () => {
       status,
       createdAt: '2026-01-01T00:00:00.000Z',
     });
+
     expect(data.comments.management).toEqual({
       items: [held('held', 'pending'), held('junk', 'spam')],
       origins: Object.fromEntries(
@@ -754,6 +780,7 @@ describe('public comment moderation', () => {
     const data = (await loadEntry(anonymous.event)) as {
       comments: { management: unknown };
     };
+
     expect(data.comments.management).toBeNull();
     expect(JSON.stringify(data)).not.toMatch(/203\.0\.113|UA-SENTINEL/);
     expect(
@@ -769,6 +796,7 @@ describe('public comment moderation', () => {
     const signedIn = (await loadEntry(subscriber.event)) as {
       comments: { management: unknown };
     };
+
     expect(signedIn.comments.management).toBeNull();
     expect(JSON.stringify(signedIn)).not.toMatch(/203\.0\.113|UA-SENTINEL/);
     expect(subscriber.headers.has('cache-control')).toBe(false);
@@ -794,6 +822,7 @@ const handleSignedOut = (
     request: new Request(`http://web.test${path}`, { method }),
     locals: { token: null, user: null },
   });
+
   return with_request_store({ event, state: {} as never }, () =>
     handleRequest({
       event,
@@ -809,6 +838,7 @@ test('pages are framed only by the site, admin never, and keep their own opener 
       : undefined;
   const html = { 'content-type': 'text/html; charset=utf-8' };
   const site = await handleSignedOut('/hello', { status: 200, headers: html });
+
   expect(site.headers.get('content-security-policy')).toBe(
     "frame-ancestors 'self'",
   );
@@ -820,6 +850,7 @@ test('pages are framed only by the site, admin never, and keep their own opener 
     status: 200,
     headers: { ...html, 'content-security-policy': "frame-ancestors 'none'" },
   });
+
   expect(signIn.headers.get('content-security-policy')).toBe(
     "frame-ancestors 'none'",
   );
@@ -829,6 +860,7 @@ test('pages are framed only by the site, admin never, and keep their own opener 
     status: 200,
     headers: { 'content-type': 'application/rss+xml' },
   });
+
   expect(feed.headers.has('x-frame-options')).toBe(false);
 });
 
@@ -854,12 +886,15 @@ test('hidden login masks protected admin screens while visible login uses the co
             'cache-control': 'max-age=60',
           },
         });
+
       return undefined;
     };
+
     const response = await handleSignedOut('/admin/content', {
       route: '/admin/(app)/content',
       status: 200,
     });
+
     expect(response.status).toBe(showLogin ? 303 : 404);
     expect(response.headers.get('cache-control')).toBe('private, no-store');
     expect(response.headers.get('location')).toBe(

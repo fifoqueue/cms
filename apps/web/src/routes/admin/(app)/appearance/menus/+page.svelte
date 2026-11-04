@@ -81,8 +81,10 @@
     if (!pluginType) return;
     searching = true;
     objectsFailed = false;
+
     try {
       const body = new FormData();
+
       body.set('type', pluginType.key);
       body.set('q', pluginType.searchable ? objectQuery : '');
       const response = await fetch('?/objects', {
@@ -91,6 +93,7 @@
         headers: { accept: 'application/json', 'x-sveltekit-action': 'true' },
       });
       const result = deserialize(await response.text());
+
       objectsFailed = result.type !== 'success';
       objects =
         result.type === 'success'
@@ -126,8 +129,10 @@
 
   const find = async () => {
     searching = true;
+
     try {
       const body = new FormData();
+
       body.set('q', query);
       const response = await fetch('?/find', {
         method: 'POST',
@@ -135,6 +140,7 @@
         headers: { accept: 'application/json', 'x-sveltekit-action': 'true' },
       });
       const result = deserialize(await response.text());
+
       found =
         result.type === 'success'
           ? ((result.data?.found as typeof found) ?? [])
@@ -195,8 +201,10 @@
 
   const addMenu = () => {
     const name = newMenu.trim();
+
     if (!name) return;
     const id = crypto.randomUUID();
+
     menus.push({ id, name, rows: [] });
     selected = id;
     newMenu = '';
@@ -206,10 +214,13 @@
   let dragged = $state<number | null>(null);
   const drop = (event: DragEvent, index: number) => {
     event.preventDefault();
+
     if (dragged !== null) {
       const from = dragged;
+
       edit((rows) => moveTo(rows, from, index));
     }
+
     dragged = null;
   };
 
@@ -223,12 +234,14 @@
 
   const addItem = () => {
     const choice = found?.find((entry) => entry.id === contentId);
+
     if (kind === 'content' && choice) picked.set(choice.id, choice.title);
     // Plugin taxonomy keys contain colons; the term id follows the last one.
     const split = term.lastIndexOf(':');
     const taxonomy = term.slice(0, split);
     const termId = term.slice(split + 1);
     const object = objects?.find((entry) => entry.id === objectId);
+
     if (kind === 'plugin' && pluginType && object)
       pickedObjects.set(`${pluginType.key}:${object.id}`, object.label);
     const row: MenuRow = {
@@ -243,6 +256,7 @@
       ...(kind === 'archive' && { archive }),
       ...(kind === 'plugin' && { provider: pluginType?.key, objectId }),
     };
+
     edit((rows) => [...rows, row]);
     label = '';
     url = '';

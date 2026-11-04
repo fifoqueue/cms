@@ -31,6 +31,7 @@
         PROGRESS_TICK_MS,
       );
     }, PROGRESS_DELAY_MS);
+
     // Runs when this navigation ends (or another replaces it).
     return () => {
       clearTimeout(delay);

@@ -27,13 +27,16 @@ export const parseFootnote = (source: string): FootnoteSource | null => {
   if (!source.startsWith('[*') || !source.endsWith(']')) return null;
 
   const inner = source.slice(2, -1);
+
   if (reserved.test(inner)) return null;
 
   let gap = 0;
+
   while (gap < inner.length && inner[gap]!.trim() !== '') gap += 1;
 
   const name = inner.slice(0, gap);
   const text = inner.slice(gap).trim();
+
   if (name.length > FOOTNOTE_MAX_LENGTH || text.length > FOOTNOTE_MAX_LENGTH)
     return null;
   if (name === '') return text === '' ? null : { text };
@@ -64,6 +67,7 @@ export const collectFootnotes = (
       groups.push(group);
       if (name) named.set(name, group);
     }
+
     if (group.text === '') group.text = text;
     group.references.push(index);
   }

@@ -117,9 +117,11 @@
     const response = await fetch(`/admin/media/picker?${query}`).catch(
       () => null,
     );
+
     busy = false;
     if (!response?.ok) return;
     const result = (await response.json()) as Paginated<AdminMedia>;
+
     items = next === 1 ? result.items : [...items, ...result.items];
     page = next;
     total = result.total;
@@ -150,8 +152,10 @@
           ? 'large'
           : '',
       };
+
       selection = multiple ? [...selection, entry] : [entry];
     }
+
     focusedId = media.id;
   };
 
@@ -168,7 +172,9 @@
 
   const form = (fields: Record<string, string>) => {
     const body = new FormData();
+
     for (const [key, value] of Object.entries(fields)) body.set(key, value);
+
     return body;
   };
 
@@ -189,8 +195,10 @@
         headers: { 'x-sveltekit-action': 'true' },
       },
     ).catch(() => null);
+
     try {
       const outcome = deserialize(await (response?.text() ?? ''));
+
       if (outcome.type === 'success') return null;
       // A delete ends on the library; any other redirect is the sign-in page of an expired session.
       if (outcome.type === 'redirect')
@@ -198,6 +206,7 @@
           outcome.location.startsWith('/admin/media?')
           ? null
           : m.sessionExpiredTitle;
+
       return outcome.type === 'failure' && outcome.data
         ? errorMessage(m, i18n.language, outcome.data as FormError)
         : String(response?.status ?? '');
@@ -213,24 +222,32 @@
   const pick = async () => {
     if (!selection.length) return;
     const failures: string[] = [];
+
     busy = true;
+
     for (const entry of selection) {
       const { media } = entry;
       const text = altOf(entry);
+
       // Like WordPress, alt text typed here is also kept in the library for the next use.
       if (text === media.alt || !editable(media) || entry.localOnly) continue;
       const failure = await submit(media, 'save', form({ alt: text }));
+
       if (failure) {
         failures.push(m.mediaAltNotSaved(failure));
         entry.localOnly = true;
         if (failures.length === 1) focusedId = media.id;
       } else media.alt = text;
     }
+
     busy = false;
+
     if (failures.length) {
       errors = failures;
+
       return;
     }
+
     dialog.close();
     const picks = selection.map((entry): MediaPick => ({
       media: entry.media,
@@ -244,6 +261,7 @@
           : {}),
       },
     }));
+
     if (onpickmany) onpickmany(picks);
     else if (picks[0]) onpick?.(picks[0].media, picks[0].choice);
   };
@@ -253,17 +271,23 @@
     if (!confirm(m.confirmDelete)) return;
     busy = true;
     const failure = await submit(media, 'delete', form({}));
+
     busy = false;
+
     if (failure) {
       errors = [m.mediaDeleteFailed(media.filename, failure)];
+
       return;
     }
+
     errors = [];
+
     // A selection can outlive a search reload; only a listed file counts toward the total.
     if (items.some((item) => item.id === media.id)) {
       items = items.filter((item) => item.id !== media.id);
       total--;
     }
+
     deselect(media.id);
   };
 
@@ -273,10 +297,12 @@
     errors = [];
     uploads = [...files].map((file) => ({ name: file.name, progress: 0 }));
     const uploaded: AdminMedia[] = [];
+
     for (const [index, file] of [...files].entries()) {
       const result = await uploadFile(file, (fraction) => {
         uploads[index]!.progress = fraction;
       });
+
       // The server decides the kind from the file's bytes, not its name.
       if (!('media' in result))
         errors = [
@@ -290,6 +316,7 @@
         errors = [...errors, m.mediaWrongKind(file.name)];
       else uploaded.push(result.media);
     }
+
     uploads = [];
     await load(1);
     // Uploads are selected (only the last without `multiple`), so their alt text can be written
@@ -313,6 +340,7 @@
     // A pick is dismissible: a click on the backdrop (the dialog itself, outside its box) closes it, unless an upload is running.
     if (busy || event.target !== dialog) return;
     const box = dialog.getBoundingClientRect();
+
     if (
       event.clientX < box.left ||
       event.clientX > box.right ||

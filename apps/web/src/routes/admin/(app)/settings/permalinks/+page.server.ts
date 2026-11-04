@@ -11,6 +11,7 @@ export const load: PageServerLoad = async (event) => {
     admin.archivePaths.get(),
     admin.contentModel.model(),
   ]);
+
   return {
     archives,
     timeZone: (await admin.reading.get()).timeZone,
@@ -22,6 +23,7 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   archives: async (event) => {
     const form = await event.request.formData();
+
     try {
       await adminFor(event).archivePaths.update({
         category: text(form, 'category'),
@@ -30,6 +32,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught, { intent: 'archives' as const });
     }
+
     return { notice: 'saved', intent: 'archives' as const };
   },
   permalinks: async (event) => {
@@ -41,7 +44,9 @@ export const actions: Actions = {
       form,
       model.types.map((type) => type.key),
     );
+
     if (failure) return failure;
+
     try {
       await adminFor(event).permalinks.update(input);
     } catch (caught) {
@@ -51,6 +56,7 @@ export const actions: Actions = {
         permalinks: values,
       });
     }
+
     return { intent: 'permalinks' as const, notice: 'saved' };
   },
 };

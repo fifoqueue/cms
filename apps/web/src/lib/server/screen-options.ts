@@ -13,14 +13,18 @@ export const readScreenOptions = <Column extends string>(
   perPage: number,
 ) => {
   let stored: { perPage?: unknown; hidden?: unknown } = {};
+
   try {
     const value = JSON.parse(cookies.get(SCREEN_COOKIE(screen)) ?? '{}');
+
     if (value && typeof value === 'object') stored = value;
   } catch {
     // A malformed cookie means the defaults.
   }
+
   // Only a plain integer counts; any other JSON shape (objects included) means the default.
   const size = stored.perPage;
+
   return {
     perPage:
       typeof size === 'number' &&

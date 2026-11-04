@@ -27,6 +27,7 @@ export const siteFunctions: SiteFunctions = {
     const names = { name: '이름', email: '이메일', website: '웹사이트' };
     // 웹사이트 ends in a vowel; 이름 and 이메일 take 을.
     const object = fields.at(-1) === 'website' ? '를' : '을';
+
     return `다음 댓글에 자동으로 채워지도록 ${fields.map((field) => names[field]).join(', ')}${object} 이 브라우저의 쿠키에 1년 동안 저장합니다.`;
   },
   commentLinkLeaveAsk: (address) =>

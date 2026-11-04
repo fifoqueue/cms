@@ -60,8 +60,10 @@ export const highlightLinesSchema = z
     if (value === '') return true;
     if (!/^[1-9]\d*(?:-[1-9]\d*)?(?:,[1-9]\d*(?:-[1-9]\d*)?)*$/.test(value))
       return false;
+
     return value.split(',').every((range) => {
       const [start = 0, end = start] = range.split('-').map(Number);
+
       return (
         Number.isSafeInteger(start) && Number.isSafeInteger(end) && end >= start
       );
@@ -100,8 +102,10 @@ export const highlightedRows = (highlightLines: string) => {
     .filter(Boolean)
     .map((range) => {
       const [start = 0, end = start] = range.split('-').map(Number);
+
       return [start, end] as const;
     });
+
   return (row: number) =>
     ranges.some(([start, end]) => row >= start && row <= end);
 };
@@ -126,5 +130,6 @@ export const codeLanguage = (
     typeof value === 'string'
       ? (aliases[value.toLowerCase()] ?? value.toLowerCase())
       : '';
+
   return CODE_LANGUAGES.find((language) => language === id) ?? 'text';
 };

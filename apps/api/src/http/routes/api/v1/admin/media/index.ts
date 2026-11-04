@@ -16,7 +16,9 @@ const filenameOf = (request: Request) => {
 let uploads: Promise<unknown> = Promise.resolve();
 const upload = <T>(task: () => Promise<T>) => {
   const run = uploads.then(task, task);
+
   uploads = run.catch(() => undefined);
+
   return run;
 };
 

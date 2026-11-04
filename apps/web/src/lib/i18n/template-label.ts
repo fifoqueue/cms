@@ -7,6 +7,7 @@ export const templateLabels =
     const base = Object.keys(labels).find(
       (key) => name === key || name.startsWith(`${key}-`),
     );
+
     return !base
       ? name
       : name === base

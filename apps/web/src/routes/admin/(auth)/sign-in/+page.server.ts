@@ -27,6 +27,7 @@ export const load: PageServerLoad = async ({
     pending?.step && PUBLIC_FLOWS.includes(pending.flow)
       ? stepView(pending.step, pending.owner)
       : null;
+
   return {
     step,
     flow: pending?.flow === 'setup' ? ('setup' as const) : ('login' as const),

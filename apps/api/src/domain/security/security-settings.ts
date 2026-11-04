@@ -60,6 +60,7 @@ export class SecuritySettingsService {
 
   async getAdmin(): Promise<AdminSecuritySettings> {
     const { settings, secretKey } = await this.load();
+
     return adminSecuritySettingsSchema.parse({
       ...settings,
       captcha: { ...settings.captcha, secretConfigured: secretKey !== null },
@@ -68,6 +69,7 @@ export class SecuritySettingsService {
 
   async policy(): Promise<SecurityPolicy> {
     const { settings, secretKey } = await this.load();
+
     return { ...settings, captcha: { ...settings.captcha, secretKey } };
   }
 
@@ -79,6 +81,7 @@ export class SecuritySettingsService {
         ? captcha.provider
         : 'none';
     const widget = provider === 'none' ? null : this.widget(provider);
+
     return publicCaptchaSchema.parse({
       provider,
       siteKey: provider === 'none' ? '' : captcha.siteKey,
@@ -107,6 +110,7 @@ export class SecuritySettingsService {
 
   async update(input: unknown): Promise<AdminSecuritySettings> {
     const data = parseInput(securitySettingsInputSchema, input);
+
     if (
       data.captcha.provider !== 'none' &&
       !this.providers().some(({ id }) => id === data.captcha.provider)
@@ -122,17 +126,21 @@ export class SecuritySettingsService {
         : secretKey
           ? this.secrets.seal(secretKey)
           : '';
+
     await this.settings.set(KEY, {
       settings: { captcha, rules: data.rules, media: data.media },
       secret,
     } satisfies Stored);
     const result = await this.getAdmin();
+
     void this.hooks?.emit('security.updated', result);
+
     return result;
   }
 
   private async load() {
     const { settings, secret } = await this.stored();
+
     return {
       settings,
       secretKey: secret ? this.secrets.open(secret) : null,
@@ -145,6 +153,7 @@ export class SecuritySettingsService {
     const { secretConfigured: _configured, ...captcha } =
       DEFAULT_SECURITY_SETTINGS.captcha;
     const parsed = securitySettingsInputSchema.safeParse(raw?.settings);
+
     return {
       settings: parsed.success
         ? {

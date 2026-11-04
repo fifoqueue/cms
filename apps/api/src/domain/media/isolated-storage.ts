@@ -23,6 +23,7 @@ export class IsolatedStorage implements MediaStorage {
     timeout = this.timeoutMs,
   ) {
     const result = await isolate(task, timeout);
+
     if (result.ok) return result.value;
     this.logger?.warn(
       `Media storage ${this.id} ${operation} failed`,
@@ -34,12 +35,15 @@ export class IsolatedStorage implements MediaStorage {
   private adapter() {
     return (this.storage ??= Promise.resolve().then(this.connect));
   }
+
   private guard() {
     if (!this.active()) throw new Error(Errors.PluginInactive);
   }
+
   pendingWrites() {
     return this.writes.size > 0;
   }
+
   async settled() {
     await Promise.allSettled([...this.writes]);
   }
@@ -50,21 +54,27 @@ export class IsolatedStorage implements MediaStorage {
   ) {
     this.guard();
     const deadline = Date.now() + this.timeoutMs;
+
     for (const file of files)
       this.admitted.set(file.key, Date.now() + 2 * this.timeoutMs);
     const work = Promise.resolve().then(async () => {
       const storage = await this.adapter();
+
       this.guard();
       if (Date.now() >= deadline) throw new Error(Errors.MediaStorageOperation);
       const value = await storage.commit(structuredClone(files), freeBytes);
+
       this.guard();
+
       return z.enum(['stored', 'low_space', 'busy']).parse(value);
     });
+
     this.writes.add(work);
     void work.then(
       () => this.writes.delete(work),
       () => this.writes.delete(work),
     );
+
     return this.call('commit', () => work);
   }
 
@@ -73,6 +83,7 @@ export class IsolatedStorage implements MediaStorage {
     const deadline = Math.min(
       ...keys.map((key) => this.admitted.get(key) ?? 0),
     );
+
     if (Date.now() >= deadline) throw new Error(Errors.MediaStorageOperation);
     await this.call(
       'rollback',
@@ -81,6 +92,7 @@ export class IsolatedStorage implements MediaStorage {
         if (Date.now() >= deadline)
           throw new Error(Errors.MediaStorageOperation);
         const storage = await this.adapter();
+
         if (Date.now() >= deadline)
           throw new Error(Errors.MediaStorageOperation);
         await storage.remove([...keys]);
@@ -93,8 +105,10 @@ export class IsolatedStorage implements MediaStorage {
   async remove(keys: readonly string[]) {
     this.guard();
     const deadline = Date.now() + this.timeoutMs;
+
     await this.call('remove', async () => {
       const storage = await this.adapter();
+
       this.guard();
       if (Date.now() >= deadline) throw new Error(Errors.MediaStorageOperation);
       await storage.remove([...keys]);
@@ -106,8 +120,10 @@ export class IsolatedStorage implements MediaStorage {
     const deadline = Date.now() + this.timeoutMs;
     const file = await this.call('read', async () => {
       const storage = await this.adapter();
+
       this.guard();
       if (Date.now() >= deadline) throw new Error(Errors.MediaStorageOperation);
+
       return z
         .object({
           body: z.instanceof(ReadableStream),
@@ -118,6 +134,7 @@ export class IsolatedStorage implements MediaStorage {
         .nullable()
         .parse(await storage.read(key, range));
     });
+
     if (!file) return null;
     const reader = await this.call('reader', async () => file.body.getReader());
     const body = new ReadableStream<Uint8Array>({
@@ -126,10 +143,12 @@ export class IsolatedStorage implements MediaStorage {
           this.guard();
           const chunk = await this.call('stream', async () => {
             const value = await reader.read();
+
             return value.done
               ? null
               : z.instanceof(Uint8Array).parse(value.value);
           });
+
           if (chunk === null) controller.close();
           else controller.enqueue(chunk);
         } catch (error) {
@@ -141,6 +160,7 @@ export class IsolatedStorage implements MediaStorage {
       },
       cancel: () => this.call('cancel', () => reader.cancel()),
     });
+
     return { ...file, body };
   }
 }

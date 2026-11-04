@@ -37,6 +37,7 @@ export const readSiteSettings = (stored: unknown): SiteSettings => {
     ...DEFAULT_SITE_SETTINGS,
     ...overrides,
   });
+
   return result.success ? result.data : DEFAULT_SITE_SETTINGS;
 };
 
@@ -66,6 +67,7 @@ export class SiteService {
       loginPath: configuredLoginPath,
       showLogin,
     } = await this.getAdmin();
+
     return {
       title,
       description,
@@ -80,6 +82,7 @@ export class SiteService {
   /** Public settings for plugin renderers, without resolving media records. */
   async getPlugin(): Promise<SiteSettings> {
     const site = await this.get();
+
     return {
       ...site,
       loginPath: await this.writer.publicLoginPath(site.loginPath),
@@ -89,6 +92,7 @@ export class SiteService {
   async getAdmin(): Promise<AdminSiteDto> {
     const site = await this.get();
     const images = await this.chosen(site);
+
     return {
       ...site,
       icon: (site.iconId && images.get(site.iconId)) || null,
@@ -99,20 +103,25 @@ export class SiteService {
   async update(input: unknown): Promise<SiteSettings> {
     const site = parseInput(siteSettingsSchema, input);
     const images = await this.chosen(site);
+
     for (const key of ['iconId', 'logoId'] as const) {
       const id = site[key];
+
       if (id && !images.has(id))
         throw invalidInput(Errors.SiteImageInvalid, [
           { path: key, message: Errors.SiteImageInvalid },
         ]);
     }
+
     await this.writer.save(site);
     void this.hooks.emit('site.updated', site);
+
     return site;
   }
 
   private chosen({ iconId, logoId }: SiteSettings) {
     const ids = [iconId, logoId].filter((id): id is string => id !== null);
+
     return ids.length ? this.images(ids) : Promise.resolve(new Map());
   }
 }

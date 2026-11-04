@@ -37,13 +37,16 @@
   const fit = (next: Crop): Crop => {
     let w = clamp(next.width, 1, width);
     let h = clamp(next.height, 1, height);
+
     if (ratio) {
       h = Math.round(w / ratio);
+
       if (h > height) {
         h = height;
         w = Math.round(h * ratio);
       }
     }
+
     return {
       left: clamp(next.left, 0, width - w),
       top: clamp(next.top, 0, height - h),
@@ -58,6 +61,7 @@
     if (!ratio) return;
     untrack(() => {
       const next = fit(crop);
+
       if (
         next.left !== crop.left ||
         next.top !== crop.top ||
@@ -73,12 +77,14 @@
     event.preventDefault();
     event.stopPropagation();
     const target = event.currentTarget as HTMLElement;
+
     target.setPointerCapture(event.pointerId);
     const scale = width / frame.clientWidth;
     const start = { x: event.clientX, y: event.clientY, crop: { ...crop } };
     const onmove = (move: PointerEvent) => {
       const dx = (move.clientX - start.x) * scale;
       const dy = (move.clientY - start.y) * scale;
+
       crop =
         mode === 'move'
           ? fit({
@@ -96,6 +102,7 @@
       target.removeEventListener('pointermove', onmove);
       target.removeEventListener('pointerup', onup);
     };
+
     target.addEventListener('pointermove', onmove);
     target.addEventListener('pointerup', onup);
   };
@@ -110,6 +117,7 @@
         ArrowUp: [0, -step],
         ArrowDown: [0, step],
       }[event.key] ?? [];
+
     if (dx === undefined || dy === undefined) return;
     event.preventDefault();
     crop = event.shiftKey

@@ -28,6 +28,7 @@ export const contentModelClient = (request: Request) => {
     `/api/v1/admin/content-types/${encodeURIComponent(key)}`;
   const fieldPath = (key: string) =>
     `/api/v1/admin/fields/${encodeURIComponent(key)}`;
+
   return {
     defaults: (type: string) =>
       request<ContentDefaults>('GET', '/api/v1/admin/content/defaults', {

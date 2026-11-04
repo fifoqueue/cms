@@ -17,12 +17,15 @@ export const routeId = (file: string) =>
 export const documentRoutes = (files: readonly string[]) => {
   const pages = new Set<string>();
   const endpoints = new Set<string>();
+
   for (const file of files) {
     const name = file.slice(file.lastIndexOf('/') + 1);
+
     if (ignored.test(name)) continue;
     if (page.test(name)) pages.add(routeId(file));
     else if (endpoint.test(name)) endpoints.add(routeId(file));
   }
+
   return [...endpoints].filter((id) => !pages.has(id)).sort();
 };
 

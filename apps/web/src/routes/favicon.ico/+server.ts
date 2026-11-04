@@ -12,6 +12,7 @@ export const GET: RequestHandler = async ({ fetch }) => {
       .site()
       .catch(() => null)
   )?.icon;
+
   return new Response(null, {
     status: 302,
     headers: {

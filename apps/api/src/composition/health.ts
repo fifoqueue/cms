@@ -17,6 +17,7 @@ type Input = Pick<
   version: string;
   database: ConstructorParameters<typeof Health>[0]['info']['database'];
 };
+
 export const createHealth = ({
   checks,
   leases,

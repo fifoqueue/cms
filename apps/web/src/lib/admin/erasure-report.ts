@@ -13,6 +13,7 @@ export interface ErasureRow {
 const parse = (id: string) => {
   const split = id.indexOf(':');
   const owner = split < 0 ? id : id.slice(0, split);
+
   return {
     owner: owner === 'core' ? null : owner,
     key: split < 0 ? '' : id.slice(split + 1),

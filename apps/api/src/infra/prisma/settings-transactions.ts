@@ -13,6 +13,7 @@ export class PrismaSettingsTransactions implements SettingsTransactions {
   run<T>(lock: string, task: (settings: SettingsTransaction) => Promise<T>) {
     return this.db.$transaction(async (tx) => {
       await lockSetting(tx, lock);
+
       return task(new PrismaSettingsRepository(tx));
     });
   }

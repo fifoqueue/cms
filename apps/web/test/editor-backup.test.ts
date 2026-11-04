@@ -8,6 +8,7 @@ import {
 /** sessionStorage as one browser tab keeps it. */
 const tab = (): Storage => {
   const items = new Map<string, string>();
+
   return {
     get length() {
       return items.size;
@@ -22,6 +23,7 @@ const tab = (): Storage => {
 
 test("a shared tab never offers one account's unsaved text to another", () => {
   const storage = tab();
+
   claimBackups('a', storage);
   editorBackup('a', 'new:post', storage).write('CONFIDENTIAL A');
   expect(editorBackup('a', 'new:post', storage).read()).toBe('CONFIDENTIAL A');
@@ -33,6 +35,7 @@ test("a shared tab never offers one account's unsaved text to another", () => {
 
   // A form still open from A cannot write A's text back once B owns the tab.
   const stale = editorBackup('a', 'entry-1', storage);
+
   claimBackups('b', storage);
   stale.write('LATE A');
   expect(storage.length).toBe(1);

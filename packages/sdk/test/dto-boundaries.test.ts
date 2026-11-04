@@ -38,6 +38,7 @@ describe('DTO trust boundaries', () => {
   test('public content rejects admin fields before they can become page data', async () => {
     const stored = { title: ' Public title ', focusKeyword: 'private' };
     const projected = toPublicEntrySeo(stored);
+
     expect(projected).toEqual({ ...published.seo, title: 'Public title' });
     projected.title = 'Changed copy';
     expect(toPublicEntrySeo(stored).title).toBe('Public title');
@@ -63,6 +64,7 @@ describe('DTO trust boundaries', () => {
       },
     ]) {
       const client = createContentClient(options({ ...published, ...extra }));
+
       try {
         await client.getBySlug('published');
         throw new Error('Expected the private payload to be rejected');
@@ -80,6 +82,7 @@ describe('DTO trust boundaries', () => {
 
   test('public settings and authenticated profiles strip undeclared fields', async () => {
     const site = { title: 'Site', description: '', locale: 'en' };
+
     expect(
       await createContentClient(
         options({ ...site, databasePassword: 'secret', oidcSecret: 'secret' }),
@@ -100,6 +103,7 @@ describe('DTO trust boundaries', () => {
       bio: '',
       locale: '',
     };
+
     expect(
       await createAuthClient(
         options({ ...user, passwordHash: 'secret', tokenHash: 'secret' }),
@@ -117,6 +121,7 @@ describe('DTO trust boundaries', () => {
           url: String(input),
           authorization: new Headers(init?.headers).get('authorization'),
         });
+
         return Response.json({
           items: [],
           total: 0,
@@ -125,6 +130,7 @@ describe('DTO trust boundaries', () => {
         });
       }) as typeof fetch,
     });
+
     await client.list({
       search: 'hello world',
       category: 'news',

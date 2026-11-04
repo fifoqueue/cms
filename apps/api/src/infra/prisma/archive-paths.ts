@@ -16,6 +16,7 @@ export const readArchivePaths = async (
   const parsed = archivePathsStateSchema.safeParse(
     row ? JSON.parse(row.value) : {},
   );
+
   return parsed.success ? parsed.data : archivePathsStateSchema.parse({});
 };
 
@@ -30,9 +31,11 @@ export class PrismaArchivePaths implements ArchivePathRepository {
     await this.db.$transaction(async (tx) => {
       await lockPermalinks(tx);
       const state = await readArchivePaths(tx);
+
       for (const taxonomy of ['category', 'tag'] as const) {
         const other = taxonomy === 'category' ? 'tag' : 'category';
         const base = bases[taxonomy];
+
         if (
           [state.bases[other], ...state.history[other]].some(
             (previous) =>
@@ -46,16 +49,19 @@ export class PrismaArchivePaths implements ArchivePathRepository {
         const existing = await tx.$queryRaw<
           { path: Uint8Array }[]
         >`SELECT path FROM content_paths WHERE LEFT(path, ${prefix.length}) = ${prefix} LIMIT 1`;
+
         if (existing.length) throw conflict(Errors.PathConflict);
         if (state.bases[taxonomy] !== base)
           state.history[taxonomy] = [
             ...new Set([...state.history[taxonomy], state.bases[taxonomy]]),
           ].filter((path) => path !== base);
       }
+
       const next = archivePathsStateSchema.parse({
         bases,
         history: state.history,
       });
+
       await checkLoginArchives(tx, next);
       await tx.setting.upsert({
         where: { key: KEY },
@@ -77,6 +83,7 @@ export const checkArchivePaths = async (
     ...state.history.category,
     ...state.history.tag,
   ];
+
   if (paths.some((path) => bases.some((base) => path.startsWith(`${base}/`))))
     throw conflict(Errors.PathConflict);
 };

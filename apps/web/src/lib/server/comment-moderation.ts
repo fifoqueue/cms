@@ -46,12 +46,15 @@ const shownEntry = async (event: RequestEvent, token: string) => {
       ? reading?.frontPagePath
       : null
     : pathname;
+
   if (!path) return null;
   const resolved = await api
     .resolvePath(path, unlockProofs(event.cookies))
     .catch(() => null);
+
   if (!resolved || resolved.redirect || resolved.content.protected) return null;
   const { content } = resolved;
+
   // These addresses redirect or list posts instead of showing the entry's comments.
   if (
     !root &&
@@ -59,6 +62,7 @@ const shownEntry = async (event: RequestEvent, token: string) => {
       content.path === reading?.postsPagePath)
   )
     return null;
+
   return content.id;
 };
 
@@ -78,6 +82,7 @@ export const moderateCommentAction = async (event: RequestEvent) => {
     (option) => option === text(form, 'operation'),
   );
   const token = sessionToken(event.cookies, event.url);
+
   if (!token)
     return fail(403, {
       ...FAILED,
@@ -105,6 +110,7 @@ export const moderateCommentAction = async (event: RequestEvent) => {
       message: Errors.NotFound,
       code: 'not_found',
     });
+
   try {
     await adminApi(event.fetch, token, clientProof(event)).comments.bulk({
       ids: commentIds,
@@ -114,18 +120,22 @@ export const moderateCommentAction = async (event: RequestEvent) => {
   } catch (caught) {
     return failFrom(caught, FAILED);
   }
+
   if (event.request.headers.get('x-sveltekit-action') !== 'true') {
     const search = new URLSearchParams(event.url.search);
+
     search.delete('/moderateComment');
     search.set('commentNotice', NOTICES[operation]);
     redirect(303, `${event.url.pathname}?${search}#comment-moderation`);
   }
+
   // The change is saved; a failed refresh only leaves the lists for the next page load.
   const thread = readThread(contentApi(event.fetch, token), contentId, event);
   const [comments, management] = await Promise.all([
     thread,
     loadManagement(event, contentId, thread),
   ]);
+
   return {
     moderated: true,
     operation,

@@ -9,6 +9,7 @@ for (const listenerFirst of [false, true]) {
     const logger = { info() {}, warn() {}, error() {} };
     const bus = new HookBus({ timeoutMs: 100, logger });
     const plugin = bus.registrar('plugin');
+
     plugin.filter('site.label', (value) => `${value}:plugin`, 20);
     let version = 1;
     let fail = false;
@@ -19,6 +20,7 @@ for (const listenerFirst of [false, true]) {
           hash: `${version}`,
           load: async () => {
             const loaded = version;
+
             return {
               api(ctx) {
                 const define = () =>
@@ -26,6 +28,7 @@ for (const listenerFirst of [false, true]) {
                     kind: 'filter',
                     validate: (value) => typeof value === 'string',
                   });
+
                 if (!listenerFirst) define();
                 ctx.hooks.filter('site.label', (value) => `${value}:${loaded}`);
                 if (listenerFirst) define();
@@ -41,6 +44,7 @@ for (const listenerFirst of [false, true]) {
       ],
       context: (owner, scope) => {
         const hooks = bus.registrar(owner, { trusted: true });
+
         return {
           hooks: {
             ...hooks,
@@ -56,6 +60,7 @@ for (const listenerFirst of [false, true]) {
       logger,
       invalidate() {},
     });
+
     await host.reconcile();
     expect(await plugin.apply('site.label', 'start')).toBe('start:1:plugin');
     version = 2;
@@ -99,6 +104,7 @@ test('old hooks stay available during slow load and failed activation', async ()
             await held;
             throw new Error('broken');
           }
+
           return { api() {} };
         },
       },
@@ -106,18 +112,22 @@ test('old hooks stay available during slow load and failed activation', async ()
     context: (_owner, scope) => {
       scope.track(() => {
         fire = () => 'protected';
+
         return () => {
           fire = () => '';
         };
       });
+
       return {} as PluginContext;
     },
     logger: { info() {}, warn() {}, error() {} },
     invalidate() {},
   });
+
   await host.reconcile();
   slow = true;
   const pending = host.reconcile();
+
   await loading;
   expect(fire()).toBe('protected');
   unblock();
@@ -146,15 +156,18 @@ test('failed edits release partial registrations and restore the last good sourc
     context: (owner, scope) => {
       scope.track(() => {
         live.push(owner);
+
         return () => {
           live.splice(live.indexOf(owner), 1);
         };
       });
+
       return {} as PluginContext;
     },
     logger: { info() {}, warn() {}, error() {} },
     invalidate() {},
   });
+
   await host.reconcile();
   expect(live).toEqual(['theme:journal', 'functions:site']);
   sources = [

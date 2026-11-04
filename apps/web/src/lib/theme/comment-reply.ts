@@ -28,12 +28,15 @@ export const placeReply = <Comment extends { id: string; authorName: string }>(
 ): ReplyPlacement | null => {
   const host = (id: string) => {
     const comment = thread.find((item) => item.id === id);
+
     return comment && replyable(comment) ? comment : null;
   };
   const target = chosen === undefined ? refused : chosen;
+
   if (target) return { target, host: host(target.id)?.id ?? null };
   if (chosen === null || !requested) return null;
   const linked = host(requested);
+
   return linked
     ? { target: { id: linked.id, name: linked.authorName }, host: linked.id }
     : null;
@@ -46,6 +49,7 @@ export const placeReply = <Comment extends { id: string; authorName: string }>(
 export const revealReply = (form: HTMLElement) => {
   const view = form.ownerDocument.defaultView;
   const reduced = view?.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
   form.querySelector<HTMLTextAreaElement>('textarea')?.focus({
     preventScroll: true,
   });

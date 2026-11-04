@@ -66,11 +66,13 @@ export class PrismaMediaRepository implements MediaRepository {
     private readonly db: Database,
     private readonly hooks?: HookDispatcher,
   ) {}
+
   async getByKey(key: string) {
     const row = await this.db.mediaStorageKey.findUnique({
       where: { key: new TextEncoder().encode(key) },
       select: { mediaId: true },
     });
+
     if (row?.mediaId) return this.get(row.mediaId);
     // Original: one unique-index lookup. Legacy UUID variant: one primary-key lookup.
     const original = await this.db.media.findUnique({
@@ -78,14 +80,17 @@ export class PrismaMediaRepository implements MediaRepository {
       select: { id: true, storageKey: true },
     });
     let id = original?.storageKey === key ? original.id : undefined;
+
     if (!id) {
       const match =
         /^\d{4}\/\d{2}\/([0-9a-f-]{36})-[a-z][a-z0-9-]{0,63}\.webp$/.exec(key);
+
       if (match) {
         const media = await this.db.media.findUnique({
           where: { id: match[1]! },
           select: { variants: true },
         });
+
         if (
           media &&
           Object.values(parseVariants(media.variants)).some(
@@ -95,10 +100,13 @@ export class PrismaMediaRepository implements MediaRepository {
           id = match[1]!;
       }
     }
+
     if (!id) return null;
     await new PrismaMediaKeyCatchUp(this.db).claim(id);
+
     return this.get(id);
   }
+
   async reserveKeys(uploadId: string, keys: readonly string[]) {
     try {
       await this.db.mediaStorageKey.createMany({
@@ -107,6 +115,7 @@ export class PrismaMediaRepository implements MediaRepository {
           uploadId,
         })),
       });
+
       return true;
     } catch (error) {
       if (
@@ -125,6 +134,7 @@ export class PrismaMediaRepository implements MediaRepository {
         variant ? [variant.key] : [],
       ),
     ].map((key) => new TextEncoder().encode(key));
+
     await this.db.$transaction(async (tx) => {
       await tx.media.create({
         data: { ...media, variants: JSON.stringify(variants) },
@@ -137,6 +147,7 @@ export class PrismaMediaRepository implements MediaRepository {
         where: { key: { in: keys }, uploadId: media.id, mediaId: null },
         data: { mediaId: media.id },
       });
+
       if (claimed.count !== keys.length) throw conflict(Errors.MediaKeyInvalid);
     });
   }
@@ -146,9 +157,11 @@ export class PrismaMediaRepository implements MediaRepository {
       where: { id },
       include: relations,
     });
+
     if (!row) return null;
     const uses = await this.patternUses([id]);
     const record = toRecord(row);
+
     return {
       ...record,
       usageCount: record.usageCount + (uses.get(id) ?? 0),
@@ -174,6 +187,7 @@ export class PrismaMediaRepository implements MediaRepository {
     pageSize,
   }: MediaCriteria) {
     const filters: Prisma.Sql[] = [];
+
     if (missing) filters.push(Prisma.sql`m.missing_at IS NOT NULL`);
     if (kind) filters.push(Prisma.sql`m.mime LIKE ${MIME_PREFIX[kind] + '%'}`);
     if (uploaded)
@@ -185,12 +199,15 @@ export class PrismaMediaRepository implements MediaRepository {
       NOT EXISTS (SELECT 1 FROM content_media cm WHERE cm.media_id = m.id)
       AND NOT EXISTS (SELECT 1 FROM term_media tm WHERE tm.media_id = m.id)
       AND m.id NOT IN (SELECT id FROM (${patternFiles}) AS pattern_files)`);
+
     if (search) {
       const contains = '%' + literal(search) + '%';
+
       filters.push(
         Prisma.sql`(m.filename LIKE ${contains} OR m.alt LIKE ${contains} OR m.caption LIKE ${contains} OR m.title LIKE ${contains} OR m.description LIKE ${contains})`,
       );
     }
+
     const where = filters.length
       ? Prisma.join(filters, ' AND ')
       : Prisma.sql`TRUE`;
@@ -199,6 +216,7 @@ export class PrismaMediaRepository implements MediaRepository {
     );
     const total = Number(count?.total ?? 0);
     const skip = (page - 1) * pageSize;
+
     if (skip >= total) return { items: [], total };
     const ids = await this.db.$queryRaw<{ id: string }[]>(Prisma.sql`
       SELECT m.id FROM media m WHERE ${where}
@@ -211,9 +229,11 @@ export class PrismaMediaRepository implements MediaRepository {
     const uses = unattached
       ? new Map<string, number>()
       : await this.patternUses(rows.map(({ id }) => id));
+
     return {
       items: rows.map((row) => {
         const record = toRecord(row);
+
         return {
           ...record,
           usageCount: record.usageCount + (uses.get(row.id) ?? 0),
@@ -231,6 +251,7 @@ export class PrismaMediaRepository implements MediaRepository {
     >(Prisma.sql`
       SELECT id, COUNT(*) AS count FROM (${patternFiles}) AS pattern_files
       WHERE id IN (${Prisma.join([...ids])}) GROUP BY id`);
+
     return new Map(rows.map(({ id, count }) => [id, Number(count)]));
   }
 
@@ -239,6 +260,7 @@ export class PrismaMediaRepository implements MediaRepository {
       where: { id },
       select: { createdAt: true },
     });
+
     if (!current) return { newer: null, older: null };
     const { createdAt } = current;
     // The list order: newest first, ties by id descending.
@@ -258,6 +280,7 @@ export class PrismaMediaRepository implements MediaRepository {
         select: { id: true },
       }),
     ]);
+
     return { newer: newer?.id ?? null, older: older?.id ?? null };
   }
 
@@ -284,6 +307,7 @@ export class PrismaMediaRepository implements MediaRepository {
             take: limit - rows.length,
           })
         : [];
+
     return [
       ...rows.map(({ content }) => ({ ...content, kind: 'content' as const })),
       ...terms.map(({ term }) => ({
@@ -310,6 +334,7 @@ export class PrismaMediaRepository implements MediaRepository {
         variants: true,
       },
     });
+
     return new Map(
       await Promise.all(
         rows.map(

@@ -10,8 +10,10 @@ export interface MediaUrl {
 const safeUrl = (value: string) => {
   if (/[\s\\\p{Cc}]/u.test(value)) return false;
   if (value.startsWith('/') && !value.startsWith('//')) return true;
+
   try {
     const url = new URL(value);
+
     return (
       ['http:', 'https:'].includes(url.protocol) &&
       !url.username &&
@@ -31,6 +33,7 @@ export const projectMediaUrl = (
   const accept = (candidate: unknown) => {
     if (!candidate || typeof candidate !== 'object') return false;
     const result = candidate as MediaUrl;
+
     return (
       result.key === original.key &&
       result.variant === original.variant &&
@@ -39,6 +42,7 @@ export const projectMediaUrl = (
       safeUrl(result.url)
     );
   };
+
   return hooks
     .applyFilter('media.url', value, accept)
     .then((result) => (accept(result) ? result.url : original.url));

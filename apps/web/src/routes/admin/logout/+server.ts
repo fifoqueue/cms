@@ -23,6 +23,7 @@ export const POST: RequestHandler = async ({
     .then((form) => text(form, RETURN_PARAM))
     .catch(() => '');
   const back = asked && returnPath(asked, loginPath);
+
   await authApi(fetch, locals.token)
     .logout()
     .catch(() => undefined);

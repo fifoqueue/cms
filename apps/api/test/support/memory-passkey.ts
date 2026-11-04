@@ -10,8 +10,10 @@ export class MemoryPasskeys implements PasskeyRepository {
     const row = [...this.rows.values()].find((row) =>
       Buffer.from(row.credentialId).equals(credentialId),
     );
+
     return row ? structuredClone(row) : null;
   }
+
   async list(userId: string) {
     return structuredClone(
       [...this.rows.values()]
@@ -23,9 +25,11 @@ export class MemoryPasskeys implements PasskeyRepository {
         ),
     );
   }
+
   async insert(record: PasskeyRecord) {
     return this.add(record);
   }
+
   private add(record: PasskeyRecord) {
     if (
       this.rows.has(record.id) ||
@@ -35,17 +39,22 @@ export class MemoryPasskeys implements PasskeyRepository {
     )
       return false;
     this.rows.set(record.id, structuredClone(record));
+
     return true;
   }
+
   async register(record: PasskeyRecord, tokenHash: string, now: Date) {
     const token = this.tokens.get(tokenHash);
+
     if (!token || token.userId !== record.userId || token.expiresAt <= now)
       return false;
     if (!this.add(record)) return false;
     for (const [hash, row] of this.tokens)
       if (row.userId === record.userId) this.tokens.delete(hash);
+
     return true;
   }
+
   async use(
     id: string,
     previous: number,
@@ -54,6 +63,7 @@ export class MemoryPasskeys implements PasskeyRepository {
     at: Date,
   ) {
     const row = this.rows.get(id);
+
     if (
       !row ||
       row.counter !== previous ||
@@ -62,8 +72,10 @@ export class MemoryPasskeys implements PasskeyRepository {
     )
       return false;
     this.rows.set(id, { ...row, counter, backedUp, lastUsedAt: new Date(at) });
+
     return true;
   }
+
   async remove(userId: string, id: string) {
     if (this.rows.get(id)?.userId === userId) this.rows.delete(id);
   }

@@ -21,6 +21,7 @@ const serverUrl = process.env.CMS_TEST_DATABASE_URL;
 describe.skipIf(!serverUrl)('comment notification adapters on MariaDB', () => {
   let db: Database;
   let drop: () => Promise<void>;
+
   beforeAll(async () => {
     ({ db, drop } = await scratchDatabase(serverUrl!, 'cms_notice_test'));
     await db.user.create({
@@ -67,6 +68,7 @@ describe.skipIf(!serverUrl)('comment notification adapters on MariaDB', () => {
         outbox.dispatch(`notice:${index}`, at, { items: [item(index)] }),
       ),
     );
+
     expect(results).toEqual(Array(8).fill(true));
     // A retried fan-out queues nothing again.
     expect(await outbox.dispatch('notice:0', at, { items: [item(0)] })).toBe(
@@ -132,6 +134,7 @@ describe.skipIf(!serverUrl)('comment notification adapters on MariaDB', () => {
       createdAt: at,
       updatedAt: at,
     }));
+
     for (const row of rows) await comments.insert(row);
     const claims = await Promise.all(
       rows.map(async (row) => {
@@ -139,18 +142,23 @@ describe.skipIf(!serverUrl)('comment notification adapters on MariaDB', () => {
           state.claim(row, at, queued('test.notice', { id: row.id })),
           comments.setStatus([row.id], 'spam', at),
         ]);
+
         // The moderation write always succeeds and reports the row exactly once.
         expect(changed).toMatchObject([{ id: row.id, status: 'approved' }]);
+
         return claimed;
       }),
     );
+
     // Every successful claim queued exactly one job; every lost one queued none.
     expect(await jobs('test.notice')).toBe(claims.filter(Boolean).length);
     let again = 0;
+
     for (const row of rows) {
       const current = await db.comment.findUniqueOrThrow({
         where: { id: row.id },
       });
+
       expect(current.status).toBe('spam');
       // The fan-out finds spam and releases the claim, so a later approval announces it.
       await state.release(row.id);
@@ -163,6 +171,7 @@ describe.skipIf(!serverUrl)('comment notification adapters on MariaDB', () => {
         await state.claim(row, at, queued('test.again', { id: row.id })),
       ).toBe(false);
     }
+
     expect(await jobs('test.again')).toBe(again);
     // Release never clears an approved comment's announcement.
     expect(await state.release(rows[0]!.id)).toBe(false);
@@ -189,8 +198,10 @@ describe.skipIf(!serverUrl)('comment notification adapters on MariaDB', () => {
       updatedAt: at,
     });
     const rows = Array.from({ length: 6 }, (_, index) => row(index));
+
     for (const value of rows) await comments.insert(value);
     const all = rows.map((value) => value.id);
+
     for (let round = 0; round < 15; round += 1) {
       // Approve everything, then race a claim per comment against bulk, single and edit writes.
       await comments.setStatus(all, 'approved', at);
@@ -219,15 +230,18 @@ describe.skipIf(!serverUrl)('comment notification adapters on MariaDB', () => {
         unknown[],
         { before: unknown; after: { body: string } } | null,
       ];
+
       // Each write reports each row it changed exactly once.
       expect(spam).toHaveLength(3);
       expect(pending).toHaveLength(4);
       expect(edit?.after.body).toBe(`Edit ${round}`);
     }
+
     // The approved count matches the rows after every race.
     const stored = await db.content.findUniqueOrThrow({
       where: { id: 'entry-2' },
     });
+
     expect(stored.commentCount).toBe(
       await db.comment.count({
         where: { contentId: 'entry-2', status: 'approved' },
@@ -239,8 +253,10 @@ describe.skipIf(!serverUrl)('comment notification adapters on MariaDB', () => {
     const comments = new PrismaCommentRepository(db);
     const contents = new PrismaContentRepository(db);
     const state = new PrismaCommentNoticeState(db, ids);
+
     for (let round = 0; round < 10; round += 1) {
       const contentId = `doomed-${round}`;
+
       await entry(contentId);
       const rows = Array.from({ length: 4 }, (_, index) => ({
         id: `doomed-${round}-${index}`,
@@ -258,6 +274,7 @@ describe.skipIf(!serverUrl)('comment notification adapters on MariaDB', () => {
         createdAt: at,
         updatedAt: at,
       }));
+
       for (const row of rows) await comments.insert(row);
       const all = rows.map((row) => row.id);
       // Every call settles without an error, whichever commits first.
@@ -271,6 +288,7 @@ describe.skipIf(!serverUrl)('comment notification adapters on MariaDB', () => {
           state.claim(row, at, queued('test.doomed', { id: row.id })),
         ),
       ]);
+
       expect(
         results.flatMap((result) =>
           result.status === 'rejected' ? [String(result.reason)] : [],
@@ -279,6 +297,7 @@ describe.skipIf(!serverUrl)('comment notification adapters on MariaDB', () => {
       expect(await db.content.count({ where: { id: contentId } })).toBe(0);
       expect(await db.comment.count({ where: { contentId } })).toBe(0);
     }
+
     // Without a race: a three-level thread goes with its entry.
     await entry('threaded');
     for (const [index, parentId] of [null, 'thread-0', 'thread-1'].entries())
@@ -317,8 +336,10 @@ describe.skipIf(!serverUrl)('comment notification adapters on MariaDB', () => {
           slug: id,
         },
       });
+
       for (const index of [0, 1]) {
         const contentId = `${id}-entry-${index}`;
+
         await db.content.create({
           data: {
             id: contentId,
@@ -434,6 +455,7 @@ describe.skipIf(!serverUrl)('comment notification adapters on MariaDB', () => {
       orderBy: { id: 'asc' },
       select: { id: true, parentId: true, userId: true },
     });
+
     expect(kept).toEqual([
       { id: 'handing-over-entry-0-0', parentId: null, userId: null },
       {

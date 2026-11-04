@@ -26,6 +26,7 @@ export const routes = (app: ApiApp) =>
           themes.getCore(),
           reading.getPublic(),
         ]);
+
         return {
           archives: await archivePaths.get(),
           privacy: await privacy.publicSettings(),
@@ -45,6 +46,7 @@ export const routes = (app: ApiApp) =>
           .resolve(query.preview)
           .then((preview) => preview ?? themes.present(data.theme)),
       ]);
+
       return json({
         ...data,
         theme,

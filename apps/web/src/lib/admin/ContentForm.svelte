@@ -241,10 +241,12 @@
   let featured = $state(
     untrack(() => {
       const id = values ? values.featuredMediaId : entry?.featuredMediaId;
+
       if (!id) return null;
       // A failed save may echo another image than the saved one; its preview then follows on save.
       const image =
         id === entry?.featuredMediaId ? entry.featuredImage : undefined;
+
       return {
         id,
         url: image ? (image.sizes[0]?.url ?? image.url) : '',
@@ -352,6 +354,7 @@
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ taxonomy, name, parentId }),
     }).catch(() => null);
+
     return response?.status === 201
       ? ((await response.json()) as TermOption)
       : null;
@@ -363,16 +366,20 @@
       .split(',')
       .map((name) => name.trim())
       .filter(Boolean);
+
     tagText = '';
+
     for (const name of names) {
       let tag = tagList.find(
         (option) => option.name.toLowerCase() === name.toLowerCase(),
       );
+
       if (!tag && canManageTerms) {
         tag = (await createTerm('tag', name, null)) ?? undefined;
         if (tag) tagList.push(tag);
         else tagError = m.termCreateFailed;
       } else if (!tag) tagError = m.termUnknown(name);
+
       if (tag && !chosenTags.some((option) => option.id === tag.id)) {
         chosenTags.push(tag);
         touch();
@@ -382,13 +389,17 @@
 
   const addCategory = async () => {
     const name = categoryName.trim();
+
     if (!name) return;
     categoryError = '';
     const category = await createTerm('category', name, categoryParent || null);
+
     if (!category) {
       categoryError = m.termCreateFailed;
+
       return;
     }
+
     addedCategories.add(category.id);
     categoryList.push(category);
     categoryName = '';
@@ -420,14 +431,18 @@
     const timer = setTimeout(() => {
       if (text !== savedText) backupStore.write(text);
     }, 1000);
+
     return () => clearTimeout(timer);
   });
   onMount(() => {
     const raw = backupStore.read();
+
     if (!raw || raw === savedText) return;
+
     try {
       const [savedTitle, savedExcerpt, document] = JSON.parse(raw) as unknown[];
       const parsed = contentDocumentSchema.safeParse(document);
+
       if (
         typeof savedTitle === 'string' &&
         typeof savedExcerpt === 'string' &&
@@ -466,15 +481,18 @@
   /** Stores the current text as the user's autosave; resolves once the server has it. */
   const keepText = async (id: string) => {
     const current = snapshot();
+
     if (current === kept) return true;
     const response = await fetch(`/admin/content/${id}/autosave`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ title, excerpt, document: body }),
     }).catch(() => null);
+
     // An expired session answers with the sign-in page.
     if (response?.redirected) sessionExpired();
     const ok = !!response?.ok && !response.redirected;
+
     if (ok) {
       kept = current;
       notifyQuietly(
@@ -482,11 +500,13 @@
         'autosave',
       );
     } else notifyFailure(m.autosaveFailed);
+
     return ok;
   };
   const autosave = () => {
     if (!entry || saving) return;
     const id = entry.id;
+
     queue = queue.then(() => keepText(id));
   };
   const timer = setInterval(autosave, 30_000);
@@ -503,28 +523,36 @@
   const preview = () => {
     // A save in flight would clear the autosave the preview is about to show.
     if (saving) return;
+
     if (
       !autosaveInputSchema.safeParse({ title, excerpt, document: body }).success
     ) {
       notifyFailure(m.previewInvalid);
+
       return;
     }
+
     if (!entry) {
       // The draft button's status: a new entry is never live, so the default button saves it.
       const submitter = formElement.querySelector<HTMLButtonElement>(
         'button[data-default]',
       );
+
       if (!formElement.reportValidity()) return;
       const name = `cms-preview-new-${Date.now().toString(36)}`;
+
       pendingPreview = { name, tab: window.open('about:blank', name) };
       formElement.requestSubmit(submitter);
+
       return;
     }
+
     if (!previewForm) return;
     const target = `cms-preview-${entry.id}`;
     const tab = window.open('about:blank', target);
     const form = previewForm;
     const id = entry.id;
+
     form.target = target;
     queue = queue.then(async () => {
       if (await keepText(id)) form.submit();
@@ -539,11 +567,13 @@
     if (status === 'pending') return m.entrySubmitted;
     if (status === 'published') return m.entryPublished;
     if (status === 'scheduled') return m.entryScheduled;
+
     return m.entryUpdated;
   };
   /** Announces a save; a first publication offers to view the entry. */
   const announceSave = (status: string, previous?: string) => {
     const path = entry?.path;
+
     notifySuccess(savedNotice(status, previous), {
       action:
         status === 'published' &&
@@ -566,11 +596,14 @@
   // A new entry previewed before its first save arrives with `?preview=<tab>` (once).
   onMount(() => {
     if (!previewForm) return;
+
     // Only names this form gives its own tabs: `_self`, `_top`… would navigate the editor away.
     if (!previewTab || !/^cms-preview-new-[a-z0-9]{1,16}$/.test(previewTab)) {
       if (previewTab) forgetParams('preview');
+
       return;
     }
+
     previewForm.target = previewTab;
     previewForm.submit();
     forgetParams('preview');
@@ -584,7 +617,9 @@
     const observer = new ResizeObserver(() =>
       root.style.setProperty('--cms-save-bar-offset', `${bar.offsetHeight}px`),
     );
+
     observer.observe(bar);
+
     return () => {
       observer.disconnect();
       root.style.removeProperty('--cms-save-bar-offset');
@@ -600,31 +635,40 @@
     const permission = key ? askPush() : null;
     // A new entry's Preview: the save redirects to its editor, which fills this tab.
     const opened = pendingPreview;
+
     pendingPreview = null;
     if (opened) formData.set('preview', opened.name);
     const previous = entry?.status;
     const sent = { text: snapshot(), edits, draftStatus };
+
     saving = true;
     saveFailure = null;
     // A queued autosave finishes first, so it cannot land after (and outdate) this save.
     await queue;
+
     return async ({ result: outcome, update }) => {
       const signedOut =
         outcome.type === 'redirect' &&
         (outcome.location === resolvedLoginPath ||
           outcome.location.startsWith(`${resolvedLoginPath}?`));
+
       // Only a created entry's redirect brings the preview; otherwise its blank tab goes.
       if (outcome.type !== 'redirect' || signedOut) opened?.tab?.close();
+
       if (signedOut) {
         saving = false;
         sessionExpired();
+
         return;
       }
+
       if (outcome.type === 'error') {
         saving = false;
         notifyFailure(m.saveFailed);
+
         return;
       }
+
       if (outcome.type === 'failure') {
         if (outcome.data?.stale) notifyFailure(m.entryConflict);
         else saveFailure = (outcome.data ?? {}) as ActionData;
@@ -639,15 +683,18 @@
         if (edits === sent.edits && snapshot() === sent.text)
           backupStore.remove();
       }
+
       await update({ reset: false });
       saving = false;
       if (outcome.type !== 'success') return;
       const saved = outcome.data as
         { version?: string; status?: ContentStatus } | undefined;
+
       // The version this form's text now matches: only what this save returned, never a
       // refreshed entry that someone else may have saved meanwhile.
       if (saved?.version) version = saved.version;
       const status = saved?.status ?? entry?.status;
+
       if (!status) return;
       // What the server stored, which can differ from the button (a past date publishes).
       announceSave(status, previous);

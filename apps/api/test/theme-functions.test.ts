@@ -42,6 +42,7 @@ test('installed theme functions follow activation, upgrade and removal across re
   );
   const pack = (source?: string) => {
     const theme = BUILTIN_THEMES[0]!;
+
     return zipSync({
       'theme/theme.json': strToU8(
         JSON.stringify({ ...theme.manifest, id: 'uploaded' }),
@@ -79,6 +80,7 @@ test('installed theme functions follow activation, upgrade and removal across re
       body: pack(source),
     }),
   );
+
   expect(response.status).toBe(403);
   expect(await response.json()).toMatchObject({ error: { code: 'forbidden' } });
   await expect(themes.install(pack(source), appearance)).rejects.toMatchObject({
@@ -89,6 +91,7 @@ test('installed theme functions follow activation, upgrade and removal across re
   const activation = activateRoutes(
     routeApp('/themes/:id/activate') as unknown as ApiApp,
   );
+
   expect(
     (
       await activation.handle(
@@ -155,9 +158,11 @@ test('theme versions retain recovery and prune superseded imports', async () => 
     logger: { info() {}, warn() {}, error() {} },
     invalidate() {},
   });
+
   try {
     await host.reconcile();
     const good = host.status()[0]!.loadedHash;
+
     text = 'export const functions = { api() { throw Error("broken"); } };';
     await host.reconcile();
     expect(host.status()[0]!.loadedHash).toBe(good);

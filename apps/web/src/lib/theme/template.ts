@@ -56,6 +56,7 @@ export const templateCandidates = (
       case 'content':
       case 'preview': {
         const { type, slug } = page.content;
+
         return type === 'page'
           ? [...suffix(slug).map((s) => `page-${s}`), 'page', 'singular']
           : [
@@ -65,6 +66,7 @@ export const templateCandidates = (
               'singular',
             ];
       }
+
       case 'home':
         return ['home'];
       case 'search':
@@ -76,6 +78,7 @@ export const templateCandidates = (
             `taxonomy-${page.term.taxonomy}`,
             'archive',
           ];
+
         return [
           ...suffix(page.term.slug).map((s) => `${page.term.taxonomy}-${s}`),
           page.term.taxonomy,
@@ -98,6 +101,7 @@ export const templateCandidates = (
         return page.status === 404 ? ['404'] : [];
     }
   })();
+
   return [...(front ? ['front-page'] : []), ...names, 'index'];
 };
 
@@ -108,7 +112,9 @@ export const pickTemplate = (
 ): Block[] => {
   for (const name of candidates) {
     const blocks = templates[name];
+
     if (blocks) return blocks;
   }
+
   return [];
 };

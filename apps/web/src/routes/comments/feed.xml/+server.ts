@@ -4,6 +4,7 @@ import type { FeedItem } from '#lib/server/seo-discovery.js';
 import { filterDiscovery } from '#lib/server/seo-filter.js';
 import { notFoundFrom } from '#lib/server/errors.js';
 import type { RequestHandler } from './$types';
+
 export const GET: RequestHandler = async (event) => {
   const { url } = event;
   const api = contentApi(event.fetch);
@@ -12,6 +13,7 @@ export const GET: RequestHandler = async (event) => {
     api.seo.settings(),
     api.reading(),
   ]);
+
   if (!seo.siteUrl) return missingSiteUrl('The comments feed');
   const comments = await api.comments
     .feed(url.searchParams.get('contentId') ?? undefined, reading.feedItems)
@@ -35,5 +37,6 @@ export const GET: RequestHandler = async (event) => {
     },
     { kind: 'feed.items', value: items },
   ]);
+
   return commentFeed(channel, filtered);
 };

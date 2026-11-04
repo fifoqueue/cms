@@ -77,6 +77,7 @@ export const loadTerms = async (event: AdminEvent, taxonomy: TaxonomyType) => {
   const terms = list.map(adminTermView);
   const editId = event.url.searchParams.get('edit');
   const editing = terms.find((term) => term.id === editId) ?? null;
+
   return {
     terms,
     editing,
@@ -115,6 +116,7 @@ export const loadTaxonomyChoices = async (
         terms: (await admin.taxonomy.list(definition.key)).map(termChoice),
       })),
   );
+
   return {
     extraTaxonomies,
     categories: categories.map(termChoice),
@@ -126,6 +128,7 @@ export const loadTaxonomyChoices = async (
 const loadParentPages = async (event: Omit<AdminEvent, 'request' | 'url'>) => {
   const admin = adminFor(event);
   const parentPages: { id: string; title: string }[] = [];
+
   for (let page = 1; ; page++) {
     const result = await admin.content.list({
       type: 'page',
@@ -134,9 +137,11 @@ const loadParentPages = async (event: Omit<AdminEvent, 'request' | 'url'>) => {
       page,
       pageSize: 100,
     });
+
     parentPages.push(...result.items.map(({ id, title }) => ({ id, title })));
     if (page * result.pageSize >= result.total) break;
   }
+
   return parentPages;
 };
 
@@ -148,6 +153,7 @@ export const loadTermChoices = async (
     loadTaxonomyChoices(event),
     loadParentPages(event),
   ]);
+
   return { ...terms, parentPages };
 };
 
@@ -176,7 +182,9 @@ export const readTermForm = (
     seo: values.seo,
     fields: values.fields,
   });
+
   if (result.success) return { values, input: result.data };
+
   return {
     values,
     failure: fail(400, {
@@ -204,13 +212,16 @@ export const saveTerm = async (
     intent,
     definitions,
   );
+
   if (failure) return failure;
   const admin = adminFor(event);
+
   try {
     const term =
       intent === 'create'
         ? await admin.taxonomy.create(taxonomy, input)
         : await admin.taxonomy.update(taxonomy, values.id, input);
+
     return {
       intent,
       notice:
@@ -227,10 +238,12 @@ export const saveTerm = async (
 
 export const removeTerm = async (event: AdminEvent, taxonomy: TaxonomyType) => {
   const id = text(await event.request.formData(), 'id');
+
   try {
     await adminFor(event).taxonomy.remove(taxonomy, id);
   } catch (caught) {
     return failFrom(caught);
   }
+
   return { notice: 'deleted' };
 };

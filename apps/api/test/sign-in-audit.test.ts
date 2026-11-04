@@ -47,6 +47,7 @@ test('SSO start admission uses the proved network key, grouping IPv6 /64 and unp
     starts: {
       tryAcquire: (key) => {
         keys.push(key);
+
         return limiter.tryAcquire(key);
       },
     },
@@ -65,6 +66,7 @@ test('SSO start admission uses the proved network key, grouping IPv6 /64 and unp
       values: {},
       callbackUrl: 'https://site.example/admin/sign-in/callback',
     });
+
   expect((await start('2001:db8:1:2::1')).kind).toBe('redirect');
   await expect(start('2001:db8:1:2::99')).rejects.toMatchObject({
     code: 'rate_limited',

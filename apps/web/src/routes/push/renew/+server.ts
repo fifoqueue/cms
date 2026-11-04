@@ -14,7 +14,9 @@ import type { RequestHandler } from './$types';
  */
 export const POST: RequestHandler = async (event) => {
   const input = await pushRequest(event.request, pushRenewSchema);
+
   if (!input) return invalidPushRequest();
+
   return forwardPush(() =>
     contentApi(event.fetch).push.renew(
       input.old,

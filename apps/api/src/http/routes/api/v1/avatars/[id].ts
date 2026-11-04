@@ -13,7 +13,9 @@ export const routes = (app: ApiApp) =>
         Number.isFinite(requested) ? requested : 96,
         await comments.discussion(),
       );
+
       if (!image) return errorResponse(404, 'not_found', Errors.AvatarNotFound);
+
       return new Response(image.bytes.slice().buffer as ArrayBuffer, {
         headers: {
           'content-type': image.contentType,

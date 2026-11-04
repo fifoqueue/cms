@@ -9,6 +9,7 @@ export const routes = (app: ApiApp) =>
     async ({ media, user, request }) => {
       authorize(user, 'settings.manage');
       await media.storageSettings.test(await readJson(request));
+
       return new Response(null, { status: 204 });
     },
     { parse: 'none' },

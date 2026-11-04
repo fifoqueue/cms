@@ -39,6 +39,7 @@ export const signInCallback = async (event: Event) => {
   });
   // A step being shown is not this callback's: a cross-site visit here leaves it untouched.
   const shown = readPending(event.cookies, event.url);
+
   if (shown?.step)
     redirect(
       303,
@@ -62,6 +63,7 @@ export const signInCallback = async (event: Event) => {
         ? `${loginPath}?${new URLSearchParams({ [RETURN_PARAM]: back })}`
         : loginPath,
   };
+
   if (!pending) return { ...view, expired: true, done: false };
 
   try {
@@ -70,6 +72,7 @@ export const signInCallback = async (event: Event) => {
         transaction: pending.transaction,
         query: event.url.search,
       });
+
       if (result.kind === 'linked')
         redirect(
           303,
@@ -95,6 +98,7 @@ export const signInCallback = async (event: Event) => {
         pending.back,
         pending.owner,
       );
+
     // Only a setup that finished without signing in gets here.
     return { ...view, expired: false, done: true };
   } catch (caught) {

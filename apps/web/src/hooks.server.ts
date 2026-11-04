@@ -37,7 +37,9 @@ const isUnknownAdmin = (event: Pick<RequestEvent, 'route' | 'url'>) =>
 /** A copy of `response` that no shared cache keeps, with `status`. */
 const privately = (response: Response, status = response.status) => {
   const headers = new Headers(response.headers);
+
   headers.set('cache-control', 'private, no-store');
+
   return new Response(response.body, { status, headers });
 };
 
@@ -59,6 +61,7 @@ const bodyLimit = (pathname: string) => {
   if (pathname === '/admin/plugins') return 6 * MIB;
   if (pathname.startsWith('/admin/content')) return 2 * MIB;
   if (pathname.startsWith('/admin/extensions/')) return 256 * KIB;
+
   return 64 * KIB;
 };
 
@@ -70,6 +73,7 @@ const requestSize: Handle = async ({ event, resolve }) => {
 
   const header = event.request.headers.get('content-length');
   const length = header === null ? NaN : Number(header);
+
   if (!Number.isSafeInteger(length) || length < 0)
     return new Response(null, { status: 411 });
   if (length > bodyLimit(event.url.pathname))
@@ -90,6 +94,7 @@ const responseSecurity: Handle = async ({ event, resolve }) => {
   const admin = isAdmin(event.url.pathname);
   const origins = event.locals.captchaOrigins;
   const page = response.headers.get('content-type')?.startsWith('text/html');
+
   if (
     !admin &&
     !page &&
@@ -98,10 +103,12 @@ const responseSecurity: Handle = async ({ event, resolve }) => {
   )
     return response;
   const headers = new Headers(response.headers);
+
   if (admin || response.status >= 400) {
     headers.set('x-robots-tag', 'noindex, nofollow');
     headers.set('cache-control', 'private, no-store');
   }
+
   if (admin || page) {
     // Sign-in responses already carry their own `frame-ancestors`; one is enough.
     if (!headers.get('content-security-policy')?.includes('frame-ancestors'))
@@ -111,9 +118,11 @@ const responseSecurity: Handle = async ({ event, resolve }) => {
       );
     headers.set('x-frame-options', admin ? 'DENY' : 'SAMEORIGIN');
   }
+
   if (page) headers.set('cross-origin-opener-policy', 'same-origin');
   // Only pages that render the captcha widget admit its origins, in every policy they send.
   const policy = headers.get('content-security-policy');
+
   if (origins && policy)
     headers.set(
       'content-security-policy',
@@ -122,6 +131,7 @@ const responseSecurity: Handle = async ({ event, resolve }) => {
         .map((part) => withWidgetOrigins(part, origins))
         .join(', '),
     );
+
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -144,7 +154,9 @@ const cacheSeconds = async (fetch: typeof globalThis.fetch) => {
       (reading) => reading.cacheSeconds,
       () => 0,
     );
+
   caching = { seconds, until: Date.now() + 60_000 };
+
   return seconds;
 };
 
@@ -154,15 +166,19 @@ const cacheSeconds = async (fetch: typeof globalThis.fetch) => {
  */
 const publicCache: Handle = async ({ event, resolve }) => {
   const response = await resolve(event);
+
   if (event.cookies.getAll().some(({ name }) => PERSONAL_COOKIE.test(name))) {
     const headers = new Headers(response.headers);
+
     headers.set('cache-control', 'private, no-store');
+
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
       headers,
     });
   }
+
   if (
     (event.request.method !== 'GET' && event.request.method !== 'HEAD') ||
     isAdmin(event.url.pathname) ||
@@ -173,13 +189,16 @@ const publicCache: Handle = async ({ event, resolve }) => {
   )
     return response;
   const seconds = await cacheSeconds(event.fetch);
+
   if (!seconds) return response;
   const headers = new Headers(response.headers);
+
   headers.set(
     'cache-control',
     `public, max-age=0, s-maxage=${seconds}, stale-while-revalidate=${seconds * 10}`,
   );
   headers.append('vary', 'cookie');
+
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -200,6 +219,7 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
 
   if (!installed) {
     const installation = await installationApi(event.fetch).status();
+
     if (installation.setupRequired) {
       if (event.url.pathname !== '/admin/setup')
         return new Response(null, {
@@ -209,8 +229,10 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
             'cache-control': 'private, no-store',
           },
         });
+
       return resolve(event);
     }
+
     installed = true;
   }
 
@@ -221,6 +243,7 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
         if (caught instanceof CmsApiError && caught.status === 401) return null;
         throw caught;
       });
+
     if (!event.locals.user) {
       endSession(event.cookies);
       clearPending(event.cookies, event.url);
@@ -235,6 +258,7 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
     const site = await contentApi(event.fetch)
       .site()
       .catch(() => null);
+
     if (!site?.showLogin) return siteNotFound(event);
     // Enhanced forms get an action redirect they can intercept (the editor keeps unsaved text).
     if (event.request.headers.get('x-sveltekit-action') === 'true')
@@ -251,6 +275,7 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
       event.request.method === 'GET' && event.url.pathname !== '/admin'
         ? `?${new URLSearchParams({ [RETURN_PARAM]: `${event.url.pathname}${event.url.search}` })}`
         : '';
+
     return new Response(null, {
       status: 303,
       headers: {
@@ -259,6 +284,7 @@ const guardAdmin: Handle = async ({ event, resolve }) => {
       },
     });
   }
+
   return resolve(event);
 };
 
@@ -286,6 +312,7 @@ const documentLanguage: Handle = ({ event, resolve }) =>
         ? event.locals.lang!
         : 'en';
       const primary = lang.split('-')[0]!.toLowerCase();
+
       return html
         .replace('%lang%', lang)
         .replace('%dir%', RTL.has(primary) ? 'rtl' : 'ltr');

@@ -15,7 +15,9 @@ export const actions: Actions = {
     const upload = await readThemeUpload(
       (await event.request.formData()).get('theme'),
     );
+
     if ('failure' in upload) return upload.failure;
+
     return submitAction(
       () => adminFor(event).themes.install(upload.archive),
       'themeInstalled',
@@ -25,16 +27,19 @@ export const actions: Actions = {
   preview: async (event) => {
     const id = text(await event.request.formData(), 'id');
     let token: string;
+
     try {
       token = (await adminFor(event).themes.preview(id)).token;
     } catch (caught) {
       return failFrom(caught);
     }
+
     startThemePreview(event.cookies, token);
     redirect(303, '/');
   },
   activate: async (event) => {
     const id = text(await event.request.formData(), 'id');
+
     return submitAction(
       () => adminFor(event).themes.activate(id),
       'themeActivated',
@@ -42,6 +47,7 @@ export const actions: Actions = {
   },
   remove: async (event) => {
     const id = text(await event.request.formData(), 'id');
+
     return submitAction(
       () => adminFor(event).themes.remove(id),
       'themeRemoved',

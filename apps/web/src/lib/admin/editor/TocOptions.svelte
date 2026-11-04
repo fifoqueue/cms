@@ -37,8 +37,10 @@
 
   const update = (patch: Partial<TocAttrs>) => {
     const node = editor.state.doc.nodeAt(pos);
+
     if (node?.type.name !== 'tableOfContents') return;
     const present = new Set(headings.map((heading) => heading.id));
+
     patch.excluded = (patch.excluded ?? attrs.excluded)
       .filter((id) => present.has(id))
       .slice(0, 100);
@@ -51,6 +53,7 @@
   };
   const minimum = (value: string) => {
     const count = Number(value);
+
     if (Number.isSafeInteger(count) && count >= 0 && count <= 100)
       update({ minHeadings: count });
   };

@@ -21,12 +21,15 @@ export class PluginSettings {
   async values(manifest: ResolvedManifest): Promise<SettingValues> {
     const stored = await this.data.entries(manifest.id, 'settings');
     const values: SettingValues = {};
+
     for (const field of manifest.settings) {
       const value = stored[field.key];
+
       if (typeof value === VALUE_TYPES[field.type])
         values[field.key] = value as SettingValues[string];
       else if (field.default !== undefined) values[field.key] = field.default;
     }
+
     return values;
   }
 
@@ -42,6 +45,7 @@ export class PluginSettings {
 
   async update(manifest: ResolvedManifest, input: unknown): Promise<void> {
     const values = parseInput(settingValuesSchema(manifest.settings), input);
+
     for (const [key, value] of Object.entries(values)) {
       if (value !== undefined)
         await this.data.set(manifest.id, 'settings', key, value);

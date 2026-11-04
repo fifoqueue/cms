@@ -66,6 +66,7 @@ export const createRegistries = ({
   const { captchaProviders } = createCaptcha(timeoutMs, logger);
   const privacyErasers = new EraserRegistry({ timeoutMs, logger });
   const menuItemTypes = new MenuTypeRegistry({ timeoutMs, logger });
+
   for (const [key, provider] of Object.entries(coreMenuTypes))
     menuItemTypes.registerCore(key, provider);
   const themeContributions = createThemeContributions({ timeoutMs, logger });
@@ -76,6 +77,7 @@ export const createRegistries = ({
   const storageDrivers = new StorageDrivers(logger, timeoutMs);
   const commentCheckers = new CommentCheckers(timeoutMs);
   const authentication = new SignInRegistry({ timeoutMs, logger });
+
   return {
     hooks,
     roleExists: (key: string) => roleDefaults.has(key),

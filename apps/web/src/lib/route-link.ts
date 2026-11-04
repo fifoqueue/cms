@@ -29,6 +29,7 @@ export const hrefOptions = (href: string | null | undefined) => {
   const url = href ? parse(href) : null;
   // Kit 3 has no `base` export; the home route resolves to `${base}/` (possibly relative).
   const base = parse(resolve('/(site)'))?.pathname.slice(0, -1);
+
   return {
     'data-sveltekit-reload':
       url?.origin === page.url.origin && isDocument(url.pathname, base)

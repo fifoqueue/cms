@@ -37,6 +37,7 @@ export class Scheduler {
   /** Registers `task`; returns a function that unregisters it. */
   add(task: RecurringTask): () => void {
     this.tasks.set(task.name, task);
+
     return () => {
       if (this.tasks.get(task.name) === task) this.tasks.delete(task.name);
     };
@@ -50,6 +51,7 @@ export class Scheduler {
   async tick(): Promise<void> {
     if (this.running) return;
     this.running = true;
+
     try {
       await Promise.all(
         [...this.tasks.values()].map((task) => this.run(task, false)),
@@ -70,17 +72,23 @@ export class Scheduler {
 
   async runNow(name: string): Promise<void> {
     const task = this.tasks.get(name);
+
     if (task) await this.run(task, true);
   }
 
   private async run(task: RecurringTask, immediate: boolean) {
     const active = this.active.get(task.name);
+
     if (active) {
       if (immediate) active.rerun = true;
+
       return;
     }
+
     const state = { rerun: false };
+
     this.active.set(task.name, state);
+
     try {
       do {
         state.rerun = false;
@@ -96,6 +104,7 @@ export class Scheduler {
 
   private async runLeased(task: RecurringTask, ignoreDue: boolean) {
     const { leases, clock, logger, owner } = this.deps;
+
     try {
       await leases.ensure(task.name);
       if (
@@ -108,8 +117,10 @@ export class Scheduler {
       logger.warn(
         `Task "${task.name}" could not be scheduled: ${messageOf(error)}`,
       );
+
       return;
     }
+
     let failure: string | null = null;
     const renewing = setInterval(
       () =>
@@ -122,6 +133,7 @@ export class Scheduler {
           ),
       RENEW_MS,
     );
+
     try {
       await task.run();
     } catch (error) {
@@ -130,7 +142,9 @@ export class Scheduler {
     } finally {
       clearInterval(renewing);
     }
+
     const next = new Date(clock.now().getTime() + task.intervalMs);
+
     await leases
       .release(task.name, owner, next, failure)
       .catch((error: unknown) =>

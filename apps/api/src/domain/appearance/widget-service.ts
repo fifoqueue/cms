@@ -48,6 +48,7 @@ export interface PluginWidgets {
 
 const count = (settings: Record<string, unknown>, fallback = 5) => {
   const value = Number(settings.count);
+
   return Number.isInteger(value) ? Math.min(Math.max(value, 1), 30) : fallback;
 };
 
@@ -64,8 +65,10 @@ const ordered = (terms: readonly CountedTermRecord[], flat: boolean) => {
     result.push({ ...term, depth });
     for (const child of children.get(term.id) ?? []) visit(child, depth + 1);
   };
+
   for (const term of terms)
     if (!term.parentId || !ids.has(term.parentId)) visit(term, 0);
+
   return result;
 };
 
@@ -85,12 +88,14 @@ export class WidgetService {
 
   async get(actor: Actor): Promise<WidgetsSettings> {
     authorize(actor, 'appearance.manage');
+
     return this.stored();
   }
 
   /** Widget types to offer: the core ones and those of active plugins. */
   types(actor: Actor) {
     authorize(actor, 'appearance.manage');
+
     return {
       core: [...CORE_WIDGETS],
       plugins: this.deps.plugins.types(),
@@ -108,6 +113,7 @@ export class WidgetService {
         (value) => widgetsSettingsSchema.safeParse(value).success,
       )) ?? initial,
     );
+
     for (const area of WIDGET_AREAS)
       settings[area].forEach((widget, index) => {
         if (
@@ -123,6 +129,7 @@ export class WidgetService {
       });
     await this.deps.settings.set(KEY, settings);
     void this.deps.hooks?.emit('widgets.updated', settings);
+
     return settings;
   }
 
@@ -141,6 +148,7 @@ export class WidgetService {
               const core =
                 widget.type !== 'menu' &&
                 (CORE_WIDGETS as readonly string[]).includes(widget.type);
+
               return (
                 core && cache
                   ? cache.get(`widget:${area}:${widget.id}`, load)
@@ -151,6 +159,7 @@ export class WidgetService {
         ).filter((widget) => widget !== null),
       ),
     );
+
     return { sidebar: sidebar!, footer: footer! };
   }
 
@@ -160,6 +169,7 @@ export class WidgetService {
   ): Promise<PublicWidget | null> {
     const base = { id: widget.id, title: widget.title };
     const { settings } = widget;
+
     switch (widget.type) {
       case 'recentPosts': {
         const amount = count(settings);
@@ -170,6 +180,7 @@ export class WidgetService {
             pageSize: amount,
           }),
         );
+
         return {
           ...base,
           kind: 'recentPosts',
@@ -180,6 +191,7 @@ export class WidgetService {
           })),
         };
       }
+
       case 'categories':
       case 'tags': {
         const taxonomy = widget.type === 'categories' ? 'category' : 'tag';
@@ -192,6 +204,7 @@ export class WidgetService {
           terms,
           taxonomy === 'tag' || settings.flat === true,
         );
+
         return {
           ...base,
           kind: widget.type,
@@ -205,17 +218,23 @@ export class WidgetService {
             })),
         };
       }
+
       case 'search':
         return { ...base, kind: 'search' };
+
       case 'text': {
         const text = typeof settings.text === 'string' ? settings.text : '';
+
         return { ...base, kind: 'text', text, paragraphs: richText(text) };
       }
+
       case 'image': {
         // Only media-library images; an image without one is left out.
         const src = typeof settings.src === 'string' ? settings.src : '';
+
         if (!MEDIA_IMAGE.test(src)) return null;
         const link = typeof settings.link === 'string' ? settings.link : '';
+
         return {
           ...base,
           kind: 'image',
@@ -225,6 +244,7 @@ export class WidgetService {
           link: LINK.test(link) ? link : null,
         };
       }
+
       case 'menu': {
         const items =
           typeof settings.menuId === 'string'
@@ -232,8 +252,10 @@ export class WidgetService {
                 this.deps.menus.publicItems(settings.menuId as string),
               )
             : null;
+
         return items && { ...base, kind: 'menu', items };
       }
+
       case 'archives':
         // Date archives list posts, as in WordPress.
         return {
@@ -251,8 +273,10 @@ export class WidgetService {
             this.deps.comments.recent(count(settings)),
           ),
         };
+
       default: {
         const html = await this.deps.plugins.render(widget.type, settings);
+
         return html === null ? null : { ...base, kind: 'html', html };
       }
     }
@@ -262,6 +286,7 @@ export class WidgetService {
     const result = widgetsSettingsSchema.safeParse(
       await this.deps.settings.get(KEY),
     );
+
     return result.success ? result.data : widgetsSettingsSchema.parse({});
   }
 }

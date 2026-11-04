@@ -113,6 +113,7 @@ const sqlDate = (date: Date | null) =>
 const tag = (name: string, value: string) => `<${name}>${value}</${name}>`;
 
 type WxrHeader = Omit<WxrDocument, 'items'>;
+
 export interface WxrTermNames {
   categories: ReadonlyMap<string, string>;
   tags: ReadonlyMap<string, string>;
@@ -136,6 +137,7 @@ export const wxrHeader = (document: WxrHeader) => {
     tag('wp:base_site_url', text(document.link)),
     tag('wp:base_blog_url', text(document.link)),
   ];
+
   document.authors.forEach((author, index) =>
     lines.push(
       `<wp:author>${tag('wp:author_id', String(index + 1))}${tag('wp:author_login', cdata(author.login))}${tag('wp:author_email', cdata(author.email))}${tag('wp:author_display_name', cdata(author.displayName))}</wp:author>`,
@@ -151,6 +153,7 @@ export const wxrHeader = (document: WxrHeader) => {
       `<wp:tag>${tag('wp:term_id', String(document.categories.length + index + 1))}${tag('wp:tag_slug', cdata(term.slug))}${tag('wp:tag_name', cdata(term.name))}${tag('wp:tag_description', cdata(term.description))}</wp:tag>`,
     ),
   );
+
   return `${lines.join('\n')}\n`;
 };
 
@@ -169,6 +172,7 @@ export const wxrItemStart = (
         `<category domain="post_tag" nicename="${text(slug)}">${cdata(names.tags.get(slug) ?? slug)}</category>`,
     ),
   ];
+
   return [
     '<item>',
     tag('title', cdata(item.title)),
@@ -203,6 +207,7 @@ export const wxrFooter = '</channel>\n</rss>\n';
 /** A WXR 1.2 document WordPress (and this CMS) can import. */
 export const buildWxr = (document: WxrDocument): string => {
   const names = wxrTermNames(document);
+
   return [
     wxrHeader(document),
     ...document.items.flatMap((item) => [
@@ -246,6 +251,7 @@ export const fromWordPressHtml = (
       /<!--\s*wp:block\s+\{\s*"ref"\s*:\s*"?([\w-]{1,36})"?\s*\}\s*\/-->/g,
       (_, ref: string) => {
         const id = patterns.get(ref);
+
         return id ? `\n\n<div data-cms-pattern="${id}"></div>\n\n` : '';
       },
     );

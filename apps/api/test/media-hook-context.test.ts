@@ -26,17 +26,21 @@ test('upload hooks borrow trusted bytes and isolate plugin mutations', async () 
   });
   const observations: unknown[] = [];
   const plugin = hooks.registrar('plugin:bytes');
+
   plugin.filter('media.uploadAllowed', (value, context) => {
     observations.push(context.bytes === bytes);
     new Uint8Array(context.bytes.buffer).fill(0);
+
     return value;
   });
   plugin.filter('media.filename', (value, context) => {
     observations.push(Array.from(context.bytes));
     new Uint8Array(context.bytes.buffer).fill(0);
+
     return value;
   });
   const trusted = hooks.registrar('functions:site', { trusted: true });
+
   trusted.filter('media.uploadAllowed', (value, context) => {
     observations.push(
       context.bytes === bytes,
@@ -44,10 +48,12 @@ test('upload hooks borrow trusted bytes and isolate plugin mutations', async () 
       context.mime,
       context.size,
     );
+
     return value;
   });
   trusted.filter('media.filename', (_value, context) => {
     observations.push(context.bytes === bytes);
+
     return `${createHash('sha256').update(context.bytes).digest('hex')}.png`;
   });
   trusted.filter('media.storageKey', (value, context) => ({
@@ -75,8 +81,10 @@ test('upload hooks borrow trusted bytes and isolate plugin mutations', async () 
     id: 'a',
     role: 'author',
   });
+
   expect(uploaded.filename).toBe(`${digest}.png`);
   const record = await repository.get(uploaded.id);
+
   expect(record?.storageKey.endsWith(`/${digest}.png`)).toBe(true);
   expect(uploaded.url).toBe(`/media/${record!.storageKey}`);
   expect(storage.files.has(record!.storageKey)).toBe(true);
@@ -97,5 +105,6 @@ test('upload hooks borrow trusted bytes and isolate plugin mutations', async () 
     id: 'a',
     role: 'author',
   });
+
   expect(collision.url.endsWith(`/${digest}-1.png`)).toBe(true);
 });

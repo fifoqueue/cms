@@ -19,6 +19,7 @@ const codeOf = async (task: () => Promise<unknown>) => {
     if (error instanceof DomainError) return error.code;
     throw error;
   }
+
   return 'ok';
 };
 
@@ -37,7 +38,9 @@ test('permalink workflow: templates, atomic regeneration, redirects, drafts and 
   const save = async (source: Item) => {
     const previous = contents.get(source.id);
     const path = await paths.assign(source, !!previous?.publishedAt);
+
     contents.set(source.id, source);
+
     return path;
   };
   const resolve = (path: string) => resolver.resolve({ path });
@@ -77,6 +80,7 @@ test('permalink workflow: templates, atomic regeneration, redirects, drafts and 
     ...item('l', 'api', 'Legacy', '2026-01-01T00:00:00Z'),
     type: 'page',
   };
+
   contents.set('l', legacy);
   paths.paths.set('/api', { path: '/api', contentId: 'l', current: true });
   expect(await save({ ...legacy, title: 'Legacy v2' })).toBe('/api');
@@ -92,6 +96,7 @@ test('permalink workflow: templates, atomic regeneration, redirects, drafts and 
     }),
   ).toBe('/p/20261022');
   const before = structuredClone([...paths.paths]);
+
   expect(
     await codeOf(() =>
       service.update({

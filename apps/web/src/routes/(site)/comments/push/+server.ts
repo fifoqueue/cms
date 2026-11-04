@@ -11,7 +11,9 @@ import type { RequestHandler } from './$types';
 /** Replies to the comment this browser just sent (its `pushToken`) arrive here by push. */
 export const POST: RequestHandler = async (event) => {
   const input = await pushRequest(event.request, commentPushSchema);
+
   if (!input) return invalidPushRequest();
+
   return forwardPush(() =>
     contentApi(event.fetch).comments.subscribePush(
       input.token,

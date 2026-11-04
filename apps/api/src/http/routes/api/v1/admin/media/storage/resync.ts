@@ -10,11 +10,13 @@ export const routes = (app: ApiApp) =>
       authorize(user, 'media.manage');
       if (!media.storageSettings.resync)
         throw new Error(Errors.MediaDriverInvalid);
+
       return json(await media.storageSettings.resync.status());
     })
     .post('', async ({ media, user }) => {
       authorize(user, 'media.manage');
       if (!media.storageSettings.resync)
         throw new Error(Errors.MediaDriverInvalid);
+
       return json(await media.storageSettings.resync.enqueue(), 202);
     });

@@ -52,6 +52,7 @@ test('a write invalidates the cached public layout', async () => {
       site: {
         getPublic: async () => {
           reads++;
+
           return { title };
         },
       },
@@ -65,16 +66,20 @@ test('a write invalidates the cached public layout', async () => {
       privacy: { publicSettings: async () => ({}) },
     } as unknown as ApiServices,
   });
+
   app.post('/write', async () => {
     await store.set('After');
+
     return 'ok';
   });
   app.post('/partial', async () => {
     await store.set('Committed');
+
     return new Response('Later step failed', { status: 500 });
   });
   const layout = async () =>
     (await app.handle(new Request('http://localhost/api/v1/layout'))).json();
+
   expect((await layout()).site.title).toBe('Before');
   expect((await layout()).site.title).toBe('Before');
   expect(reads).toBe(1);
@@ -100,12 +105,16 @@ test('invalidation during a fill cannot publish its stale snapshot', async () =>
   let reads = 0;
   const load = async () => {
     reads++;
+
     if (reads === 1) {
       cache.invalidate();
+
       return 'stale';
     }
+
     return 'current';
   };
+
   expect(await cache.get('layout', load)).toBe('current');
   expect(await cache.get('layout', load)).toBe('current');
   expect(reads).toBe(2);

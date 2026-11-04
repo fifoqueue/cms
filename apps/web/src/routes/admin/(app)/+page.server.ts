@@ -17,6 +17,7 @@ const total = (page: Promise<{ total: number }>) =>
 export const load: PageServerLoad = async (event) => {
   const admin = adminFor(event);
   const user = event.locals.user!;
+
   if (!can(user, 'content.create')) redirect(303, '/admin/account');
   const moderates = can(user, 'comments.moderate');
   const model = await admin.contentModel.model();
@@ -115,6 +116,7 @@ export const load: PageServerLoad = async (event) => {
     contentId,
     contentTitle,
   });
+
   return {
     published,
     drafts,
@@ -152,6 +154,7 @@ export const actions: Actions = {
       order,
       hidden: order.filter((id) => !shown.includes(id)),
     });
+
     if (!parsed.success)
       return fail(400, {
         dashboardPreferences: true,
@@ -162,11 +165,13 @@ export const actions: Actions = {
           message,
         })),
       });
+
     try {
       await adminFor(event).dashboardPreferences.update(parsed.data);
     } catch (caught) {
       return failFrom(caught, { dashboardPreferences: true });
     }
+
     return { dashboardPreferences: true, notice: 'dashboardOptionsSaved' };
   },
   /** Approve, spam or trash one comment waiting for moderation. */
@@ -175,18 +180,22 @@ export const actions: Actions = {
     const action = COMMENT_BULK_ACTIONS.find(
       (option) => option !== 'delete' && option === text(form, 'action'),
     );
+
     if (!action) return {};
+
     try {
       await adminFor(event).comments.bulk({ ids: [text(form, 'id')], action });
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'saved' };
   },
   /** Saves a quick draft post from a title and plain text. */
   draft: async (event) => {
     const form = await event.request.formData();
     const body = text(form, 'body').trim();
+
     try {
       await adminFor(event).content.create({
         type: 'post',
@@ -204,6 +213,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'draftSaved' };
   },
 };

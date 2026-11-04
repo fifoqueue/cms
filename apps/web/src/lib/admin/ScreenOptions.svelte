@@ -35,6 +35,7 @@
         .map(({ key }) => key)
         .filter((key) => !form.getAll('shown').includes(key)),
     });
+
     document.cookie = `${SCREEN_COOKIE(screen)}=${encodeURIComponent(value)}; path=/admin; max-age=31536000; samesite=lax`;
     await invalidateAll();
   };

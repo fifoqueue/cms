@@ -62,6 +62,7 @@ const toRecord = async (
   hooks?: HookDispatcher,
 ): Promise<ContentRecord> => {
   if (path === null) throw new Error(Errors.ContentPathMissing);
+
   return {
     ...row,
     tocOverride: adminContentSchema.shape.tocOverride.parse(row.tocOverride),
@@ -92,6 +93,7 @@ const toSummary = async (
   hooks?: HookDispatcher,
 ): Promise<ContentSummaryRecord> => {
   if (!currentPath) throw new Error(Errors.ContentPathMissing);
+
   return {
     ...row,
     tocOverride: adminContentSchema.shape.tocOverride.parse(row.tocOverride),
@@ -160,6 +162,7 @@ export class PrismaContentRepository implements ContentRepository {
       where: { id },
       include: withRelations,
     });
+
     return row && toRecord(row, undefined, this.hooks);
   }
 
@@ -180,6 +183,7 @@ export class PrismaContentRepository implements ContentRepository {
         trashed_at AS trashedAt, password_hash IS NOT NULL AS protected,
         type, toc_override AS tocOverride
       FROM contents WHERE id IN (${Prisma.join([...ids])})`);
+
     return rows.map((row) => ({
       id: row.id,
       document: JSON.parse(row.document) as ContentDocument,
@@ -208,14 +212,17 @@ export class PrismaContentRepository implements ContentRepository {
       published: 0,
       private: 0,
     };
+
     for (const row of rows) {
       const total = Number(row.total);
+
       if (Number(row.trash)) result.trash += total;
       else {
         result.all += total;
         result[row.status as 'draft'] += total;
       }
     }
+
     return result;
   }
 
@@ -228,9 +235,11 @@ export class PrismaContentRepository implements ContentRepository {
   }: ContentCriteria) {
     // Every filter reaches the query (trash view, author, sticky, dates included).
     const where = await contentWhere(this.db, filters);
+
     if (!where) return { items: [], total: 0 };
     const total = await this.db.content.count({ where });
     const skip = (page - 1) * pageSize;
+
     if (skip >= total) return { items: [], total };
     const rows = await this.db.content.findMany({
       where,
@@ -246,6 +255,7 @@ export class PrismaContentRepository implements ContentRepository {
       skip,
       take: pageSize,
     });
+
     return {
       items: await Promise.all(rows.map((row) => toSummary(row, this.hooks))),
       total,
@@ -262,6 +272,7 @@ export class PrismaContentRepository implements ContentRepository {
       orderBy: { id: 'asc' },
       take: limit,
     });
+
     return Promise.all(rows.map((row) => toRecord(row, undefined, this.hooks)));
   }
 
@@ -289,6 +300,7 @@ export class PrismaContentRepository implements ContentRepository {
         current?.updatedAt.getTime() !== guard.expectedUpdatedAt.getTime()
       )
         throw conflict(Errors.ContentChanged);
+
       if (guard.revision) {
         if (
           current?.authorId !== guard.revision.authorId ||
@@ -306,6 +318,7 @@ export class PrismaContentRepository implements ContentRepository {
         )
           throw notFound(Errors.RevisionNotFound);
       }
+
       // Autosaves are written under the same lock, so none can appear before this write commits.
       if (
         guard.autosaveOf &&
@@ -314,6 +327,7 @@ export class PrismaContentRepository implements ContentRepository {
       )
         throw conflict(Errors.ContentAutosavePending);
       const { id, ...data } = toRow(next);
+
       return tx.content.update({
         where: { id },
         data: {
@@ -336,13 +350,16 @@ export class PrismaContentRepository implements ContentRepository {
     await this.db.$transaction(async (tx) => {
       // The entry before its comments, the order every comment writer uses.
       const ids = await lockPermalinks(tx, false, Prisma.sql`id = ${id}`);
+
       if (trashedOnly) {
         const current = await tx.content.findUnique({
           where: { id },
           select: { trashedAt: true },
         });
+
         if (!current?.trashedAt) throw conflict(Errors.ContentChanged);
       }
+
       await deleteEntries(tx, ids);
       await refreshContentPaths(tx, { type: 'page' }, this.tokens);
       await tx.searchOutbox.create({ data: { contentId: id } });
@@ -381,6 +398,7 @@ export class PrismaContentRepository implements ContentRepository {
       take: 100,
     });
     const published: string[] = [];
+
     for (const { id } of due) {
       // Under the content write lock, rechecked there: an edit that unscheduled it meanwhile
       // wins, and the version still strictly advances (no reuse of an earlier `updatedAt`).
@@ -395,6 +413,7 @@ export class PrismaContentRepository implements ContentRepository {
             updatedAt: true,
           },
         });
+
         if (
           current?.status !== 'scheduled' ||
           current.trashedAt ||
@@ -416,10 +435,13 @@ export class PrismaContentRepository implements ContentRepository {
           },
         });
         await tx.searchOutbox.create({ data: { contentId: id } });
+
         return true;
       });
+
       if (changed) published.push(id);
     }
+
     return published;
   }
 
@@ -429,6 +451,7 @@ export class PrismaContentRepository implements ContentRepository {
       select: { id: true },
       take: limit,
     });
+
     return rows.map((row) => row.id);
   }
 
@@ -470,6 +493,7 @@ export class PrismaContentRepository implements ContentRepository {
                 document: true,
               },
             });
+
             if (
               record.type !== 'page' &&
               (await tx.content.count({ where: { parentId: record.id } }))
@@ -499,6 +523,7 @@ export class PrismaContentRepository implements ContentRepository {
               },
               select: { id: true, taxonomy: true },
             });
+
             checkTermKinds(
               record,
               new Map(terms.map((term) => [term.id, term.taxonomy])),
@@ -512,6 +537,7 @@ export class PrismaContentRepository implements ContentRepository {
                 })
               ).map((row) => row.id),
             );
+
             if (record.featuredMediaId && !media.has(record.featuredMediaId))
               throw invalidInput(Errors.MediaNotFound, [
                 { path: 'featuredMediaId', message: Errors.MediaNotFound },
@@ -525,6 +551,7 @@ export class PrismaContentRepository implements ContentRepository {
                   }
                 : record;
             const row = await save(tx, next, current);
+
             await tx.contentMedia.deleteMany({
               where: {
                 contentId: row.id,
@@ -547,7 +574,9 @@ export class PrismaContentRepository implements ContentRepository {
               current?.publishedAt != null,
               this.tokens,
             );
+
             await saveRevisionIn(tx, row, revision);
+
             return toRecord(row, path, this.hooks);
           }),
         Errors.SlugConflict,

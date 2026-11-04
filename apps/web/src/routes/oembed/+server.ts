@@ -18,15 +18,18 @@ export const GET: RequestHandler = async ({ fetch, url }) => {
   const api = contentApi(fetch);
   const [settings, site] = await Promise.all([api.seo.settings(), api.site()]);
   let target: URL;
+
   try {
     target = new URL(url.searchParams.get('url') ?? '');
   } catch {
     return notFound();
   }
+
   if (!settings.siteUrl || target.origin !== new URL(settings.siteUrl).origin)
     return notFound();
   const resolved = await api.resolvePath(target.pathname).catch(() => null);
   const content = resolved?.content;
+
   if (!content || content.protected) return notFound();
 
   const link = absoluteUrl(settings.siteUrl, content.path);
@@ -41,6 +44,7 @@ export const GET: RequestHandler = async ({ fetch, url }) => {
     `<p><a href="${xmlText(home)}">${xmlText(messagesFor(site.locale).oembedEmbedded(site.title))}</a></p>`,
     '</blockquote>',
   ].join('');
+
   return Response.json(
     {
       version: '1.0',

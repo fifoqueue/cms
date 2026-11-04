@@ -23,6 +23,7 @@ export class ArchivePathsService {
 
   async update(input: unknown): Promise<ArchivePathsState> {
     const result = archiveBasesSchema.safeParse(input);
+
     if (!result.success)
       throw invalidInput(
         Errors.InvalidPermalink,
@@ -33,6 +34,7 @@ export class ArchivePathsService {
       );
 
     await this.repository.save(result.data);
+
     return this.get();
   }
 

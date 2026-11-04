@@ -107,6 +107,7 @@ export class UserService {
         {},
         (value) => userQuerySchema.safeParse(value).success,
       )) ?? {};
+
     return (await this.deps.directory.list(userQuerySchema.parse(query))).map(
       toSummary,
     );
@@ -115,6 +116,7 @@ export class UserService {
   /** A public author archive; only users with published entries have one. */
   async publicAuthor(slug: string): Promise<PublicAuthor> {
     const author = await this.deps.directory.publicAuthor(slug);
+
     if (!author) throw notFound(Errors.UserNotFound);
     const result: PublicAuthor = {
       name: author.name,
@@ -122,6 +124,7 @@ export class UserService {
       bio: author.bio,
       avatarUrl: (await this.deps.avatar?.(`author:${author.slug}`)) ?? null,
     };
+
     return publicAuthorSchema.parse(
       (await this.deps.hooks?.applyFilter(
         'user.public',
@@ -134,6 +137,7 @@ export class UserService {
   /** Id, name and public slug of every user who can write, for the author picker and filter. */
   async authors(): Promise<{ id: string; name: string; slug: string }[]> {
     const roles = await this.deps.roles?.list();
+
     return (await this.deps.directory.list())
       .filter((user) =>
         can(
@@ -200,11 +204,14 @@ export class UserService {
       locale: '',
       createdAt: this.deps.clock.now(),
     };
+
     if (data.slug) await this.assertSlugFree(data.slug);
     await this.deps.directory.insert(user);
     const summary = toSummary({ ...user, contentCount: 0 });
+
     void this.deps.hooks?.emit('user.created', summary);
     if (!data.password) await this.deps.invitations.send(user);
+
     return summary;
   }
 
@@ -212,31 +219,38 @@ export class UserService {
     const result = membershipSchema.safeParse(
       await this.deps.settings?.get('membership'),
     );
+
     return result.success ? result.data : { enabled: false };
   }
 
   async configureMembership(input: unknown, actor: Actor) {
     authorize(actor, 'users.manage');
     const settings = parseInput(membershipSchema, input);
+
     if (settings.enabled && !(await this.deps.invitations.available()))
       throw invalidInput(Errors.EmailDisabled);
     await this.deps.settings?.set('membership', settings);
     this.deps.publicCache?.invalidate();
+
     return settings;
   }
 
   async registrationStatus() {
     if (!this.deps.hooks?.has('user.registrationAllowed')) {
       const { enabled } = await this.membership();
+
       return { enabled, registrationOpen: enabled };
     }
+
     const load = async () => {
       const { enabled } = await this.membership();
+
       return {
         enabled,
         registrationOpen: await this.registrationAllowed(enabled, null, null),
       };
     };
+
     return this.deps.publicCache
       ? this.deps.publicCache.get('registration', load, 5_000)
       : load();
@@ -248,12 +262,14 @@ export class UserService {
     name: string | null,
   ) {
     const hooks = this.deps.hooks;
+
     if (!hooks?.has('user.registrationAllowed')) return allowed;
     const result = await hooks.applyFilter(
       'user.registrationAllowed',
       { allowed, email, name },
       (value) => {
         const parsed = registrationDecisionSchema.safeParse(value);
+
         return (
           parsed.success &&
           parsed.data.email === email &&
@@ -261,6 +277,7 @@ export class UserService {
         );
       },
     );
+
     return result.allowed;
   }
 
@@ -271,6 +288,7 @@ export class UserService {
     const enabled = (await this.membership()).enabled;
     const hooks = this.deps.hooks;
     const filtered = hooks?.has('user.registrationAllowed');
+
     // With nothing able to open it, closed registration fails before an attempt is counted.
     if (!enabled && !filtered) throw invalidInput(Errors.RegistrationClosed);
     // Counted before any handler runs, so rate-limited callers never reach plugin code.
@@ -284,6 +302,7 @@ export class UserService {
       data.email.toLowerCase(),
       data.name,
     );
+
     if (!allowed) throw invalidInput(Errors.RegistrationClosed);
     if (!(await this.deps.invitations.available()))
       throw invalidInput(Errors.EmailDisabled);
@@ -305,7 +324,9 @@ export class UserService {
       this.deps.users.findByEmail(data.email),
       this.deps.hasher.hash(this.deps.tokens.issue()),
     ]);
+
     if (existing) return;
+
     try {
       await this.createAccount({ ...data, role: 'subscriber' }, passwordHash);
     } catch (caught) {
@@ -380,12 +401,14 @@ export class UserService {
     });
     const result = await this.summary(id);
     const profile = toProfile({ ...current, ...data, email });
+
     void this.deps.hooks?.emit('user.updated', profile);
     if (current.role !== data.role)
       void this.deps.hooks?.emit('user.roleChanged', {
         user: profile,
         previousRole: current.role,
       });
+
     return result;
   }
 
@@ -398,6 +421,7 @@ export class UserService {
     if (id === actor.id) throw conflict(Errors.UserDeleteSelf);
     const current = await this.require(id);
     const { reassignTo } = parseInput(userDeleteSchema, input);
+
     if (
       reassignTo !== undefined &&
       (reassignTo === id || !(await this.deps.users.findById(reassignTo)))
@@ -421,6 +445,7 @@ export class UserService {
       data: parseInput(profileUpdateSchema, input),
     });
     const email = data.email.toLowerCase();
+
     if (email !== current.email && !can(actor, 'users.manage'))
       throw invalidInput(Errors.EmailChangeRestricted, [
         { path: 'email', message: Errors.EmailChangeRestricted },
@@ -436,33 +461,41 @@ export class UserService {
       locale: data.locale,
     });
     const profile = toProfile(await this.require(current.id));
+
     if (this.deps.roles)
       profile.capabilities = await this.deps.roles.capabilities(
         profile.role,
         profile.id,
       );
     void this.deps.hooks?.emit('user.updated', profile);
+
     return profile;
   }
 
   private async summary(id: string) {
     const user = await this.deps.directory.get(id);
+
     if (!user) throw notFound(Errors.UserNotFound);
+
     return toSummary(user);
   }
 
   async profileFields(id: string, actor: Actor) {
     if (id !== actor.id) authorize(actor, 'users.manage');
     await this.require(id);
+
     return this.deps.profiles?.get(id) ?? { fields: [], values: {} };
   }
 
   async saveProfileFields(id: string, input: unknown, actor: Actor) {
     if (id !== actor.id) authorize(actor, 'users.manage');
     const user = await this.require(id);
+
     if (!this.deps.profiles) throw invalidInput(Errors.UserNotFound);
     const result = await this.deps.profiles.save(id, input);
+
     void this.deps.hooks?.emit('user.updated', toProfile(user));
+
     return result;
   }
 
@@ -470,23 +503,28 @@ export class UserService {
     const result =
       (await this.deps.hooks?.applyFilter('user.beforeSave', input, (value) => {
         const parsed = userSaveSchema.safeParse(value);
+
         return (
           parsed.success &&
           parsed.data.operation === input.operation &&
           parsed.data.id === input.id
         );
       })) ?? input;
+
     return userSaveSchema.parse(result) as T;
   }
 
   private async require(id: string) {
     const user = await this.deps.users.findById(id);
+
     if (!user) throw notFound(Errors.UserNotFound);
+
     return user;
   }
 
   private async assertEmailFree(email: string, exceptId: string | null) {
     const other = await this.deps.users.findByEmail(email);
+
     if (other && other.id !== exceptId) throw conflict(Errors.EmailRegistered);
   }
 

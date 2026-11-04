@@ -29,6 +29,7 @@ test('saving keeps named references without text and drops blank numbered notes'
       ),
     ],
   });
+
   expect(saved.content[0]!.content).toEqual([note('Source'), note('', 'src')]);
 });
 
@@ -41,6 +42,7 @@ test("labels restart per page while a name's first definition wins on every page
       paragraph(note('', 'src'), note('Later', 'src'), note('B')),
     ],
   });
+
   expect(
     footnotePages(doc).pages.map(({ page, notes }) => [
       page,

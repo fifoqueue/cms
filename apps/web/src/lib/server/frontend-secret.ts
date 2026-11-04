@@ -26,8 +26,10 @@ export const frontendSecret = () => secret;
 export const pairFrontend = async (admin: AdminClient) => {
   if (secret) return;
   const paired = await admin.frontendSecret().catch(() => null);
+
   if (!paired) return;
   secret = paired.secret;
+
   try {
     mkdirSync(dirname(FILE), { recursive: true });
     writeFileSync(FILE, `${secret}\n`, { mode: 0o600 });

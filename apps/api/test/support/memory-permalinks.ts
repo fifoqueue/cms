@@ -42,6 +42,7 @@ export class MemoryPermalinkRepository
   async addRedirect(contentId: string, path: string) {
     if (permalinkPathIssue(path) || this.paths.has(path)) return false;
     this.paths.set(path, { path, contentId, current: false });
+
     return true;
   }
 
@@ -61,6 +62,7 @@ export class MemoryPermalinkRepository
     const sources = [...this.sources()].filter(
       (source) => source.id !== subject.id,
     );
+
     sources.push(subject);
     const entries = this.withParents(sources)
       .filter(
@@ -91,22 +93,27 @@ export class MemoryPermalinkRepository
   current(contentId: string): string | null {
     for (const row of this.paths.values())
       if (row.current && row.contentId === contentId) return row.path;
+
     return null;
   }
 
   private withParents(sources: PermalinkSubject[]) {
     const byId = new Map(sources.map((source) => [source.id, source]));
+
     return sources.map((source) => {
       const parents: string[] = [];
       const seen = new Set([source.id]);
+
       for (let id = source.parentId; id;) {
         if (seen.has(id)) throw invalidInput(Errors.ContentParentInvalid);
         seen.add(id);
         const parent = byId.get(id);
+
         if (!parent) break;
         parents.unshift(parent.slug);
         id = parent.parentId;
       }
+
       return { ...source, parents };
     });
   }

@@ -11,6 +11,7 @@ test('dashboard filters can reorder/remove but cannot rewrite or grant widgets',
     logger,
     hooks,
   });
+
   for (const key of ['first', 'second'])
     registry.registrar('test').dashboardWidget(key, {
       title: key,
@@ -27,8 +28,10 @@ test('dashboard filters can reorder/remove but cannot rewrite or grant widgets',
     role: 'author',
     capabilities: ['content.create'],
   };
+
   hooks.registrar('order').filter('dashboard.data', (value) => {
     expect(value.capabilities).toEqual(['content.create']);
+
     return { ...value, widgets: value.widgets.toReversed() };
   });
   hooks.registrar('rewrite').filter('dashboard.data', (value) => ({
@@ -57,6 +60,7 @@ test('dashboard output filters ignore malformed widgets and isolate failures', a
     hooks,
   });
   const widget = { plugin: 'test', key: 'extra', title: 'Extra', blocks: [] };
+
   hooks.registrar('test').filter('dashboard.data', (value) => ({
     ...value,
     widgets: [...value.widgets, widget],

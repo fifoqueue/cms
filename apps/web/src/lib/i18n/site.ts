@@ -213,6 +213,7 @@ export const loadSiteMessages = async (
     languageOf(catalog.language) === 'ko'
       ? await import('#lib/i18n/site-functions/ko.js')
       : await import('#lib/i18n/site-functions/en.js');
+
   return {
     ...catalog.strings,
     ...siteFunctions,

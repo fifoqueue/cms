@@ -39,6 +39,7 @@
   );
   const target = $derived.by((): ListingTarget | null => {
     if (!block.attrs.inherit) return null;
+
     switch (page.kind) {
       case 'home':
         return { kind: 'home', type: page.type, path: page.path };

@@ -16,6 +16,7 @@ import { pageSchema } from '#sdk/transport';
 import type { Paginated } from '#sdk/common';
 import { visitorHeaders } from '#sdk/clients/security';
 import type { Visitor } from '#sdk/clients/security';
+
 export const publicPrivacyClient = (request: Request) => ({
   privacy: () =>
     request<PublicPrivacy>('GET', '/api/v1/privacy', {

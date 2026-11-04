@@ -32,9 +32,12 @@ export class ResponsiveImages {
       ? await this.images(ids)
       : new Map<string, PublicImage>();
     let index = 0;
+
     return html.replace(IMAGE, (tag, attrs: string) => {
       const image = images.get(MEDIA_ID.exec(attrs)?.[1] ?? '');
+
       if (!image && /\s(?:srcset|loading)=/.test(attrs)) return tag;
+
       if (image) {
         attrs = attrs.replace(
           /\ssrc="[^"]*"/,
@@ -42,7 +45,9 @@ export class ResponsiveImages {
         );
         attrs = attrs.replace(/\ssrcset="[^"]*"/, '');
       }
+
       const extra: string[] = [];
+
       if (image && image.sizes.length > 1)
         extra.push(
           `srcset="${image.sizes.map(({ url, width }) => `${escapeAttribute(url)} ${width}w`).join(', ')}"`,
@@ -53,6 +58,7 @@ export class ResponsiveImages {
       if (index++ > 0 && !/\sloading=/.test(attrs))
         extra.push('loading="lazy"');
       extra.push('decoding="async"');
+
       return `<img${attrs} ${extra.join(' ')}>`;
     });
   }

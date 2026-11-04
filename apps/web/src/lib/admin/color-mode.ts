@@ -28,8 +28,10 @@ export const applyColorMode = (mode: ColorMode) => {
   const root = document.documentElement;
   const query = matchMedia(DARK_QUERY);
   const sync = () => root.classList.toggle('dark', isDark(mode));
+
   sync();
   query.addEventListener('change', sync);
+
   return () => {
     query.removeEventListener('change', sync);
     root.classList.remove('dark');

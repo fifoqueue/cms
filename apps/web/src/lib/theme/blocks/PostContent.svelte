@@ -27,6 +27,7 @@
   const failure = $derived.by(() => {
     if (!page.form || !('message' in page.form)) return '';
     const message = String(page.form.message);
+
     return catalogMessage(m, message) ?? message;
   });
 </script>

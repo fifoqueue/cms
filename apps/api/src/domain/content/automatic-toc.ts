@@ -25,6 +25,7 @@ export class TocRenderer {
     const candidates = snapshots.filter(
       (snapshot) => snapshot.tocOverride !== 'never',
     );
+
     if (!candidates.length) return html;
     const { writing, locale } = await this.deps.settings();
     const eligible = candidates.filter(
@@ -33,6 +34,7 @@ export class TocRenderer {
         (writing.autoToc.enabled &&
           writing.autoToc.types.includes(snapshot.type)),
     );
+
     if (!eligible.length) return html;
     const records = new Map(
       (
@@ -41,9 +43,11 @@ export class TocRenderer {
         )
       ).map((record) => [record.id, record]),
     );
+
     // Rendering is synchronous and sequential, never one concurrent task per entry.
     for (const snapshot of eligible) {
       const current = records.get(snapshot.id);
+
       // Never combine newly fetched authoring content with an earlier authorization.
       // HTML equality also catches text changes saved within the same timestamp tick.
       if (
@@ -69,6 +73,7 @@ export class TocRenderer {
         ),
       );
     }
+
     return html;
   }
 
@@ -77,6 +82,7 @@ export class TocRenderer {
     record: ContentRecord,
   ): Promise<string> {
     const { writing, locale } = await this.deps.settings();
+
     return automaticToc(
       document,
       record.type,
@@ -96,6 +102,7 @@ export function automaticToc(
   locale: string,
 ): string {
   const toc = settings.autoToc;
+
   return renderDocument(document, {
     enabled: toc.enabled && toc.types.includes(type),
     override,

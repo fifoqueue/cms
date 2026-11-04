@@ -182,6 +182,7 @@ const typeSection = (
   extra: NavEntry[] = [],
 ): NavSection => {
   const query: `?${string}` = `?type=${encodeURIComponent(type.key)}`;
+
   return {
     key: `type-${type.key}`,
     icon: type.key === 'page' ? Files : type.key === 'post' ? Pin : FileText,
@@ -236,6 +237,7 @@ export const adminSections = ({
       capability: 'taxonomy.manage',
     })),
   ];
+
   return [
     {
       key: 'dashboard',

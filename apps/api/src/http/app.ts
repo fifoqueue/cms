@@ -24,6 +24,7 @@ export const apiErrors = (logger: Logger) =>
       return errorResponse(404, 'not_found', Errors.RouteNotFound);
     if (code === 'PARSE' || code === 'VALIDATION')
       return errorResponse(400, 'invalid_input', error.message);
+
     return toErrorResponse(error, logger);
   });
 

@@ -26,6 +26,7 @@ export class MemoryPushSubscriptions implements PushSubscriptionRepository {
     const existing = [...this.rows.values()].find(
       (row) => sameOwner(row) && row.endpoint === record.endpoint,
     );
+
     this.rows.set(
       existing?.id ?? record.id,
       existing
@@ -39,11 +40,13 @@ export class MemoryPushSubscriptions implements PushSubscriptionRepository {
           b.lastSeenAt.getTime() - a.lastSeenAt.getTime() ||
           b.id.localeCompare(a.id),
       );
+
     for (const row of owned.slice(cap)) this.rows.delete(row.id);
   }
 
   async findById(id: string) {
     const row = this.rows.get(id);
+
     return row ? { ...row } : null;
   }
 
@@ -70,6 +73,7 @@ export class MemoryPushSubscriptions implements PushSubscriptionRepository {
         row.endpoint === old.endpoint &&
         sameAuth(row.auth, old.auth),
     );
+
     for (const row of moved) {
       const duplicate =
         next.endpoint === old.endpoint
@@ -81,10 +85,13 @@ export class MemoryPushSubscriptions implements PushSubscriptionRepository {
                   ? other.commentId === row.commentId
                   : other.userId === row.userId),
             );
+
       if (duplicate) this.rows.delete(row.id);
       const target = duplicate ?? row;
+
       this.rows.set(target.id, { ...target, ...this.refreshed(next, at) });
     }
+
     return moved.length;
   }
 
@@ -105,6 +112,7 @@ export class MemoryPushSubscriptions implements PushSubscriptionRepository {
   ) {
     for (const id of ids) {
       const row = this.rows.get(id);
+
       if (row?.status === 'active')
         this.rows.set(id, {
           ...row,
@@ -127,6 +135,7 @@ export class MemoryPushSubscriptions implements PushSubscriptionRepository {
 
   async purge(before: Date) {
     let count = 0;
+
     for (const row of [...this.rows.values()])
       if (
         row.status === 'invalid' &&
@@ -136,6 +145,7 @@ export class MemoryPushSubscriptions implements PushSubscriptionRepository {
         this.rows.delete(row.id);
         count += 1;
       }
+
     return count;
   }
 
@@ -168,11 +178,14 @@ export class MemoryCommentNoticeState implements CommentNoticeState {
 
   async claim(comment: { id: string }, _at: Date, job: QueuedJob) {
     const commentId = comment.id;
+
     if (this.failures > 0) {
       this.failures -= 1;
       throw new Error('claim failed');
     }
+
     const row = this.comments.rows.get(commentId);
+
     if (
       !row ||
       row.status !== 'approved' ||
@@ -182,13 +195,16 @@ export class MemoryCommentNoticeState implements CommentNoticeState {
       return false;
     this.claimed.add(commentId);
     enqueue(this.queue, job);
+
     return true;
   }
 
   async release(commentId: string) {
     const row = this.comments.rows.get(commentId);
+
     if (!row || row.status === 'approved') return false;
     this.claimed.delete(commentId);
+
     return true;
   }
 
@@ -240,13 +256,17 @@ export class MemoryNoticeOutbox implements NoticeOutbox {
         windowMs,
         now,
       );
+
       windows.set(key, result.next);
+
       return result;
     };
+
     for (const item of plan.items ?? []) {
       if (!this.live(item.subjects)) continue;
       const { window, thread } = item;
       const flood = count(window.key, window.limit, window.windowMs);
+
       if (flood.admitted)
         jobs.push(
           ...item.deliver(
@@ -258,23 +278,28 @@ export class MemoryNoticeOutbox implements NoticeOutbox {
         );
       else if (flood.firstHeld) jobs.push(item.collect(flood.next.windowEnd));
     }
+
     this.dispatched.set(key, now);
     for (const [windowKey, value] of windows)
       this.windows.set(windowKey, value);
     for (const job of jobs)
       if (this.live(job.subjects)) enqueue(this.queue, job);
+
     return true;
   }
 
   async collect(window: string, build: (count: number) => QueuedJob[]) {
     this.fail();
     const row = this.windows.get(window);
+
     if (!row?.deferred) return 0;
     const jobs = build(row.deferred);
     const held = row.deferred;
+
     this.windows.set(window, { ...row, deferred: 0 });
     for (const job of jobs)
       if (this.live(job.subjects)) enqueue(this.queue, job);
+
     return held;
   }
 

@@ -9,6 +9,7 @@ export const routes = (app: ApiApp) =>
     async ({ media, params, request, user }) => {
       const name = new URL(request.url).searchParams.get('name') ?? '';
       const image = await media.derivative(params.id, name, user);
+
       return new Response(new Blob([image.bytes.slice()]), {
         headers: {
           'Content-Type': 'image/webp',

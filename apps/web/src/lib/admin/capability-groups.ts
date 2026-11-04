@@ -18,17 +18,21 @@ export const capabilityGroups = (
 ): CapabilityGroup[] => {
   const groups = new Map<string, CapabilityGroup>();
   const known = new Set(core);
+
   for (const { key, label, source } of registered ?? []) {
     if (known.has(key)) continue;
     known.add(key);
     const group = groups.get(source) ?? { source, capabilities: [] };
+
     group.capabilities.push({ key, label });
     groups.set(source, group);
   }
+
   const held = [...new Set(roles.flatMap((role) => role.capabilities))]
     .filter((key) => !known.has(key))
     .sort()
     .map((key) => ({ key, label: key }));
+
   return [
     ...[...groups.values()].sort((a, b) =>
       String(a.source).localeCompare(String(b.source)),

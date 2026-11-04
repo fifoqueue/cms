@@ -13,20 +13,27 @@ export class RoleRegistry {
         capabilities: [...ROLE_CAPABILITIES[key]!],
       });
   }
+
   register(input: RoleDefinition, source = 'core') {
     const role = parseInput(roleDefinitionSchema, input);
     const token = {};
+
     this.entries.set(token, { ...role, source });
+
     return () => {
       this.entries.delete(token);
     };
   }
+
   list(): RoleDefinition[] {
     const roles = new Map<string, RoleDefinition>();
+
     for (const role of this.entries.values())
       if (!roles.has(role.key)) roles.set(role.key, structuredClone(role));
+
     return [...roles.values()];
   }
+
   has(key: string) {
     return [...this.entries.values()].some((role) => role.key === key);
   }

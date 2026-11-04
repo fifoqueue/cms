@@ -83,8 +83,10 @@ export const lengthState = (
   { min, max }: { min: number; max: number },
 ): LengthState => {
   const count = charCount(value);
+
   if (!count) return 'empty';
   if (count < min) return 'short';
+
   return count > max ? 'long' : 'good';
 };
 
@@ -112,13 +114,16 @@ export const documentText = (document: unknown) => {
     if (node.type === 'heading') headings++;
     if (Array.isArray(node.content))
       for (const child of node.content as DocNode[]) walk(child);
+
     if (typeof node.type === 'string' && BLOCKS.has(node.type) && line) {
       lines.push(line);
       line = '';
     }
   };
+
   if (document && typeof document === 'object') walk(document as DocNode);
   if (line) lines.push(line);
+
   return { text: lines.join('\n'), headings };
 };
 
@@ -133,6 +138,7 @@ export const readingStats = (text: string) => {
   const sentences = [
     ...new Intl.Segmenter(undefined, { granularity: 'sentence' }).segment(text),
   ].filter(({ segment }) => segment.trim()).length;
+
   return {
     words: wordCount,
     minutes: wordCount ? Math.max(1, Math.round(wordCount / 200)) : 0,
@@ -145,7 +151,9 @@ const fold = (value: string) => value.normalize('NFKC').toLocaleLowerCase();
 /** How often `keyword` occurs in `text`, ignoring case. */
 export const occurrences = (text: string, keyword: string) => {
   const needle = fold(keyword.trim());
+
   if (!needle) return 0;
+
   return fold(text).split(needle).length - 1;
 };
 

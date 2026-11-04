@@ -20,7 +20,9 @@ export const routes = (app: ApiApp) =>
         { values },
         clients.attempt(request),
       );
+
       if (step.kind !== 'session') throw conflict(Errors.SignInStepRequired);
+
       return json(step.session);
     },
     { parse: 'none' },

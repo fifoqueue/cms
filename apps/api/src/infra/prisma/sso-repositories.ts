@@ -37,6 +37,7 @@ export class PrismaSsoAccessTransactions implements SsoAccessTransactions {
   run<T>(work: (context: SsoAccessContext) => Promise<T>) {
     return this.db.$transaction(async (tx) => {
       await lockSetting(tx, 'signIn.admission');
+
       return work({
         settings: new PrismaSettingsRepository(tx),
         identities: {
@@ -90,6 +91,7 @@ export class PrismaIdentityRepository implements ExternalIdentityRepository {
     const token = await this.db.passwordToken.findFirst({
       where: { tokenHash, expiresAt: { gt: now } },
     });
+
     return token?.userId ?? null;
   }
 
@@ -114,6 +116,7 @@ export class PrismaIdentityRepository implements ExternalIdentityRepository {
               expiresAt: { gt: now },
             },
           });
+
           if (!consumed.count) return false;
           await tx.passwordToken.deleteMany({
             where: { userId: identity.userId },
@@ -125,6 +128,7 @@ export class PrismaIdentityRepository implements ExternalIdentityRepository {
               subject: encoder.encode(identity.subject),
             },
           });
+
           return true;
         }),
       Errors.SsoAccountLinkedElsewhere,
@@ -177,6 +181,7 @@ export class PrismaSsoTransactionRepository implements SsoTransactionRepository 
       // An atomic upsert, so even the very first concurrent admissions queue on the same row lock.
       // It is the transaction's first statement: the counts below read after the lock is held.
       await tx.$executeRaw`INSERT INTO settings (\`key\`, value) VALUES (${ADMISSION_LOCK}, 'true') ON DUPLICATE KEY UPDATE value = 'true'`;
+
       while (await purgeExpired(tx, now, 'sso')) {
         /* bounded batches */
       }
@@ -199,6 +204,7 @@ export class PrismaSsoTransactionRepository implements SsoTransactionRepository 
     const row = await this.db.ssoTransaction.findUnique({
       where: { handleHash },
     });
+
     if (!row) return null;
 
     // Only the request that actually deletes the row may use it.

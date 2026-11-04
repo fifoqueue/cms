@@ -22,6 +22,7 @@ export const routes = (app: ApiApp) =>
       '',
       async ({ media, params, query, user }) => {
         await media.remove(params.id, query.force === '1', user);
+
         return noContent();
       },
       idParams,

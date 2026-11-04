@@ -15,6 +15,7 @@ test('external file edits activate without restarting the watcher', async () => 
   const host = new FunctionsHost({
     sources: async () => {
       const snapshot = await source.source();
+
       return snapshot ? [snapshot] : [];
     },
     context: () =>
@@ -25,7 +26,9 @@ test('external file edits activate without restarting the watcher', async () => 
     invalidate() {},
   });
   const watcher = new FunctionsWatch(directory, host, logger);
+
   await watcher.start();
+
   try {
     await writeFile(
       join(directory, 'site.ts'),
@@ -40,6 +43,7 @@ test('external file edits activate without restarting the watcher', async () => 
 test('site loader resolves SDK imports outside the workspace and reloads changed exports', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'cms-functions-'));
   const source = new SiteSource(directory);
+
   expect(await source.source()).toBeNull();
   const seen: string[] = [];
   const context = {
@@ -51,6 +55,7 @@ test('site loader resolves SDK imports outside the workspace and reloads changed
       error() {},
     },
   } as unknown as PluginContext;
+
   for (const value of ['first', 'second']) {
     await writeFile(
       join(directory, 'site.ts'),
@@ -58,9 +63,11 @@ test('site loader resolves SDK imports outside the workspace and reloads changed
 export const functions = defineFunctions({ api(ctx) { ctx.logger.info('${value}'); } });`,
     );
     const snapshot = await source.source();
+
     await (
       await snapshot!.load()
     ).api!(context);
   }
+
   expect(seen).toEqual(['first', 'second']);
 });

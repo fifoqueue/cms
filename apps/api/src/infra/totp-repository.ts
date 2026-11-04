@@ -12,13 +12,16 @@ export class PrismaTotpRepository
   constructor(private readonly db: Pick<Database, 'totpSecret'>) {}
   async find(userId: string) {
     const row = await this.db.totpSecret.findUnique({ where: { userId } });
+
     return row ? { ...row, lastStep: Number(row.lastStep) } : null;
   }
+
   async insert(record: TotpRecord) {
     try {
       await this.db.totpSecret.create({
         data: { ...record, lastStep: BigInt(record.lastStep) },
       });
+
       return true;
     } catch (error) {
       if (
@@ -29,6 +32,7 @@ export class PrismaTotpRepository
       throw error;
     }
   }
+
   async consume(id: string, step: number, resealed: string) {
     return (
       (
@@ -39,14 +43,17 @@ export class PrismaTotpRepository
       ).count === 1
     );
   }
+
   async scan(afterId: string | null, limit: number) {
     const rows = await this.db.totpSecret.findMany({
       where: afterId === null ? {} : { id: { gt: afterId } },
       orderBy: { id: 'asc' },
       take: limit,
     });
+
     return rows.map((row) => ({ ...row, lastStep: Number(row.lastStep) }));
   }
+
   async reseal(id: string, expected: string, resealed: string) {
     return (
       (
@@ -57,6 +64,7 @@ export class PrismaTotpRepository
       ).count === 1
     );
   }
+
   async remove(userId: string, id: string) {
     await this.db.totpSecret.deleteMany({ where: { userId, id } });
   }

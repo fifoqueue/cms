@@ -25,6 +25,7 @@ export class MailTransportRegistry implements Mailer {
   ): () => void {
     const id = pluginMailIdSchema.parse(`plugin:${owner}:${key}`);
     const fields = mailFieldSchema.array().parse(definition.fields);
+
     if (new Set(fields.map((field) => field.key)).size !== fields.length)
       throw new Error(Errors.InvalidInput);
     const label = z.string().min(1).max(100).parse(definition.label);
@@ -34,6 +35,7 @@ export class MailTransportRegistry implements Mailer {
         send: async (transport, message) => {
           if (transport.kind !== 'plugin') throw new Error(Errors.InvalidInput);
           this.validate(id, transport.settings);
+
           return definition.send({
             from: transport.from,
             to: message.to,
@@ -46,7 +48,9 @@ export class MailTransportRegistry implements Mailer {
       this.timeoutMs,
     );
     const entry = { label, fields };
+
     this.plugins.set(id, entry);
+
     return () => {
       release();
       if (this.plugins.get(id) === entry) this.plugins.delete(id);
@@ -61,6 +65,7 @@ export class MailTransportRegistry implements Mailer {
 
   validate(id: string, values: MailValues) {
     const definition = this.plugins.get(id);
+
     if (!definition) throw new Error(Errors.EmailDisabled);
     if (
       Object.keys(values).some(
@@ -68,8 +73,10 @@ export class MailTransportRegistry implements Mailer {
       )
     )
       throw new Error(Errors.InvalidInput);
+
     for (const field of definition.fields) {
       const value = values[field.key];
+
       if (value === undefined || value === '') {
         if (field.required) throw new Error(Errors.InvalidInput);
       } else if (
@@ -80,6 +87,7 @@ export class MailTransportRegistry implements Mailer {
       )
         throw new Error(Errors.InvalidInput);
     }
+
     return definition.fields;
   }
 
@@ -98,11 +106,14 @@ export class MailTransportRegistry implements Mailer {
                   ),
                 timeoutMs,
               );
+
               if (!result.ok || !z.void().safeParse(result.value).success)
                 throw new Error(Errors.EmailSendFailed);
             },
           };
+
     this.transports.set(id, entry);
+
     return () => {
       if (this.transports.get(id) === entry) this.transports.delete(id);
     };
@@ -120,6 +131,7 @@ export class MailTransportRegistry implements Mailer {
           ? 'smtp'
           : `http:${settings.provider}`;
     const transport = this.transports.get(id);
+
     if (!transport) throw new Error(Errors.EmailDisabled);
     await transport.send(settings, message);
   }

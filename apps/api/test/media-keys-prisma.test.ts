@@ -9,9 +9,11 @@ import {
 import { scratchDatabase } from '#test/support/scratch-database';
 
 const serverUrl = process.env.CMS_TEST_DATABASE_URL;
+
 describe.skipIf(!serverUrl)('indexed media keys on MariaDB', () => {
   let db: Database;
   let drop = async () => {};
+
   beforeAll(async () => {
     ({ db, drop } = await scratchDatabase(serverUrl!, 'cms_media_keys_test'));
   }, 60000);
@@ -36,6 +38,7 @@ describe.skipIf(!serverUrl)('indexed media keys on MariaDB', () => {
     await db.$executeRawUnsafe('DROP TABLE media_storage_keys');
     const id = crypto.randomUUID();
     const { variants: _variants, ...row } = record(id, 'legacy_a.png');
+
     await db.media.create({
       data: {
         ...row,
@@ -55,11 +58,14 @@ describe.skipIf(!serverUrl)('indexed media keys on MariaDB', () => {
       .split(';')
       .map((value) => value.trim())
       .filter(Boolean);
+
     for (let run = 0; run < 2; run++)
       for (const statement of statements) await db.$executeRawUnsafe(statement);
     const catchUp = new PrismaMediaKeyCatchUp(db);
+
     await catchUp.run();
     const count = await db.mediaStorageKey.count();
+
     await catchUp.run();
     expect(await db.mediaStorageKey.count()).toBe(count);
     const late = crypto.randomUUID();
@@ -67,6 +73,7 @@ describe.skipIf(!serverUrl)('indexed media keys on MariaDB', () => {
       late,
       `2026/01/${late}.png`,
     );
+
     await db.media.create({
       data: {
         ...lateRow,
@@ -76,6 +83,7 @@ describe.skipIf(!serverUrl)('indexed media keys on MariaDB', () => {
       },
     });
     const repository = new PrismaMediaRepository(db);
+
     expect((await repository.getByKey(`2026/01/${late}-small.webp`))?.id).toBe(
       late,
     );
@@ -84,6 +92,7 @@ describe.skipIf(!serverUrl)('indexed media keys on MariaDB', () => {
       later,
       'custom-late.png',
     );
+
     await db.media.create({
       data: {
         ...laterRow,
@@ -112,9 +121,11 @@ describe.skipIf(!serverUrl)('indexed media keys on MariaDB', () => {
         data: Array.from({ length: count }, (_, i) => {
           const id = String(start + i).padStart(36, '0');
           const { variants: _variants, ...row } = record(id, `batch-${id}.png`);
+
           return { ...row, variants: '{}' };
         }),
       });
+
     await insert(1, MEDIA_KEY_BATCH * 2);
     expect((await new PrismaMediaKeyCatchUp(db).run()).media).toBe(
       MEDIA_KEY_BATCH,
@@ -133,6 +144,7 @@ describe.skipIf(!serverUrl)('indexed media keys on MariaDB', () => {
     const mapping = await db.mediaStorageKey.findUnique({
       where: { key: new TextEncoder().encode(`batch-${id}.png`) },
     });
+
     expect(mapping?.mediaId).toBe(id);
   }, 60000);
 
@@ -145,11 +157,13 @@ describe.skipIf(!serverUrl)('indexed media keys on MariaDB', () => {
       first.reserveKeys(a, ['race.png', 'race_a.webp']),
       second.reserveKeys(b, ['race.png', 'race_b.webp']),
     ]);
+
     expect(outcomes.filter(Boolean)).toHaveLength(1);
     const winner = outcomes[0] ? a : b;
     const loser = outcomes[0] ? b : a;
     const wonVariant = outcomes[0] ? 'race_a.webp' : 'race_b.webp';
     const lostVariant = outcomes[0] ? 'race_b.webp' : 'race_a.webp';
+
     expect(await first.reserveKeys(loser, [lostVariant])).toBe(true);
     await expect(second.insert(record(loser, 'race.png'))).rejects.toThrow();
     expect(await second.exists(loser)).toBe(false);

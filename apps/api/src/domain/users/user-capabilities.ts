@@ -42,6 +42,7 @@ export class UserCapabilities {
       { userId: user.id, role: user.role, capabilities: [...base] },
       (value) => {
         const parsed = resultSchema.safeParse(value);
+
         return (
           parsed.success &&
           parsed.data.userId === user.id &&
@@ -59,12 +60,14 @@ export class UserCapabilities {
           )
             continue;
           const key = JSON.stringify([owner, user.id, capability]);
+
           if (this.grants.has(key)) continue;
           this.grants.add(key);
           this.logger.warn(`Capability grant ${key}`);
         }
       },
     );
+
     return [...new Set(result.capabilities)];
   }
 }

@@ -20,6 +20,7 @@ test('admin settings never return the client secret, which reaches only the prov
     siteUrl: async () => 'https://site.example',
     connect: (client) => {
       clients.push(client);
+
       return {
         authorize: async () => ({
           url: 'https://id.example.com/authorize',
@@ -48,6 +49,7 @@ test('admin settings never return the client secret, which reaches only the prov
     },
     profile({ id: 'admin', email: 'admin@example.com' }),
   );
+
   expect(saved).toMatchObject({
     providers: [{ clientSecretConfigured: true }],
   });

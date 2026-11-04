@@ -64,6 +64,7 @@
   const move = (from: WidgetArea, index: number, by: number) => {
     const list = areas[from];
     const target = index + by;
+
     if (target < 0 || target >= list.length) return;
     [list[index], list[target]] = [list[target]!, list[index]!];
   };
@@ -75,8 +76,10 @@
     event.preventDefault();
     if (!dragging) return;
     const { area: from, index: start } = dragging;
+
     dragging = null;
     const [widget] = areas[from].splice(start, 1);
+
     if (!widget) return;
     areas[to].splice(
       from === to && start < index ? index - 1 : index,
@@ -86,6 +89,7 @@
   };
   const transfer = (from: WidgetArea, index: number, to: WidgetArea) => {
     const [widget] = areas[from].splice(index, 1);
+
     if (widget) areas[to].push(widget);
   };
 
@@ -96,6 +100,7 @@
       title: '',
       settings: {},
     };
+
     areas[area].push(widget);
   };
 

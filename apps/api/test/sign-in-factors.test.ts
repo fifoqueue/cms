@@ -9,6 +9,7 @@ import { profile, recordingLogger, MemorySettings } from '#test/support/memory';
 
 const handle = (step: SignInStep) => {
   if (!('transaction' in step)) throw new Error('Expected transaction');
+
   return step.transaction;
 };
 
@@ -24,6 +25,7 @@ test('required enrollment, optional enrolled factors, expiry and admission fail 
   let sequence = 0;
   let attempts = 0;
   const registrar = registry.registrar('test', users);
+
   registrar.signInMethod('method', {
     label: 'Test',
     usableBy: () => true,
@@ -36,6 +38,7 @@ test('required enrollment, optional enrolled factors, expiry and admission fail 
     ],
     state: { secret: 'server-only' },
   });
+
   registrar.secondFactor('factor', {
     label: 'Factor',
     enrolled: () => enrolled,
@@ -46,6 +49,7 @@ test('required enrollment, optional enrolled factors, expiry and admission fail 
       finish: (_user, step) => {
         expect(step.state).toEqual({ secret: 'server-only' });
         enrolled = step.values.code === 'ok';
+
         return enrolled;
       },
     },
@@ -83,6 +87,7 @@ test('required enrollment, optional enrolled factors, expiry and admission fail 
   });
   const visitor = { client: 'visitor', address: null, captchaToken: null };
   const first = await service.start('plugin:test:method', {}, visitor);
+
   expect(first.kind).toBe('enroll');
   await expect(
     service.start('plugin:test:method', {}, visitor),
@@ -91,6 +96,7 @@ test('required enrollment, optional enrolled factors, expiry and admission fail 
     { transaction: handle(first), factor: 'plugin:test:factor' },
     visitor,
   );
+
   expect(enrollment.kind).toBe('fields');
   await expect(
     service.continue(
@@ -120,11 +126,13 @@ test('required enrollment, optional enrolled factors, expiry and admission fail 
   expect(attempts).toBe(2);
   required = false;
   const optional = await service.start('plugin:test:method', {}, visitor);
+
   expect(optional.kind).toBe('secondFactor');
   const second = await service.chooseFactor(
     { transaction: handle(optional), factor: 'plugin:test:factor' },
     visitor,
   );
+
   expect(
     (
       await service.continue(
@@ -134,6 +142,7 @@ test('required enrollment, optional enrolled factors, expiry and admission fail 
     ).kind,
   ).toBe('session');
   const expired = await service.start('plugin:test:method', {}, visitor);
+
   now = new Date(now.getTime() + 600_000);
   await expect(
     service.chooseFactor(
@@ -150,6 +159,7 @@ test('a later admission filter can grant sign-in and drop a required factor', as
   const registry = new SignInRegistry({ logger, timeoutMs: 100 });
   const hooks = new HookBus({ logger, timeoutMs: 100 });
   const registrar = registry.registrar('test', users);
+
   registrar.signInMethod('method', {
     label: 'Test',
     usableBy: () => true,
@@ -161,6 +171,7 @@ test('a later admission filter can grant sign-in and drop a required factor', as
       { name: 'code', label: 'Code', type: 'code' as const, required: true },
     ],
   });
+
   registrar.secondFactor('factor', {
     label: 'Factor',
     enrolled: () => false,

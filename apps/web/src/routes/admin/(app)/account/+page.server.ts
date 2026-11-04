@@ -93,6 +93,7 @@ const locale = (value: string): AdminLocale | '' =>
 export const actions: Actions = {
   password: async ({ fetch, locals, request }) => {
     const form = await request.formData();
+
     try {
       await authApi(fetch, locals.token).changePassword({
         current: text(form, 'current'),
@@ -101,17 +102,20 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'passwordChanged' };
   },
 
   tokenCreate: async ({ fetch, locals, request }) => {
     const form = await request.formData();
     const days = Math.trunc(Number(text(form, 'expiresInDays')));
+
     try {
       const created = await authApi(fetch, locals.token).tokens.create({
         name: text(form, 'name'),
         expiresInDays: days > 0 ? days : undefined,
       });
+
       // Shown once, to the user who created it; never stored by the web app.
       return { notice: 'tokenCreated', token: created.token };
     } catch (caught) {
@@ -122,26 +126,31 @@ export const actions: Actions = {
   /** Signs out one of the user's other sessions. */
   sessionRevoke: async ({ fetch, locals, request }) => {
     const form = await request.formData();
+
     try {
       await authApi(fetch, locals.token).sessions.revoke(text(form, 'id'));
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'sessionRevoked' };
   },
 
   tokenRevoke: async ({ fetch, locals, request }) => {
     const form = await request.formData();
+
     try {
       await authApi(fetch, locals.token).tokens.revoke(text(form, 'id'));
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'deleted' };
   },
 
   profile: async ({ fetch, locals, request }) => {
     const form = await request.formData();
+
     try {
       await authApi(fetch, locals.token).profile.update({
         email: text(form, 'email'),
@@ -153,6 +162,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'saved' };
   },
 
@@ -161,12 +171,14 @@ export const actions: Actions = {
   /** Sends the signed-in user to the provider; the callback links the account they choose there. */
   link: async (event) => {
     const form = await event.request.formData();
+
     return linkSso(event, text(form, 'provider'));
   },
 
   /** Starts setting up a second factor; its steps show in the two-step section. */
   factorEnroll: async (event) => {
     const form = await event.request.formData();
+
     return enrollStep(event, text(form, 'factor'));
   },
   factorContinue: (event) => continueStep(event, ['enroll']),
@@ -175,6 +187,7 @@ export const actions: Actions = {
 
   factorRemove: async ({ fetch, locals, request }) => {
     const form = await request.formData();
+
     return submitAction(
       () =>
         authApi(fetch, locals.token).factors.remove(
@@ -187,6 +200,7 @@ export const actions: Actions = {
 
   unlink: async ({ fetch, locals, request }) => {
     const form = await request.formData();
+
     return submitAction(
       () => ssoApi(fetch, locals.token).unlink(text(form, 'id')),
       'ssoAccountUnlinked',
@@ -200,6 +214,7 @@ export const actions: Actions = {
         fetch,
         locals.token,
       ).recoveryCodes.generate();
+
       return { notice: 'recoveryCodesGenerated', codes };
     } catch (caught) {
       return failFrom(caught);

@@ -7,5 +7,6 @@ import { session } from '#api/http/session';
 export const routes = (app: ApiApp) =>
   session(app, 'settings.manage').post('', async ({ email, site, request }) => {
     await email.test(await readJson(request), await site.get());
+
     return noContent();
   });

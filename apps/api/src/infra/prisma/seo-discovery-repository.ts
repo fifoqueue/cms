@@ -26,6 +26,7 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
         ? Prisma.sql`AND c.type IN (${Prisma.join([...types])})`
         : Prisma.sql`AND 1 = 0`
       : Prisma.empty;
+
     if (kind === 'content') {
       // URL inputs are normalized on write; binary equality preserves case-sensitive paths.
       const from = Prisma.sql`
@@ -40,11 +41,13 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
             OR CAST(c.seo_canonical_url AS BINARY) = CONCAT(${siteUrl}, p.path)
           )
       `;
+
       return this.db.$transaction(async (tx) => {
         const counts = await tx.$queryRaw<{ total: bigint }[]>(Prisma.sql`
           SELECT COUNT(*) AS total ${from}
         `);
         const total = Number(counts[0]!.total);
+
         if (skip >= total) return { items: [], total };
         const rows = await tx.$queryRaw<ContentRow[]>(Prisma.sql`
           SELECT p.path,
@@ -55,6 +58,7 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
           ORDER BY p.current_for ASC
           LIMIT ${pageSize} OFFSET ${skip}
         `);
+
         return {
           items: rows.map((row) => ({
             path: decodePath(row.path),
@@ -78,6 +82,7 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
       >(
         Prisma.sql`SELECT u.slug, u.name AS title, u.bio AS description, MAX(c.updated_at) AS updatedAt ${from} GROUP BY u.id, u.slug, u.name, u.bio ORDER BY u.slug, u.id LIMIT ${pageSize} OFFSET ${skip}`,
       );
+
       return {
         total,
         items: rows.map((row) => ({
@@ -88,6 +93,7 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
         })),
       };
     }
+
     const definitions =
       kind === 'taxonomy'
         ? await this.db.setting.findMany({
@@ -100,6 +106,7 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
         const parsed = taxonomyDefinitionSchema.safeParse(
           JSON.parse(row.value),
         );
+
         return parsed.success &&
           row.key === `taxonomy.definition.${parsed.data.key}`
           ? [parsed.data]
@@ -114,6 +121,7 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
             .map((item) => item.key)
             .filter((key) => key !== 'category' && key !== 'tag')
         : [kind];
+
     if (!keys.length) return { items: [], total: 0 };
     const hierarchical = [
       'category',
@@ -147,6 +155,7 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
         WHERE parent.taxonomy = child.taxonomy AND parent.taxonomy IN (${Prisma.join(hierarchical)})
       )
     `;
+
     return this.db.$transaction(async (tx) => {
       // SQL cannot percent-encode slugs, so explicit canonicals (rare) are matched here with the
       // same encoder as the sitemap path, and the matches filter in SQL before counting/paging.
@@ -175,6 +184,7 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
         ${scope} SELECT COUNT(*) AS total ${from}
       `);
       const total = Number(counts[0]!.total);
+
       if (skip >= total) return { items: [], total };
       const rows = await tx.$queryRaw<
         (Omit<SeoDiscoveryRecord, 'path'> & {
@@ -191,6 +201,7 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
         ORDER BY t.slug ASC, t.id ASC
         LIMIT ${pageSize} OFFSET ${skip}
       `);
+
       return {
         items: rows.map((row) => ({
           path: pathOf(row.taxonomy, row.slug, bases),

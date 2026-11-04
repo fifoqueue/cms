@@ -49,12 +49,15 @@ export class FunctionsHost {
   reconcile(): Promise<void> {
     return this.exclusive(async () => {
       let sources: FunctionsSource[];
+
       try {
         sources = await this.deps.sources();
       } catch (error) {
         this.deps.logger.error('Functions source reconciliation failed', error);
+
         return;
       }
+
       if (
         sources.length === this.statuses.length &&
         sources.every(
@@ -68,8 +71,10 @@ export class FunctionsHost {
       const previous = new Map(
         this.active.map((entry) => [entry.source.owner, entry]),
       );
+
       this.active = [];
       this.statuses = [];
+
       for (const source of sources) {
         const status: FunctionsStatus = {
           owner: source.owner,
@@ -78,15 +83,19 @@ export class FunctionsHost {
           lastError: null,
           updatedAt: new Date().toISOString(),
         };
+
         this.statuses.push(status);
         const unchanged = previous.get(source.owner);
+
         if (unchanged?.source.hash === source.hash) {
           this.active.push(unchanged);
           status.loadedHash = source.hash;
           continue;
         }
+
         try {
           const definition = await source.load();
+
           await this.activate(source, definition);
           status.loadedHash = source.hash;
         } catch (error) {
@@ -94,16 +103,19 @@ export class FunctionsHost {
           this.deps.logger.error(`Functions "${source.owner}" failed`, error);
           status.lastError = 'activation_failed';
           const fallback = previous.get(source.owner);
+
           if (fallback) {
             this.active.push(fallback);
             status.loadedHash = fallback.source.hash;
           }
         }
       }
+
       for (const entry of [...this.active]) {
         try {
           entry.scope.commit();
           const replaced = previous.get(entry.source.owner);
+
           if (replaced && replaced !== entry) {
             replaced.scope.dispose();
           }
@@ -111,18 +123,22 @@ export class FunctionsHost {
           entry.scope.dispose();
           const index = this.active.indexOf(entry);
           const fallback = previous.get(entry.source.owner);
+
           this.active.splice(index, 1, ...(fallback ? [fallback] : []));
           const status = this.statuses.find(
             (status) => status.owner === entry.source.owner,
           )!;
+
           status.loadedHash = fallback?.source.hash ?? null;
           status.lastError = 'activation_failed';
           this.deps.logger.error('Functions registration failed', error);
         }
       }
+
       for (const entry of previous.values()) {
         if (!this.active.includes(entry)) entry.scope.dispose();
       }
+
       await this.release([
         ...sources,
         ...[...previous.values()].map((entry) => entry.source),
@@ -134,6 +150,7 @@ export class FunctionsHost {
   stop(): Promise<void> {
     return this.exclusive(async () => {
       const sources = this.active.map((entry) => entry.source);
+
       this.dispose();
       await this.release(sources);
       this.statuses = [];
@@ -143,8 +160,10 @@ export class FunctionsHost {
 
   private async release(sources: FunctionsSource[]): Promise<void> {
     const retained = new Set(this.active.map((entry) => entry.source));
+
     for (const source of new Set(sources)) {
       if (retained.has(source)) continue;
+
       try {
         await source.release?.();
       } catch (error) {
@@ -158,6 +177,7 @@ export class FunctionsHost {
     definition: FunctionsDefinition,
   ): Promise<void> {
     const scope = new FunctionsScope();
+
     try {
       await definition.api?.(this.deps.context(source.owner, scope));
       this.active.push({ source, definition, scope });

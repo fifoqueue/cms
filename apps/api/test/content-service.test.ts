@@ -64,6 +64,7 @@ const setup = () => {
   });
   const events: string[] = [];
   const listener = hooks.registrar('listener');
+
   for (const name of [
     'content.created',
     'content.updated',
@@ -72,6 +73,7 @@ const setup = () => {
   ] as const) {
     listener.on(name, (entry) => void events.push(`${name}:${entry.slug}`));
   }
+
   const clock = fixedClock();
   const revisions = repository.revisions;
   /** Settings → Writing's default category. */
@@ -110,6 +112,7 @@ const setup = () => {
         .filter((path) => path.contentId === id)
         .map((path) => path.path),
   );
+
   return {
     service,
     publicContent,
@@ -165,10 +168,12 @@ describe('ContentService', () => {
     const { service, hooks } = setup();
     const entry = await service.create(input({ status: 'published' }), ADMIN);
     const actor = { id: 'reader', role: 'subscriber' };
+
     await expect(service.get(entry.id, actor)).rejects.toMatchObject({
       code: 'forbidden',
     });
     const plugin = hooks.registrar('object-policy');
+
     plugin.filter('capability.check', (value) => ({
       ...value,
       allowed: false,
@@ -180,8 +185,10 @@ describe('ContentService', () => {
         ownerId: ADMIN.id,
         status: 'published',
       });
+
       return { ...value, allowed: true };
     });
+
     expect(
       (
         await service.update(
@@ -197,6 +204,7 @@ describe('ContentService', () => {
       .filter('capability.check', (value) => {
         value.object.id = 'other';
         value.allowed = true;
+
         return value;
       });
     await expect(service.get(entry.id, ADMIN)).rejects.toMatchObject({
@@ -213,6 +221,7 @@ describe('ContentService', () => {
       actor,
       first,
     );
+
     expect(created.origin).toBeNull();
     const updated = await service.update(
       created.id,
@@ -221,8 +230,10 @@ describe('ContentService', () => {
       undefined,
       next,
     );
+
     expect(updated.origin).toEqual({ created: first, modified: next });
     const history = await revisionService().list(created.id, ADMIN);
+
     expect(history[0]).toMatchObject(next);
     expect((await revisionService().list(created.id, actor))[0]).toMatchObject({
       ip: null,
@@ -253,6 +264,7 @@ describe('ContentService', () => {
       ADMIN,
     );
     const shown = await publicContent.getBySlug(entry.slug);
+
     expect(shown.metaDescription).toBe(keyword);
     expect(shown.seo.description).toBe('');
     expect(shown.excerpt).toBe(`첫 문단. ${keyword}`);
@@ -295,6 +307,7 @@ describe('ContentService', () => {
       repository.permalinks,
       publicContent,
     );
+
     expect(await codeOf(resolver.resolve({ path: entry.path }))).toBe(
       'not_found',
     );
@@ -311,6 +324,7 @@ describe('ContentService', () => {
       role: 'custom',
       capabilities: ['content.readPrivate'],
     });
+
     expect(resolved.content.html).toContain('Body');
     expect(resolved.content.seo.noIndex).toBe(true);
     for (const key of ['document', 'authorId', 'status', 'passwordHash'])
@@ -360,6 +374,7 @@ describe('ContentService', () => {
     const { service, hooks } = setup();
     const draft = await service.create(input(), ADMIN);
     const deny = hooks.registrar('deny');
+
     deny.filter('content.publishAllowed', () => false);
     deny.filter('content.deleteAllowed', () => false);
     expect(
@@ -370,12 +385,14 @@ describe('ContentService', () => {
     expect(await codeOf(service.remove(draft.id, ADMIN))).toBe('forbidden');
 
     const grant = hooks.registrar('grant');
+
     grant.filter('content.publishAllowed', () => true);
     grant.filter('content.deleteAllowed', () => true);
     const published = await service.create(
       input({ title: 'Granted', status: 'published' }),
       ADMIN,
     );
+
     expect(published.status).toBe('published');
     await service.remove(draft.id, ADMIN);
     expect(await codeOf(service.require(draft.id))).toBe('not_found');
@@ -424,9 +441,11 @@ describe('ContentService', () => {
       input({ status: 'published', password: 'open-sesame' }),
       ADMIN,
     );
+
     repository.commentCounts.set(entry.id, 2);
 
     const locked = await publicContent.getBySlug('hello-world');
+
     expect(locked).toMatchObject({
       protected: true,
       html: '',
@@ -445,6 +464,7 @@ describe('ContentService', () => {
     });
     const proof = `${entry.id}.${token}`;
     const unlocked = await publicContent.getBySlug('hello-world', [proof]);
+
     expect(unlocked.html).toContain('Body');
     expect(unlocked.commentCount).toBe(2);
     // Proofs are bound to the entry: another entry's id never matches.
@@ -475,6 +495,7 @@ describe('ContentService', () => {
       fields: testFields(),
     });
     const entry = await service.create(input({ title: 'First' }), ADMIN);
+
     clock.set('2026-01-01T00:01:00.000Z');
     await service.update(
       entry.id,
@@ -483,11 +504,13 @@ describe('ContentService', () => {
     );
 
     const listed = await history.list(entry.id, ADMIN);
+
     expect(listed.map((revision) => revision.title)).toEqual([
       'Second',
       'First',
     ]);
     const restored = await history.restore(entry.id, listed[1]!.id, ADMIN);
+
     expect(restored).toMatchObject({ title: 'First', status: 'published' });
 
     clock.set('2026-01-01T00:02:00.000Z');
@@ -500,6 +523,7 @@ describe('ContentService', () => {
       'Draft idea',
     );
     const { token } = await previews.create(entry.id, ADMIN);
+
     expect((await previews.render(token)).title).toBe('Draft idea');
     expect(await codeOf(previews.render(`${token}x`))).toBe('not_found');
     clock.set('2026-01-01T02:00:00.000Z');
@@ -512,6 +536,7 @@ describe('ContentService', () => {
       input({ status: 'published', publishedAt: '2026-04-01T00:00:00.000Z' }),
       ADMIN,
     );
+
     clock.set('2026-06-01T00:00:00.000Z');
     const body = {
       type: 'doc' as const,
@@ -519,6 +544,7 @@ describe('ContentService', () => {
         { type: 'paragraph', content: [{ type: 'text', text: 'New body' }] },
       ],
     };
+
     await service.update(
       entry.id,
       input({ status: 'published', document: body }),
@@ -539,6 +565,7 @@ describe('ContentService', () => {
       ),
     ).toBe('conflict');
     const current = await service.get(entry.id, ADMIN);
+
     expect(current.document).toEqual(body);
     expect(current.title).toBe('Hello World');
 
@@ -552,6 +579,7 @@ describe('ContentService', () => {
       }),
       ADMIN,
     );
+
     expect(redated.publishedAt).toBe('2026-05-01T00:00:00.000Z');
 
     // Seconds are honored too: no form heuristic in the API.
@@ -564,6 +592,7 @@ describe('ContentService', () => {
       }),
       ADMIN,
     );
+
     expect(seconds.publishedAt).toBe('2026-05-01T00:00:45.000Z');
 
     // Saves at the same clock value still advance the version.
@@ -572,6 +601,7 @@ describe('ContentService', () => {
       input({ status: 'published', title: 'Same clock' }),
       ADMIN,
     );
+
     expect(same.updatedAt).not.toBe(seconds.updatedAt);
     expect(
       await codeOf(
@@ -597,6 +627,7 @@ describe('ContentService', () => {
         ),
       ),
     );
+
     expect(results.map((result) => result.status).sort()).toEqual([
       'fulfilled',
       'rejected',
@@ -620,6 +651,7 @@ describe('ContentService', () => {
         ],
       },
     };
+
     clock.set('2026-03-01T00:00:00.000Z');
     await history.autosave(entry.id, unsaved, ADMIN);
     const quick = (expectedUpdatedAt: string) =>
@@ -628,6 +660,7 @@ describe('ContentService', () => {
         input({ title: 'Renamed', expectedUpdatedAt, preserveAutosave: true }),
         ADMIN,
       );
+
     expect(await codeOf(quick(entry.updatedAt))).toBe('conflict');
     expect((await history.pendingAutosave(entry.id, ADMIN))?.title).toBe(
       'Hello World',
@@ -637,6 +670,7 @@ describe('ContentService', () => {
     await service.update(entry.id, input(), ADMIN);
     clock.set('2026-03-02T00:00:00.000Z');
     const renamed = await quick((await service.get(entry.id, ADMIN)).updatedAt);
+
     clock.set('2026-03-01T12:00:00.000Z');
     await history.autosave(entry.id, unsaved, ADMIN);
     expect(renamed.title).toBe('Renamed');
@@ -647,6 +681,7 @@ describe('ContentService', () => {
     // A partial save and an autosave overlapping: the autosave is never lost.
     await service.update(entry.id, input(), ADMIN);
     const latest = await service.get(entry.id, ADMIN);
+
     await Promise.allSettled([
       quick(latest.updatedAt),
       history.autosave(entry.id, unsaved, ADMIN),
@@ -665,8 +700,10 @@ describe('ContentService', () => {
       ...DEFAULT_PERMALINK_SETTINGS,
       post: '/p/%year%%month%%date%',
     };
+
     await settings.update(dates);
     const first = await service.create(input({ status: 'published' }), ADMIN);
+
     expect(first.path).toBe('/p/20260101');
     expect(
       await codeOf(
@@ -676,6 +713,7 @@ describe('ContentService', () => {
     expect((await service.list({}, ADMIN)).total).toBe(1);
 
     const titles = { ...DEFAULT_PERMALINK_SETTINGS, post: '/post/%title%' };
+
     await settings.update(titles);
     hooks.registrar('display').filter('content.public', (value) => ({
       ...value,
@@ -688,6 +726,7 @@ describe('ContentService', () => {
       input({ title: 'Other', status: 'published' }),
       ADMIN,
     );
+
     expect(
       await codeOf(
         service.update(
@@ -713,6 +752,7 @@ describe('ContentService', () => {
       ADMIN,
     );
     const redirect = await resolver.resolve({ path: '/p/20260101' });
+
     expect(redirect.redirect).toBe(true);
     expect(redirect.content.path).toBe('/post/Changed');
     expect(redirect.content.title).toBe('Filtered title');
@@ -721,6 +761,7 @@ describe('ContentService', () => {
       input({ title: 'Changed' }),
       ADMIN,
     );
+
     expect(draft.publishedAt).toBe(first.publishedAt);
     expect(await publicContent.getById(first.id)).toBeNull();
     expect(await codeOf(resolver.resolve({ path: first.path }))).toBe(
@@ -735,6 +776,7 @@ describe('ContentService', () => {
       input({ title: 'Changed', status: 'published' }),
       ADMIN,
     );
+
     expect(republished.publishedAt).toBe('2026-01-01T00:00:00.000Z');
     expect(republished.path).toBe('/story/hello-world');
     expect((await resolver.resolve({ path: changed.path })).content.path).toBe(

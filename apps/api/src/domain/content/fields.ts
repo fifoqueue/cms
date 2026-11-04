@@ -40,6 +40,7 @@ const valueSchema = (field: FieldDefinition): z.ZodType => {
         return z.string().min(1).max(36);
     }
   })();
+
   return field.required ? base : base.nullable().optional();
 };
 
@@ -93,14 +94,17 @@ export class FieldService {
   private async stored(): Promise<FieldDefinition[]> {
     const stored = await this.deps.settings.get(KEY);
     const fields: FieldDefinition[] = [];
+
     for (const entry of Array.isArray(stored) ? stored : []) {
       const result = fieldDefinitionSchema.safeParse(entry);
+
       if (
         result.success &&
         !fields.some((field) => field.key === result.data.key)
       )
         fields.push(result.data);
     }
+
     return fields;
   }
 
@@ -114,10 +118,12 @@ export class FieldService {
     authorize(actor, 'fields.manage');
     const field = await this.prepare(input);
     const fields = await this.stored();
+
     if (fields.some((existing) => existing.key === field.key))
       throw conflict(Errors.FieldExists);
     await this.deps.settings.set(KEY, [...fields, field]);
     void this.deps.hooks?.emit('field.created', field);
+
     return field;
   }
 
@@ -130,11 +136,14 @@ export class FieldService {
     authorize(actor, 'fields.manage');
     const fields = await this.stored();
     const index = fields.findIndex((field) => field.key === key);
+
     if (index === -1) throw notFound(Errors.FieldNotFound);
     const field = { ...(await this.prepare(input)), key };
+
     fields[index] = field;
     await this.deps.settings.set(KEY, fields);
     void this.deps.hooks?.emit('field.updated', field);
+
     return field;
   }
 
@@ -143,6 +152,7 @@ export class FieldService {
     authorize(actor, 'fields.manage');
     const fields = await this.stored();
     const removed = fields.find((field) => field.key === key);
+
     if (!removed) throw notFound(Errors.FieldNotFound);
     await this.deps.settings.set(
       KEY,
@@ -153,6 +163,7 @@ export class FieldService {
 
   private async prepare(input: unknown) {
     const data = parseInput(fieldDefinitionSchema, input);
+
     if (data.key.startsWith('plugin:')) throw invalidInput(Errors.FieldExists);
     const filtered = await this.deps.hooks?.applyFilter(
       'field.beforeSave',
@@ -160,8 +171,10 @@ export class FieldService {
       (value) => fieldDefinitionSchema.safeParse(value).success,
     );
     const result = fieldDefinitionSchema.parse(filtered ?? data);
+
     if (result.key.startsWith('plugin:'))
       throw invalidInput(Errors.FieldExists);
+
     return result;
   }
 
@@ -181,6 +194,7 @@ export class FieldService {
     if (Object.keys(values).length === 0) return {};
     const fields = (await this.forType(type)).filter((field) => field.public);
     const images = await this.deps.images(fieldMediaIds(fields, values));
+
     return project(fields, images, values);
   }
 
@@ -196,6 +210,7 @@ export class FieldService {
           CACHE_TTL_MS,
         )
       : await this.stored();
+
     return this.merged(stored).filter((field) => field.comments);
   }
 
@@ -215,6 +230,7 @@ export class FieldService {
     stored: FieldValues,
   ): Promise<FieldValues> {
     const fields = await this.forTaxonomy(taxonomy);
+
     return {
       ...Object.fromEntries(
         Object.entries(stored).filter(
@@ -240,6 +256,7 @@ export class FieldService {
     const images = await this.deps.images(
       values.flatMap((entry) => fieldMediaIds(fields, entry)),
     );
+
     return values.map((entry) => project(fields, images, entry));
   }
 }
@@ -259,6 +276,7 @@ const checkValues = (
       ),
     )
     .safeParse(values);
+
   if (!result.success)
     throw invalidInput(
       Errors.InvalidInput,
@@ -267,6 +285,7 @@ const checkValues = (
         message,
       })),
     );
+
   return Object.fromEntries([
     ...Object.entries(values).filter(
       ([key]) =>
@@ -314,9 +333,11 @@ const project = (
   Object.fromEntries(
     fields.flatMap((field) => {
       const value = values[field.key];
+
       if (value === undefined || value === null) return [];
       if (field.type !== 'image') return [[field.key, value]];
       const image = images.get(value as string);
+
       return image ? [[field.key, image]] : [];
     }),
   );

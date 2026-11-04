@@ -39,7 +39,9 @@ export const readQuickEdit = (entry: ContentEntry, form: FormData) => {
     password: text(form, 'password') || undefined,
     authorId: text(form, 'authorId') || undefined,
   });
+
   if (result.success) return { input: result.data };
+
   return {
     failure: fail(400, {
       quickEdit: entry.id,

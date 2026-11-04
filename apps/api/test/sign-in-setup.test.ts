@@ -14,6 +14,7 @@ test('setup binds identity, checks expiry, and consumes one token across concurr
   const setupTokens = new MemorySetupTokens();
   const now = new Date('2026-01-01');
   let outcomeId = 'other';
+
   registry.registrar('test', users).signInMethod('method', {
     label: 'Setup',
     usableBy: () => true,
@@ -21,6 +22,7 @@ test('setup binds identity, checks expiry, and consumes one token across concurr
     setup: {
       begin: (bound) => {
         expect(bound.id).toBe(user.id);
+
         return {
           kind: 'fields',
           fields: [
@@ -32,6 +34,7 @@ test('setup binds identity, checks expiry, and consumes one token across concurr
       continue: (bound, step) => {
         expect(bound.id).toBe(user.id);
         expect(step.state).toEqual({ nonce: 'private' });
+
         return { kind: 'user', userId: outcomeId };
       },
     },
@@ -66,6 +69,7 @@ test('setup binds identity, checks expiry, and consumes one token across concurr
     }),
   });
   const visitor = { client: 'visitor', address: null, captchaToken: null };
+
   await expect(
     service.setup('plugin:test:method', { token: 'absent' }, visitor),
   ).rejects.toMatchObject({ code: 'unauthorized' });
@@ -77,16 +81,20 @@ test('setup binds identity, checks expiry, and consumes one token across concurr
     userId: user.id,
     expiresAt: new Date(now.getTime() + 600_000),
   });
+
   const start = async () => {
     const step = await service.setup(
       'plugin:test:method',
       { token: 'valid' },
       visitor,
     );
+
     if (!('transaction' in step)) throw new Error('Expected handle');
+
     return step.transaction;
   };
   const mismatch = await start();
+
   await expect(
     service.continue({ transaction: mismatch }, visitor),
   ).rejects.toMatchObject({ code: 'unauthorized' });
@@ -96,6 +104,7 @@ test('setup binds identity, checks expiry, and consumes one token across concurr
   const results = await Promise.allSettled(
     handles.map((transaction) => service.continue({ transaction }, visitor)),
   );
+
   expect(
     results.filter((result) => result.status === 'fulfilled'),
   ).toHaveLength(1);

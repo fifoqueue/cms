@@ -32,6 +32,7 @@ export class VisibleContentRepository implements PublishedContentRepository {
 
   async summariesByIds(ids: readonly string[]) {
     const active = new Set(await this.types());
+
     return (await this.source.summariesByIds(ids)).filter((item) =>
       active.has(item.type),
     );
@@ -41,6 +42,7 @@ export class VisibleContentRepository implements PublishedContentRepository {
     const active = (await this.types()).filter(
       (type) => !types || types.includes(type),
     );
+
     return this.source.excerptBodies(ids, active);
   }
 
@@ -50,6 +52,7 @@ export class VisibleContentRepository implements PublishedContentRepository {
         (!criteria.type || criteria.type === type) &&
         (!criteria.types || criteria.types.includes(type)),
     );
+
     return { ...criteria, type: undefined, types };
   }
 
@@ -64,6 +67,7 @@ export class VisibleContentRepository implements PublishedContentRepository {
   async adjacent(id: string) {
     if (!(await this.byId(id))) return { previous: null, next: null };
     const { previous, next } = await this.source.adjacent(id);
+
     return {
       previous: await this.visible(previous),
       next: await this.visible(next),
@@ -72,6 +76,7 @@ export class VisibleContentRepository implements PublishedContentRepository {
 
   async months(types: readonly string[], limit: number) {
     const active = new Set(await this.types());
+
     return this.source.months(
       types.filter((type) => active.has(type)),
       limit,
@@ -80,6 +85,7 @@ export class VisibleContentRepository implements PublishedContentRepository {
 
   async monthNeighbours(types: readonly string[], year: number, month: number) {
     const active = new Set(await this.types());
+
     return this.source.monthNeighbours(
       types.filter((type) => active.has(type)),
       year,

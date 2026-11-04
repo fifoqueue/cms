@@ -15,8 +15,10 @@ export class PrismaAvatarDirectory implements AvatarDirectory {
         },
         select: { authorEmail: true },
       });
+
       return comment?.authorEmail ?? null;
     }
+
     if (key.startsWith('author:')) {
       const author = await this.db.user.findFirst({
         where: {
@@ -25,8 +27,10 @@ export class PrismaAvatarDirectory implements AvatarDirectory {
         },
         select: { email: true },
       });
+
       return author?.email ?? null;
     }
+
     return null;
   }
 }

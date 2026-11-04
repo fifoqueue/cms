@@ -11,6 +11,7 @@ export const headingAnchorPattern = /^[\p{L}][\p{L}\p{N}\p{M}_:.-]{0,99}$/u;
 export const HEADING_LEVELS = [1, 2, 3, 4, 5, 6] as const;
 const isHeadingLevel = (value: unknown): value is number =>
   (HEADING_LEVELS as readonly unknown[]).includes(value);
+
 export const headingLevel = (value: unknown) =>
   isHeadingLevel(Number(value)) ? Number(value) : 2;
 export const HeadingAnchor = Extension.create({
@@ -23,6 +24,7 @@ export const HeadingAnchor = Extension.create({
           default: null,
           parseHTML: (element) => {
             const id = element.getAttribute('id');
+
             return id && headingAnchorPattern.test(id) ? id : null;
           },
           renderHTML: (attrs) =>
@@ -39,11 +41,14 @@ export const HeadingAnchor = Extension.create({
 export function validTocCount(document: JSONContent): boolean {
   let count = 0;
   const stack = [document];
+
   while (stack.length) {
     const node = stack.pop()!;
+
     if (node.type === 'tableOfContents' && ++count > 3) return false;
     if (node.content) stack.push(...node.content);
   }
+
   return true;
 }
 
@@ -73,6 +78,7 @@ export interface TocHeading {
 }
 
 const headingCache = new WeakMap<ProseNode, TocHeading[]>();
+
 /** IDs are document-wide; outlines are page-local, so every link works after pagination. */
 export function collectHeadings(
   document: JSONContent | ProseNode,
@@ -80,9 +86,11 @@ export function collectHeadings(
   if ('descendants' in document && typeof document.descendants === 'function') {
     const doc = document as ProseNode;
     const cached = headingCache.get(doc);
+
     if (cached) return cached;
     const entries: JSONContent[] = [];
     const positions: number[] = [];
+
     // Synced patterns are expanded later by the API; their headings are not part of this outline.
     doc.descendants((node, position) => {
       if (node.type.name === 'heading') {
@@ -97,17 +105,22 @@ export function collectHeadings(
           ],
         });
         if (node.textContent.trim()) positions.push(position);
+
         return false;
       }
+
       if (node.type.name === 'pageBreak') entries.push({ type: 'pageBreak' });
     });
     const result = collectHeadings({ type: 'doc', content: entries });
+
     result.forEach((heading, index) => {
       heading.position = positions[index];
     });
     headingCache.set(doc, result);
+
     return result;
   }
+
   const headings: TocHeading[] = [];
   const used = new Set<string>();
   let page = 1;
@@ -118,8 +131,10 @@ export function collectHeadings(
       : (node.content ?? []).map(textOf).join(''));
   const visit = (node: JSONContent) => {
     if (node.type === 'pageBreak') page++;
+
     if (node.type === 'heading') {
       const text = textOf(node).trim();
+
       if (text) {
         const generated =
           text
@@ -133,12 +148,14 @@ export function collectHeadings(
           typeof anchor === 'string' && headingAnchorPattern.test(anchor)
             ? anchor
             : generated.slice(0, 180);
+
         if (
           /^(?:comments|main|comment-moderation|content-password)$/.test(base)
         )
           base += '-heading';
         if (/^(?:comment-|moderate-|fn-)/.test(base)) base = `heading-${base}`;
         let id = base;
+
         for (let suffix = 2; used.has(id); suffix++) id = `${base}-${suffix}`;
         used.add(id);
         headings.push({
@@ -150,18 +167,23 @@ export function collectHeadings(
         });
       }
     }
+
     node.content?.forEach(visit);
   };
+
   visit(document as JSONContent);
+
   return headings;
 }
 
 /** The editor uses absolute ProseMirror positions; only top-level breaks split pages. */
 export function tocPage(document: ProseNode, position: number): number {
   let page = 1;
+
   document.forEach((node, offset) => {
     if (offset < position && node.type.name === 'pageBreak') page++;
   });
+
   return page;
 }
 
@@ -176,16 +198,20 @@ export function tocOutline(
       attrs.levels.includes(h.level) &&
       !attrs.excluded.includes(h.id),
   );
+
   if (selected.length < attrs.minHeadings) return [];
   const roots: TocHeading[] = [];
   const stack: TocHeading[] = [];
+
   for (const heading of selected) {
     const item: TocHeading = { ...heading, children: [] };
+
     while (stack.length && stack[stack.length - 1]!.level >= item.level)
       stack.pop();
     (stack.at(-1)?.children ?? roots).push(item);
     stack.push(item);
   }
+
   return roots;
 }
 
@@ -200,11 +226,13 @@ const escape = (value: string) =>
 
 export function parseTocAttrs(element: HTMLElement): TocAttrs {
   let raw: Partial<TocAttrs>;
+
   try {
     raw = JSON.parse(element.getAttribute('data-toc') ?? '{}') ?? {};
   } catch {
     return { ...tocDefaults };
   }
+
   return {
     title:
       typeof raw.title === 'string' && raw.title.length <= 200 ? raw.title : '',
@@ -237,6 +265,7 @@ export function tocHTML(
   page: number,
 ): string {
   const outline = tocOutline(headings, attrs, page);
+
   if (!outline.length) return '';
   const list = (items: TocHeading[]): string =>
     `<ol>${items
@@ -250,6 +279,7 @@ export function tocHTML(
   const body = attrs.collapsible
     ? `<details${attrs.open ? ' open' : ''}><summary>${title}</summary>${list(outline)}</details>`
     : `<div class="cms-toc-title">${title}</div>${list(outline)}`;
+
   return `<nav class="cms-toc" data-toc="${escape(JSON.stringify(attrs))}" aria-label="${title}">${body}</nav>`;
 }
 
@@ -284,24 +314,30 @@ interface FootnotePage {
 function footnotePages(document: ProseNode): FootnotePage[] {
   const pages: FootnoteSource[][] = [[]];
   const definitions = new Map<string, string>();
+
   document.descendants((node) => {
     if (node.type.name === 'pageBreak') pages.push([]);
     if (node.type.name !== 'footnote') return;
     const name = String(node.attrs.name ?? '');
     const text = String(node.attrs.text ?? '');
+
     if (name && text && !definitions.has(name)) definitions.set(name, text);
     pages.at(-1)!.push({ name, text });
   });
+
   return pages.map((sources) => {
     const groups = collectFootnotes(sources);
     const references: FootnotePage['references'] = [];
+
     groups.forEach((group, offset) => {
       const name = sources[group.references[0]!]!.name;
+
       if (name) group.text = definitions.get(name) ?? '';
       group.references.forEach((source, order) => {
         references[source] = { number: offset + 1, order };
       });
     });
+
     return { groups, references };
   });
 }
@@ -344,6 +380,7 @@ export function renderWithToc(
   );
   const positions: number[] = [];
   let manualToc = false;
+
   document.descendants((node, position) => {
     if (node.type.name === 'heading') positions.push(position);
     if (node.type.name === 'tableOfContents') manualToc = true;
@@ -357,6 +394,7 @@ export function renderWithToc(
   const insert = (page: number) => {
     if (!automatic || inserted.has(page)) return '';
     inserted.add(page);
+
     return tocHTML(headings, attrs, page);
   };
   let index = 0;
@@ -367,7 +405,9 @@ export function renderWithToc(
     `<a data-footnote-back data-footnote-label="${escape(label)}" href="#${id}" aria-label="Back to reference ${escape(label)}">${escape(text)}</a>`;
   const footnotes = () => {
     const { groups } = notes[page - 1]!;
+
     if (!groups.length) return '';
+
     return `<section class="cms-footnotes"><ol>${groups
       .map((group, offset) => {
         const number = offset + 1;
@@ -382,6 +422,7 @@ export function renderWithToc(
             : `<span data-footnote-group>[${label}]</span> ${group.references
                 .map((_, order) => {
                   const text = `${number}.${order + 1}`;
+
                   return back(
                     referenceId(page, number, group, order),
                     text,
@@ -389,11 +430,13 @@ export function renderWithToc(
                   );
                 })
                 .join(' ')}`;
+
         return `<li id="fn-${page}-${number}" data-footnote-label="${label}"><span>${escape(group.text)}</span> ${backs}</li>`;
       })
       .join('')}</ol></section>`;
   };
   const prefix = autoToc?.position === 'top' ? insert(1) : '';
+
   return (
     prefix +
     renderToHTMLString({
@@ -408,6 +451,7 @@ export function renderWithToc(
             const { number, order } = references[reference++]!;
             const group = groups[number - 1]!;
             const label = escape(group.label);
+
             return `<sup id="${referenceId(page, number, group, order)}"><a data-footnote-ref data-footnote-label="${label}" href="#fn-${page}-${number}" aria-label="Footnote ${label}">${label}</a></sup>`;
           },
           heading: ({ node, children }) => {
@@ -421,14 +465,17 @@ export function renderWithToc(
             const content = Array.isArray(children)
               ? children.join('')
               : (children ?? '');
+
             return `${insert(page)}<h${level}${heading ? ` id="${escape(heading.id)}"` : ''}${align}>${content}</h${level}>`;
           },
           tableOfContents: ({ node }) =>
             tocHTML(headings, { ...tocDefaults, ...node.attrs }, page),
           pageBreak: () => {
             const list = footnotes();
+
             page++;
             reference = 0;
+
             return (
               list +
               PAGE_BREAK_HTML +

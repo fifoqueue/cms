@@ -3,6 +3,7 @@ import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
   const { checks, info } = await adminFor(event).health();
+
   return {
     checks: checks.map(({ key, status, detail }) => ({
       key,

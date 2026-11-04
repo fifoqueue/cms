@@ -226,6 +226,7 @@
               action="?/remove"
               use:enhance={(input) => {
                 confirmRemove(details!.name)(input);
+
                 return async ({ update }) => {
                   dialog.close();
                   await update();

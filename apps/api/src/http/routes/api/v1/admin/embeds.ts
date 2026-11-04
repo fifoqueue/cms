@@ -8,9 +8,11 @@ export const routes = (app: ApiApp) =>
   session(app)
     .get('', async ({ embedSettings, user }) => {
       authorize(user, 'settings.manage');
+
       return json(await embedSettings.get());
     })
     .put('', async ({ embedSettings, request, user }) => {
       authorize(user, 'settings.manage');
+
       return json(await embedSettings.update(await readJson(request)));
     });

@@ -60,6 +60,7 @@
   /** Restarts the highlight, so landing on the same note twice still shows it. */
   const flash = (element: HTMLElement) => {
     const view = element.ownerDocument.defaultView!;
+
     if (!view.matchMedia('(prefers-reduced-motion: no-preference)').matches)
       return;
     element.removeAttribute(FLASH);
@@ -78,6 +79,7 @@
    */
   const land = (target: HTMLElement) => {
     const ref = target.querySelector<HTMLAnchorElement>(REF);
+
     if (ref) {
       quiet = true;
       ref.focus({ preventScroll: true });
@@ -98,6 +100,7 @@
   const engaged = () => {
     if (!active) return false;
     const focused = active.ref.ownerDocument.activeElement;
+
     return (
       active.ref.matches(':hover') ||
       popover?.matches(':hover') === true ||
@@ -120,11 +123,14 @@
     const href = ref.getAttribute('href') ?? '';
     // Text only: the note's markup is never copied into the popover.
     const text = noteText(href, container)?.textContent?.trim() ?? '';
+
     if (!text) return;
+
     if (active && active.ref !== ref) {
       active.ref.setAttribute('aria-expanded', 'false');
       active.ref.removeAttribute('aria-controls');
     }
+
     ref.setAttribute('aria-expanded', 'true');
     ref.setAttribute('aria-controls', popoverId);
     active = { ref, href, label: labelOf(ref), text, via };
@@ -148,10 +154,13 @@
         ) || EDGE
       : EDGE;
     const floor = viewportHeight - EDGE;
+
     if (rect.bottom <= ceiling || rect.top >= viewportHeight) {
       hide();
+
       return;
     }
+
     // The full height before any room cap: content plus borders.
     const natural =
       popover.scrollHeight + popover.offsetHeight - popover.clientHeight;
@@ -161,6 +170,7 @@
       natural <= roomAbove || (natural > roomBelow && roomAbove > roomBelow)
         ? 'above'
         : 'below';
+
     popover.style.setProperty(
       '--cms-footnote-room',
       `${Math.max(side === 'above' ? roomAbove : roomBelow, 48)}px`,
@@ -168,6 +178,7 @@
     const width = popover.offsetWidth;
     const height = popover.offsetHeight;
     const top = side === 'above' ? rect.top - GAP - height : rect.bottom + GAP;
+
     place = {
       top: Math.max(ceiling, Math.min(top, floor - height)),
       left: Math.min(
@@ -182,25 +193,31 @@
   $effect(() => {
     void html;
     const element = container;
+
     if (!element) return;
     const refs = [...element.querySelectorAll<HTMLAnchorElement>(REF)];
     const sections = [
       ...element.querySelectorAll<HTMLElement>('.cms-footnotes'),
     ];
+
     if (!refs.length && !sections.length) return;
 
     for (const ref of refs) {
       const href = ref.getAttribute('href') ?? '';
+
       ref.setAttribute('aria-label', m.themeFootnoteRef(labelOf(ref)));
       ref.setAttribute('aria-expanded', 'false');
       const text = noteText(href, element);
       const note = text?.parentElement;
+
       if (!text || !note?.id) continue;
       text.id ||= `${note.id}-text`;
       ref.setAttribute('aria-describedby', text.id);
     }
+
     const titles = sections.map((section, index) => {
       const title = element.ownerDocument.createElement('h2');
+
       title.className = 'cms-footnotes-title';
       title.id = `${id}-title-${index}`;
       title.textContent = m.themeFootnotes;
@@ -208,6 +225,7 @@
       section.setAttribute('aria-labelledby', title.id);
       for (const back of section.querySelectorAll<HTMLAnchorElement>(BACK))
         back.setAttribute('aria-label', m.themeFootnoteBack(labelOf(back)));
+
       return title;
     });
 
@@ -220,11 +238,13 @@
         event.target instanceof Element
           ? event.target.closest<HTMLAnchorElement>(REF)
           : null;
+
       return ref && element.contains(ref) ? ref : null;
     };
     const over = (event: PointerEvent) => {
       if (event.pointerType !== 'mouse') return;
       const ref = refFrom(event);
+
       if (!ref) return;
       if (active?.ref === ref) cancel();
       else show(ref, 'hover');
@@ -233,6 +253,7 @@
       if (event.pointerType !== 'mouse' || active?.via !== 'hover') return;
       if (refFrom(event) !== active.ref) return;
       const next = event.relatedTarget;
+
       if (
         next instanceof Node &&
         (active.ref.contains(next) || popover?.contains(next))
@@ -242,16 +263,19 @@
     };
     const focusin = (event: FocusEvent) => {
       const ref = refFrom(event);
+
       if (ref && !quiet && ref.matches(':focus-visible')) show(ref, 'focus');
     };
     const focusout = (event: FocusEvent) => {
       if (active?.via !== 'focus' || event.target !== active.ref) return;
       const next = event.relatedTarget;
+
       if (next instanceof Node && popover?.contains(next)) return;
       hide();
     };
     const click = (event: MouseEvent) => {
       const via = pointer;
+
       pointer = '';
       if (
         event.button !== 0 ||
@@ -263,19 +287,24 @@
       )
         return;
       const link = event.target.closest<HTMLAnchorElement>('a[href^="#"]');
+
       if (!link || !element.contains(link)) return;
       const href = link.getAttribute('href')!;
+
       if (link.matches(REF)) {
         // A pointer click toggles the pinned popover; a keyboard activation (no pointer) jumps.
         if (via) {
           event.preventDefault();
           if (active?.ref === link && active.via === 'tap') hide();
           else show(link, 'tap');
+
           return;
         }
+
         hide();
       } else if (!link.closest('.cms-footnotes')) return;
       const target = fragmentTarget(href, element);
+
       if (target) land(target);
     };
 
@@ -285,6 +314,7 @@
     element.addEventListener('focusin', focusin);
     element.addEventListener('focusout', focusout);
     element.addEventListener('click', click);
+
     return () => {
       cancel();
       element.removeEventListener('pointerdown', pointerdown);
@@ -294,12 +324,14 @@
       element.removeEventListener('focusout', focusout);
       element.removeEventListener('click', click);
       titles.forEach((title) => title.remove());
+
       // A re-run (language change) labels these refs again; none stays expanded or controlling.
       for (const ref of refs) {
         ref.removeAttribute('aria-expanded');
         ref.removeAttribute('aria-controls');
         ref.removeAttribute('aria-describedby');
       }
+
       active = null;
     };
   });
@@ -307,8 +339,10 @@
   /** While open: Escape and outside presses close it; scrolling and resizing keep it placed. */
   $effect(() => {
     const current = active;
+
     if (!current || !popover) return;
     const view = popover.ownerDocument.defaultView!;
+
     position();
     let frame = 0;
     const schedule = () => {
@@ -321,6 +355,7 @@
     const keydown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       const inside = popover?.contains(view.document.activeElement) === true;
+
       hide();
       if (!inside) return;
       quiet = true;
@@ -329,6 +364,7 @@
     };
     const pointerdown = (event: PointerEvent) => {
       const target = event.target;
+
       if (
         target instanceof Node &&
         (current.ref.contains(target) || popover?.contains(target))
@@ -336,10 +372,12 @@
         return;
       hide();
     };
+
     view.addEventListener('keydown', keydown);
     view.addEventListener('pointerdown', pointerdown, true);
     view.addEventListener('scroll', schedule, { passive: true });
     view.addEventListener('resize', schedule, { passive: true });
+
     return () => {
       view.removeEventListener('keydown', keydown);
       view.removeEventListener('pointerdown', pointerdown, true);
@@ -355,11 +393,13 @@
   const leave = (event: PointerEvent) => {
     if (event.pointerType !== 'mouse' || active?.via !== 'hover') return;
     const next = event.relatedTarget;
+
     if (next instanceof Node && active.ref.contains(next)) return;
     later();
   };
   const focusout = (event: FocusEvent) => {
     const next = event.relatedTarget;
+
     if (
       next instanceof Node &&
       (popover?.contains(next) || active?.ref.contains(next))
@@ -370,6 +410,7 @@
   const jump = (event: MouseEvent) => {
     const href = active?.href ?? '';
     const root = container;
+
     hide();
     if (
       event.button !== 0 ||
@@ -381,6 +422,7 @@
     )
       return;
     const target = fragmentTarget(href, root);
+
     if (target) land(target);
   };
 </script>

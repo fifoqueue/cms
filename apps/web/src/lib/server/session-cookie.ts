@@ -28,7 +28,9 @@ export const markSignedOut = (cookies: Cookies, url: URL) =>
 export const takeSignedOut = (cookies: Cookies, url: URL) => {
   const name = signedOutName(url);
   const signedOut = cookies.get(name) === '1';
+
   if (signedOut) cookies.delete(name, options(url.protocol === 'https:'));
+
   return signedOut;
 };
 
@@ -42,6 +44,7 @@ export const startSession = (
   url: URL,
 ) => {
   const name = nameFor(url);
+
   cookies.delete(
     name === SESSION_COOKIE ? LEGACY_SESSION_COOKIE : SESSION_COOKIE,
     options(name !== SESSION_COOKIE),

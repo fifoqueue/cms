@@ -46,6 +46,7 @@
     const placed = [...new Set(preferences.order)]
       .map((id) => (unavailable.includes(id) ? id : choices[index++]))
       .filter((id): id is string => id !== undefined);
+
     return [...new Set([...placed, ...choices.slice(index), ...unavailable])];
   });
   let saving = $state(false);
@@ -53,8 +54,10 @@
 
   const move = (index: number, by: -1 | 1) => {
     const target = index + by;
+
     if (target < 0 || target >= choices.length) return;
     const next = [...choices];
+
     [next[index], next[target]] = [next[target]!, next[index]!];
     order = next;
   };
@@ -62,6 +65,7 @@
   const save: SubmitFunction = () => {
     saving = true;
     failed = false;
+
     return async ({ result, update }) => {
       try {
         if (result.type === 'error') failed = true;

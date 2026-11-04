@@ -15,8 +15,10 @@ export class SiteFontStore {
   async load(): Promise<SiteFont[]> {
     const stored = await this.settings.get(FONTS_KEY);
     const fonts: SiteFont[] = [];
+
     for (const entry of Array.isArray(stored) ? (stored as unknown[]) : []) {
       const result = siteFontSchema.safeParse(entry);
+
       if (
         result.success &&
         !fonts.some(
@@ -27,6 +29,7 @@ export class SiteFontStore {
       )
         fonts.push(result.data);
     }
+
     return fonts;
   }
 
@@ -59,6 +62,7 @@ export const fontsInUse = (
   stacks: string[],
 ): PublicFont[] => {
   const named = new Set(stacks.flatMap(stackFamilies));
+
   return fonts
     .filter((font) => named.has(font.family.toLowerCase()))
     .map((font) => ({

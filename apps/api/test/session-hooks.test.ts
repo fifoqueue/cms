@@ -16,6 +16,7 @@ import {
 test('session admission is reversible but cannot replace identity or authenticate unknown tokens', async () => {
   const users = new MemoryUsers();
   const user = userRecord({ id: 'writer', role: 'author' });
+
   await users.insert(user);
   const hooks = new HookBus({
     timeoutMs: 100,
@@ -34,11 +35,14 @@ test('session admission is reversible but cannot replace identity or authenticat
     clock: fixedClock(),
     sessionTtlMs: 60_000,
   });
+
   await auth.startSession(user);
   const plugin = hooks.registrar('policy');
   const seen: string[] = [];
+
   plugin.filter('user.sessionAllowed', (value) => {
     seen.push(value.kind);
+
     return { ...value, allowed: false };
   });
   expect(await auth.authenticate('session')).toBeNull();
@@ -47,6 +51,7 @@ test('session admission is reversible but cannot replace identity or authenticat
     ...value,
     allowed: true,
   }));
+
   expect((await auth.authenticate('session'))?.id).toBe(user.id);
   expect((await auth.authenticate('api'))?.id).toBe(user.id);
   allow();
@@ -55,6 +60,7 @@ test('session admission is reversible but cannot replace identity or authenticat
     .filter('user.sessionAllowed', (value) => {
       value.user.role = 'administrator';
       value.allowed = true;
+
       return value;
     });
   expect(await auth.authenticate('session')).toBeNull();
@@ -71,6 +77,7 @@ test('session admission is reversible but cannot replace identity or authenticat
 test('sign out actions describe committed revocations without credentials', async () => {
   const users = new MemoryUsers();
   const user = userRecord({ id: 'writer', role: 'author' });
+
   await users.insert(user);
   const sessions = new MemorySessions(() => false, users);
   const hooks = new HookBus({
@@ -89,15 +96,18 @@ test('sign out actions describe committed revocations without credentials', asyn
     sessionTtlMs: 60_000,
   });
   const events: unknown[] = [];
+
   hooks.registrar('observer').on('user.signedOut', async (event) => {
     expect(await auth.sessions(user, '')).toHaveLength(0);
     events.push(event);
   });
   const first = await auth.startSession(user);
+
   await auth.logout(first.token);
   await auth.logout(first.token);
   const second = await auth.startSession(user);
   const [session] = await auth.sessions(user, second.token);
+
   await auth.revokeSession(user, session!.id);
   await auth.startSession(user);
   await auth.signOutEverywhere(user.id, {
@@ -113,6 +123,7 @@ test('sign out actions describe committed revocations without credentials', asyn
     bio: user.bio,
     locale: user.locale,
   };
+
   expect(events).toEqual([
     { user: profile, scope: 'session', actorId: user.id },
     { user: profile, scope: 'other', actorId: user.id },

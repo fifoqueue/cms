@@ -14,16 +14,20 @@ const deferred = <T>() => {
   const promise = new Promise<T>((done) => {
     resolve = done;
   });
+
   return { promise, resolve };
 };
 
 describe('plugin permissions', () => {
   test('only omitted page/widget capabilities default; malformed declarations fail closed', async () => {
     expect(pluginCapabilitySchema.parse(undefined)).toBe('plugins.manage');
+
     for (const capability of [null, '', 'plugins.mange', '*', false]) {
       expect(pluginCapabilitySchema.safeParse(capability).success).toBe(false);
+
       for (const kind of ['page', 'dashboardWidget'] as const) {
         const runtime = createRuntime();
+
         await runtime.host.install(
           runtime.bundles.register(
             'invalid',
@@ -59,6 +63,7 @@ describe('plugin permissions', () => {
       },
       async getBySlug(...args: unknown[]) {
         calls.push(args);
+
         return null;
       },
       async getPrivateById() {
@@ -67,6 +72,7 @@ describe('plugin permissions', () => {
     };
     const runtime = createRuntime({ content: reader });
     let context!: PluginContext;
+
     await runtime.host.install(
       runtime.bundles.register(
         'reader',
@@ -80,6 +86,7 @@ describe('plugin permissions', () => {
     );
     await runtime.host.enable(manifest.id);
     const unsafe = context.content as unknown as typeof reader;
+
     expect(unsafe.getPrivateById).toBeUndefined();
     await unsafe.getBySlug(
       'protected',
@@ -105,11 +112,14 @@ describe('plugin permissions', () => {
         });
       },
     });
+
     await runtime.host.install(runtime.bundles.register('lifetime', plugin));
     await runtime.host.enable(manifest.id);
     const old = contexts[0]!;
+
     await old.storage.set('value', 'kept');
     const pendingTask = runtime.tasks.get('plugin:permissions:tick')!;
+
     await runtime.host.disable(manifest.id);
     await runtime.host.enable(manifest.id);
     expect(await contexts[1]!.storage.get('value')).toBe('kept');
@@ -167,6 +177,7 @@ describe('plugin permissions', () => {
       submit: 'Reset',
       fields: [],
     };
+
     await runtime.host.install(
       runtime.bundles.register(
         'page',
@@ -177,6 +188,7 @@ describe('plugin permissions', () => {
               title: 'Private',
               render() {
                 renders++;
+
                 return [form];
               },
               actions: {
@@ -199,6 +211,7 @@ describe('plugin permissions', () => {
               capability: 'content.create',
               render() {
                 started.resolve();
+
                 return blocks.promise;
               },
               actions: {
@@ -213,6 +226,7 @@ describe('plugin permissions', () => {
     );
     await runtime.host.enable(manifest.id);
     const author = { id: 'author', role: 'author' };
+
     await expect(
       runtime.pages.run(manifest.id, 'private', 'reset', {}, author),
     ).rejects.toMatchObject({ code: 'forbidden' });
@@ -227,6 +241,7 @@ describe('plugin permissions', () => {
       {},
       author,
     );
+
     await started.promise;
     await runtime.host.disable(manifest.id);
     await runtime.host.enable(manifest.id);
@@ -246,12 +261,15 @@ describe('plugin permissions', () => {
         activations++;
       },
     });
+
     await first.host.install(first.bundles.register('identity', plugin));
     await first.host.enable(manifest.id);
     plugin.manifest.id = 'other-plugin';
     const booted = createRuntime({ storage: first.storage });
+
     await booted.host.boot();
     const reconciled = createRuntime({ storage: first.storage });
+
     await reconciled.host.reconcile();
     expect((await booted.host.list())[0]?.status).toBe('failed');
     expect((await reconciled.host.list())[0]?.status).toBe('failed');
@@ -262,10 +280,13 @@ describe('plugin permissions', () => {
     const runtime = createRuntime();
     let imports = 0;
     const load = runtime.bundles.load.bind(runtime.bundles);
+
     runtime.bundles.load = async (path) => {
       imports++;
+
       return load(path);
     };
+
     runtime.bundles.register(
       'bundle',
       definePlugin({ manifest, activate() {} }),
@@ -291,6 +312,7 @@ describe('plugin permissions', () => {
           headers: token ? { authorization: 'Bearer current' } : {},
         }),
       );
+
     for (const [method, path] of [
       ['GET', ''],
       ['POST', ''],
@@ -303,6 +325,7 @@ describe('plugin permissions', () => {
       expect((await call(method!, path!, false)).status).toBe(401);
       expect((await call(method!, path!)).status).toBe(403);
     }
+
     expect(imports).toBe(0);
     expect(await runtime.host.list()).toEqual([]);
     capabilities = ['plugins.manage'];

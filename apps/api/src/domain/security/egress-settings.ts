@@ -39,10 +39,13 @@ export class EgressSettingsService {
 
   async update(input: unknown): Promise<AdminEgressSettings> {
     const { rules } = parseInput(egressSettingsInputSchema, input);
+
     validateRanges(rules);
     await this.settings.set(KEY, { rules });
     const result = await this.getAdmin();
+
     void this.hooks?.emit('egress.updated', result);
+
     return result;
   }
 
@@ -56,6 +59,7 @@ export class EgressSettingsService {
   async initialize(rules: () => Promise<readonly EgressRule[]>) {
     if ((await this.settings.get(KEY)) !== undefined) return;
     const initial = await rules();
+
     validateRanges(initial);
     await this.settings.set(KEY, { rules: initial });
   }
@@ -64,8 +68,10 @@ export class EgressSettingsService {
     const parsed = egressSettingsInputSchema.safeParse(
       await this.settings.get(KEY),
     );
+
     if (!parsed.success) return [];
     validateRanges(parsed.data.rules);
+
     return parsed.data.rules;
   }
 }

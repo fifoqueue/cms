@@ -35,8 +35,10 @@ const withSecret = (secret: string) => ({
 export const actions: Actions = {
   create: async (event) => {
     const form = await event.request.formData();
+
     try {
       const hook = await adminFor(event).webhooks.create(input(form));
+
       return withSecret(hook.secret);
     } catch (caught) {
       return failFrom(caught);
@@ -44,15 +46,18 @@ export const actions: Actions = {
   },
   update: async (event) => {
     const form = await event.request.formData();
+
     try {
       await adminFor(event).webhooks.update(text(form, 'id'), input(form));
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'saved' };
   },
   rotate: async (event) => {
     const form = await event.request.formData();
+
     try {
       return withSecret(
         (await adminFor(event).webhooks.rotate(text(form, 'id'))).secret,
@@ -63,20 +68,24 @@ export const actions: Actions = {
   },
   ping: async (event) => {
     const form = await event.request.formData();
+
     try {
       await adminFor(event).webhooks.ping(text(form, 'id'));
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'webhookPingQueued' };
   },
   remove: async (event) => {
     const form = await event.request.formData();
+
     try {
       await adminFor(event).webhooks.remove(text(form, 'id'));
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'deleted' };
   },
 };

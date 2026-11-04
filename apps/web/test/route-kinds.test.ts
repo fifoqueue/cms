@@ -6,6 +6,7 @@ test('scanDocumentRoutes finds the app endpoints that the catch-all page would c
   const documents = scanDocumentRoutes(
     fileURLToPath(new URL('../src/routes', import.meta.url)),
   );
+
   expect(documents).toEqual(
     expect.arrayContaining([
       '/comments/feed.xml',

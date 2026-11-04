@@ -42,6 +42,7 @@ export const unlockAction = async ({
 }: RequestEvent) => {
   const form = await request.formData();
   const id = text(form, 'id');
+
   try {
     rememberUnlock(
       cookies,
@@ -55,5 +56,6 @@ export const unlockAction = async ({
   } catch (caught) {
     return failFrom(caught);
   }
+
   redirect(303, url.pathname);
 };

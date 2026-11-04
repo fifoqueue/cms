@@ -60,6 +60,7 @@ const documentWithinLimits = (document: unknown) => {
     const values = Array.isArray(frame.value)
       ? frame.value
       : Object.values(frame.value);
+
     for (const value of values) stack.push({ value, depth: frame.depth + 1 });
   }
 

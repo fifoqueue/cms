@@ -50,6 +50,7 @@ export const loadTermArchive = async (
     });
   // Requested together with the term, whose lookup decides the error.
   const guess = list(slug);
+
   guess.catch(() => undefined);
   const term = await api.taxonomy.getBySlug(taxonomy, slug).catch(notFoundFrom);
   const canonicalPath =
@@ -60,10 +61,12 @@ export const loadTermArchive = async (
           term.slug,
         )
       : `/taxonomy/${encodeURIComponent(taxonomy)}/${encodeURIComponent(term.slug)}`;
+
   if (url.pathname !== canonicalPath)
     redirect(308, `${canonicalPath}${url.search}`);
   // The term lookup ignores case and padding; list by the stored slug when spelled differently.
   const posts = await (term.slug === slug ? guess : list(term.slug));
+
   requirePage(posts);
   const page = {
     kind: 'term' as const,
@@ -75,6 +78,7 @@ export const loadTermArchive = async (
     slots,
     withSeoMeta(event, loaded, page),
   ]);
+
   return { ...page, slots: loadedSlots, seoMeta: meta.seoMeta, ...blocks };
 };
 
@@ -86,7 +90,9 @@ export const listPosts = async (
   pageSize: number,
 ) => {
   const posts = await api.list({ ...query, page: pageParam(url), pageSize });
+
   requirePage(posts);
+
   return listView(posts);
 };
 
@@ -104,12 +110,16 @@ export const homePosts = async (
   pageSize: number,
 ) => {
   const posts = await latestPosts(api, requested, page, pageSize);
+
   if (explicit || posts.items.length) return { type: requested, posts };
+
   for (const type of HOME_LIST_TYPES) {
     if (type === requested) continue;
     const other = await latestPosts(api, type, page, pageSize);
+
     if (other.items.length) return { type, posts: other };
   }
+
   return { type: requested, posts };
 };
 
@@ -123,8 +133,10 @@ export const latestPosts = async (
     api.list({ type, sticky: 'exclude', page, pageSize }),
     page === 1 ? api.list({ type, sticky: 'only', pageSize }) : null,
   ]);
+
   requirePage(posts);
   const listed = listView(posts);
+
   return sticky
     ? { ...listed, items: [...listView(sticky).items, ...listed.items] }
     : listed;

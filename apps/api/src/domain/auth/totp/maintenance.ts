@@ -12,11 +12,15 @@ export const resealTotpSecrets = async (deps: {
 }): Promise<{ resealed: number; unreadable: number; skipped: number }> => {
   const result = { resealed: 0, unreadable: 0, skipped: 0 };
   let afterId: string | null = null;
+
   for (;;) {
     const rows = await deps.secrets.scan(afterId, 100);
+
     if (!rows.length) return result;
+
     for (const row of rows) {
       const secret = deps.box.open(row.sealedSecret);
+
       if (!secret || !/^[A-Z2-7]{32}$/.test(secret)) {
         result.unreadable++;
       } else if (
@@ -31,6 +35,7 @@ export const resealTotpSecrets = async (deps: {
         result.skipped++;
       }
     }
+
     afterId = rows[rows.length - 1]!.id;
   }
 };

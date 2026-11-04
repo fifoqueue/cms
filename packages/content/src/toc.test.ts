@@ -23,6 +23,7 @@ test('TOC titles are escaped', () => {
       },
     ],
   });
+
   expect(renderWithToc(doc, extensions)).toContain(
     'aria-label="&lt;Contents&gt;"',
   );
@@ -42,6 +43,7 @@ test('automatic TOCs respect policy, manual blocks and page-local minimums', () 
       {},
       options,
     );
+
   for (const enabled of [false, true]) {
     for (const override of ['default', 'always', 'never'] as const) {
       expect(
@@ -49,11 +51,13 @@ test('automatic TOCs respect policy, manual blocks and page-local minimums', () 
       ).toBe(override === 'always' || (override === 'default' && enabled));
     }
   }
+
   expect(render({ enabled: true }, [heading, heading])).not.toContain('<nav');
   const manual = getSchema(extensions).nodeFromJSON({
     type: 'doc',
     content: [{ type: 'tableOfContents' }, ...content],
   });
+
   expect(
     renderWithToc(manual, extensions, {}, { enabled: true }).match(/<nav /g),
   ).toHaveLength(1);
@@ -62,6 +66,7 @@ test('automatic TOCs respect policy, manual blocks and page-local minimums', () 
     content: [...content, { type: 'pageBreak' }, ...content],
   });
   const html = renderWithToc(paged, extensions, {}, { enabled: true });
+
   expect(html.match(/<nav /g)).toHaveLength(2);
   expect(html).toContain('href="#section-4"');
   expect(html).toContain('id="section-4"');

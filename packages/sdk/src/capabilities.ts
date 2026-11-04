@@ -79,5 +79,6 @@ export const can = (
   const builtin = Object.hasOwn(ROLE_CAPABILITIES, role)
     ? ROLE_CAPABILITIES[role]
     : undefined;
+
   return (grants ?? builtin)?.includes(capability) ?? false;
 };

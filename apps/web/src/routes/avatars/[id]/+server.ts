@@ -16,5 +16,6 @@ export const GET: RequestHandler = async ({ fetch, params, url }) => {
     params.id,
     url.searchParams.get('s'),
   );
+
   return relayFile(response, PASSED);
 };

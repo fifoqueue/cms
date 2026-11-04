@@ -47,6 +47,7 @@ export const readThemeUpload = async (upload: FormDataEntryValue | null) => {
     return { failure: invalid(Errors.ThemeFileRequired) };
   if (upload.size > MAX_THEME_BYTES)
     return { failure: invalid(SdkErrors.ThemeArchiveTooLarge) };
+
   return { archive: new Uint8Array(await upload.arrayBuffer()) };
 };
 
@@ -63,6 +64,7 @@ const fontSlug = (family: string) =>
 
 const field = (form: FormData, key: string) => {
   const value = form.get(key);
+
   return typeof value === 'string' ? value.trim() : '';
 };
 
@@ -76,6 +78,7 @@ export const fontsAfter = (
   form: FormData,
 ): FontInput[] | null => {
   const op = field(form, 'op');
+
   if (op === 'remove')
     return fonts.filter((font) => font.slug !== field(form, 'slug'));
   if (op !== 'add') return null;
@@ -89,6 +92,7 @@ export const fontsAfter = (
   const existing = fonts.find(
     (font) => font.family.toLowerCase() === family.toLowerCase(),
   );
+
   if (field(form, 'source') !== 'stylesheet' && existing?.faces.length)
     return fonts.map((font) =>
       font === existing
@@ -98,6 +102,7 @@ export const fontsAfter = (
           }
         : font,
     );
+
   return [
     ...fonts,
     {
@@ -119,12 +124,15 @@ export const readBlocks = (
   value: FormDataEntryValue | null,
 ): { blocks: Block[] } | { failure: ReturnType<typeof invalid> } => {
   let data: unknown;
+
   try {
     data = JSON.parse(typeof value === 'string' ? value : '');
   } catch {
     return { failure: invalid(Errors.BlocksInvalid) };
   }
+
   const { blocks, issues } = parseBlocks(data);
+
   return issues.length
     ? { failure: invalid(Errors.BlocksInvalid, issues.slice(0, 20)) }
     : { blocks };

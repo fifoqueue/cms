@@ -18,6 +18,7 @@
     weekdayOrder(weekStartsOn).map((day) => {
       // 1 January 2023 was a Sunday.
       const date = new Date(Date.UTC(2023, 0, 1 + day));
+
       try {
         return {
           short: date.toLocaleDateString(locale, {

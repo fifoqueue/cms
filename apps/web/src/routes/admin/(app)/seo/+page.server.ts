@@ -12,6 +12,7 @@ export const load: PageServerLoad = async (event) => {
     admin.seo.settings(),
     contentApi(event.fetch).site(),
   ]);
+
   return {
     settings: seoSettingsFormValues(settings),
     // The same conditions the discovery routes publish under.
@@ -28,12 +29,15 @@ export const actions: Actions = {
     const { values, input, failure } = readSeoSettingsForm(
       await event.request.formData(),
     );
+
     if (failure) return failure;
+
     try {
       await adminFor(event).seo.update(input);
     } catch (caught) {
       return failFrom(caught, { intent: 'settings' as const, values });
     }
+
     return { intent: 'settings' as const, notice: 'saved' };
   },
 };

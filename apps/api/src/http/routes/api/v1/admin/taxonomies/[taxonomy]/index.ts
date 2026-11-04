@@ -20,6 +20,7 @@ export const routes = (app: ApiApp) =>
       '',
       async ({ adminTaxonomy, params, request, user }) => {
         authorize(user, 'taxonomy.manage');
+
         return json(
           await adminTaxonomy.create(params.taxonomy, await readJson(request)),
           201,

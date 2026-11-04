@@ -17,10 +17,12 @@ export const themeEditorHandlers = <P>(
     request,
   }: EditorContext<P> & { request: Request }) => {
     await save({ themes, params }, await readJson(request));
+
     return noContent();
   },
   reset: async ({ themes, params }: EditorContext<P>) => {
     await reset({ themes, params });
+
     return noContent();
   },
 });

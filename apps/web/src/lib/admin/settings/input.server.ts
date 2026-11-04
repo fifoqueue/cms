@@ -7,5 +7,6 @@ export const secretInput = (
   removeName: string,
 ) => {
   const value = text(form, name);
+
   return form.has(removeName) ? '' : value || undefined;
 };

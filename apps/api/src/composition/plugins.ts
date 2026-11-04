@@ -132,5 +132,6 @@ export const createPlugins = ({
     logger,
     timeoutMs,
   });
+
   return { contexts, plugins, list: () => plugins.list() };
 };

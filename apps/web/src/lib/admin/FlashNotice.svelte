@@ -27,19 +27,25 @@
       },
     ).catch(() => null);
     const result = response && deserialize(await response.text());
+
     if (!result || result.type === 'error') {
       notifyFailure(i18n.m.errorGeneric);
+
       return;
     }
+
     // Announced here: the admin may have left the screen that would show the result.
     if (result.type === 'failure') {
       notifyFailure(errorMessage(i18n.m, i18n.language, result.data ?? {}));
+
       return;
     }
+
     if (result.type === 'success') {
       announceResult(i18n, result.data);
       await invalidateAll();
     }
+
     await applyAction(result);
   };
 
@@ -48,9 +54,11 @@
     if (shallow) return;
     const params = page.url.searchParams;
     const key = params.get('notice');
+
     if (!key) return;
     const text = (i18n.m as Record<string, unknown>)[key];
     const undo = params.get('undo');
+
     if (typeof text === 'string')
       notifySuccess(text, {
         action: undo

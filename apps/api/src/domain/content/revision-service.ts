@@ -87,6 +87,7 @@ export class RevisionService {
     actor: Actor,
   ): Promise<ContentRevisionSummary[]> {
     const record = await this.editable(contentId, actor);
+
     return (await this.deps.revisions.list(contentId)).map((revision) =>
       toSummary(revision, record.textSavedAt, actor),
     );
@@ -98,6 +99,7 @@ export class RevisionService {
     actor: Actor,
   ): Promise<ContentRevision> {
     const record = await this.editable(contentId, actor);
+
     return toRevision(
       await this.require(contentId, id),
       record.textSavedAt,
@@ -108,6 +110,7 @@ export class RevisionService {
   async delete(contentId: string, id: string, actor: Actor): Promise<void> {
     const record = await this.editable(contentId, actor);
     const revision = await this.require(contentId, id);
+
     if (revision.kind !== 'revision')
       throw invalidInput(Errors.RevisionAutosaveDelete);
     await this.deps.revisions.delete(contentId, id, {
@@ -126,6 +129,7 @@ export class RevisionService {
   ): Promise<ContentEntry> {
     const entry = await this.deps.content.get(contentId, actor);
     const revision = await this.require(contentId, id);
+
     return this.deps.content.update(
       contentId,
       {
@@ -150,6 +154,7 @@ export class RevisionService {
   ) {
     const record = await this.editable(contentId, actor);
     const data = parseInput(autosaveInputSchema, input);
+
     // Rejects documents outside the editor schema, like a save would.
     this.deps.renderer.render(data.document);
     await this.deps.revisions.autosave({
@@ -169,6 +174,7 @@ export class RevisionService {
       actor.id,
       record.textSavedAt,
     );
+
     if (saved)
       void this.deps.hooks?.emit('content.autosaved', {
         contentId,
@@ -187,19 +193,24 @@ export class RevisionService {
       actor.id,
       record.textSavedAt,
     );
+
     return autosave && toRevision(autosave, record.textSavedAt, actor);
   }
 
   private async editable(contentId: string, actor: Actor) {
     const record = await this.deps.content.require(contentId);
+
     await this.deps.content.assertEditable(actor, record);
+
     return record;
   }
 
   private async require(contentId: string, id: string) {
     const revision = await this.deps.revisions.get(id);
+
     if (!revision || revision.contentId !== contentId)
       throw notFound(Errors.RevisionNotFound);
+
     return revision;
   }
 }

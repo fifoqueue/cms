@@ -85,6 +85,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     async () => {
       const { content } = services();
       const entries = [];
+
       for (const title of ['Cleanup one', 'Cleanup two']) {
         const entry = await content.create(
           {
@@ -95,6 +96,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           },
           ADMIN,
         );
+
         entries.push(entry);
         await db.contentRevision.deleteMany({ where: { contentId: entry.id } });
         for (let index = 0; index < 4; index++)
@@ -111,6 +113,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
             },
           });
       }
+
       const original = await db.content.findMany({
         where: { id: { in: entries.map((entry) => entry.id) } },
         orderBy: { id: 'asc' },
@@ -136,11 +139,13 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         capabilities: ['tools.manage'] as const,
       };
       const preview = await cleanup.preview({ keepLatest: 2 }, actor);
+
       expect(preview.counts.revisions).toBe(4);
       const result = await cleanup.run(
         { categories: ['revisions'], options: { keepLatest: 2 } },
         actor,
       );
+
       expect(result.deleted.revisions).toBe(4);
       for (const entry of entries)
         expect(
@@ -161,6 +166,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       const outbox = await db.searchOutbox.count({
         where: { contentId: entries[0]!.id },
       });
+
       expect(
         (await cleanup.run({ categories: ['trashedContent'] }, actor)).deleted
           .trashedContent,
@@ -290,6 +296,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       const root = record('Zq Root', null, { 'plugin:demo:color': 'blue' });
       const child = record('Zq 50% Child', root.id);
       const other = record('Zq Other');
+
       for (const term of [root, child, other]) await terms.insert(term);
       for (const [status, categoryIds] of [
         ['published', [child.id]],
@@ -356,6 +363,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       const { settings, terms } = services();
       const media = new PrismaMediaRepository(db);
       const mediaId = uuidV7.next();
+
       await db.media.create({
         data: {
           id: mediaId,
@@ -405,6 +413,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         name: 'Zq Covered',
         fields: { cover: mediaId },
       });
+
       await taxonomy.create('tag', {
         name: 'Zq Missing cover',
         fields: { cover: uuidV7.next() },
@@ -447,6 +456,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         clock: systemClock,
       });
       const mediaId = uuidV7.next();
+
       await db.media.create({
         data: {
           id: mediaId,
@@ -492,6 +502,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
             select: { mediaId: true },
           })
         ).map((link) => link.mediaId);
+
       expect(await termLinks()).toEqual([mediaId]);
       expect(await contentLinks()).toEqual([mediaId]);
 
@@ -501,6 +512,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         name: 'Zq Inactive cover',
         fields: {},
       });
+
       expect(saved.fields).toEqual({ [cover]: mediaId });
       expect(await termLinks()).toEqual([mediaId]);
       entry = await content.update(entry.id, inputOf(entry), ADMIN);
@@ -548,6 +560,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         slug: 'revision-owner',
         createdAt: new Date(),
       });
+
       await new PrismaUserRepository(db).insert(other);
       const entered = Promise.withResolvers<void>();
       const resume = Promise.withResolvers<void>();
@@ -561,24 +574,29 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           data: { authorId: other.id },
         });
       });
+
       await entered.promise;
       let finished = false;
       const deletion = revisions.delete(entry.id, source.id, guard).then(
         () => {
           finished = true;
+
           return null;
         },
         (error: unknown) => {
           finished = true;
+
           return error;
         },
       );
+
       try {
         await Bun.sleep(50);
         expect(finished).toBe(false);
       } finally {
         resume.resolve();
       }
+
       await reassignment;
       expect(await deletion).toMatchObject({ code: 'conflict' });
       expect(await revisions.get(source.id)).not.toBeNull();
@@ -587,6 +605,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         data: { authorId: ADMIN.id },
       });
       const sourceRecord = (await revisions.get(source.id))!;
+
       await history.delete(entry.id, source.id, ADMIN);
       // A stale restore has already read the source, but deletion wins before its locked write.
       await expect(
@@ -615,10 +634,12 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           contentRevision: {
             deleteMany: async ({ args, query }) => {
               const result = await query(args);
+
               if (args.where?.kind === 'autosave') {
                 clearing.resolve();
                 await complete.promise;
               }
+
               return result;
             },
           },
@@ -631,6 +652,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         { ...inputOf(current), title: 'Completed save' },
         ADMIN,
       );
+
       await clearing.promise;
       let autosaved = false;
       const autosaving = history
@@ -646,15 +668,19 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         .then(() => {
           autosaved = true;
         });
+
       try {
         await Bun.sleep(50);
         expect(autosaved).toBe(false);
       } finally {
         complete.resolve();
       }
+
       const renewed = await saving;
+
       await autosaving;
       const later = (await revisions.findAutosave(entry.id, ADMIN.id))!;
+
       expect((await history.pendingAutosave(entry.id, ADMIN))?.id).toBe(
         later.id,
       );
@@ -669,6 +695,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       // Pruning takes the same lock and also cannot invalidate the durable watermark.
       const watermark = (await repository.findById(entry.id))!.textSavedAt;
       let next = renewed;
+
       for (let index = 0; index < 26; index++)
         next = await content.update(
           entry.id,
@@ -700,6 +727,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         },
         ADMIN,
       );
+
       await history.autosave(
         entry.id,
         {
@@ -719,26 +747,32 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       const outboxBefore = await db.searchOutbox.count({
         where: { contentId: entry.id },
       });
+
       for (const stage of ['revision', 'clear'] as const) {
         const failing = db.$extends({
           query: {
             contentRevision: {
               create: async ({ args, query }) => {
                 const result = await query(args);
+
                 if (stage === 'revision')
                   throw new Error('Injected revision failure');
+
                 return result;
               },
               deleteMany: async ({ args, query }) => {
                 const result = await query(args);
+
                 if (stage === 'clear' && args.where?.kind === 'autosave')
                   throw new Error('Injected clear failure');
+
                 return result;
               },
             },
           },
         }) as unknown as Database;
         const failed = services(new PrismaContentRepository(failing)).content;
+
         await expect(
           failed.update(
             entry.id,
@@ -775,13 +809,16 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           await db.content.count({ where: { slug: 'atomic-failed-create' } }),
         ).toBe(0);
       }
+
       // A lost response AFTER commit must leave the whole save committed; never compensate it.
       const repository = new PrismaContentRepository(db);
       const update = repository.update.bind(repository);
+
       repository.update = async (...args) => {
         await update(...args);
         throw new Error('Response lost after commit');
       };
+
       await expect(
         services(repository).content.update(
           entry.id,
@@ -792,6 +829,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       const committed = await db.content.findUniqueOrThrow({
         where: { id: entry.id },
       });
+
       expect(committed.title).toBe('Atomic committed');
       expect(committed.textSavedAt).toEqual(committed.updatedAt);
       expect(
@@ -811,6 +849,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     async () => {
       const { content } = services();
       const mediaId = uuidV7.next();
+
       await db.media.create({
         data: {
           id: mediaId,
@@ -860,10 +899,12 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         logger: recordingLogger().logger,
       });
       const imageDrivers: string[] = [];
+
       imageHooks
         .registrar('functions:site', { trusted: true })
         .filter('media.url', (value) => {
           imageDrivers.push(value.driver);
+
           return { ...value, url: `https://cdn.example/${value.key}` };
         });
       const adminProjection = await new PrismaContentRepository(
@@ -871,6 +912,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         undefined,
         imageHooks,
       ).findById(child.id);
+
       expect(adminProjection?.featuredImage?.url).toBe(
         `https://cdn.example/2026/04/${mediaId}.webp`,
       );
@@ -906,6 +948,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       );
       const repository = new PrismaPublishedContentRepository(db);
       const reader = new PublishedContentReader(repository);
+
       expect(
         await repository.excerptBodies([
           parent.id,
@@ -918,6 +961,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         new Map(),
       );
       const item = await reader.getById(child.id);
+
       expect(item).toMatchObject({
         path: child.path,
         parentId: null,
@@ -938,6 +982,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         include: [parent.id, child.id, locked.id, draft.id],
         pageSize: 10,
       });
+
       expect(page.items.map(({ id }) => id).sort()).toEqual(
         [child.id, locked.id].sort(),
       );
@@ -950,11 +995,13 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         'DRAFT_BODY',
       ])
         expect(JSON.stringify(page)).not.toContain(marker);
+
       for (const summary of page.items) {
         expect(summary).not.toHaveProperty('html');
         expect(summary).not.toHaveProperty('document');
         expect(summary).not.toHaveProperty('authorId');
       }
+
       await db.content.update({
         where: { id: parent.id },
         data: { status: 'published', passwordHash: 'protected' },
@@ -978,6 +1025,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       });
       expect(await repository.privateById(parent.id)).toBeNull();
       const ids = [parent.id, child.id, locked.id, draft.id];
+
       await db.content.deleteMany({ where: { id: { in: ids } } });
       await db.searchOutbox.deleteMany({ where: { contentId: { in: ids } } });
       await db.media.delete({ where: { id: mediaId } });
@@ -1010,6 +1058,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       createdAt: at,
       updatedAt: at,
     };
+
     await comments.insert({
       ...base,
       id: 'c1',
@@ -1068,6 +1117,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       (await comments.list({ ...criteria, page: 1, pageSize: 20 })).items.map(
         (item) => [item.id, item.authorIp, item.authorUserAgent],
       );
+
     expect(await listed({ ids: ['c2', 'missing'] })).toEqual([
       ['c2', '203.0.113.9', 'Mozilla/5.0'],
     ]);
@@ -1080,6 +1130,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       email: 'ann@example.com',
       createdAt: new Date(),
     });
+
     await db.user.create({ data: subject });
     await db.content.update({
       where: { id: entry.id },
@@ -1152,6 +1203,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       ]),
     );
     const now = new Date();
+
     await privacy.insert({
       id: 'comment-erasure',
       email: 'ann@example.com',
@@ -1194,6 +1246,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
 
   test('jobs, task leases and rate limits hold under concurrent processes', async () => {
     const jobs = new PrismaJobQueue(db, uuidV7);
+
     for (let index = 0; index < 4; index += 1)
       await jobs.enqueue('test', { index });
     const now = new Date(Date.now() + 1000);
@@ -1202,22 +1255,27 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       jobs.claim(3, 'b', 60_000, now),
     ]);
     const ids = [...a, ...b].map((job) => job.id);
+
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids.length).toBe(4);
     const owned = a[0] ?? b[0]!;
     const owner = a.includes(owned) ? 'a' : 'b';
+
     expect(await jobs.complete(owned.id, 'other')).toBe(false);
     expect(await jobs.complete(owned.id, owner)).toBe(true);
 
     const leases = new PrismaTaskLeases(db);
+
     await leases.ensure('task');
     const claims = await Promise.all(
       ['x', 'y', 'z'].map((owner) =>
         leases.claim('task', owner, 60_000, new Date()),
       ),
     );
+
     expect(claims.filter(Boolean)).toHaveLength(1);
     const leaseOwner = ['x', 'y', 'z'][claims.findIndex(Boolean)]!;
+
     expect(await leases.release('task', 'other', new Date(), null)).toBe(false);
     expect(await leases.release('task', leaseOwner, new Date(), null)).toBe(
       true,
@@ -1234,6 +1292,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         leases.claim('task', owner, 60000, new Date(), { ignoreDue: true }),
       ),
     );
+
     expect(immediate.filter(Boolean)).toHaveLength(1);
 
     const limits = new PrismaRateLimitStore(db);
@@ -1244,6 +1303,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         (index % 2 ? limits : otherLimits).hit('ip:1', rule, now),
       ),
     );
+
     expect(attempts.filter((over) => !over)).toHaveLength(5);
     expect(attempts.filter(Boolean)).toHaveLength(3);
     expect(await limits.exceeded('ip:1', rule, now)).toBe(true);
@@ -1251,6 +1311,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     const expiry = new Date(
       now.getTime() + Math.max(rule.windowSeconds, rule.blockSeconds) * 1000,
     );
+
     expect(
       await otherLimits.hit('ip:1', rule, new Date(expiry.getTime() - 1)),
     ).toBe(true);
@@ -1305,6 +1366,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         },
         ADMIN,
       );
+
       expect(child.path).toBe('/tree-parent/tree-leaf');
       await content.create(
         {
@@ -1408,6 +1470,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         ...initial.bases,
         category: '/reserved-terms',
       });
+
       expect(saved.history.category).toContain(initial.bases.category);
       expect(await new PrismaArchivePaths(db).read()).toEqual(saved);
       expect(
@@ -1435,6 +1498,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         },
         ADMIN,
       );
+
       await expect(
         content.create(
           {
@@ -1477,6 +1541,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
           ADMIN,
         ),
       ]);
+
       expect(
         outcomes.filter(({ status }) => status === 'fulfilled'),
       ).toHaveLength(1);
@@ -1490,6 +1555,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     }
 
     const legacySlug = `legacy-login-${uuidV7.next()}`;
+
     try {
       const legacy = await content.create(
         {
@@ -1501,6 +1567,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         },
         ADMIN,
       );
+
       await settings.set('site', { ...original, loginPath: legacy.path });
       expect(await writer.publicLoginPath(legacy.path)).toMatch(
         /^\/cms-login(?:-\d+)?$/,

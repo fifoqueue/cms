@@ -11,14 +11,17 @@ test('public messages retain their locale across server serialization and client
     const server = await loadSiteMessages(catalog);
     const client = await loadSiteMessages(JSON.parse(wire));
     const full = messagesFor(locale);
+
     ok(
       Object.values(catalog.strings).every((text) => typeof text === 'string'),
     );
     ok(!wire.includes('seoFocusKeyword'));
+
     for (const [key, value] of Object.entries(catalog.strings)) {
       equal(server[key as keyof typeof catalog.strings], value);
       equal(client[key as keyof typeof catalog.strings], value);
     }
+
     for (const m of [server, client]) {
       equal(m.adminBar, full.adminBar);
       equal(m.themeSearchTitle('tea'), full.themeSearchTitle('tea'));

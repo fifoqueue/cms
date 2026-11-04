@@ -35,6 +35,7 @@ function fixture() {
       destinations.push(settings.transport);
     },
   });
+
   return {
     settings,
     secrets,
@@ -46,6 +47,7 @@ function fixture() {
     failure,
   };
 }
+
 const configured = () => ({
   ...DEFAULT_EMAIL_SETTINGS,
   enabled: true,
@@ -59,12 +61,16 @@ const configured = () => ({
   http: { ...DEFAULT_EMAIL_SETTINGS.http, secret: 'http-secret' },
 });
 const message = { to: 'reader@example.com', subject: 'Test', text: 'Body' };
+
 test('sensitive mail never reaches body filters while ordinary mail may change text', async () => {
   const { email, hooks, messages } = fixture();
+
   await email.update(configured());
   const seen: unknown[] = [];
+
   hooks.registrar('test').filter('email.beforeSend', (value) => {
     seen.push(value);
+
     return { ...value, subject: 'Changed', text: 'Changed' };
   });
   await email.deliver({ ...message, sensitive: true });
@@ -80,6 +86,7 @@ test('sensitive mail never reaches body filters while ordinary mail may change t
 });
 test('a later send filter can allow mail an earlier one refused', async () => {
   const { email, hooks, messages } = fixture();
+
   await email.update(configured());
   hooks
     .registrar('deny')

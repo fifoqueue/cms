@@ -19,6 +19,7 @@ export const blockLabels = (
     addProseMirrorPlugins() {
       const build = (doc: Node) => {
         const decorations: Decoration[] = [];
+
         doc.descendants((node, pos) => {
           if (types.includes(node.type.name))
             decorations.push(
@@ -27,8 +28,10 @@ export const blockLabels = (
               }),
             );
         });
+
         return DecorationSet.create(doc, decorations);
       };
+
       return [
         new Plugin<DecorationSet>({
           key,

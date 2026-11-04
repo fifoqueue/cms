@@ -85,6 +85,7 @@ export class OpenIdClientProvider implements OidcProvider {
 
     // The token request's redirect_uri is derived from this URL, so it is always the configured one.
     const callback = new URL(this.settings.redirectUri);
+
     callback.search = query;
 
     try {
@@ -116,6 +117,7 @@ export class OpenIdClientProvider implements OidcProvider {
     const fetcher: CustomFetch =
       this.settings.fetch ??
       ((url, options) => publicFetch(url, options as unknown as RequestInit));
+
     this.configuration ??= discovery(
       new URL(this.settings.issuer),
       this.settings.clientId,

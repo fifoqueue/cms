@@ -41,6 +41,7 @@ export class StorageSettings {
 
   private async stored(store = this.deps.settings): Promise<Stored> {
     const value = (await store.get(KEY)) as Stored | undefined;
+
     return value ?? { settings: { driver: 'local', s3: null }, secret: '' };
   }
 
@@ -50,6 +51,7 @@ export class StorageSettings {
 
   private dto(value: Stored) {
     const plugin = value.plugins?.[value.settings.driver];
+
     return mediaStorageSettingsSchema.parse({
       ...value.settings,
       availableDrivers: this.deps.drivers?.available(),
@@ -60,22 +62,28 @@ export class StorageSettings {
 
   async configuration(driver?: string): Promise<Configuration> {
     const value = await this.stored();
+
     if (driver) value.settings = { ...value.settings, driver };
+
     return this.open(value);
   }
 
   private open(value: Stored): Configuration {
     const s3 = value.settings.s3;
     const secret = value.secret ? this.deps.secrets.open(value.secret) : null;
+
     if (s3 && !secret) throw invalidInput(Errors.MediaStorageSecret);
     const plugin = value.plugins?.[value.settings.driver];
     const pluginSettings = plugin ? { ...plugin.values } : undefined;
+
     if (plugin && pluginSettings)
       for (const [key, sealed] of Object.entries(plugin.secrets)) {
         const plain = this.deps.secrets.open(sealed);
+
         if (plain === null) throw invalidInput(Errors.MediaStorageSecret);
         pluginSettings[key] = plain;
       }
+
     return {
       driver: value.settings.driver,
       pluginSettings,
@@ -86,15 +94,18 @@ export class StorageSettings {
   private prepare(input: unknown, current: Stored): Stored {
     const parsed = parseInput(mediaStorageInputSchema, input);
     const { s3, driver } = parsed;
+
     if (driver.startsWith('plugin:')) {
       if (!this.deps.drivers) throw invalidInput(Errors.MediaDriverInvalid);
       const fields = this.deps.drivers.fields(driver);
       const prior = current.plugins?.[driver];
       const values = { ...(parsed.pluginSettings ?? prior?.values ?? {}) };
       const secrets: Record<string, string> = {};
+
       for (const field of fields.filter((field) => field.type === 'secret')) {
         const input = values[field.key];
         const retained = prior?.secrets[field.key];
+
         if (input !== undefined) {
           if (typeof input !== 'string')
             throw invalidInput(Errors.InvalidInput);
@@ -102,14 +113,18 @@ export class StorageSettings {
         } else if (retained) secrets[field.key] = retained;
         delete values[field.key];
       }
+
       const next = {
         ...current,
         settings: { ...current.settings, driver },
         plugins: { ...current.plugins, [driver]: { values, secrets } },
       };
+
       this.deps.drivers.validate(driver, this.open(next).pluginSettings ?? {});
+
       return next;
     }
+
     if (!s3)
       return {
         ...current,
@@ -117,6 +132,7 @@ export class StorageSettings {
         secret: current.secret,
       };
     const previous = current.settings.s3;
+
     if (
       previous &&
       (previous.endpoint !== s3.endpoint ||
@@ -135,7 +151,9 @@ export class StorageSettings {
           ? current.secret
           : ''
         : this.deps.secrets.seal(secretAccessKey);
+
     if (!secret) throw invalidInput(Errors.MediaStorageSecret);
+
     return {
       ...current,
       settings: {
@@ -162,8 +180,10 @@ export class StorageSettings {
   async update(input: unknown): Promise<MediaStorageSettings> {
     return this.deps.transactions.run(`${KEY}.lock`, async (store) => {
       const value = this.prepare(input, await this.stored(store));
+
       await this.check(this.open(value));
       await store.set(KEY, value);
+
       return this.dto(value);
     });
   }

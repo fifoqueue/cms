@@ -39,12 +39,14 @@ const setup = async () => {
   const first = await create('First', 'published');
   const second = await create('Second', 'published');
   const draft = await create('Draft', 'draft');
+
   return { hooks, publicContent, first, second, draft };
 };
 
 test('public query changes non-search selection and invalid changes are ignored', async () => {
   const { hooks, publicContent, first } = await setup();
   const registrar = hooks.registrar('functions:site', { trusted: true });
+
   registrar.filter('content.publicQuery', (value) => ({
     ...value,
     include: [first.id],
@@ -64,6 +66,7 @@ test('public query changes non-search selection and invalid changes are ignored'
 test('public results add published ids, reorder, and reject draft additions', async () => {
   const { hooks, publicContent, first, second, draft } = await setup();
   const registrar = hooks.registrar('functions:site', { trusted: true });
+
   registrar.filter('content.publicResults', () => ({
     ids: [second.id, first.id],
     total: 2,
@@ -73,12 +76,14 @@ test('public results add published ids, reorder, and reject draft additions', as
     total: 1,
   }));
   const page = await publicContent.list({ include: [first.id] });
+
   expect(page.items.map((item) => item.id)).toEqual([second.id, first.id]);
   expect(page.total).toBe(2);
 });
 
 test('title filters affect single and summary display, not routing identity', async () => {
   const { hooks, publicContent, first } = await setup();
+
   hooks
     .registrar('functions:site', { trusted: true })
     .filter('content.title', (value) => ({ ...value, title: 'Display' }));

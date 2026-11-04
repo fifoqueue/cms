@@ -51,16 +51,19 @@ export class MenuService {
 
   async get(actor: Actor): Promise<MenusSettings> {
     authorize(actor, 'appearance.manage');
+
     return this.stored();
   }
 
   types(actor: Actor) {
     authorize(actor, 'appearance.manage');
+
     return this.deps.itemTypes?.types?.() ?? [];
   }
 
   async objects(key: string, query: MenuObjectQuery, actor: Actor) {
     authorize(actor, 'appearance.manage');
+
     return (
       (await this.deps.itemTypes?.objects?.(key, query)) ?? {
         items: [],
@@ -86,6 +89,7 @@ export class MenuService {
       ),
     ];
     const found: MenuTarget[] = [];
+
     for (let start = 0; start < ids.length; start += 500)
       for (const {
         id,
@@ -95,6 +99,7 @@ export class MenuService {
         ids.slice(start, start + 500),
       ))
         found.push({ id, title, type });
+
     return found;
   }
 
@@ -118,18 +123,23 @@ export class MenuService {
       ]),
     ) as MenusSettings['locations'];
     const saved = { ...settings, locations };
+
     await this.deps.settings.set(KEY, saved);
+
     for (const menu of saved.menus) {
       const before = previous.menus.find((entry) => entry.id === menu.id);
+
       if (!before || JSON.stringify(before) !== JSON.stringify(menu))
         void this.deps.hooks?.emit(
           before ? 'menu.updated' : 'menu.created',
           menu,
         );
     }
+
     for (const menu of previous.menus)
       if (!saved.menus.some((entry) => entry.id === menu.id))
         void this.deps.hooks?.emit('menu.deleted', menu);
+
     return saved;
   }
 
@@ -140,6 +150,7 @@ export class MenuService {
   async publicMenu(location: MenuLocation): Promise<PublicMenuItem[] | null> {
     const settings = await this.stored();
     const id = settings.locations[location];
+
     return id ? this.publicItems(id, settings) : null;
   }
 
@@ -150,9 +161,11 @@ export class MenuService {
     const [primary, footer] = await Promise.all(
       MENU_LOCATIONS.map((location) => {
         const id = settings.locations[location];
+
         return id ? this.publicItems(id, settings, once) : null;
       }),
     );
+
     return { primary, footer };
   }
 
@@ -168,6 +181,7 @@ export class MenuService {
     const menu = (settings ?? (await this.stored())).menus.find(
       (entry) => entry.id === id,
     );
+
     if (!menu) return null;
 
     const items = walk(menu.items);
@@ -232,7 +246,9 @@ export class MenuService {
       const link = this.deps.itemTypes
         ? await this.deps.itemTypes.resolve(query, key)
         : await coreMenuTypes[key]?.(query);
+
       if (!link) return null;
+
       return {
         label: item.label || link.title,
         url: link.url,
@@ -250,6 +266,7 @@ export class MenuService {
       output,
       (value) => publicMenuItemSchema.array().safeParse(value).success,
     );
+
     return publicMenuItemSchema.array().parse(filtered ?? output);
   }
 
@@ -257,6 +274,7 @@ export class MenuService {
     const result = menusSettingsSchema.safeParse(
       await this.deps.settings.get(KEY),
     );
+
     return result.success ? result.data : menusSettingsSchema.parse({});
   }
 }

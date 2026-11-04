@@ -48,6 +48,7 @@ const setup = () => {
     fields,
   );
   const entries = testContentService({ repository: content, hooks, ids });
+
   return { admin, visitor, entries, hooks, settings, registry, repository };
 };
 
@@ -58,6 +59,7 @@ test('object capabilities govern term edits in both directions', async () => {
   const { admin, hooks } = setup();
   const term = await admin.create('tag', { name: 'Original' });
   const reader = { id: 'reader', role: 'subscriber' };
+
   await expect(
     admin.update('tag', term.id, { name: 'Denied' }, reader),
   ).rejects.toMatchObject({ code: 'forbidden' });
@@ -81,6 +83,7 @@ test('term.query narrows, orders and retargets admin and public lists; invalid r
     parentId: news.id,
   });
   const sports = await admin.create('category', { name: 'Sports' });
+
   await admin.create('tag', { name: 'Tagged' });
   await entries.create(
     {
@@ -113,8 +116,10 @@ test('term.query narrows, orders and retargets admin and public lists; invalid r
   const scopes: string[] = [];
   let next: Record<string, unknown> = {};
   const plugin = hooks.registrar('plugin-a');
+
   plugin.filter('term.query', (query, context) => {
     scopes.push(context.scope);
+
     return { ...query, ...next } as typeof query;
   });
 
@@ -161,6 +166,7 @@ test('term.deleteAllowed is bidirectional and sees the term', async () => {
     .registrar('functions:site', { trusted: true })
     .filter('term.deleteAllowed', (allowed, { term }) => {
       seen.push(`${term.id}:${allowed}`);
+
       return false;
     });
 
@@ -184,6 +190,7 @@ test('term fields validate on save, serve by audience and survive an unregistere
     type: 'text',
     taxonomies: ['category'],
   });
+
   await settings.set('contentFields', [
     {
       key: 'rank',
@@ -216,6 +223,7 @@ test('term fields validate on save, serve by audience and survive an unregistere
     name: 'Blue',
     fields: { [color]: ' blue ', rank: 1, stray: true },
   });
+
   expect(term.fields).toEqual({ [color]: 'blue', rank: 1 });
   expect((await visitor.getBySlug('category', 'blue')).fields).toEqual({
     [color]: 'blue',
@@ -228,6 +236,7 @@ test('term fields validate on save, serve by audience and survive an unregistere
       ...data,
       fields: { rank: 'last' },
     }));
+
   await expect(
     admin.update('category', term.id, { name: 'Blue', fields: { rank: 2 } }),
   ).rejects.toMatchObject({ code: 'invalid_input' });
@@ -240,7 +249,9 @@ test('term fields validate on save, serve by audience and survive an unregistere
     name: 'Blue',
     fields: { rank: 2 },
   });
+
   expect(updated.fields).toEqual({ [color]: 'blue', rank: 2 });
   const kept = await admin.update('category', term.id, { name: 'Navy' });
+
   expect(kept.fields).toEqual(updated.fields);
 });

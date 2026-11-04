@@ -6,8 +6,10 @@ import { scratchDatabase } from '#test/support/scratch-database';
 const alice = '11111111-1111-4111-8111-111111111111';
 const bob = '22222222-2222-4222-8222-222222222222';
 const serverUrl = process.env.CMS_TEST_DATABASE_URL;
+
 describe.skipIf(!serverUrl)('Prisma credential repository contracts', () => {
   let scratch: Awaited<ReturnType<typeof scratchDatabase>>;
+
   beforeAll(async () => {
     scratch = await scratchDatabase(serverUrl!, 'cms_credentials_test');
     await scratch.db.user.createMany({
@@ -39,6 +41,7 @@ describe.skipIf(!serverUrl)('Prisma credential repository contracts', () => {
       createdAt: new Date(),
       lastUsedAt: null,
     };
+
     expect(await passkeys.insert(record)).toBe(true);
     expect(
       await passkeys.insert({
@@ -76,6 +79,7 @@ describe.skipIf(!serverUrl)('Prisma credential repository contracts', () => {
       lastStep: 100,
       createdAt: new Date(),
     };
+
     expect(await secrets.insert(record)).toBe(true);
     expect(await secrets.insert({ ...record, id: crypto.randomUUID() })).toBe(
       false,
@@ -123,6 +127,7 @@ describe.skipIf(!serverUrl)('Prisma credential repository contracts', () => {
       createdAt: now,
       lastUsedAt: null,
     };
+
     for (const tokenHash of ['a'.repeat(64), 'b'.repeat(64)])
       await db.passwordToken.create({
         data: {
@@ -144,11 +149,13 @@ describe.skipIf(!serverUrl)('Prisma credential repository contracts', () => {
         now,
       ),
     ]);
+
     expect(results.sort()).toEqual([false, true]);
     expect(await db.passwordToken.count({ where: { userId: bob } })).toBe(0);
     const keys = (await passkeys.list(bob)).filter(
       (key) => key.name === 'Setup key',
     );
+
     expect(keys).toHaveLength(1);
     await db.passwordToken.create({
       data: {

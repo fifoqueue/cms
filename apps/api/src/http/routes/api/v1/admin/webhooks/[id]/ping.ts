@@ -9,6 +9,7 @@ export const routes = (app: ApiApp) =>
     '',
     async ({ webhooks, params, user }) => {
       await webhooks.ping(params.id, user);
+
       return noContent();
     },
     idParams,

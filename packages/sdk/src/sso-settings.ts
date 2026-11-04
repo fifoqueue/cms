@@ -63,6 +63,7 @@ export type SsoProvider = z.output<typeof ssoProviderSchema>;
 
 const uniqueIds = (providers: { id: string }[], ctx: z.RefinementCtx) => {
   const seen = new Set<string>();
+
   providers.forEach(({ id }, index) => {
     if (seen.has(id))
       ctx.addIssue({

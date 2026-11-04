@@ -19,7 +19,9 @@ export class EmbedRegistry {
     return {
       register: (provider: EmbedProvider) => {
         const registration = { owner, provider };
+
         this.registrations = [...this.registrations, registration];
+
         return () => {
           this.registrations = this.registrations.filter(
             (entry) => entry !== registration,
@@ -40,6 +42,7 @@ export class EmbedRegistry {
               : null,
           this.options.timeoutMs,
         );
+
         if (!this.registrations.includes(entry)) return null;
         if (
           result.ok &&
@@ -49,6 +52,7 @@ export class EmbedRegistry {
         this.options.logger.warn(
           `Plugin "${entry.owner}" failed to render an embed: ${result.ok ? 'not a string' : result.error.message}`,
         );
+
         return null;
       },
     }));

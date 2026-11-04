@@ -53,6 +53,7 @@ export interface PendingSignIn {
 }
 
 const FLOWS: readonly PendingFlow[] = ['login', 'setup', 'enroll', 'link'];
+
 /** Flows that belong to the signed-in user who started them. */
 export const PERSONAL_FLOWS: readonly PendingFlow[] = ['enroll', 'link'];
 
@@ -66,6 +67,7 @@ let derived: { secret: string; key: Buffer } | null = null;
 /** The AES-256-GCM key of this cookie alone, derived from the frontend secret. */
 const pendingKey = () => {
   const secret = frontendSecret();
+
   if (!secret) return processKey;
   if (derived?.secret !== secret)
     derived = {
@@ -74,6 +76,7 @@ const pendingKey = () => {
         hkdfSync('sha256', secret, '', 'cms-web pending sign-in cookie v3', 32),
       ),
     };
+
   return derived.key;
 };
 
@@ -81,6 +84,7 @@ const pendingKey = () => {
 const encode = (pending: PendingSignIn, name: string) => {
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv('aes-256-gcm', pendingKey(), iv);
+
   cipher.setAAD(Buffer.from(name));
   const sealed = Buffer.concat([
     cipher.update(
@@ -97,6 +101,7 @@ const encode = (pending: PendingSignIn, name: string) => {
     ),
     cipher.final(),
   ]);
+
   return `${VERSION}${Buffer.concat([iv, sealed, cipher.getAuthTag()]).toString('base64url')}`;
 };
 
@@ -104,14 +109,17 @@ const encode = (pending: PendingSignIn, name: string) => {
 const decode = (value: string, name: string): PendingSignIn | null => {
   if (!value.startsWith(VERSION) || value.length > MAX_VALUE_LENGTH)
     return null;
+
   try {
     const bytes = Buffer.from(value.slice(VERSION.length), 'base64url');
+
     if (bytes.length < IV_BYTES + TAG_BYTES) return null;
     const decipher = createDecipheriv(
       'aes-256-gcm',
       pendingKey(),
       bytes.subarray(0, IV_BYTES),
     );
+
     decipher.setAAD(Buffer.from(name));
     decipher.setAuthTag(bytes.subarray(bytes.length - TAG_BYTES));
     const compressed = Buffer.concat([
@@ -124,6 +132,7 @@ const decode = (value: string, name: string): PendingSignIn | null => {
       }).toString('utf8'),
     ) as Record<string, unknown>;
     const flow = stored.flow as PendingFlow;
+
     if (
       typeof stored.transaction !== 'string' ||
       !FLOWS.includes(flow) ||
@@ -134,6 +143,7 @@ const decode = (value: string, name: string): PendingSignIn | null => {
     )
       return null;
     const step = signInStepSchema.safeParse(stored.step);
+
     return {
       transaction: stored.transaction,
       flow,
@@ -168,6 +178,7 @@ export const setPending = (
   expiresAt?: string,
 ) => {
   const secure = url.protocol === 'https:';
+
   cookies.delete(secure ? HTTP_TRANSACTION_COOKIE : TRANSACTION_COOKIE, {
     path: '/',
     secure: !secure,
@@ -179,6 +190,7 @@ export const setPending = (
     });
   const name = nameFor(url);
   let value = encode(pending, name);
+
   if (value.length > MAX_VALUE_LENGTH)
     value = encode({ ...pending, step: null }, name);
   cookies.set(name, value, {
@@ -194,11 +206,13 @@ export const setPending = (
 export const readPending = (cookies: Pick<Cookies, 'get'>, url: URL) => {
   const name = nameFor(url);
   const value = cookies.get(name);
+
   return value ? decode(value, name) : null;
 };
 
 export const clearPending = (cookies: Cookies, url: URL) => {
   const secure = url.protocol === 'https:';
+
   cookies.delete(nameFor(url), { path: '/', secure });
   if (!secure)
     cookies.delete(HTTP_TRANSACTION_COOKIE, {
@@ -210,6 +224,8 @@ export const clearPending = (cookies: Cookies, url: URL) => {
 /** Returns the pending sign-in once and forgets it (provider callbacks). */
 export const takePending = (cookies: Cookies, url: URL) => {
   const pending = readPending(cookies, url);
+
   clearPending(cookies, url);
+
   return pending;
 };

@@ -20,8 +20,10 @@ test('connect, commit, read, remove and streaming failures are bounded and sanit
     remove: async () => undefined,
   });
   const noResult = () => new Promise<never>(() => undefined);
+
   for (const operation of ['commit', 'read', 'remove'] as const) {
     const failure = base();
+
     failure[operation] = noResult;
     const release = drivers.plugin('faulty', operation, {
       label: 'Faulty',
@@ -35,9 +37,11 @@ test('connect, commit, read, remove and streaming failures are bounded and sanit
         : operation === 'read'
           ? storage.read('key')
           : storage.remove(['key']);
+
     await expect(task).rejects.toThrow(Errors.MediaStorageOperation);
     release();
   }
+
   drivers.plugin('faulty', 'connect', {
     label: 'Faulty',
     fields: [],
@@ -67,6 +71,7 @@ test('connect, commit, read, remove and streaming failures are bounded and sanit
     }),
   });
   const file = await drivers.get('plugin:faulty:stream')!.read('key');
+
   await expect(new Response(file!.body).arrayBuffer()).rejects.toThrow(
     Errors.MediaStorageOperation,
   );

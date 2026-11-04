@@ -1,5 +1,6 @@
 import { stringifyJson } from '@cms/sdk';
 import type { SecretBox } from '#api/domain/ports';
+
 export const sealJob = (payload: unknown, secrets: SecretBox) => ({
   version: 1,
   sealed: secrets.seal(stringifyJson(payload)),
@@ -23,7 +24,9 @@ export const inspectJob = (
   )
     return { ok: false, reason: 'invalid' };
   const plain = secrets.open(payload.sealed);
+
   if (plain === null) return { ok: false, reason: 'unreadable' };
+
   try {
     return { ok: true, value: JSON.parse(plain) as unknown, sealed: true };
   } catch {
@@ -33,5 +36,6 @@ export const inspectJob = (
 
 export const openJob = (payload: unknown, secrets: SecretBox): unknown => {
   const result = inspectJob(payload, secrets);
+
   return result.ok ? result.value : null;
 };

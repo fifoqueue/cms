@@ -15,8 +15,10 @@ export const load: PageServerLoad = async (event) => {
   const type = (await api.contentTypes()).find(
     (option) => option.key === params.type && option.archive,
   );
+
   if (!type) error(404, Errors.NotFound);
   const posts = await listPosts(api, url, { type: type.key }, pageSize);
+
   return withTemplateData(api, event, {
     kind: 'archive' as const,
     archive: {

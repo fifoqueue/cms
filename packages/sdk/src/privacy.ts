@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { permalinkPathSchema } from '#sdk/permalinks';
 import { isJsonValue, stringifyJson } from '#sdk/common';
 import type { JsonValue } from '#sdk/common';
+
 export const PRIVACY_ACTIONS = ['export', 'erase'] as const;
 export const privacySettingsSchema = z.object({
   policyPageId: z.string().min(1).max(36).nullable().default(null),

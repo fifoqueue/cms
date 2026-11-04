@@ -2,6 +2,7 @@ import Action from '#lib/components/ui/alert/alert-action.svelte';
 import Description from '#lib/components/ui/alert/alert-description.svelte';
 import Title from '#lib/components/ui/alert/alert-title.svelte';
 import Root from '#lib/components/ui/alert/alert.svelte';
+
 export {
   alertVariants,
   type AlertVariant,

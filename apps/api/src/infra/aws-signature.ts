@@ -56,6 +56,7 @@ export function signAws(input: {
     key,
     `AWS4-HMAC-SHA256\n${timestamp}\n${scope}\n${hash(canonical)}`,
   ).toString('hex');
+
   return {
     ...headers,
     authorization: `AWS4-HMAC-SHA256 Credential=${input.keyId}/${scope},SignedHeaders=${signedHeaders},Signature=${signature}`,

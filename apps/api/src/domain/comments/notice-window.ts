@@ -30,6 +30,7 @@ export const countNotice = (
     sent: admitted ? sent + 1 : sent,
     deferred: admitted ? deferred : deferred + 1,
   };
+
   return {
     next,
     admitted,

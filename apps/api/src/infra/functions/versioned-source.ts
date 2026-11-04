@@ -19,6 +19,7 @@ export const versionedSource = (
   let pending: Promise<FunctionsDefinition> | undefined;
   const load = async (): Promise<FunctionsDefinition> => {
     await mkdir(join(directory, '.versions'), { recursive: true });
+
     try {
       await writeFile(input, text, { flag: 'wx', mode: 0o600 });
       const result = await Bun.build({
@@ -36,6 +37,7 @@ export const versionedSource = (
           },
         ],
       });
+
       if (!result.success) throw invalidInput(Errors.PluginExportMissing);
       await writeFile(output, await result.outputs[0]!.text(), {
         flag: 'wx',
@@ -45,20 +47,24 @@ export const versionedSource = (
         functions?: unknown;
       };
       const value = module.functions;
+
       if (typeof value !== 'object' || value === null)
         throw invalidInput(Errors.PluginExportMissing);
       const definition = value as FunctionsDefinition;
+
       if (
         (definition.api !== undefined &&
           typeof definition.api !== 'function') ||
         (definition.web !== undefined && typeof definition.web !== 'function')
       )
         throw invalidInput(Errors.PluginActivateInvalid);
+
       return definition;
     } finally {
       await rm(input, { force: true });
     }
   };
+
   return {
     owner,
     hash,
@@ -70,6 +76,7 @@ export const versionedSource = (
       } catch {
         /* The host reports load failures. */
       }
+
       await rm(output, { force: true });
     },
   };

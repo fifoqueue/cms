@@ -28,5 +28,6 @@ export const checkTermKinds = (
       .filter((id) => kinds.get(id) !== 'tag')
       .map(() => ({ path: 'tagIds', message: Errors.UnknownTag })),
   ];
+
   if (issues.length) throw invalidInput(Errors.UnknownTerms, issues);
 };

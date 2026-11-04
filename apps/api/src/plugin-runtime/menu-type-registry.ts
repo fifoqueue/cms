@@ -23,6 +23,7 @@ export class MenuTypeRegistry extends ProviderRegistry<
       searchable: boolean;
     }
   >();
+
   private readonly pickers: ProviderRegistry<
     ReturnType<typeof menuObjectQuerySchema.parse>,
     ReturnType<typeof menuObjectsSchema.parse>
@@ -43,15 +44,19 @@ export class MenuTypeRegistry extends ProviderRegistry<
       this.logger.warn(
         `Menu item type "${key}" is reserved by core; registration from "${owner}" ignored`,
       );
+
       return () => undefined;
     }
+
     return this.add(owner, key, provider, false);
   }
 
   /** Composition-root only: plugin contexts expose `register`. */
   registerCore(key: string, provider: MenuItemProvider) {
     const remove = this.add('core', key, provider, true);
+
     this.coreKeys.add(key);
+
     return () => {
       remove();
       this.coreKeys.delete(key);
@@ -66,6 +71,7 @@ export class MenuTypeRegistry extends ProviderRegistry<
   ) {
     const remove = super.register(owner, key, provider, core);
     const token = {};
+
     if (!core)
       this.declarations.set(token, {
         key,
@@ -80,6 +86,7 @@ export class MenuTypeRegistry extends ProviderRegistry<
       (query) => (objects ? objects(query) : { items: [], total: 0 }),
       core,
     );
+
     return () => {
       remove();
       removePicker();
@@ -98,6 +105,7 @@ export class MenuTypeRegistry extends ProviderRegistry<
   async objects(key: string, query: MenuObjectQuery) {
     const input = parseInput(menuObjectQuerySchema, query);
     const result = await this.pickers.resolve(input, key);
+
     return {
       items: result?.items.slice(0, input.pageSize) ?? [],
       total: result?.total ?? 0,

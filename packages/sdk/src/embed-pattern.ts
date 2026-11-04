@@ -9,9 +9,11 @@ export interface EmbedMatcher {
 /** RE2 syntax only, with no optional lookbehind extensions or native RegExp fallback. */
 export const compileEmbedPattern = (source: string): EmbedMatcher | null => {
   if (!source.startsWith('^')) return null;
+
   try {
     const pattern = RE2JS.compile(source);
     const names = Object.keys(pattern.namedGroups());
+
     return {
       names,
       test: (value) => value.length <= 2048 && pattern.test(value),
@@ -20,7 +22,9 @@ export const compileEmbedPattern = (source: string): EmbedMatcher | null => {
         // unnecessary for the overwhelmingly common nonmatching provider).
         if (value.length > 2048 || !pattern.test(value)) return null;
         const matcher = pattern.matcher(value);
+
         if (!matcher.find()) return null;
+
         return Object.fromEntries(
           names.map((name) => [name, matcher.group(name)]),
         );

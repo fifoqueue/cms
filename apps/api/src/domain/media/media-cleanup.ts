@@ -6,6 +6,7 @@ import type { MediaStorage } from '#api/domain/media/ports';
 import type { Logger } from '#api/shared/logger';
 
 const PREFIX = 'media.cleanup.';
+
 export const MEDIA_CLEANUP_JOB = 'media.cleanup';
 export const CLEANUP_MAX_ATTEMPTS = 5;
 const intentSchema = z.object({
@@ -16,6 +17,7 @@ const intentSchema = z.object({
   attempts: z.number().int().nonnegative().default(0),
   nextAttemptAt: z.number().default(0),
 });
+
 type Intent = z.output<typeof intentSchema>;
 
 /** Authoritative cleanup intent lives outside the expiring/scrubbed job queue. */
@@ -50,6 +52,7 @@ export class MediaCleanup {
 
   async deletion(mediaId: string, objects: Intent['objects']) {
     const id = `delete.${mediaId}`;
+
     await this.save(id, { mediaId, objects, uncertain: false });
     await this.schedule(id);
     await this.run(id);
@@ -68,15 +71,19 @@ export class MediaCleanup {
       objects: keys.map((key) => ({ driver, key })),
       uncertain: storage.pendingWrites?.() ?? false,
     };
+
     // Persist before using the revocable adapter. Cleanup errors never discard ownership.
     await this.save(id, intent);
+
     try {
       await (storage.rollback ? storage.rollback(keys) : storage.remove(keys));
       await this.deps.settings.set(PREFIX + id, null);
+
       return true;
     } catch (error) {
       this.deps.logger.warn(`Media rollback ${id} retained for retry`, error);
       await this.schedule(id);
+
       if (intent.uncertain && storage.settled) {
         void storage
           .settled()
@@ -85,6 +92,7 @@ export class MediaCleanup {
               `${PREFIX}${id}.lock`,
               async (store) => {
                 const raw = await store.get(PREFIX + id);
+
                 if (raw)
                   await store.set(PREFIX + id, {
                     ...intentSchema.parse(raw),
@@ -101,20 +109,25 @@ export class MediaCleanup {
             ),
           );
       }
+
       return false;
     }
   }
 
   async run(id: string) {
     const raw = await this.deps.settings.get(PREFIX + id);
+
     if (!raw || typeof raw !== 'object') return;
     const intent = intentSchema.parse(raw);
     const groups = new Map<string, string[]>();
+
     for (const { driver, key } of intent.objects) {
       const keys = groups.get(driver) ?? [];
+
       keys.push(key);
       groups.set(driver, keys);
     }
+
     for (const [driver, keys] of groups)
       await (await this.deps.storage(driver)).remove(keys);
     if (intent.mediaId) await this.deps.finalize(intent.mediaId);
@@ -125,9 +138,11 @@ export class MediaCleanup {
   private async schedule(id: string) {
     return this.deps.transactions.run(`${PREFIX}${id}.lock`, async (store) => {
       const raw = await store.get(PREFIX + id);
+
       if (!raw) return;
       const intent = intentSchema.parse(raw);
       const now = this.deps.now?.() ?? Date.now();
+
       if (
         intent.attempts >= CLEANUP_MAX_ATTEMPTS ||
         intent.nextAttemptAt > now ||
@@ -135,6 +150,7 @@ export class MediaCleanup {
       )
         return;
       const attempts = intent.attempts + 1;
+
       await store.set(PREFIX + id, {
         ...intent,
         attempts,
@@ -150,20 +166,24 @@ export class MediaCleanup {
 
   async recover(driver?: string) {
     const cursorKey = `${PREFIX}cursor.${driver ?? 'all'}`;
+
     await this.deps.transactions.run(`${cursorKey}.lock`, async (store) => {
       const after = await store.get(cursorKey);
       const entries = await this.deps.catalog.page(
         typeof after === 'string' ? after : '',
         50,
       );
+
       for (const { key, value } of entries) {
         const intent = intentSchema.parse(value);
+
         if (
           !driver ||
           intent.objects.some((object) => object.driver === driver)
         )
           await this.schedule(key.slice(PREFIX.length));
       }
+
       await store.set(
         cursorKey,
         entries.length === 50 ? entries.at(-1)!.key : '',

@@ -19,16 +19,19 @@ import type { RequestHandler } from './$types';
  */
 export const GET: RequestHandler = async (event) => {
   const { params, url } = event;
+
   if (!CONTENT_SLUG.test(params.slug)) return notFound();
   const api = contentApi(event.fetch);
   const [settings, content] = await Promise.all([
     api.seo.settings(),
     api.getBySlug(params.slug).catch(notFoundFrom),
   ]);
+
   // A protected body is never published as Markdown.
   if (!isDiscoverable(content, settings) || content.protected)
     return notFound();
   const canonicalPath = markdownPath(content.slug);
+
   if (url.pathname !== canonicalPath)
     redirect(308, `${canonicalPath}${url.search}`);
   const [markdown] = await filterDiscovery(event, [
@@ -37,5 +40,6 @@ export const GET: RequestHandler = async (event) => {
       value: contentMarkdown(content, settings.siteUrl),
     },
   ]);
+
   return markdownResponse(content, settings, markdown);
 };

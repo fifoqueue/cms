@@ -21,6 +21,7 @@ const readType = (form: FormData): ContentTypeInput => ({
 
 export const load: PageServerLoad = async (event) => {
   requireCapability(event.locals, 'fields.manage');
+
   return {
     ...(await adminFor(event).contentModel.model()),
     taxonomies: await adminFor(event).taxonomyTypes.list(),
@@ -30,6 +31,7 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   saveTaxonomy: async (event) => {
     const form = await event.request.formData();
+
     try {
       await adminFor(event).taxonomyTypes.save({
         key: text(form, 'key'),
@@ -39,48 +41,57 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'saved' };
   },
   saveType: async (event) => {
     const form = await event.request.formData();
     const original = text(form, 'original');
     const model = adminFor(event).contentModel;
+
     try {
       if (original) await model.types.update(original, readType(form));
       else await model.types.create(readType(form));
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'saved' };
   },
   deleteType: async (event) => {
     const form = await event.request.formData();
+
     try {
       await adminFor(event).contentModel.types.remove(text(form, 'key'));
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'deleted' };
   },
   saveField: async (event) => {
     const form = await event.request.formData();
     const original = text(form, 'original');
     const model = adminFor(event).contentModel;
+
     try {
       if (original) await model.fields.update(original, readFieldForm(form));
       else await model.fields.create(readFieldForm(form));
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'saved' };
   },
   deleteField: async (event) => {
     const form = await event.request.formData();
+
     try {
       await adminFor(event).contentModel.fields.remove(text(form, 'key'));
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'deleted' };
   },
 };

@@ -129,6 +129,7 @@
   // A term can never move below itself.
   const parentOptions = $derived.by(() => {
     const blocked = target ? descendantIds(terms, target.id) : new Set();
+
     return rows.filter(({ term }) => !blocked.has(term.id));
   });
 

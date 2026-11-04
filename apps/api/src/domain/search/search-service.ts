@@ -86,6 +86,7 @@ export class SearchService {
 
   async getAdmin(): Promise<AdminSearchSettings> {
     const { settings, apiKey } = await this.stored();
+
     return adminSearchSettingsSchema.parse({
       ...settings,
       apiKeyConfigured: !!apiKey,
@@ -98,6 +99,7 @@ export class SearchService {
       input,
     );
     const current = await this.stored();
+
     if (settings.enabled) await this.deps.checkDestination?.(settings.host);
     await this.deps.settings.set(KEY, {
       settings,
@@ -110,13 +112,16 @@ export class SearchService {
     } satisfies Stored);
     // A changed connection is retried at once rather than after the failure pause.
     await this.saveState({ failedAt: null, lastError: null });
+
     return this.getAdmin();
   }
 
   /** Checks the saved connection; `invalid_input` explains a failure. */
   async test(): Promise<{ version: string }> {
     const connection = await this.connection(true);
+
     if (!connection) throw invalidInput(Errors.SearchNotConfigured);
+
     try {
       return { version: await this.deps.engine.version(connection) };
     } catch (error) {
@@ -145,6 +150,7 @@ export class SearchService {
       !!connection &&
       state.ready &&
       state.fingerprint === connection.fingerprint;
+
     return {
       engine:
         current && !this.failing(state) && pending === 0
@@ -178,8 +184,10 @@ export class SearchService {
     query: SearchQuery,
   ): Promise<{ ids: string[]; total: number } | null> {
     const connection = await this.connection();
+
     if (!connection) return null;
     const state = await this.state();
+
     if (
       !state.ready ||
       state.fingerprint !== connection.fingerprint ||
@@ -187,10 +195,12 @@ export class SearchService {
       (await this.deps.source.countPending()) > 0
     )
       return null;
+
     try {
       return await this.deps.engine.search(connection, query);
     } catch (error) {
       await this.fail(error);
+
       return null;
     }
   }
@@ -199,21 +209,28 @@ export class SearchService {
   async sync(): Promise<void> {
     const connection = await this.connection();
     const state = await this.state();
+
     if (!connection) {
       // Changes made while search is off are covered by the rebuild that turning it on starts.
       const last = await this.deps.source.lastId();
+
       if (last) await this.deps.source.acknowledge(last);
       if (state.ready) await this.saveState({ ready: false });
+
       return;
     }
+
     if (this.failing(state)) return;
+
     try {
       let rebuild =
         !state.ready || state.fingerprint !== connection.fingerprint;
+
       for (;;) {
         if (rebuild) {
           await this.saveState({ ready: false });
           const upTo = await this.deps.source.lastId();
+
           await this.deps.engine.rebuild(connection, this.everyDocument());
           await this.deps.source.acknowledge(upTo);
           await this.saveState({
@@ -230,20 +247,26 @@ export class SearchService {
           rebuild = false;
           continue;
         }
+
         const batch = await this.deps.source.pending(BATCH);
+
         if (!batch.length) break;
+
         if (batch.some((entry) => entry.contentId === null)) {
           rebuild = true;
           continue;
         }
+
         const ids = [...new Set(batch.map((entry) => entry.contentId!))];
         const documents = await this.documents(
           await this.deps.source.documents(ids),
         );
         const present = new Set(documents.map((document) => document.id));
+
         if (documents.length)
           await this.deps.engine.upsert(connection, documents);
         const gone = ids.filter((id) => !present.has(id));
+
         if (gone.length) await this.deps.engine.remove(connection, gone);
         await this.deps.source.acknowledge(batch.at(-1)!.id);
         await this.saveState({ syncedAt: this.deps.clock.now().toISOString() });
@@ -252,6 +275,7 @@ export class SearchService {
           contentIds: ids,
         });
       }
+
       if (state.failedAt)
         await this.saveState({ failedAt: null, lastError: null });
     } catch (error) {
@@ -261,8 +285,10 @@ export class SearchService {
 
   private async *everyDocument(): AsyncIterable<SearchDocument[]> {
     let after: string | null = null;
+
     for (;;) {
       const page = await this.deps.source.page(after, BATCH);
+
       if (!page.length) return;
       yield await this.documents(page);
       after = page.at(-1)!.id;
@@ -284,9 +310,11 @@ export class SearchService {
           document,
           (value) => {
             const result = searchHookDocumentSchema.safeParse(value);
+
             return result.success && result.data.id === document.id;
           },
         );
+
         return searchHookDocumentSchema.parse(filtered ?? document);
       }),
     );
@@ -299,6 +327,7 @@ export class SearchService {
       status: Errors.SearchRequestFailed,
       other: Errors.SearchSyncFailed,
     });
+
     await this.saveState({
       failedAt: this.deps.clock.now().toISOString(),
       lastError: message,
@@ -309,9 +338,11 @@ export class SearchService {
   /** The connection while search is on and configured; `force` ignores the switch (connection checks). */
   private async connection(force = false): Promise<Connection | null> {
     const { settings, apiKey } = await this.stored();
+
     if ((!settings.enabled && !force) || !settings.host) return null;
     const host = settings.host.replace(/\/+$/, '');
     const index = `${settings.indexPrefix}_content`;
+
     return {
       host,
       apiKey: apiKey ? (this.deps.secrets.open(apiKey) ?? '') : '',
@@ -324,6 +355,7 @@ export class SearchService {
     const raw = (await this.deps.settings.get(KEY)) as
       Partial<Stored> | undefined;
     const parsed = searchSettingsSchema.safeParse(raw?.settings);
+
     return {
       settings: parsed.success ? parsed.data : searchSettingsSchema.parse({}),
       apiKey: typeof raw?.apiKey === 'string' ? raw.apiKey : '',
@@ -333,6 +365,7 @@ export class SearchService {
   private async state(): Promise<IndexState> {
     const raw = (await this.deps.settings.get(STATE_KEY)) as
       Partial<IndexState> | undefined;
+
     return { ...EMPTY_STATE, ...raw };
   }
 

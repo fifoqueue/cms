@@ -17,6 +17,7 @@ test('saving a field definition form keeps every content type, taxonomy and comm
   });
   // What the edit form submits for it, its targets checked.
   const form = new FormData();
+
   for (const [name, value] of [
     ['original', field.key],
     ['key', field.key],
@@ -34,6 +35,7 @@ test('saving a field definition form keeps every content type, taxonomy and comm
 
   // Unchecked targets are removed, not kept from the stored definition.
   const narrowed = new FormData();
+
   for (const [name, value] of [
     ['key', 'note'],
     ['label', 'Note'],

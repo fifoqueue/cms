@@ -13,8 +13,10 @@ export class PrismaProfileMeta implements ProfileMetaStore {
     const row = await this.db.setting.findUnique({
       where: { key: profileMetaKey(userId) },
     });
+
     return row ? profileValuesSchema.parse(JSON.parse(row.value)) : {};
   }
+
   async save(userId: string, patch: ProfileValues) {
     await this.db.$transaction(async (tx) => {
       await lockSetting(tx, 'users.lock');
@@ -22,6 +24,7 @@ export class PrismaProfileMeta implements ProfileMetaStore {
         where: { id: userId },
         select: { email: true },
       });
+
       if (!user || user.email === `erased-${userId}@invalid.invalid`)
         throw notFound(Errors.UserNotFound);
       const key = profileMetaKey(userId);
@@ -30,6 +33,7 @@ export class PrismaProfileMeta implements ProfileMetaStore {
         ? profileValuesSchema.parse(JSON.parse(row.value))
         : {};
       const value = JSON.stringify({ ...current, ...patch });
+
       await tx.setting.upsert({
         where: { key },
         create: { key, value },

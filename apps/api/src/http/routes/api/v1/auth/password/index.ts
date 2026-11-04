@@ -11,5 +11,6 @@ export const routes = (app: ApiApp) =>
       user,
       bearerToken(request)!,
     );
+
     return noContent();
   });

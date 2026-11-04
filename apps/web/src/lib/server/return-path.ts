@@ -22,13 +22,16 @@ export const returnPath = (
   )
     return '/admin';
   const path = value.split(/[?#]/, 1)[0]!;
+
   if (path !== '/' && canonicalPermalinkPath(path) !== path) return '/admin';
   let url: URL;
+
   try {
     url = new URL(value, BASE);
   } catch {
     return '/admin';
   }
+
   const blocked = [
     loginPath,
     '/admin/logout',
@@ -41,6 +44,7 @@ export const returnPath = (
   ].some(
     (route) => url.pathname === route || url.pathname.startsWith(`${route}/`),
   );
+
   return url.origin === BASE && !blocked
     ? `${url.pathname}${url.search}`
     : '/admin';

@@ -31,6 +31,7 @@ const withNaturalWidth = (
   const core = DEFAULT_EMBED_PROVIDERS.find(
     ({ id, src }) => id === provider.id && src === provider.src,
   );
+
   if (
     provider.sizing.kind !== 'height' ||
     provider.sizing.maxWidth !== undefined ||
@@ -38,6 +39,7 @@ const withNaturalWidth = (
     core.sizing.maxWidth === undefined
   )
     return provider;
+
   return {
     ...provider,
     sizing: { ...provider.sizing, maxWidth: core.sizing.maxWidth },
@@ -52,6 +54,7 @@ export class EmbedService {
 
   async get(): Promise<EmbedSettings> {
     const result = embedSettingsSchema.safeParse(await this.settings.get(KEY));
+
     return result.success
       ? { providers: result.data.providers.map(withNaturalWidth) }
       : embedSettingsSchema.parse({});
@@ -83,8 +86,10 @@ export class EmbedService {
         withExplicitWidth,
       ),
     };
+
     await this.settings.set(KEY, settings);
     void this.hooks?.emit('settings.updated', { section: KEY, settings });
+
     return settings;
   }
 }

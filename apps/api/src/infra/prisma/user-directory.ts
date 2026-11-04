@@ -52,6 +52,7 @@ const assertOtherAdministrator = async (
   const others = await tx.user.count({
     where: { role: 'administrator', id: { not: id } },
   });
+
   if (others === 0) throw conflict(Errors.LastAdministrator);
 };
 
@@ -64,9 +65,12 @@ const hasRole = async (
   const row = await tx.setting.findUnique({
     where: { key: `${ROLE_PREFIX}${key}` },
   });
+
   if (!row) return contributed(key);
+
   try {
     const role = roleDefinitionSchema.safeParse(JSON.parse(row.value));
+
     return role.success && role.data.key === key;
   } catch {
     return false;
@@ -107,6 +111,7 @@ export class PrismaUserDirectory implements UserDirectory, RoleWriter {
       select: columns,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
+
     return rows.map(toItem);
   }
 
@@ -115,6 +120,7 @@ export class PrismaUserDirectory implements UserDirectory, RoleWriter {
       where: { id },
       select: columns,
     });
+
     return row && toItem(row);
   }
 
@@ -228,6 +234,7 @@ export class PrismaUserDirectory implements UserDirectory, RoleWriter {
       await lockSetting(tx, LOCK_KEY);
       await assertOtherAdministrator(tx, id);
       await eraseContentOrigin(tx, id);
+
       if (reassignTo)
         await tx.content.updateMany({
           where: { authorId: id },
@@ -239,12 +246,14 @@ export class PrismaUserDirectory implements UserDirectory, RoleWriter {
           where: { authorId: id },
           select: { id: true },
         });
+
         await deleteEntries(
           tx,
           entries.map((entry) => entry.id),
         );
         await tx.searchOutbox.create({ data: { contentId: null } });
       }
+
       await tx.setting.deleteMany({ where: { key: profileMetaKey(id) } });
       await tx.user.delete({ where: { id } });
       await queueContentPaths(

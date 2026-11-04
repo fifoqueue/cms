@@ -65,18 +65,22 @@ const fixture = () => {
         captchaToken: null,
       },
     );
+
     Object.assign(rows.get(request.id)!, {
       status: 'confirmed',
       confirmedAt: clock.now(),
     });
+
     return request;
   };
+
   return { hooks, rows, service, create };
 };
 
 test('privacy actions project request DTOs after persistence; export adds plugin JSON without replacing core', async () => {
   const { hooks, rows, service, create } = fixture();
   const events: { name: string; value: PrivacyRequest }[] = [];
+
   for (const name of [
     'privacy.requested',
     'privacy.exported',
@@ -89,6 +93,7 @@ test('privacy actions project request DTOs after persistence; export adds plugin
   hooks.registrar('export').filter('privacy.exportData', (value) => {
     expect(value.request.email).toBe('subject@example.com');
     expect(value.request.status).toBe('confirmed');
+
     return {
       ...value,
       data: { ...value.data, preferences: { consent: true } },
@@ -106,9 +111,11 @@ test('privacy actions project request DTOs after persistence; export adds plugin
   const data = await new Response(
     await service.export(request.id, actor),
   ).json();
+
   expect(data.profile).toEqual([{ id: 'subject', name: 'Person' }]);
   expect(data.extensions).toEqual({ preferences: { consent: true } });
   const erasure = await create('erase');
+
   await service.erase(erasure.id, actor);
   expect(events.map((event) => event.name)).toEqual([
     'privacy.requested',

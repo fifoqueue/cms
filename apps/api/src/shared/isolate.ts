@@ -18,6 +18,7 @@ export const isolate = async <T>(
       timeoutMs,
     );
   });
+
   try {
     return {
       ok: true,

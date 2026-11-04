@@ -28,7 +28,9 @@ export const createWebPushSender = (fetch: Fetcher): PushSender => ({
       redirect: 'manual',
       signal: AbortSignal.timeout(10_000),
     });
+
     await response.body?.cancel();
+
     return response.status;
   },
 });

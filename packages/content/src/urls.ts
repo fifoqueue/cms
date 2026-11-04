@@ -10,14 +10,17 @@ export const safeImageSrc = (value: unknown): string | null => {
     return /^\/media\/[\w./-]+$/.test(value) && !value.includes('..')
       ? value
       : null;
+
   return safeHttpsUrl(value);
 };
 
 /** `value` as a normalized `https:` URL, or null. */
 export const safeHttpsUrl = (value: unknown): string | null => {
   if (typeof value !== 'string' || value.length > 2048) return null;
+
   try {
     const url = new URL(value);
+
     return url.protocol === 'https:' && !url.username && !url.password
       ? url.href
       : null;
@@ -36,14 +39,17 @@ export const safeLinkHref = (value: unknown): string | null => {
   )
     return null;
   if (value.startsWith('//')) return null;
+
   try {
     const url = new URL(value, 'https://cms.invalid/');
+
     if (
       url.username ||
       url.password ||
       !['http:', 'https:', 'mailto:'].includes(url.protocol)
     )
       return null;
+
     return value;
   } catch {
     return null;

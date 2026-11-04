@@ -29,6 +29,7 @@ export class PrismaTaskLeases implements TaskLeases {
         lockedBy: owner,
       },
     });
+
     return count === 1;
   }
 
@@ -37,6 +38,7 @@ export class PrismaTaskLeases implements TaskLeases {
       where: { name, lockedBy: owner },
       data: { lockedUntil: new Date(now.getTime() + leaseMs) },
     });
+
     return count === 1;
   }
 
@@ -56,6 +58,7 @@ export class PrismaTaskLeases implements TaskLeases {
         lastError: error,
       },
     });
+
     return count === 1;
   }
 

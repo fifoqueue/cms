@@ -23,5 +23,6 @@ export const takenSlugs = async (
       ' UNION ALL ',
     ),
   );
+
   return new Set(rows.map((row) => row.slug));
 };

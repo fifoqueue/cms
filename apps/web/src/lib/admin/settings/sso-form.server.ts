@@ -21,6 +21,7 @@ export const readSubjects = (value: string): Record<string, string> =>
       .filter(Boolean)
       .map((line) => {
         const at = line.lastIndexOf('=');
+
         return at < 0
           ? [line, '']
           : [line.slice(0, at).trim(), line.slice(at + 1).trim()];
@@ -57,6 +58,7 @@ export const readSsoProviders = (form: FormData) => {
       scopes: text(form, field('scopes')),
       allowedSubjects: text(form, field('allowedSubjects')),
     };
+
     return {
       values,
       // A draft has nothing stored to keep: an empty secret must not inherit the secret of a
@@ -79,5 +81,6 @@ export const readSsoProviders = (form: FormData) => {
       clientSecret,
     }),
   );
+
   return { values: posted.map(({ values }) => values), input };
 };

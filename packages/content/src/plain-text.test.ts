@@ -25,6 +25,7 @@ test('keywordParagraph returns the whole first paragraph containing the keyword'
     },
     paragraph('사과는 맛있다.'),
   );
+
   expect(keywordParagraph(document, ' 사과 ')).toBe(
     'Apple Inc. 는 미국의 기업이다. 유래는 과일 "사과"가 맞다.',
   );

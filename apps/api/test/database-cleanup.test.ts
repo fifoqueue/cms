@@ -18,6 +18,7 @@ const operator = {
 const setup = (store = new MemoryDatabaseCleanupStore()) => {
   const clock = fixedClock();
   const leases = new MemoryTaskLeases(() => clock.now());
+
   return {
     store,
     leases,
@@ -33,6 +34,7 @@ const setup = (store = new MemoryDatabaseCleanupStore()) => {
 
 test('cleanup retains newest N revisions per entry and protects recent autosaves', async () => {
   const { service, store, clock } = setup();
+
   for (const contentId of ['a', 'b'])
     for (let index = 0; index < 205; index++)
       store.rows.revisions.push({
@@ -45,12 +47,14 @@ test('cleanup retains newest N revisions per entry and protects recent autosaves
     { id: 'recent', createdAt: clock.now() },
   );
   const preview = await service.preview({ keepLatest: 2 }, operator);
+
   expect(preview.counts.revisions).toBe(406);
   expect(store.rows.revisions).toHaveLength(410);
   const result = await service.run(
     { categories: ['revisions', 'autosaves'], options: { keepLatest: 2 } },
     operator,
   );
+
   expect(result.deleted.revisions).toBe(406);
   expect(store.rows.revisions.map((row) => row.id).sort()).toEqual([
     'a-203',
@@ -63,8 +67,10 @@ test('cleanup retains newest N revisions per entry and protects recent autosaves
 
 test('cleanup denies unprivileged callers and concurrent runs without deleting anything', async () => {
   const { service, store, leases, clock } = setup();
+
   store.rows.expired.push({ id: 'dead', createdAt: new Date(0) });
   const reader = { id: 'reader', role: 'subscriber' };
+
   await expect(service.preview({}, reader)).rejects.toMatchObject({
     code: 'forbidden',
   });
@@ -89,12 +95,15 @@ test('trash cleanup uses domain deletion and removes paths, but refuses restored
     { type: 'post', title: 'Delete me', document: textDocument('Body') },
     ADMIN,
   );
+
   await content.trash(entry.id, ADMIN);
   const store = new MemoryDatabaseCleanupStore(async (_category, id, actor) => {
     await content.remove(id, actor, true);
   });
+
   store.rows.trashedContent.push({ id: entry.id, createdAt: new Date(0) });
   const { service } = setup(store);
+
   expect(
     (await service.run({ categories: ['trashedContent'] }, operator)).deleted
       .trashedContent,
@@ -109,6 +118,7 @@ test('trash cleanup uses domain deletion and removes paths, but refuses restored
     { type: 'post', title: 'Keep me', document: textDocument('Body') },
     ADMIN,
   );
+
   await expect(content.remove(live.id, operator, true)).rejects.toMatchObject({
     code: 'conflict',
   });

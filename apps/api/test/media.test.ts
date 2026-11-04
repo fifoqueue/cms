@@ -32,6 +32,7 @@ const setup = (allowSvg = false, overrides: Partial<MediaServiceDeps> = {}) => {
   const storage = new MemoryMediaStorage();
   const sizes = new ImageSizes();
   const processors = new MediaProcessors();
+
   processors.registerCore({
     process: ({ bytes, mime }) => fakeImages.clean(bytes, mime),
   });
@@ -53,6 +54,7 @@ const setup = (allowSvg = false, overrides: Partial<MediaServiceDeps> = {}) => {
     maxBytes: 1024,
     ...overrides,
   });
+
   return { media, repository, storage, hooks, sizes, processors };
 };
 
@@ -85,6 +87,7 @@ describe('media library', () => {
     const { media, hooks } = setup();
     const image = await media.upload(PNG, 'test.png', author);
     const reader = { id: 'reader', role: 'subscriber' };
+
     expect(await codeOf(media.remove(image.id, false, reader))).toBe(
       'forbidden',
     );
@@ -94,6 +97,7 @@ describe('media library', () => {
         ...value,
         allowed: value.userId === reader.id,
       }));
+
     expect(await codeOf(media.remove(image.id, false, editor))).toBe(
       'forbidden',
     );
@@ -102,6 +106,7 @@ describe('media library', () => {
   });
   test('UTF BOM uploads cannot bypass SVG policy as MPEG, and valid audio still uploads', async () => {
     const { media, storage } = setup();
+
     for (const bom of [
       [255, 254],
       [254, 255],
@@ -113,10 +118,12 @@ describe('media library', () => {
         ...bom,
         ...[...xml].flatMap((char) => [char.charCodeAt(0), 0]),
       ]);
+
       expect(await codeOf(media.upload(bytes, 'fake.mp3', author))).toBe(
         'invalid_input',
       );
     }
+
     for (const header of [
       [255, 235, 144, 0],
       [255, 249, 144, 0],
@@ -133,7 +140,9 @@ describe('media library', () => {
         ),
       ).toBe('invalid_input');
     }
+
     expect(storage.files.size).toBe(0);
+
     for (const header of [
       [255, 251, 144, 0],
       [73, 68, 51, 4],
@@ -154,6 +163,7 @@ describe('media library', () => {
     const { media, storage } = setup();
 
     const html = new TextEncoder().encode('<html><script>x</script></html>');
+
     expect(await codeOf(media.upload(html, 'cat.jpg', author))).toBe(
       'invalid_input',
     );
@@ -167,6 +177,7 @@ describe('media library', () => {
     ).toBe('forbidden');
 
     const image = await media.upload(PNG, '../../secret/Cat.PNG', author);
+
     expect(image).toMatchObject({
       mime: 'image/png',
       filename: 'Cat.PNG',
@@ -180,12 +191,14 @@ describe('media library', () => {
     ]);
     // The stored original is the re-encoded one, not the upload as sent.
     const key = image.url.slice('/media/'.length);
+
     expect(storage.files.get(key)?.at(-1)).toBe(0);
     expect(await media.file('../config.json')).toBeNull();
   });
 
   test('a later upload filter can grant after an earlier refusal, but not change the facts', async () => {
     const { media, hooks } = setup();
+
     hooks
       .registrar('deny')
       .filter('media.uploadAllowed', (value) => ({ ...value, allowed: false }));
@@ -228,6 +241,7 @@ describe('media library', () => {
     await media.remove(image.id, true, author);
     expect(storage.files.size).toBe(0);
     const key = image.url.slice('/media/'.length);
+
     storage.files.set(key, PNG);
     expect(await media.file(key)).toBeNull();
   });

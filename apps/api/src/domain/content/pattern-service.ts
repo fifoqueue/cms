@@ -40,6 +40,7 @@ const storedSchema = adminPatternSchema.extend({
   document: contentDocumentSchema,
   html: z.string(),
 });
+
 type StoredPattern = z.output<typeof storedSchema>;
 
 const toAdmin = ({
@@ -95,11 +96,14 @@ export class PatternService {
       source: string;
       patterns: PatternContributions;
     }[] = [];
+
     for (const key of this.deps.contributions?.keys() ?? []) {
       const entry = await this.deps.contributions!.resolveEntry(null, key);
+
       if (entry)
         result.push({ key, source: entry.source, patterns: entry.value });
     }
+
     return result;
   }
 
@@ -110,18 +114,21 @@ export class PatternService {
       ...criteria,
       ...(!can(actor, 'content.editOthers') && { authorId: actor.id }),
     });
+
     return { ...result, page: criteria.page, pageSize: criteria.pageSize };
   }
 
   async get(id: string, actor: Actor): Promise<AdminPattern> {
     authorize(actor, 'content.create');
     const pattern = await this.require(id);
+
     if (
       pattern.status !== 'published' &&
       pattern.authorId !== actor.id &&
       !can(actor, 'content.editOthers')
     )
       throw notFound(Errors.PatternNotFound);
+
     return toAdmin(pattern);
   }
 
@@ -139,9 +146,12 @@ export class PatternService {
       if ((await settings.count(PREFIX)) >= LIMIT)
         throw invalidInput(Errors.PatternLimit);
       await settings.set(`${PREFIX}${pattern.id}`, pattern);
+
       return toAdmin(pattern);
     });
+
     void this.deps.hooks?.emit('pattern.created', dto);
+
     return dto;
   }
 
@@ -159,10 +169,14 @@ export class PatternService {
         ...data,
         updatedAt: this.deps.clock.now().toISOString(),
       };
+
       await settings.set(`${PREFIX}${id}`, pattern);
+
       return toAdmin(pattern);
     });
+
     void this.deps.hooks?.emit('pattern.updated', dto);
+
     return dto;
   }
 
@@ -171,9 +185,12 @@ export class PatternService {
     authorize(actor, 'content.create');
     const dto = await this.deps.transactions.run(LOCK, async (settings) => {
       const current = await this.editable(id, actor, settings);
+
       await settings.set(`${PREFIX}${id}`, null);
+
       return toAdmin(current);
     });
+
     void this.deps.hooks?.emit('pattern.deleted', dto);
   }
 
@@ -200,34 +217,46 @@ export class PatternService {
       // Reject before allocating an encoding larger than the remaining byte budget.
       const size =
         text.length <= bytes ? encoder.encode(text).byteLength : bytes + 1;
+
       if (size > bytes) {
         exhausted = true;
+
         return;
       }
+
       bytes -= size;
       chunks.push(text);
     };
     const walk = async (text: string, chain: string[]): Promise<void> => {
       let start = 0;
+
       for (const match of text.matchAll(REFERENCE)) {
         append(text.slice(start, match.index));
         if (exhausted) return;
         start = match.index + match[0].length;
         const id = match[1]!;
+
         // Every occurrence consumes work, including cached references and cycles.
         if (references-- <= 0 || chain.includes(id) || chain.length >= DEPTH)
           continue;
+
         if (!bodies.has(id)) {
           const pattern = await this.find(id);
+
           bodies.set(id, pattern?.status === 'published' ? pattern.html : null);
         }
+
         const inner = bodies.get(id);
+
         if (inner) await walk(inner, [...chain, id]);
         if (exhausted) return;
       }
+
       append(text.slice(start));
     };
+
     await walk(html, []);
+
     // Never serve truncated markup (it could leave a container or attribute open).
     return exhausted ? '' : chunks.join('');
   }
@@ -241,9 +270,11 @@ export class PatternService {
       (value) => patternInputSchema.safeParse(value).success,
     );
     const data = patternInputSchema.parse(filtered ?? initial);
+
     if (data.status === 'published' && !can(actor, 'content.publish'))
       throw forbidden();
     this.deps.blocks?.check(data.document);
+
     // Rejects documents outside the editor schema, like a content save.
     return { ...data, html: this.deps.renderer.render(data.document) };
   }
@@ -255,10 +286,12 @@ export class PatternService {
     settings: Pick<SettingsRepository, 'get'>,
   ) {
     const pattern = await this.require(id, settings);
+
     authorize(actor, 'content.create');
     if (pattern.authorId !== actor.id) authorize(actor, 'content.editOthers');
     else if (pattern.status === 'published')
       authorize(actor, 'content.publish');
+
     return pattern;
   }
 
@@ -267,7 +300,9 @@ export class PatternService {
     settings: Pick<SettingsRepository, 'get'> = this.deps.settings,
   ) {
     const pattern = await this.find(id, settings);
+
     if (!pattern) throw notFound(Errors.PatternNotFound);
+
     return pattern;
   }
 
@@ -277,6 +312,7 @@ export class PatternService {
   ): Promise<StoredPattern | null> {
     if (!/^[A-Za-z0-9-]{1,36}$/.test(id)) return null;
     const parsed = storedSchema.safeParse(await settings.get(`${PREFIX}${id}`));
+
     return parsed.success ? parsed.data : null;
   }
 
@@ -284,6 +320,7 @@ export class PatternService {
     return Object.values(await this.deps.settings.list(PREFIX)).flatMap(
       (value) => {
         const parsed = storedSchema.safeParse(value);
+
         return parsed.success ? [parsed.data] : [];
       },
     );

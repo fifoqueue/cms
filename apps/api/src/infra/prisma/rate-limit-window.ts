@@ -35,10 +35,12 @@ export const nextBucket = (
         : null,
   };
   const over = next.hits > rule.max;
+
   if (over && !next.blockedUntil)
     next.blockedUntil = rule.blockSeconds
       ? new Date(now.getTime() + rule.blockSeconds * 1000)
       : windowEnd(next, rule);
+
   return {
     next,
     exceeded: over || (!!current?.blockedUntil && current.blockedUntil > now),

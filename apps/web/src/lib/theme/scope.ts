@@ -130,9 +130,11 @@ export const useParts = () => getContext<string[] | undefined>(PARTS) ?? [];
 export const useCurrentPost = () => {
   const loop = useLoopPost();
   const scope = useScope();
+
   return () => {
     if (loop) return { post: loop(), entry: null };
     const { page } = scope();
+
     return page.kind === 'content' || page.kind === 'preview'
       ? { post: page.content, entry: page.content }
       : { post: null, entry: null };

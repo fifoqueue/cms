@@ -7,6 +7,7 @@ export const saveSnapshot = (
 ): SubmitFunction => {
   return () => {
     const sent = read();
+
     return async ({ result, update }) => {
       if (result.type === 'success') saved(sent);
       await update({ reset: false });

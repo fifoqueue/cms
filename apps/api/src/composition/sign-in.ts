@@ -159,6 +159,7 @@ export const createSignIn = ({
   });
   const authUsers = createSignInUsers(users, roles);
   const coreAuth = authentication.core(authUsers);
+
   coreAuth.signInMethod(
     'sso',
     createSsoMethod({
@@ -188,6 +189,7 @@ export const createSignIn = ({
       title: (await site.get()).title,
     }),
   };
+
   coreAuth.signInMethod('passkey', createPasskeyMethod(passkeyDeps));
   coreAuth.secondFactor('passkey', createPasskeyFactor(passkeyDeps));
   coreAuth.secondFactor(
@@ -223,9 +225,12 @@ export const createSignIn = ({
     siteUrl: async () => (await seo.getPublic()).siteUrl,
     session: async (profile, identityId) => {
       const user = await users.findById(profile.id);
+
       if (!user) throw invalidInput(Errors.InvalidCredentials);
+
       return auth.startSession(user, identityId ?? null);
     },
   });
+
   return { ssoSettings, sso, signInSettings, authUsers, signIn };
 };

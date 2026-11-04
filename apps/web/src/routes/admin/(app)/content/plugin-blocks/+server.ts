@@ -6,6 +6,7 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = async (event) => {
   requireCapability(event.locals, 'content.create');
   const blocks = await adminFor(event).pluginBlocks();
+
   return json(
     blocks.map(({ block, title, description, attributes }) => ({
       block,

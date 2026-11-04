@@ -52,11 +52,13 @@
   action="?/save"
   use:enhance={() => {
     const sent = JSON.stringify([title, body]);
+
     return async ({ result, update }) => {
       if (result.type === 'success' || result.type === 'redirect') {
         saved = sent;
         edited = false;
       }
+
       await update({ reset: false });
     };
   }}

@@ -10,6 +10,7 @@ export const routes = (app: ApiApp) =>
     '',
     async ({ signIn, auth, user, params, clients, request }) => {
       await auth.requireRecent(user, bearerToken(request)!);
+
       return json(
         await signIn.enroll(user, params.factor, clients.attempt(request)),
       );

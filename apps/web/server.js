@@ -10,10 +10,12 @@ try {
 } catch (error) {
   if (error?.code !== 'ENOENT') throw error;
 }
+
 removeApiSecrets();
 
 // Uploads and WordPress imports need more than the adapter's 512 KB default.
 const env = process.env;
+
 env.BODY_SIZE_LIMIT ??= '64M';
 env.PORT = env.WEB_PORT ?? env.PORT ?? '3000';
 env.HOST = env.WEB_HOST ?? env.HOST ?? '127.0.0.1';
@@ -22,6 +24,7 @@ env.HOST = env.WEB_HOST ?? env.HOST ?? '127.0.0.1';
 // connections get the scheme they actually used.
 env.PROTOCOL_HEADER ??= 'x-forwarded-proto';
 const protocolHeader = env.PROTOCOL_HEADER.toLowerCase();
+
 // Visitor addresses (rate limits, comment IPs) come from the reverse proxy's X-Forwarded-For.
 // `XFF_DEPTH` counts trusted proxies from the right: 1 takes the entry the nearest proxy
 // appended, which a client cannot forge. Raise it for chains (e.g. CDN → nginx). The server
@@ -35,6 +38,7 @@ const addressHeader = env.ADDRESS_HEADER.toLowerCase();
 const { server } = await import(
   pathToFileURL(join(await activeRelease(), 'index.js')).href
 );
+
 server.prependListener('request', (request) => {
   request.headers[protocolHeader] ??= request.socket.encrypted
     ? 'https'

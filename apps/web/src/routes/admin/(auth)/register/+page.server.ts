@@ -14,6 +14,7 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const email = text(form, 'email');
     const name = text(form, 'name');
+
     try {
       await authApi(event.fetch).register(
         { email, name },
@@ -22,6 +23,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught, { email, name });
     }
+
     return { sent: true };
   },
 };

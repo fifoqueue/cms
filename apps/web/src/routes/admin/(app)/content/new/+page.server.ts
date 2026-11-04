@@ -26,6 +26,7 @@ export const load: PageServerLoad = async (event) => {
       (option) => option.key === event.url.searchParams.get('type'),
     )?.key ?? 'post';
   const initial = await adminFor(event).contentModel.defaults(type);
+
   return {
     defaults: {
       title: initial.title,
@@ -49,6 +50,7 @@ export const actions: Actions = {
     // Read before `readContentInput` consumes the body.
     const sent = event.request.clone().formData();
     const { input, values, failure } = await readContentInput(event);
+
     if (failure) return failure;
     // Preview of an unsaved entry: the tab it opened, which the editor fills after this save.
     const preview = (await sent).get('preview');
@@ -56,13 +58,16 @@ export const actions: Actions = {
       typeof preview === 'string' && PREVIEW_TAB.test(preview) ? preview : null;
     let id: string;
     let status: string;
+
     try {
       ({ id, status } = await adminFor(event).content.create(input));
     } catch (caught) {
       return failFrom(caught, { values });
     }
+
     // `saved` lets the editor say what the save did; `preview` names the tab to preview in.
     const query = new URLSearchParams({ saved: status });
+
     if (previewTab) query.set('preview', previewTab);
     redirect(303, `/admin/content/${id}?${query}`);
   },

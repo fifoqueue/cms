@@ -7,6 +7,7 @@ import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async (event) => {
   const { locals, fetch } = event;
+
   if (!locals.user) error(404, Errors.NotFound);
   const { id, email, name, role, capabilities, slug, bio, locale } =
     locals.user;
@@ -41,6 +42,7 @@ export const load: LayoutServerLoad = async (event) => {
         : 0,
     ],
   );
+
   return {
     user: { id, email, name, role, capabilities, slug, bio, locale },
     pluginPages: pages.map(({ plugin, key, title }) => ({

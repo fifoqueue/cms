@@ -48,8 +48,10 @@ export const createSsoMethod = (deps: {
     const provider = (await deps.setup()).providers.find(
       (entry) => entry.id === request.option,
     );
+
     if (!provider) return { kind: 'failed' };
     const authorization = await provider.provider.authorize();
+
     return {
       kind: 'redirect',
       url: authorization.url,
@@ -67,14 +69,17 @@ export const createSsoMethod = (deps: {
     user?: UserProfile,
   ): Promise<CoreSignInOutcome> => {
     const parsed = pending.safeParse(step.state);
+
     if (!parsed.success || step.query === null) return { kind: 'failed' };
     const state = parsed.data;
     const provider = (await deps.setup()).providers.find(
       (entry) => entry.id === state.providerId,
     );
+
     if (!provider || !sameIssuer(provider.issuer, state.issuer))
       return { kind: 'failed' };
     let identity: VerifiedIdentity;
+
     try {
       identity = await provider.provider.verify(step.query, {
         state: state.state,
@@ -86,12 +91,14 @@ export const createSsoMethod = (deps: {
         return { kind: 'failed' };
       throw error;
     }
+
     if (
       !sameIssuer(identity.issuer, provider.issuer) ||
       !storableIdentity(identity.issuer) ||
       !storableIdentity(identity.subject)
     )
       return { kind: 'failed' };
+
     if (user) {
       if (provider.subjects.has(identity.subject)) return { kind: 'failed' };
       const link = {
@@ -100,6 +107,7 @@ export const createSsoMethod = (deps: {
         ...identity,
         createdAt: deps.clock.now(),
       };
+
       return {
         kind: 'user',
         userId: user.id,
@@ -108,11 +116,14 @@ export const createSsoMethod = (deps: {
           deps.identities.claim(link, tokenHash, now),
       };
     }
+
     const target = await deps.resolve(identity, provider.subjects);
+
     return target
       ? { kind: 'user', userId: target.user.id, identityId: target.identityId }
       : { kind: 'failed' };
   };
+
   return {
     label: 'Single sign-on',
     ready: async () => (await deps.setup()).providers.length > 0,
@@ -123,6 +134,7 @@ export const createSsoMethod = (deps: {
       })),
     usableBy: async (user) => {
       const links = await deps.identities.findByUser(user.id);
+
       return (await deps.setup()).providers.some(
         (provider) =>
           links.some((identity) =>

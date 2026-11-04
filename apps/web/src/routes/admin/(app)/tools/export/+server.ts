@@ -6,6 +6,7 @@ export const GET: RequestHandler = async (event) => {
   requireCapability(event.locals, 'tools.manage');
   const exported = await adminFor(event).exportWxr();
   const date = new Date().toISOString().slice(0, 10);
+
   return new Response(exported.body, {
     headers: {
       'content-type': 'application/rss+xml; charset=utf-8',

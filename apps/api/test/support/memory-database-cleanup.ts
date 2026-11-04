@@ -19,6 +19,7 @@ export class MemoryDatabaseCleanupStore implements DatabaseCleanupStore {
     trashedComments: [],
     expired: [],
   };
+
   readonly sizes: DatabaseTableSize[] = [];
   readonly optimized: string[] = [];
   constructor(
@@ -31,6 +32,7 @@ export class MemoryDatabaseCleanupStore implements DatabaseCleanupStore {
 
   private candidates(category: CleanupCategory, policy: CleanupPolicy) {
     const rows = [...this.rows[category]];
+
     if (category === 'autosaves')
       return rows.filter((row) => row.createdAt < policy.autosavesBefore);
     if (category !== 'revisions') return rows;
@@ -40,10 +42,13 @@ export class MemoryDatabaseCleanupStore implements DatabaseCleanupStore {
         b.id.localeCompare(a.id),
     );
     const retained = new Map<string, number>();
+
     return rows.filter((row) => {
       const key = row.contentId!;
       const count = retained.get(key) ?? 0;
+
       retained.set(key, count + 1);
+
       return count >= policy.keepLatest;
     });
   }
@@ -59,14 +64,17 @@ export class MemoryDatabaseCleanupStore implements DatabaseCleanupStore {
       optimize: this.sizes.length,
     };
   }
+
   async tables() {
     return structuredClone(this.sizes);
   }
+
   async optimize(table: string) {
     if (!this.sizes.some((row) => row.table === table))
       throw invalidInput(Errors.InvalidInput);
     this.optimized.push(table);
   }
+
   async batch(
     category: CleanupCategory,
     policy: CleanupPolicy,
@@ -74,10 +82,12 @@ export class MemoryDatabaseCleanupStore implements DatabaseCleanupStore {
     limit: number,
   ) {
     const selected = this.candidates(category, policy).slice(0, limit);
+
     for (const row of selected) {
       await this.remove?.(category, row.id, actor);
       this.rows[category].splice(this.rows[category].indexOf(row), 1);
     }
+
     return selected.length;
   }
 }

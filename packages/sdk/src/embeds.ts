@@ -78,16 +78,20 @@ export const embedProviderSchema = z
   })
   .superRefine((provider, context) => {
     const pattern = compileEmbedPattern(provider.urlPattern);
+
     if (!pattern) {
       context.addIssue({
         code: 'custom',
         path: ['urlPattern'],
         message: Errors.EmbedPattern,
       });
+
       return;
     }
+
     const head = /^https:\/\/[^/?#{]+(?=[/?#])/.exec(provider.src)?.[0];
     const sample = provider.src.replace(placeholder, 'value');
+
     if (
       !head ||
       !URL.canParse(head) ||
@@ -104,6 +108,7 @@ export const embedProviderSchema = z
         message: Errors.EmbedSource,
       });
     }
+
     for (const match of provider.src.matchAll(placeholder)) {
       if (!pattern.names.includes(match[1]!))
         context.addIssue({
@@ -184,6 +189,7 @@ export const embedSettingsSchema = z
   })
   .superRefine(({ providers }, context) => {
     const ids = new Set<string>();
+
     providers.forEach((provider, index) => {
       if (ids.has(provider.id))
         context.addIssue({

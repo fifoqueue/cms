@@ -17,9 +17,11 @@ test('failed editor rename removes temporary source files', async () => {
     logger,
     invalidate() {},
   });
+
   try {
     await mkdir(join(directory, 'site.ts'));
     const editor = new SiteEditor(directory, true, host, logger);
+
     await expect(
       editor.write({ source: 'export const functions = {};' }, 'admin'),
     ).rejects.toThrow();
@@ -37,10 +39,12 @@ test('editor gate, validation and live hook rollback use the same site file', as
   const host = new FunctionsHost({
     sources: async () => {
       const snapshot = await source.source();
+
       return snapshot ? [snapshot] : [];
     },
     context: (owner, scope) => {
       const registrar = bus.registrar(owner, { trusted: true });
+
       return {
         hooks: {
           filter: (name, handler) =>
@@ -69,6 +73,7 @@ ctx.hooks.filter('user.signInAllowed', value => ({...value, allowed: ${allowed}}
           typeof value.allowed === 'boolean',
       )
     ).allowed;
+
   await expect(editor.write({ source: code(true) }, 'admin')).rejects.toThrow();
   expect((await editor.status()).editorEnabled).toBe(false);
   await writeFile(join(directory, 'editor.enabled'), '');

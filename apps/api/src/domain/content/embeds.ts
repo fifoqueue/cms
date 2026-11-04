@@ -71,6 +71,7 @@ const frame = (src: string, preset: EmbedPreset) => {
     'ratio' in preset
       ? `aspect-ratio: ${preset.ratio}; width: 100%`
       : `height: ${preset.height}px; width: 100%${typeof preset.maxWidth === 'number' ? `; max-width: ${preset.maxWidth}px` : ''}`;
+
   // Centred: a capped frame sits in the middle of the column; a full-width one is unaffected.
   return `<figure class="embed"><iframe src="${escapeAttribute(src)}" title="${escapeAttribute(preset.title)}" loading="lazy"${allow}${heightPath} allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="${escapeAttribute(`${size}; display: block; margin-inline: auto; border: 0`)}"></iframe></figure>`;
 };
@@ -87,17 +88,20 @@ export const presetProvider = (preset: EmbedPreset): EmbedProvider => {
   const pattern = compileEmbedPattern(preset.urlPattern);
   const head = /^https:\/\/[^/?#{]+(?=[/?#])/.exec(preset.src)?.[0];
   const origin = head && URL.canParse(head) ? new URL(head).origin : null;
+
   return {
     name: preset.id,
     render(url) {
       if (!origin || url.href.length > MAX_EMBED_URL_LENGTH) return null;
       const groups = pattern?.match(url.href);
+
       if (!groups) return null;
       let invalid = false;
       const src = preset.src.replace(
         PLACEHOLDER,
         (_, name: string, encode?: string) => {
           const value = groups[name];
+
           if (
             !value ||
             value === '.' ||
@@ -105,13 +109,17 @@ export const presetProvider = (preset: EmbedPreset): EmbedProvider => {
             (!encode && !RAW_VALUE.test(value))
           ) {
             invalid = true;
+
             return '';
           }
+
           return encode ? encodeURIComponent(value) : value;
         },
       );
+
       if (invalid || !URL.canParse(src) || new URL(src).origin !== origin)
         return null;
+
       return frame(src, preset);
     },
   };
@@ -179,27 +187,35 @@ export class Embeds {
   async expand(html: string): Promise<string> {
     if (!html.includes('data-embed-url')) return html;
     const matches = [...html.matchAll(FIGURE)];
+
     if (!matches.length) return html;
     const providers = await this.providers();
     const players = await Promise.all(
       matches.map(async ([, raw]) => {
         const href = unescapeAttribute(raw ?? '');
+
         if (href.length > MAX_EMBED_URL_LENGTH) return null;
         let url: URL;
+
         try {
           url = new URL(href);
         } catch {
           return null;
         }
+
         if (url.href.length > MAX_EMBED_URL_LENGTH) return null;
+
         for (const provider of providers) {
           const player = await this.run(provider, url);
+
           if (player) return player;
         }
+
         return null;
       }),
     );
     let index = 0;
+
     return html.replace(FIGURE, (figure) => players[index++] ?? figure);
   }
 }

@@ -56,12 +56,14 @@ export class MemoryContentRepository implements ContentRepository {
 
   async findById(id: string) {
     const row = this.rows.get(id);
+
     return row ? this.toRecord(row) : null;
   }
 
   async findByIds(ids: readonly string[]): Promise<ContentRenderRecord[]> {
     return [...new Set(ids)].flatMap((id) => {
       const row = this.rows.get(id);
+
       return row
         ? [
             structuredClone({
@@ -82,6 +84,7 @@ export class MemoryContentRepository implements ContentRepository {
 
   async findBySlug(slug: string) {
     const row = [...this.rows.values()].find((row) => row.slug === slug);
+
     return row ? this.toRecord(row) : null;
   }
 
@@ -98,6 +101,7 @@ export class MemoryContentRepository implements ContentRepository {
     >,
   ) {
     const row = this.rows.get(id);
+
     if (row) Object.assign(row, origin);
     if (at) this.trashed.set(id, at);
     else this.trashed.delete(id);
@@ -113,11 +117,13 @@ export class MemoryContentRepository implements ContentRepository {
           row.publishedAt &&
           row.publishedAt <= now,
       );
+
       for (const row of due) {
         row.status = 'published';
         row.updatedAt =
           now > row.updatedAt ? now : new Date(row.updatedAt.getTime() + 1);
       }
+
       return due.map((row) => row.id);
     });
   }
@@ -143,6 +149,7 @@ export class MemoryContentRepository implements ContentRepository {
       published: 0,
       private: 0,
     };
+
     for (const row of this.rows.values())
       if (!type || row.type === type) {
         if (this.trashed.has(row.id)) result.trash += 1;
@@ -151,6 +158,7 @@ export class MemoryContentRepository implements ContentRepository {
           result[row.status] += 1;
         }
       }
+
     return result;
   }
 
@@ -231,10 +239,12 @@ export class MemoryContentRepository implements ContentRepository {
           typeof left === 'string'
             ? String(right).localeCompare(left)
             : (right as number) - left;
+
         return (
           (compared || (a.id < b.id ? 1 : -1)) * (order === 'asc' ? -1 : 1)
         );
       });
+
     return {
       items: matches
         .slice((page - 1) * pageSize, page * pageSize)
@@ -267,6 +277,7 @@ export class MemoryContentRepository implements ContentRepository {
     this.rows.set(record.id, structuredClone(record));
     this.textSavedAt.set(record.id, record.updatedAt);
     this.revisions.save(this.toRecord(record), revision);
+
     return this.toRecord(record);
   }
 
@@ -294,6 +305,7 @@ export class MemoryContentRepository implements ContentRepository {
     guard: ContentWriteGuard,
   ) {
     const stored = this.rows.get(input.id);
+
     input = {
       ...input,
       createdIp: stored?.createdIp,
@@ -305,11 +317,13 @@ export class MemoryContentRepository implements ContentRepository {
       stored && input.updatedAt <= stored.updatedAt
         ? { ...input, updatedAt: new Date(stored.updatedAt.getTime() + 1) }
         : input;
+
     if (
       guard.expectedUpdatedAt &&
       stored?.updatedAt.getTime() !== guard.expectedUpdatedAt.getTime()
     )
       throw conflict(Errors.ContentChanged);
+
     if (guard.revision) {
       if (
         stored?.authorId !== guard.revision.authorId ||
@@ -326,6 +340,7 @@ export class MemoryContentRepository implements ContentRepository {
       )
         throw notFound(Errors.RevisionNotFound);
     }
+
     if (
       guard.autosaveOf &&
       stored &&
@@ -344,9 +359,11 @@ export class MemoryContentRepository implements ContentRepository {
     await this.checkParent(record);
     this.checkTerms(record);
     const other = await this.findBySlug(record.slug);
+
     if (other && other.id !== record.id)
       throw conflict('Slug is already in use');
     const current = this.rows.get(record.id);
+
     await this.permalinks.assign(record, current?.publishedAt != null);
     this.rows.set(record.id, structuredClone(record));
     this.textSavedAt.set(
@@ -359,6 +376,7 @@ export class MemoryContentRepository implements ContentRepository {
         : record.updatedAt,
     );
     this.revisions.save(this.toRecord(record), revision);
+
     return this.toRecord(record);
   }
 
@@ -366,6 +384,7 @@ export class MemoryContentRepository implements ContentRepository {
     return this.exclusive(() => {
       if (trashedOnly && !this.trashed.has(id))
         throw conflict(Errors.ContentChanged);
+
       return this.erase(id);
     });
   }
@@ -378,6 +397,7 @@ export class MemoryContentRepository implements ContentRepository {
       const savedAt = structuredClone([...this.textSavedAt]);
       const trashed = structuredClone([...this.trashed]);
       const revisions = structuredClone(this.revisions.rows);
+
       try {
         return await task();
       } catch (caught) {
@@ -399,6 +419,7 @@ export class MemoryContentRepository implements ContentRepository {
   async erase(id: string) {
     const rows = structuredClone([...this.rows]);
     const paths = structuredClone([...this.permalinks.paths]);
+
     try {
       this.permalinks.remove(id);
       this.rows.delete(id);
@@ -424,6 +445,7 @@ export class MemoryContentRepository implements ContentRepository {
       { id: record.id, type: record.type, parentId: record.parentId ?? null },
       async (id) => {
         const row = this.rows.get(id);
+
         return row
           ? { id: row.id, type: row.type, parentId: row.parentId ?? null }
           : null;
@@ -447,11 +469,13 @@ export class MemoryContentRepository implements ContentRepository {
   /** Ids of the category and its descendants; empty for unknown slugs (matches nothing). */
   private categoryScope(slug: string): string[] {
     const rootId = this.termId('category', slug);
+
     return rootId ? withDescendants([...this.terms.values()], rootId) : [];
   }
 
   private toRecord(row: ContentWrite): ContentRecord {
     const path = this.permalinks.current(row.id);
+
     if (path === null) throw new Error('Content has no current path');
     const summaries = (ids: string[]) =>
       ids
@@ -459,6 +483,7 @@ export class MemoryContentRepository implements ContentRepository {
         .filter((term) => term !== undefined)
         .sort(compareTerms)
         .map(({ id, name, slug }) => ({ id, name, slug }));
+
     return {
       id: row.id,
       textSavedAt: this.textSavedAt.get(row.id) ?? row.updatedAt,
@@ -532,6 +557,7 @@ export class MemoryPluginData implements PluginDataRepository {
 
   async entries(pluginId: string, scope: PluginDataScope) {
     const prefix = `${pluginId}/${scope}/`;
+
     return Object.fromEntries(
       [...this.rows]
         .filter(([key]) => key.startsWith(prefix))
@@ -563,6 +589,7 @@ export class MemoryPluginState implements PluginStateRepository {
 
   async setEnabled(id: string, enabled: boolean) {
     const row = this.rows.get(id);
+
     if (row) row.enabled = enabled;
   }
 
@@ -584,12 +611,15 @@ export class MemoryBundles implements PluginPackageStore, PluginModuleLoader {
 
   register(source: string, definition: PluginDefinition | unknown) {
     this.modules.set(source, definition);
+
     return source;
   }
 
   async stage(source: string): Promise<StagedBundle> {
     const path = `staging:${++this.uploads}`;
+
     this.files.set(path, source);
+
     return { path, discard: async () => void this.files.delete(path) };
   }
 
@@ -598,11 +628,13 @@ export class MemoryBundles implements PluginPackageStore, PluginModuleLoader {
     pluginId: string,
   ): Promise<CommittedBundle> {
     const source = this.files.get(bundle.path);
+
     if (source === undefined) throw new Error(`No bundle at ${bundle.path}`);
 
     this.files.delete(bundle.path);
     const entry = `${source}@${bundle.path.slice('staging:'.length)}`;
     const path = this.locate(pluginId, entry);
+
     this.files.set(path, source);
 
     return {
@@ -626,14 +658,17 @@ export class MemoryBundles implements PluginPackageStore, PluginModuleLoader {
 
   async load(path: string) {
     const source = this.files.get(path);
+
     if (source === undefined) throw new Error(`No bundle at ${path}`);
     if (!this.modules.has(source)) throw new Error('Module evaluation failed');
+
     return this.modules.get(source);
   }
 }
 
 export const sequentialIds = (): IdGenerator => {
   let next = 0;
+
   return {
     next: () => `00000000-0000-7000-8000-${String(++next).padStart(12, '0')}`,
   };
@@ -643,6 +678,7 @@ export const fixedClock = (
   iso = '2026-01-01T00:00:00.000Z',
 ): Clock & { set(iso: string): void } => {
   let now = new Date(iso);
+
   return {
     now: () => new Date(now),
     set: (value) => void (now = new Date(value)),
@@ -656,6 +692,7 @@ export const recordingLogger = () => {
     warn: (message) => void lines.push(`warn ${message}`),
     error: (message) => void lines.push(`error ${message}`),
   };
+
   return { logger, lines };
 };
 
@@ -734,19 +771,24 @@ export class MemorySettings
     const work = async () => {
       const before = new Map(this.values);
       const transaction = new MemorySettings();
+
       for (const [key, value] of before) transaction.values.set(key, value);
       const result = await task(transaction);
+
       // Commit only this transaction's writes; failures leave the original store intact.
       for (const [key, value] of transaction.values)
         if (!before.has(key) || before.get(key) !== value)
           this.values.set(key, value);
+
       return result;
     };
     const run = (this.writing.get(lock) ?? Promise.resolve()).then(work);
+
     this.writing.set(
       lock,
       run.catch(() => undefined),
     );
+
     return run;
   }
 
@@ -766,6 +808,7 @@ export class MemorySettings
         const parsed = key.startsWith('pattern.')
           ? patternSummarySchema.safeParse(value)
           : null;
+
         return parsed?.success ? [parsed.data] : [];
       })
       .filter(
@@ -778,6 +821,7 @@ export class MemorySettings
       .sort(
         (a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id),
       );
+
     return {
       items: rows.slice((page - 1) * pageSize, page * pageSize),
       total: rows.length,
@@ -791,10 +835,12 @@ export class MemorySettings
         .map(([key, value]) => [key, structuredClone(value)]),
     );
   }
+
   readonly values = new Map<string, unknown>();
   async get(key: string) {
     return structuredClone(this.values.get(key));
   }
+
   async set(key: string, value: unknown) {
     this.values.set(key, structuredClone(value));
   }

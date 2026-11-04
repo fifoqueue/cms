@@ -21,7 +21,9 @@ export const footnoteSource = (
       ? attrs.text.trim().slice(0, FOOTNOTE_MAX_LENGTH)
       : '';
   const name = typeof attrs?.name === 'string' ? attrs.name : '';
+
   if (isFootnoteName(name)) return { name, text };
+
   return text ? { text } : null;
 };
 
@@ -35,11 +37,14 @@ export const publishedDocument = <T extends JSONContent>(document: T): T => {
   const clean = (node: JSONContent): JSONContent | null => {
     if (node.type === 'footnote') {
       const source = footnoteSource(node.attrs);
+
       return source
         ? { ...node, attrs: { ...node.attrs, text: source.text } }
         : null;
     }
+
     if (!node.content) return node;
+
     return {
       ...node,
       content: node.content
@@ -47,6 +52,7 @@ export const publishedDocument = <T extends JSONContent>(document: T): T => {
         .filter((child): child is JSONContent => child !== null),
     };
   };
+
   return clean(document) as T;
 };
 
@@ -67,12 +73,15 @@ const cache = new WeakMap<ProseMirrorNode, FootnotePages>();
  */
 export const footnotePages = (doc: ProseMirrorNode): FootnotePages => {
   const cached = cache.get(doc);
+
   if (cached) return cached;
   const result: FootnotePages = { pages: [], notes: new Map() };
   const bodies = new Map<string, string>();
+
   doc.descendants((node) => {
     if (node.type.name !== 'footnote') return;
     const source = footnoteSource(node.attrs);
+
     if (source?.name !== undefined && source.text && !bodies.has(source.name))
       bodies.set(source.name, source.text);
   });
@@ -84,8 +93,10 @@ export const footnotePages = (doc: ProseMirrorNode): FootnotePages => {
     const notes = collectFootnotes(sources).map((note) => {
       const name = sources[note.references[0]!]!.name;
       const body = name === undefined ? undefined : bodies.get(name);
+
       return body === undefined ? note : { ...note, text: body };
     });
+
     for (const note of notes)
       for (const index of note.references)
         result.notes.set(positions[index]!, note);
@@ -93,6 +104,7 @@ export const footnotePages = (doc: ProseMirrorNode): FootnotePages => {
     positions = [];
     sources = [];
   };
+
   doc.descendants((node, pos, parent) => {
     if (parent === doc && node.type.name === 'pageBreak') {
       flush();
@@ -105,5 +117,6 @@ export const footnotePages = (doc: ProseMirrorNode): FootnotePages => {
   });
   flush();
   cache.set(doc, result);
+
   return result;
 };

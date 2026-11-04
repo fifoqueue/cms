@@ -48,7 +48,9 @@ export class DashboardWidgetRegistry {
           widget.capability,
         );
         const registration = { owner, key, widget, capability };
+
         this.registrations = [...this.registrations, registration];
+
         return () => {
           this.registrations = this.registrations.filter(
             (entry) => entry !== registration,
@@ -78,6 +80,7 @@ export class DashboardWidgetRegistry {
       { widgets, capabilities },
       (value) => {
         const parsed = schema.safeParse(value);
+
         if (
           !parsed.success ||
           JSON.stringify(parsed.data.capabilities) !==
@@ -87,6 +90,7 @@ export class DashboardWidgetRegistry {
         const ids = parsed.data.widgets.map(
           (widget) => `${widget.plugin}:${widget.key}`,
         );
+
         return (
           new Set(ids).size === ids.length &&
           parsed.data.widgets.every((widget) =>
@@ -97,6 +101,7 @@ export class DashboardWidgetRegistry {
         );
       },
     )) ?? { widgets, capabilities };
+
     return filtered.widgets.map((widget) =>
       widgets.find(
         (original) =>
@@ -118,6 +123,7 @@ export class DashboardWidgetRegistry {
           : null,
       this.options.timeoutMs,
     );
+
     if (!this.registrations.includes(entry)) return null;
     if (result.ok && result.value?.success) return result.value.data;
     this.options.logger.warn(
@@ -125,6 +131,7 @@ export class DashboardWidgetRegistry {
         result.ok ? 'returned invalid blocks' : result.error.message
       }`,
     );
+
     return null;
   }
 }

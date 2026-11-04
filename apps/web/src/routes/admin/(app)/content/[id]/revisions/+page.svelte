@@ -29,6 +29,7 @@
   const step = (index: number) => {
     const to = timeline[index];
     const from = timeline[index - 1] ?? to;
+
     if (!to || !from || !pickers) return;
     pickers.from.value = from.id;
     pickers.to.value = to.id;
@@ -83,10 +84,13 @@
       !confirm(m.revisionDeleteConfirm(date(data.to.createdAt)))
     ) {
       cancel();
+
       return;
     }
+
     deleting = true;
     deleteFailed = false;
+
     return async ({ result, update }) => {
       try {
         if (result.type === 'error') deleteFailed = true;

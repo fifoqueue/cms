@@ -49,8 +49,10 @@ export const Callout = Node.create({
         const body = element.querySelector<HTMLElement>(
           ':scope > .cms-callout-body',
         );
+
         if (body) return body;
         for (const part of element.querySelectorAll(DECORATION)) part.remove();
+
         return element;
       },
     },
@@ -80,28 +82,34 @@ export const Callout = Node.create({
       const icon = document.createElement('span');
       const contentDOM = document.createElement('div');
       const close = document.createElement('span');
+
       dom.setAttribute('role', 'note');
       icon.className = 'cms-callout-icon';
       contentDOM.className = 'cms-callout-body';
       // A visual cue only: dismissal works on the public page.
       close.className = 'cms-callout-close';
       close.textContent = '×';
+
       for (const part of [icon, close]) {
         part.contentEditable = 'false';
         part.setAttribute('aria-hidden', 'true');
       }
+
       const paint = (current: ProseMirrorNode) => {
         dom.className = classes(current);
         close.hidden = current.attrs.dismissible !== true;
       };
+
       paint(node);
       dom.append(icon, contentDOM, close);
+
       return {
         dom,
         contentDOM,
         update: (next) => {
           if (next.type !== node.type) return false;
           paint(next);
+
           return true;
         },
       };

@@ -22,11 +22,14 @@ import type { RequestHandler } from './$types';
 const targetOf = (url: URL): FeedTarget | null | undefined => {
   for (const kind of FEED_KINDS) {
     const slug = url.searchParams.get(kind);
+
     if (slug === null) continue;
+
     return slug.length <= 191 && CONTENT_SLUG.test(slug)
       ? { kind, slug }
       : undefined;
   }
+
   return null;
 };
 
@@ -37,6 +40,7 @@ const mediaSize =
     const response = await mediaFiles(fetch)
       .file(key, 'bytes=0-0')
       .catch(() => null);
+
     if (!response) return null;
     await response.body?.cancel();
     const total =
@@ -46,6 +50,7 @@ const mediaSize =
           ? response.headers.get('content-length')
           : null;
     const size = Number(total);
+
     return Number.isSafeInteger(size) && size > 0 ? size : null;
   };
 
@@ -53,6 +58,7 @@ export const GET: RequestHandler = async (event) => {
   const { fetch, url } = event;
   const api = contentApi(fetch);
   const target = targetOf(url);
+
   if (target === undefined) return notFound();
   const [settings, site, reading, types, followed] = await Promise.all([
     api.seo.settings(),
@@ -72,10 +78,12 @@ export const GET: RequestHandler = async (event) => {
             () => undefined,
           ),
   ]);
+
   if (!settings.indexingEnabled || followed === undefined) return notFound();
   if (!settings.siteUrl) return missingSiteUrl('The feed');
   const narrowed = target && followed && { ...target, slug: followed.slug };
   const canonicalPath = narrowed ? feedPath(narrowed) : null;
+
   if (canonicalPath && `${url.pathname}${url.search}` !== canonicalPath)
     redirect(308, canonicalPath);
   const items = await loadRecent(
@@ -95,6 +103,7 @@ export const GET: RequestHandler = async (event) => {
       { kind: 'feed.items', value: values.items },
     ]),
   ]);
+
   return rssFeed(site, settings, items, {
     self: feedPath(narrowed ?? undefined),
     bodies,

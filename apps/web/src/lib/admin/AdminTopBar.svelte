@@ -57,13 +57,16 @@
       if (document.title && !document.title.endsWith(suffix))
         document.title += suffix;
     };
+
     apply();
     const observer = new MutationObserver(apply);
+
     observer.observe(document.head, {
       subtree: true,
       childList: true,
       characterData: true,
     });
+
     return () => observer.disconnect();
   });
 
@@ -79,6 +82,7 @@
     const menu = (event.target as HTMLElement).closest<HTMLDetailsElement>(
       'details[data-top-menu]',
     );
+
     if (!menu?.open) return;
     menu.open = false;
     menu.querySelector('summary')?.focus();

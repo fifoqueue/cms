@@ -19,27 +19,33 @@ export const CONTENT_BODY_BYTES = 1024 * 1024;
 /** Reads at most `maxBytes`, canceling the stream as soon as it crosses the limit. */
 export const readBytes = async (request: Request, maxBytes: number) => {
   const reader = request.body?.getReader();
+
   if (!reader) return new Uint8Array();
   const chunks: Uint8Array[] = [];
   let size = 0;
 
   for (;;) {
     const { done, value } = await reader.read();
+
     if (done) break;
     size += value.byteLength;
+
     if (size > maxBytes) {
       await reader.cancel();
       throw payloadTooLarge(Errors.RequestBodyTooLarge);
     }
+
     chunks.push(value);
   }
 
   const body = new Uint8Array(size);
   let offset = 0;
+
   for (const chunk of chunks) {
     body.set(chunk, offset);
     offset += chunk.byteLength;
   }
+
   return body;
 };
 
@@ -60,17 +66,21 @@ export const readJson = async (
 
 export const bearerToken = (request: Request) => {
   const header = request.headers.get('authorization') ?? '';
+
   return header.startsWith('Bearer ') ? header.slice(7).trim() || null : null;
 };
 
 export const currentUser = async (auth: Authenticator, request: Request) => {
   const token = bearerToken(request);
+
   return token ? auth.authenticate(token) : null;
 };
 
 export const requireUser = async (auth: Authenticator, request: Request) => {
   const user = await currentUser(auth, request);
+
   if (!user) throw unauthorized();
+
   return user;
 };
 

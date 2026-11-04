@@ -36,6 +36,7 @@ import {
 import { parseInput } from '#api/shared/validation';
 
 const HOUR = 60 * 60 * 1000;
+
 export const PASSWORD_RESET_REQUEST_JOB = 'password.reset.request';
 const resetRequestSchema = z.strictObject({
   email: z.email(),
@@ -97,6 +98,7 @@ export class PasswordService {
   async change(input: unknown, actor: Actor, sessionToken: string) {
     const { current, password } = parseInput(passwordChangeSchema, input);
     const user = await this.deps.users.findById(actor.id);
+
     if (!user) throw notFound(Errors.UserNotFound);
     if (!(await this.deps.hasher.verify(current, user.passwordHash)))
       throw invalidInput(Errors.CurrentPasswordWrong, [
@@ -130,6 +132,7 @@ export class PasswordService {
       action: 'passwordReset' as const,
       account,
     };
+
     await this.deps.protection.check(protectedAttempt);
     if (!(await this.deps.email.enabled()))
       throw invalidInput(Errors.EmailDisabled);
@@ -147,6 +150,7 @@ export class PasswordService {
   async deliverResetRequest(payload: unknown) {
     const { email } = this.deps.sealedJobs.open(payload, resetRequestSchema);
     const user = await this.deps.users.findByEmail(email);
+
     if (!user) return;
     await this.queueReset(
       user,
@@ -162,6 +166,7 @@ export class PasswordService {
   async sendReset(userId: string, actor: Actor) {
     authorize(actor, 'users.manage');
     const user = await this.deps.users.findById(userId);
+
     if (!user) throw notFound(Errors.UserNotFound);
     if (!(await this.deps.email.enabled()))
       throw invalidInput(Errors.EmailDisabled);
@@ -188,6 +193,7 @@ export class PasswordService {
     if (!(await this.resetAllowed(user, allowed))) return;
     const site = await this.site();
     const link = await this.link(user, 'reset', site.siteUrl);
+
     await this.deps.email.queue(
       {
         to: user.email,
@@ -207,6 +213,7 @@ export class PasswordService {
   async invite(user: UserRecord) {
     const site = await this.site();
     const link = await this.link(user, 'invite', site.siteUrl);
+
     await this.deps.email.queue(
       {
         to: user.email,
@@ -289,6 +296,7 @@ export class PasswordService {
         .refine((value) => JSON.stringify(value) === snapshot),
       allowed: z.boolean(),
     });
+
     return (
       await this.deps.hooks.applyFilter(
         'user.passwordResetAllowed',
@@ -304,24 +312,29 @@ export class PasswordService {
     siteUrl: string,
   ) {
     const token = this.deps.issuer.issue();
+
     await this.deps.tokens.insert({
       tokenHash: this.deps.issuer.digest(token),
       userId: user.id,
       purpose,
       expiresAt: new Date(this.deps.clock.now().getTime() + LIFETIME[purpose]),
     });
+
     return passwordPage(siteUrl, token);
   }
 
   private async site() {
     const site = await this.deps.site();
+
     if (!site.siteUrl) throw invalidInput(Errors.SiteUrlRequired);
+
     return site;
   }
 
   private passwordLogin() {
     return this.deps.passwordLogin?.() ?? Promise.resolve(true);
   }
+
   private async allowPassword() {
     if (!(await this.passwordLogin()))
       throw forbidden(Errors.PasswordLoginDisabled);

@@ -41,6 +41,7 @@
 
   const run = async () => {
     status = 'running';
+
     try {
       const response =
         ceremony === 'get'
@@ -52,6 +53,7 @@
               optionsJSON:
                 options as unknown as PublicKeyCredentialCreationOptionsJSON,
             });
+
       credential = JSON.stringify(response);
       await tick();
       form?.requestSubmit();

@@ -18,12 +18,15 @@ export const load: PageServerLoad = async (event) => {
     { author: params.slug },
     (await parent()).reading.postsPerPage,
   );
+
   posts.catch(() => undefined);
   const author = await api.author(params.slug).catch(notFoundFrom);
   const listed = await posts;
   const canonicalPath = listingPath({ kind: 'author', slug: author.slug });
+
   if (url.pathname !== canonicalPath)
     redirect(308, `${canonicalPath}${url.search}`);
+
   return withTemplateData(api, event, {
     kind: 'author' as const,
     author: { name: author.name, slug: author.slug, bio: author.bio },

@@ -20,7 +20,9 @@ export class MemoryRateLimitStore implements RateLimitStore {
 
   async hit(key: string, rule: RateRule, now: Date) {
     const { next, exceeded } = nextBucket(this.buckets.get(key), rule, now);
+
     this.buckets.set(key, next);
+
     return exceeded;
   }
 
@@ -74,14 +76,17 @@ export class MemoryCredentials implements CredentialRepository {
 
   async reset(tokenHash: string, now: Date, passwordHash: string) {
     const token = this.tokens.rows.get(tokenHash);
+
     if (!token || token.expiresAt <= now) return false;
     this.tokens.rows.delete(tokenHash);
     await this.change(token.userId, passwordHash, null);
+
     return true;
   }
 
   async validReset(tokenHash: string, now: Date) {
     const row = this.tokens.rows.get(tokenHash);
+
     return row && row.expiresAt > now ? row.userId : null;
   }
 }

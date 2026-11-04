@@ -36,11 +36,14 @@ const load = (missing: Set<string>) => {
   highlighter ??= import('shiki').then(({ createHighlighter }) =>
     createHighlighter({ themes: [], langs: [] }),
   );
+
   return Promise.all(
     [...missing].map((resource) => {
       let pending = loading.get(resource);
+
       if (!pending) {
         const [kind, name] = resource.split(':') as [string, string];
+
         pending = highlighter!
           .then(async (instance) => {
             await (kind === 'theme'
@@ -52,6 +55,7 @@ const load = (missing: Set<string>) => {
           .catch(() => undefined);
         loading.set(resource, pending);
       }
+
       return pending;
     }),
   );
@@ -59,6 +63,7 @@ const load = (missing: Set<string>) => {
 
 export const codeAttributes = (raw: Record<string, unknown>) => {
   const parsed = codeBlockAttributesSchema.safeParse(raw);
+
   return {
     attrs: parsed.success ? parsed.data : codeBlockAttributesSchema.parse({}),
     language: parsed.success ? codeLanguage(parsed.data.language) : 'text',
@@ -82,16 +87,19 @@ let cached = 0;
 
 const recall = (key: string) => {
   const result = cache.get(key);
+
   if (result) {
     cache.delete(key);
     cache.set(key, result);
   }
+
   return result;
 };
 
 const remember = (key: string, result: TokensResult) => {
   cache.set(key, result);
   cached += key.length;
+
   for (const oldest of cache.keys()) {
     if (cached <= CACHE_LIMIT) break;
     cache.delete(oldest);
@@ -117,9 +125,12 @@ const highlighterFor = (
         ? ready.getLoadedThemes()
         : ready.getLoadedLanguages()
       ).includes(name);
+
     return !loaded && !loading.has(resource);
   });
+
   for (const resource of needed) missing.add(resource);
+
   return needed.length ? undefined : (ready ?? undefined);
 };
 
@@ -132,8 +143,10 @@ const tokenize = (
 ): TokensResult | undefined => {
   const key = `${language}\0${theme}\0${code}`;
   const known = recall(key);
+
   if (known) return known;
   let result: TokensResult;
+
   try {
     result = instance.codeToTokens(code, {
       lang: language as never,
@@ -145,7 +158,9 @@ const tokenize = (
     // A grammar or theme that is still loading or failed leaves the block plain.
     return undefined;
   }
+
   remember(key, result);
+
   return result;
 };
 
@@ -175,6 +190,7 @@ const blockDecorations = (
         : { class: 'cms-code-auto' },
     ),
   ];
+
   for (const line of tokens?.tokens ?? [])
     for (const token of line) {
       if (!token.content) continue;
@@ -186,6 +202,7 @@ const blockDecorations = (
         ),
       );
     }
+
   return decorations;
 };
 
@@ -205,11 +222,14 @@ interface HighlightState {
 const build = (doc: Node): HighlightState => {
   const missing = new Set<string>();
   const decorations: Decoration[] = [];
+
   doc.descendants((node, pos) => {
     if (node.type.name !== 'codeBlock') return true;
     decorations.push(...blockDecorations(node, pos, missing));
+
     return false;
   });
+
   return {
     decorations: DecorationSet.create(doc, decorations),
     missing,
@@ -220,12 +240,15 @@ const build = (doc: Node): HighlightState => {
 /** The ranges a transaction changed, in the coordinates of its resulting document. */
 const changed = (tr: Transaction): Range[] => {
   const ranges: Range[] = [];
+
   tr.mapping.maps.forEach((map, index) => {
     const rest = tr.mapping.slice(index + 1);
+
     map.forEach((_oldFrom, _oldTo, from, to) =>
       ranges.push({ from: rest.map(from, -1), to: rest.map(to, 1) }),
     );
   });
+
   return ranges;
 };
 
@@ -252,6 +275,7 @@ const rebuild = (
   settled: boolean,
 ) => {
   const blocks = new Set<number>();
+
   for (const { from, to } of ranges)
     doc.nodesBetween(
       Math.max(0, from - 1),
@@ -259,15 +283,18 @@ const rebuild = (
       (node, pos) => {
         if (!node.isTextblock) return true;
         blocks.add(pos);
+
         return false;
       },
     );
   const spans: Range[] = [];
   const deferred: Range[] = [];
   const added: Decoration[] = [];
+
   for (const pos of blocks) {
     const node = doc.nodeAt(pos)!;
     const span = { from: pos, to: pos + node.nodeSize };
+
     if (node.type.name !== 'codeBlock') spans.push(span);
     else if (!settled && node.content.size > LIVE_LIMIT) deferred.push(span);
     else {
@@ -275,10 +302,12 @@ const rebuild = (
       added.push(...blockDecorations(node, pos, missing));
     }
   }
+
   if (!spans.length) return { decorations, deferred };
   const stale = spans.flatMap(({ from, to }) =>
     decorations.find(from + 1, to - 1),
   );
+
   // A few stale ones are removed in place; many are cheaper to leave out of a new set.
   if (stale.length <= REMOVE_LIMIT)
     return {
@@ -293,6 +322,7 @@ const rebuild = (
           ({ from, to }) => decoration.from >= from && decoration.to <= to,
         ),
     );
+
   return {
     decorations: DecorationSet.create(doc, [...kept, ...added]),
     deferred,
@@ -300,6 +330,7 @@ const rebuild = (
 };
 
 const key = new PluginKey<HighlightState>('codeHighlight');
+
 /** Meta values: grammars or themes finished loading; typing or a composition settled. */
 type Meta = 'loaded' | 'flush';
 
@@ -315,12 +346,14 @@ export const codeHighlight = () => {
       else view.dispatch(view.state.tr.setMeta(key, 'flush' satisfies Meta));
     }, SETTLE_MS);
   };
+
   return new Plugin<HighlightState>({
     key,
     state: {
       init: (_, state) => build(state.doc),
       apply: (tr, value) => {
         const meta = tr.getMeta(key) as Meta | undefined;
+
         if (meta === 'loaded' && !editorView?.composing) return build(tr.doc);
         if (!tr.docChanged && !meta) return value;
         const decorations = value.decorations.map(tr.mapping, tr.doc);
@@ -333,6 +366,7 @@ export const codeHighlight = () => {
           // Loaded during a composition: everything is redone once it ends.
           ...(meta === 'loaded' ? [{ from: 0, to: tr.doc.content.size }] : []),
         ];
+
         if (editorView?.composing)
           return { decorations, missing: new Set(), dirty };
         const missing = new Set<string>();
@@ -343,6 +377,7 @@ export const codeHighlight = () => {
           missing,
           meta === 'flush',
         );
+
         return {
           decorations: next.decorations,
           missing,
@@ -356,6 +391,7 @@ export const codeHighlight = () => {
         // Composition may end without another change; redo what it left behind.
         compositionend: (view) => {
           settle(view);
+
           return false;
         },
       },
@@ -365,6 +401,7 @@ export const codeHighlight = () => {
       let requested: Set<string> | undefined;
       const request = () => {
         const missing = key.getState(view.state)?.missing;
+
         if (!missing?.size || missing === requested) return;
         requested = missing;
         void load(missing).then(() => {
@@ -372,7 +409,9 @@ export const codeHighlight = () => {
             view.dispatch(view.state.tr.setMeta(key, 'loaded' satisfies Meta));
         });
       };
+
       request();
+
       return {
         update: () => {
           request();

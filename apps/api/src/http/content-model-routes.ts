@@ -23,6 +23,7 @@ export const contentModelRoutes =
         '',
         async (context) => {
           await context[service].remove(context.params.key, context.user);
+
           return noContent();
         },
         { ...keyParams, parse: 'none' },

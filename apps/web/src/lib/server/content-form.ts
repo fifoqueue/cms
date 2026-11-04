@@ -34,13 +34,18 @@ export const readFields = (
   Object.fromEntries(
     definitions.flatMap((field): [string, unknown][] => {
       const name = `field.${field.key}`;
+
       if (field.type === 'boolean') return [[field.key, form.has(name)]];
       const raw = text(form, name).trim();
+
       if (!raw) return [];
+
       if (field.type === 'number') {
         const value = Number(raw);
+
         return [[field.key, Number.isFinite(value) ? value : raw]];
       }
+
       return [[field.key, raw]];
     }),
   );
@@ -101,8 +106,10 @@ export const readContentForm = (
     // The version the editor loaded; the API refuses the save if it changed since.
     expectedUpdatedAt: text(form, 'updatedAt') || undefined,
   });
+
   if (result.success) return { input: result.data, values };
   const issues = issuesOf(result.error.issues);
+
   return {
     failure: fail(400, {
       message: Errors.FormInvalid,
@@ -120,6 +127,7 @@ export const readContentInput = async (
     event.request.formData(),
     adminFor(event).contentModel.model(),
   ]);
+
   return readContentForm(formData, model.fields);
 };
 
@@ -133,7 +141,9 @@ export const fieldImages = async (
     await Promise.all(
       definitions.flatMap((field) => {
         const id = values[field.key];
+
         if (field.type !== 'image' || typeof id !== 'string') return [];
+
         return [
           admin.media
             .get(id)

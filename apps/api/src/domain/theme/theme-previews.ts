@@ -23,12 +23,14 @@ export class ThemePreviews {
     if (!(await this.deps.themes.find(id)))
       throw notFound(Errors.ThemeNotFound);
     const payload = `theme.${id}.${this.deps.clock.now().getTime() + PREVIEW_MS}`;
+
     return { token: `${payload}.${this.deps.signer.sign(payload)}` };
   }
 
   /** The previewed theme, or `null` for a missing, forged or expired token. */
   async resolve(token: string | undefined): Promise<PublicTheme | null> {
     const [kind, id, expires, signature] = token?.split('.') ?? [];
+
     if (
       kind !== 'theme' ||
       !id ||
@@ -38,6 +40,7 @@ export class ThemePreviews {
     )
       return null;
     const theme = await this.deps.themes.find(id);
+
     return theme && { ...theme, preview: true };
   }
 }

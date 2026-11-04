@@ -20,6 +20,7 @@ import {
 test('credential enrollment, SSO linking and recovery generation require recent interactive sessions', async () => {
   const user = userRecord({ id: 'owner' });
   const users = new MemoryUsers();
+
   await users.insert(user);
   const { sessions } = createMemoryAuthStore(users);
   const clock = fixedClock();
@@ -65,12 +66,14 @@ test('credential enrollment, SSO linking and recovery generation require recent 
       signIn: {
         enroll: async () => {
           calls.push('enroll');
+
           return { kind: 'done' };
         },
       },
       sso: {
         start: async () => {
           calls.push('link');
+
           return { authorizationUrl: 'https://id.example' };
         },
       },
@@ -78,6 +81,7 @@ test('credential enrollment, SSO linking and recovery generation require recent 
     logger,
   });
   const old = await auth.startSession(user);
+
   clock.set('2026-01-01T00:11:00.000Z');
   const paths = ['factors/totp/enroll', 'sso/start', 'recovery-codes'];
   const call = (path: string, token: string) =>
@@ -91,12 +95,14 @@ test('credential enrollment, SSO linking and recovery generation require recent 
         body: JSON.stringify({ provider: 'default', intent: 'link' }),
       }),
     );
+
   for (const token of ['cms_pat_test', old.token, 'missing'])
     for (const path of paths)
       expect((await call(path, token)).status).toBe(401);
   expect(calls).toEqual([]);
   expect((await codes.status(user.id)).remaining).toBe(0);
   const fresh = await auth.startSession(user);
+
   for (const path of paths)
     expect((await call(path, fresh.token)).status).toBe(200);
   expect(calls).toEqual(['enroll', 'link']);

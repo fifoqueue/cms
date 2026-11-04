@@ -9,9 +9,11 @@ export const routes = (app: ApiApp) =>
   session(app)
     .get('', async ({ writing, user }) => {
       authorize(user, 'content.create');
+
       return json(await writing.get());
     })
     .put('', async ({ writing, request, user }) => {
       authorize(user, 'settings.manage');
+
       return json(await writing.update(await readJson(request)));
     });

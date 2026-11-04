@@ -74,6 +74,7 @@ export class PrismaDatabaseCleanupStore implements DatabaseCleanupStore {
     const [row] = await this.db.$queryRaw<{ total: bigint }[]>(
       Prisma.sql`SELECT COUNT(*) AS total FROM (${this.revisions(policy.keepLatest)}) candidates`,
     );
+
     return {
       revisions: Number(row!.total),
       autosaves: await this.db.contentRevision.count({
@@ -106,6 +107,7 @@ export class PrismaDatabaseCleanupStore implements DatabaseCleanupStore {
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (${Prisma.join(TABLES)})
       ORDER BY TABLE_NAME
     `);
+
     return rows.map((row) => ({
       table: row.table,
       dataBytes: Number(row.dataBytes),
@@ -119,6 +121,7 @@ export class PrismaDatabaseCleanupStore implements DatabaseCleanupStore {
     const rows = await this.db.$queryRawUnsafe<
       { Msg_type: string; Msg_text: string }[]
     >(`OPTIMIZE TABLE \`${table}\``);
+
     if (rows.some((row) => row.Msg_type === 'error'))
       throw invalidInput(Errors.InvalidInput);
   }
@@ -130,16 +133,19 @@ export class PrismaDatabaseCleanupStore implements DatabaseCleanupStore {
     limit: number,
   ) {
     if (category === 'expired') return this.deletes.expired(policy.now, limit);
+
     if (category === 'revisions') {
       const rows = await this.db.$queryRaw<{ id: string; contentId: string }[]>(
         Prisma.sql`${this.revisions(policy.keepLatest)} LIMIT ${limit}`,
       );
       let count = 0;
+
       for (const row of rows) {
         const guard = await this.db.content.findUnique({
           where: { id: row.contentId },
           select: { updatedAt: true, authorId: true, status: true },
         });
+
         if (!guard) continue;
         count += await this.db.$transaction(async (tx) => {
           await lockPermalinks(tx);
@@ -158,7 +164,9 @@ export class PrismaDatabaseCleanupStore implements DatabaseCleanupStore {
             take: limit,
             select: { id: true },
           });
+
           if (!retained.some((candidate) => candidate.id === row.id)) return 0;
+
           return (
             await tx.contentRevision.deleteMany({
               where: { id: row.id, kind: 'revision' },
@@ -166,8 +174,10 @@ export class PrismaDatabaseCleanupStore implements DatabaseCleanupStore {
           ).count;
         });
       }
+
       return count;
     }
+
     if (category === 'autosaves')
       return this.db.$transaction(async (tx) => {
         await lockPermalinks(tx);
@@ -179,6 +189,7 @@ export class PrismaDatabaseCleanupStore implements DatabaseCleanupStore {
           select: { id: true },
           take: limit,
         });
+
         return (
           await tx.contentRevision.deleteMany({
             where: {
@@ -189,16 +200,21 @@ export class PrismaDatabaseCleanupStore implements DatabaseCleanupStore {
           })
         ).count;
       });
+
     if (category === 'trashedContent') {
       const rows = await this.db.content.findMany({
         where: { trashedAt: { not: null } },
         select: { id: true },
         take: limit,
       });
+
       for (const row of rows) await this.deletes.content(row.id, actor);
+
       return rows.length;
     }
+
     const status = category === 'spamComments' ? 'spam' : 'trash';
+
     // Comments that left the status after selection are skipped and no longer match, so
     // select again until something is deleted or nothing eligible remains (zero ends the run).
     for (;;) {
@@ -207,8 +223,10 @@ export class PrismaDatabaseCleanupStore implements DatabaseCleanupStore {
         select: { id: true },
         take: limit,
       });
+
       if (!rows.length) return 0;
       let deleted = 0;
+
       for (const row of rows)
         if (await this.deletes.comment(row.id, status, actor)) deleted++;
       if (deleted) return deleted;

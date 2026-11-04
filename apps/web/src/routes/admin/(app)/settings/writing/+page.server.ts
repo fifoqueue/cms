@@ -11,6 +11,7 @@ export const load: PageServerLoad = async (event) => {
     admin.taxonomy.list('category'),
     admin.contentModel.model(),
   ]);
+
   return {
     writing: {
       defaultCategoryId: writing.defaultCategoryId,
@@ -29,6 +30,7 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   save: async (event) => {
     const form = await event.request.formData();
+
     // The API validates both choices.
     return submitAction(() =>
       adminFor(event).writing.update({

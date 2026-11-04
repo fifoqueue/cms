@@ -32,6 +32,7 @@ test('full-text feeds read a few bodies at a time and never protected ones', asy
       peak = Math.max(peak, ++running);
       await Bun.sleep(1);
       running--;
+
       return { content: { html: '<p>Body</p>' }, redirect: false };
     },
   } as never;
@@ -39,6 +40,7 @@ test('full-text feeds read a few bodies at a time and never protected ones', asy
     entry({ id: `id-${index}`, path: `/p${index}`, protected: index === 0 }),
   );
   const bodies = await loadBodies(api, items, async () => null);
+
   expect(peak).toBeLessThanOrEqual(4);
   expect(read).toHaveLength(19);
   expect(read).not.toContain('/p0');

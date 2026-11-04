@@ -31,8 +31,10 @@
 
   const read = () => {
     const chosen = document.documentElement.getAttribute(SCHEME_ATTRIBUTE);
+
     if (chosen === 'alternate' && alternate) return alternate;
     if (chosen === 'default') return palette;
+
     return theme.settings.colorScheme.auto &&
       alternate &&
       matchMedia(`(prefers-color-scheme: ${alternate})`).matches
@@ -43,9 +45,11 @@
   onMount(() => {
     const update = () => (current = read());
     const system = matchMedia('(prefers-color-scheme: dark)');
+
     update();
     system.addEventListener('change', update);
     window.addEventListener(CHANGED, update);
+
     return () => {
       system.removeEventListener('change', update);
       window.removeEventListener(CHANGED, update);
@@ -54,15 +58,18 @@
 
   const toggle = () => {
     const next = shown === 'dark' ? 'light' : 'dark';
+
     document.documentElement.setAttribute(
       SCHEME_ATTRIBUTE,
       next === alternate ? 'alternate' : 'default',
     );
+
     try {
       localStorage.setItem(SCHEME_KEY, next);
     } catch {
       // Storage may be unavailable (private mode); the choice still lasts for this page.
     }
+
     window.dispatchEvent(new Event(CHANGED));
   };
 

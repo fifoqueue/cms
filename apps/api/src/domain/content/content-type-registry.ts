@@ -21,6 +21,7 @@ export class ContentTypeRegistry {
     definition: Omit<ContentTypeInput, 'key'>,
   ) {
     const id = `plugin:${keySchema.parse(owner)}:${keySchema.parse(key)}`;
+
     return this.add(
       contentTypeSchema.parse({ ...definition, key: id, builtin: false }),
     );
@@ -32,7 +33,9 @@ export class ContentTypeRegistry {
 
   private add(definition: ContentTypeDefinition) {
     const entry = contentTypeSchema.parse(definition);
+
     this.entries.set(entry.key, entry);
+
     return () => {
       if (this.entries.get(entry.key) === entry) this.entries.delete(entry.key);
     };

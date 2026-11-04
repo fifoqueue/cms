@@ -9,6 +9,7 @@ import type { RequestHandler } from './$types';
 export const POST: RequestHandler = async (event) => {
   requireCapability(event.locals, 'media.upload');
   let name = 'file';
+
   try {
     name = decodeURIComponent(
       event.request.headers.get(MEDIA_FILENAME_HEADER) ?? 'file',
@@ -16,6 +17,7 @@ export const POST: RequestHandler = async (event) => {
   } catch {
     // Keep the generic name.
   }
+
   try {
     return json(
       await adminFor(event).media.upload(

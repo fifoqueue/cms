@@ -6,5 +6,6 @@ import type { ApiApp } from '#api/http/services';
 export const routes = (app: ApiApp) =>
   app.post('', async ({ passwords, request }) => {
     await passwords.reset(await readJson(request, SMALL_BODY_BYTES));
+
     return noContent();
   });

@@ -37,6 +37,7 @@ const setup = (secrets: SecretBox = plainSecretBox) => {
       send: async (delivery) => {
         if (failure) throw failure;
         sent.push(delivery);
+
         return answer;
       },
     },
@@ -44,7 +45,9 @@ const setup = (secrets: SecretBox = plainSecretBox) => {
     clock,
     logger,
   });
+
   webhooks.subscribe(hooks.core('core:webhooks'));
+
   return {
     jobs,
     sent,
@@ -66,6 +69,7 @@ describe('WebhookService', () => {
       { url: 'https://hooks.example/a', events: ['site.updated'] },
       ADMIN,
     );
+
     // The secret is shown once and never listed.
     expect(created.secret).toBe('whsec-1');
     expect(JSON.stringify(await webhooks.list(ADMIN))).not.toContain('whsec');

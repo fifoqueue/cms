@@ -93,11 +93,13 @@ const percent = (char: string) =>
  */
 export const markdownUrl = (value: string | undefined, base: string) => {
   const url = value?.trim() ? URL.parse(value.trim(), base) : null;
+
   if (!url || !SAFE_SCHEMES.has(url.protocol)) return undefined;
   const href =
     url.origin === LOCAL_ORIGIN
       ? url.href.slice(LOCAL_ORIGIN.length)
       : url.href;
+
   return href.replace(/[\s()<>\\]/g, percent);
 };
 
@@ -133,6 +135,7 @@ const textContent = (node: Node): string => {
     return (node as DefaultTreeAdapterTypes.TextNode).value;
   if (!isElement(node) || SKIPPED.has(node.tagName)) return '';
   if (node.tagName === 'br') return '\n';
+
   return node.childNodes.map(textContent).join('');
 };
 
@@ -145,17 +148,21 @@ const longestRun = (text: string, char: string) =>
 /** Surrounds trimmed text with `marker`, keeping outer whitespace outside the delimiters. */
 const wrap = (marker: string, text: string) => {
   const core = text.trim();
+
   if (!core) return text;
   const start = text.slice(0, text.indexOf(core));
   const end = text.slice(text.indexOf(core) + core.length);
+
   return `${start}${marker}${core}${marker}${end}`;
 };
 
 const codeSpan = (raw: string) => {
   const code = raw.replace(/\s+/g, ' ');
+
   if (!code.trim()) return '';
   const fence = '`'.repeat(longestRun(code, '`') + 1);
   const pad = code.startsWith('`') || code.endsWith('`') ? ' ' : '';
+
   return `${fence}${pad}${code}${pad}${fence}`;
 };
 
@@ -177,7 +184,9 @@ interface Context {
  */
 const footnoteLabel = (id: string | undefined) => {
   const match = /^(?:fn|fn-ref)-(\d+)-(\d+)$/.exec(id ?? '');
+
   if (!match) return undefined;
+
   return match[1] === '1' ? match[2] : `p${match[1]}-${match[2]}`;
 };
 
@@ -195,6 +204,7 @@ const footnoteSection = (section: Element, context: Context) => {
     .flatMap((ol) => ol.childNodes.filter(isElement))
     .filter((child) => child.tagName === 'li');
   const orphans: string[] = [];
+
   for (const item of items) {
     const label = footnoteLabel(attr(item, 'id'));
     const span = item.childNodes
@@ -206,12 +216,14 @@ const footnoteSection = (section: Element, context: Context) => {
         (child) => !isElement(child) || child.tagName !== 'a',
       );
     const text = paragraph(singleLine(inline(nodes, context)));
+
     if (!context.matched) {
       if (label && text) context.items.add(label);
     } else if (label && context.matched.delete(label)) {
       if (text) context.footnotes.push(`[^${label}]: ${text}`);
     } else if (text) orphans.push(text);
   }
+
   return orphans.join('\n\n');
 };
 
@@ -223,6 +235,7 @@ const inlineNode = (node: Node, context: Context): string => {
     return markdownInline((node as DefaultTreeAdapterTypes.TextNode).value);
   if (!isElement(node) || SKIPPED.has(node.tagName)) return '';
   const children = () => inline(node.childNodes, context);
+
   switch (node.tagName) {
     case 'br':
       return '\n';
@@ -240,12 +253,16 @@ const inlineNode = (node: Node, context: Context): string => {
     case 'kbd':
     case 'samp':
       return codeSpan(textContent(node));
+
     case 'a': {
       const href = context.url(attr(node, 'href'));
       const text = singleLine(children());
+
       if (!href) return children();
+
       return `[${text || markdownInline(href)}](${href})`;
     }
+
     case 'sup': {
       const ref = node.childNodes
         .filter(isElement)
@@ -253,21 +270,28 @@ const inlineNode = (node: Node, context: Context): string => {
           (child) =>
             child.tagName === 'a' && attr(child, 'data-footnote-ref') != null,
         );
+
       if (!ref) return children();
       const label = footnoteLabel(attr(ref, 'href')?.replace(/^#/, ''));
+
       if (label && !context.matched) context.refs.add(label);
+
       return label && (!context.matched || context.items.has(label))
         ? `[^${label}]`
         : markdownInline(textContent(node));
     }
+
     case 'img': {
       const src = context.url(attr(node, 'src'));
+
       return src ? `![${markdownInline(attr(node, 'alt') ?? '')}](${src})` : '';
     }
+
     case 'td':
     case 'th':
       return ` ${children()} `;
   }
+
   return BLOCKS.has(node.tagName) ? ` ${children()} ` : children();
 };
 
@@ -276,17 +300,20 @@ const codeBlock = (pre: Element) => {
     .filter(isElement)
     .find((child) => child.tagName === 'code');
   const raw = textContent(code ?? pre).replace(/\n+$/, '');
+
   if (!raw.trim()) return '';
   const language =
     /(?:^|\s)language-([\w+-]+)/.exec(attr(code ?? pre, 'class') ?? '')?.[1] ??
     '';
   const fence = '`'.repeat(Math.max(3, longestRun(raw, '`') + 1));
+
   return `${fence}${language}\n${raw}\n${fence}`;
 };
 
 const list = (element: Element, context: Context) => {
   const ordered = element.tagName === 'ol';
   let number = Number.parseInt(attr(element, 'start') ?? '', 10) || 1;
+
   return element.childNodes
     .filter(isElement)
     .filter((child) => child.tagName === 'li')
@@ -298,6 +325,7 @@ const list = (element: Element, context: Context) => {
         .split('\n')
         .map((line, index) => (index === 0 || !line ? line : indent + line))
         .join('\n');
+
       return `${marker}${body}`.trimEnd();
     })
     .join('\n');
@@ -308,10 +336,13 @@ const block = (element: Element, context: Context): string => {
   if (element.tagName === 'section' && hasClass(element, 'cms-footnotes'))
     return footnoteSection(element, context);
   const heading = /^h([1-6])$/.exec(element.tagName);
+
   if (heading) {
     const text = singleLine(inline(element.childNodes, context));
+
     return text && `${'#'.repeat(Number(heading[1]))} ${text}`;
   }
+
   switch (element.tagName) {
     case 'ul':
     case 'ol':
@@ -320,8 +351,10 @@ const block = (element: Element, context: Context): string => {
       return codeBlock(element);
     case 'hr':
       return '---';
+
     case 'blockquote': {
       const quoted = blocks(element.childNodes, context).join('\n\n');
+
       return quoted
         .split('\n')
         .map((line) => (line ? `> ${line}` : '>'))
@@ -329,6 +362,7 @@ const block = (element: Element, context: Context): string => {
         .replace(/^>$/, '');
     }
   }
+
   return blocks(element.childNodes, context).join('\n\n');
 };
 
@@ -338,17 +372,22 @@ const blocks = (nodes: Node[], context: Context): string[] => {
   let run: Node[] = [];
   const flush = () => {
     const text = paragraph(inline(run, context));
+
     if (text) output.push(text);
     run = [];
   };
+
   for (const node of nodes) {
     if (isElement(node) && BLOCKS.has(node.tagName)) {
       flush();
       const text = block(node, context);
+
       if (text) output.push(text);
     } else run.push(node);
   }
+
   flush();
+
   return output;
 };
 
@@ -366,11 +405,14 @@ export const htmlToMarkdown = (html: string, base: string) => {
     refs: new Set(),
     items: new Set(),
   };
+
   blocks(nodes, context);
   context.matched = context.refs.intersection(context.items);
   context.items = new Set(context.matched);
   const output = blocks(nodes, context);
+
   if (context.footnotes.length) output.push(context.footnotes.join('\n'));
+
   return output.join('\n\n');
 };
 
@@ -393,6 +435,7 @@ export const contentMarkdown = (content: PublicContent, origin: string) => {
     author && `- Author: ${authorUrl ? `[${author}](${authorUrl})` : author}`,
   ];
   const summary = singleLine(content.excerpt);
+
   return `${[
     `# ${markdownInline(content.title).trim()}`,
     summary && `> ${markdownInline(summary)}`,

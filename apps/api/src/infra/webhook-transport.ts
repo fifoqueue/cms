@@ -29,7 +29,9 @@ export const createHttpWebhookTransport = (
       },
       body,
     });
+
     await response.body?.cancel();
+
     return response.status;
   },
 });

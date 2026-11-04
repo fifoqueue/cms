@@ -32,16 +32,20 @@ export const load: PageServerLoad = async (event) => {
   // The lookup and the slots start with the layout instead of waiting for it; archive paths
   // discard the lookup and reuse the slots.
   const resolving = api.resolvePath(url.pathname, unlockProofs(cookies));
+
   resolving.catch(() => undefined);
   const slots = loadSlots(api, { path: url.pathname });
   const layout = parent();
   const layoutData = await layout;
   const { archives, reading, site } = layoutData;
+
   if (url.pathname === site.loginPath)
     return loginPage(event, site.loginPath, Boolean(layoutData.toolbar));
   const archive = resolveArchivePath(archives, url.pathname);
+
   if (archive) {
     if (archive.redirect) redirect(308, `${archive.path}${url.search}`);
+
     return loadTermArchive(
       event,
       archive.taxonomy,
@@ -50,15 +54,19 @@ export const load: PageServerLoad = async (event) => {
       slots,
     );
   }
+
   const types = api.contentTypes().catch(() => []);
   const { content, redirect: moved } = await resolving.catch(notFoundFrom);
+
   if (moved) {
     if (!isInternalPath(content.path)) error(502, Errors.InvalidContentPath);
     redirect(308, `${content.path}${url.search}`);
   }
+
   if (reading.frontPagePath === content.path) redirect(308, `/${url.search}`);
   // Block data is public: it never uses the visitor's session.
   const publicApi = contentApi(fetch);
+
   if (reading.postsPagePath === content.path) {
     return withTemplateData(publicApi, event, {
       kind: 'home' as const,
@@ -74,6 +82,7 @@ export const load: PageServerLoad = async (event) => {
       slots: await slots,
     });
   }
+
   return entryPage(api, event, content, types, slots, async (page) =>
     loadTemplateData(publicApi, await layout, page),
   );

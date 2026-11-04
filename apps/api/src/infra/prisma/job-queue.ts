@@ -44,6 +44,7 @@ export const erasedSubjects = async (
       ),
     ),
   ];
+
   if (!ids.length) return new Set<string>();
   const [comments, users] = await Promise.all([
     tx.comment.findMany({
@@ -55,6 +56,7 @@ export const erasedSubjects = async (
       select: { id: true, email: true },
     }),
   ]);
+
   return new Set([
     ...comments.map((row) => row.id),
     ...users
@@ -78,6 +80,7 @@ export class PrismaJobQueue implements JobQueue {
   ) {
     await this.db.$transaction(async (tx) => {
       await lockSetting(tx, 'privacy.jobs');
+
       if (this.secrets) {
         const opened = openJob(payload, this.secrets) as {
           subjects?: unknown;
@@ -89,8 +92,10 @@ export class PrismaJobQueue implements JobQueue {
           opened?.data?.authorId,
           opened?.data?.uploaderId,
         ];
+
         if ((await erasedSubjects(tx, refs)).size) return;
       }
+
       await insertJob(tx, this.ids, { kind, payload, runAt, expiresAt });
     });
   }
@@ -99,6 +104,7 @@ export class PrismaJobQueue implements JobQueue {
   async sealLegacy() {
     if (!this.secrets) return;
     let after = '';
+
     for (;;) {
       const rows = await this.db.job.findMany({
         where: {
@@ -108,13 +114,16 @@ export class PrismaJobQueue implements JobQueue {
         orderBy: { id: 'asc' },
         take: 200,
       });
+
       for (const row of rows) {
         let payload: unknown;
+
         try {
           payload = JSON.parse(row.payload);
         } catch {
           payload = row.payload;
         }
+
         if (payload && typeof payload === 'object' && 'sealed' in payload)
           continue;
         let expiresAt =
@@ -129,6 +138,7 @@ export class PrismaJobQueue implements JobQueue {
         const token = /\/admin\/password\?token=([A-Za-z0-9_-]+)/.exec(
           text,
         )?.[1];
+
         if (token) {
           const grant = await this.db.passwordToken.findUnique({
             where: {
@@ -136,6 +146,7 @@ export class PrismaJobQueue implements JobQueue {
             },
             select: { expiresAt: true },
           });
+
           expiresAt = grant?.expiresAt ?? new Date(0);
         }
 
@@ -148,6 +159,7 @@ export class PrismaJobQueue implements JobQueue {
           },
         });
       }
+
       if (rows.length < 200) break;
       after = rows.at(-1)!.id;
     }
@@ -166,6 +178,7 @@ export class PrismaJobQueue implements JobQueue {
         ],
       },
     });
+
     return this.db.$transaction(async (tx) => {
       // SKIP LOCKED lets several processes drain the queue without waiting on each other.
       const rows = await tx.$queryRaw<
@@ -177,6 +190,7 @@ export class PrismaJobQueue implements JobQueue {
         ORDER BY run_at ASC LIMIT ${limit}
         FOR UPDATE SKIP LOCKED
       `);
+
       if (rows.length)
         await tx.job.updateMany({
           where: { id: { in: rows.map((row) => row.id) } },
@@ -185,6 +199,7 @@ export class PrismaJobQueue implements JobQueue {
             lockedBy: owner,
           },
         });
+
       return rows.map((row) => ({
         id: row.id,
         kind: row.kind,
@@ -198,6 +213,7 @@ export class PrismaJobQueue implements JobQueue {
     const { count } = await this.db.job.deleteMany({
       where: { id, lockedBy: owner },
     });
+
     return count === 1;
   }
 
@@ -241,6 +257,7 @@ export class PrismaJobQueue implements JobQueue {
             }),
       },
     });
+
     return count === 1;
   }
 
@@ -255,6 +272,7 @@ export class PrismaJobQueue implements JobQueue {
       select: { id: true, payload: true },
       take: limit,
     });
+
     return rows.flatMap(({ id, payload }) => {
       try {
         return [{ id, payload: JSON.parse(payload) as unknown }];
@@ -270,6 +288,7 @@ export class PrismaJobQueue implements JobQueue {
       where: { id: { in: [...ids] }, failedAt: { not: null } },
       data: { attempts: 0, failedAt: null, lastError: null, runAt: new Date() },
     });
+
     return count;
   }
 
@@ -285,11 +304,13 @@ export class PrismaJobQueue implements JobQueue {
       select: { id: true },
       take: limit,
     });
+
     if (!rows.length) return 0;
     const { count } = await this.db.job.updateMany({
       where: { id: { in: rows.map(({ id }) => id) } },
       data: { payload: 'null' },
     });
+
     return count;
   }
 
@@ -300,6 +321,7 @@ export class PrismaJobQueue implements JobQueue {
       orderBy: { failedAt: 'desc' },
       take: limit,
     });
+
     return rows.map((row) => ({
       kind: row.kind,
       error:
@@ -312,10 +334,12 @@ export class PrismaJobQueue implements JobQueue {
 
   async purge(before: Date) {
     let total = 0;
+
     for (;;) {
       const count = await this.db.$executeRaw(
         Prisma.sql`DELETE ${failedJobs(before)} LIMIT 100`,
       );
+
       total += count;
       if (!count) return total;
     }

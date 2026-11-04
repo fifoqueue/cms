@@ -13,6 +13,7 @@ import type { Actions, PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async (event) => {
   const { url, setHeaders, fetch } = event;
+
   // The link holds a secret: keep it out of caches and referrers.
   setHeaders({ 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
   const token = url.searchParams.get('token') ?? '';
@@ -29,6 +30,7 @@ export const load: PageServerLoad = async (event) => {
           .catch(() => null),
       ])
     : [null, null];
+
   return {
     token,
     linkValid,

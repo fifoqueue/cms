@@ -112,6 +112,7 @@ export interface Crumb {
 /** The visible breadcrumb trail; the JSON-LD BreadcrumbList uses the same list. */
 export const crumbs = (page: SitePage | null, m: SiteMessages): Crumb[] => {
   const home: Crumb = { name: m.themeHome, target: { kind: 'home' } };
+
   if (page?.kind === 'term')
     return [
       home,
@@ -131,6 +132,7 @@ export const crumbs = (page: SitePage | null, m: SiteMessages): Crumb[] => {
   if (page?.kind !== 'content') return [];
   const { content } = page;
   const category = isArticle(content) ? content.categories[0] : undefined;
+
   return [
     home,
     ...(category
@@ -198,6 +200,7 @@ const pagedIn = (m: SiteMessages) => (title: string, page: number) =>
 
 const pagination = (target: ListingTarget, posts: PostList) => {
   const last = lastPageOf(posts);
+
   return {
     path: listingPath(target, posts.page),
     prev:
@@ -236,6 +239,7 @@ const describe = (
             page.posts.page,
           );
       const description = settings.homeDescription || site.description;
+
       return {
         ...listing,
         ...list,
@@ -251,6 +255,7 @@ const describe = (
         type: 'CollectionPage',
       };
     }
+
     case 'search': {
       const list = page.posts
         ? pagination({ kind: 'search', query: page.query }, page.posts)
@@ -259,6 +264,7 @@ const describe = (
         page.query ? m.themeSearchTitle(page.query) : m.themeSearch,
         page.posts?.page ?? 1,
       );
+
       return {
         ...listing,
         title: format(social),
@@ -274,6 +280,7 @@ const describe = (
         next: list?.next,
       };
     }
+
     case 'term': {
       const { term, posts } = page;
       const list = pagination(
@@ -290,6 +297,7 @@ const describe = (
         term.taxonomy === 'category'
           ? settings.indexCategories
           : settings.indexTags;
+
       return {
         ...list,
         title: format(base),
@@ -308,11 +316,13 @@ const describe = (
         pageImage: null,
       };
     }
+
     case 'author': {
       const { author, posts } = page;
       const list = pagination({ kind: 'author', slug: author.slug }, posts);
       const base = paged(author.name, posts.page);
       const description = author.bio || site.description;
+
       return {
         ...listing,
         ...list,
@@ -326,11 +336,13 @@ const describe = (
         type: 'ProfilePage',
       };
     }
+
     case 'archive': {
       const { archive, posts } = page;
       const list = pagination({ kind: 'archive', slug: archive.key }, posts);
       const base = paged(archive.name, posts.page);
       const description = archive.description || site.description;
+
       return {
         ...listing,
         ...list,
@@ -344,6 +356,7 @@ const describe = (
         type: 'CollectionPage',
       };
     }
+
     case 'date': {
       const { date, posts } = page;
       const list = pagination({ kind: 'date', ...date }, posts);
@@ -353,6 +366,7 @@ const describe = (
           ? `${date.year}-${String(date.month).padStart(2, '0')}`
           : String(date.year);
       const base = paged(name, posts.page);
+
       // Date archives repeat what other listings show, so they are never indexed.
       return {
         ...listing,
@@ -367,6 +381,7 @@ const describe = (
         type: 'CollectionPage',
       };
     }
+
     case 'preview':
       return {
         ...describe(
@@ -384,6 +399,7 @@ const describe = (
     case 'unsubscribe': {
       const name =
         page.kind === 'login' ? m.signInTitle : m.commentUnsubscribeTitle;
+
       return {
         ...listing,
         title: format(name),
@@ -398,6 +414,7 @@ const describe = (
         type: 'WebPage',
       };
     }
+
     case 'content': {
       const { content } = page;
       // Every part of a split entry is canonical to itself, like WordPress.
@@ -421,6 +438,7 @@ const describe = (
       const image = content.seo.imageUrl
         ? { url: content.seo.imageUrl, alt: content.seo.imageAlt }
         : featured;
+
       return {
         title: format(base),
         name: content.title,
@@ -440,6 +458,7 @@ const describe = (
         pageImage: image,
       };
     }
+
     default:
       return {
         ...listing,
@@ -459,6 +478,7 @@ const describe = (
 /** `language_TERRITORY` as Open Graph expects; empty when the locale names no region. */
 const ogLocale = (locale: string) => {
   const match = /^([a-z]{2,3})[-_]([a-z]{2})$/i.exec(locale);
+
   return match ? `${match[1].toLowerCase()}_${match[2].toUpperCase()}` : '';
 };
 
@@ -521,7 +541,9 @@ const isOg = (tag: HeadMeta) => tag.property?.startsWith('og:') ?? false;
 /** The filter value of a head. */
 const seoMetaOf = ({ title, meta, links, graph }: HeadParts): SeoMeta => {
   const og: Record<string, string> = {};
+
   for (const tag of meta) if (isOg(tag)) og[tag.property!] ??= tag.content;
+
   return {
     title,
     description: meta.find((tag) => tag.name === 'description')?.content ?? '',
@@ -550,6 +572,7 @@ const applyMeta = (parts: HeadParts, filtered: SeoMeta): HeadParts => {
     original.canonicalUrl === NO_CANONICAL
       ? []
       : [{ rel: 'canonical', href: filtered.canonicalUrl }];
+
   return {
     title: filtered.title,
     meta: [
@@ -586,6 +609,7 @@ export const buildSiteHead = ({
   const { title, meta, links, graph } = filtered
     ? applyMeta(parts, filtered)
     : parts;
+
   return {
     title,
     meta,
@@ -621,6 +645,7 @@ const headParts = (
   const property = (key: string, value: string) => {
     if (value) meta.push({ property: key, content: value });
   };
+
   name('description', facts.description);
   name('robots', robots(settings, index, follow));
   name('google-site-verification', settings.googleVerification);
@@ -631,10 +656,12 @@ const headParts = (
   property('og:title', facts.socialTitle);
   property('og:description', facts.socialDescription);
   property('og:url', facts.canonical);
+
   if (image) {
     property('og:image', image.url);
     property('og:image:alt', imageAlt);
   }
+
   if (article) {
     property('article:published_time', article.publishedAt);
     property('article:modified_time', article.updatedAt);
@@ -642,27 +669,32 @@ const headParts = (
     property('article:section', article.categories[0]?.name ?? '');
     for (const tag of article.tags) property('article:tag', tag.name);
   }
+
   name('twitter:card', image ? 'summary_large_image' : 'summary');
   name('twitter:site', settings.twitterHandle);
   name('twitter:title', facts.socialTitle);
   name('twitter:description', facts.socialDescription);
+
   if (image) {
     name('twitter:image', image.url);
     name('twitter:image:alt', imageAlt);
   }
 
   const links: HeadLink[] = [];
+
   if (facts.canonical) links.push({ rel: 'canonical', href: facts.canonical });
   if (facts.prev) links.push({ rel: 'prev', href: href(facts.prev) });
   if (facts.next) links.push({ rel: 'next', href: href(facts.next) });
   // Discovery documents are linked only where their routes serve them.
   const discoverable = settings.indexingEnabled && settings.siteUrl !== '';
+
   if (discoverable)
     links.push({
       rel: 'sitemap',
       type: 'application/xml',
       href: href(SITEMAP_PATH),
     });
+
   // The feed route answers only while discoverable; narrowed feeds follow archives.
   if (discoverable) {
     links.push({
@@ -678,6 +710,7 @@ const headParts = (
         : term && (term.taxonomy === 'category' || term.taxonomy === 'tag')
           ? { kind: term.taxonomy, slug: term.slug, name: term.name }
           : null;
+
     if (followed)
       links.push({
         rel: 'alternate',
@@ -686,6 +719,7 @@ const headParts = (
         href: href(feedPath({ kind: followed.kind, slug: followed.slug })),
       });
   }
+
   if (discoverable && settings.llmsTxtEnabled)
     links.push({
       rel: 'describedby',

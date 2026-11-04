@@ -12,7 +12,9 @@ const publicView = (runtime: ReturnType<typeof createRuntime>) =>
 /** A runtime on the same storage, booted like a restarted server. */
 const restart = async (runtime: ReturnType<typeof createRuntime>) => {
   const restarted = createRuntime({ storage: runtime.storage });
+
   await restarted.host.boot();
+
   return restarted;
 };
 
@@ -37,6 +39,7 @@ describe('PluginHost lifecycle', () => {
         activated = true;
       },
     });
+
     await expect(runtime.host.install(bundle)).rejects.toMatchObject({
       code: 'invalid_input',
       issues: [
@@ -59,6 +62,7 @@ describe('PluginHost lifecycle', () => {
         throw new Error('private-api-key-sentinel');
       },
     });
+
     await runtime.host.install(runtime.bundles.register('b', broken));
 
     expect(await runtime.host.enable('broken')).toMatchObject({
@@ -127,6 +131,7 @@ describe('PluginHost lifecycle', () => {
     const upgraded = await runtime.host.install(
       runtime.bundles.register('v2', counter('2.0.0')),
     );
+
     expect(upgraded).toMatchObject({
       version: '2.0.0',
       enabled: true,
@@ -159,8 +164,10 @@ const failState = (
 
   state.save = async (record) => {
     if (persisted) await save(record);
+
     return outage();
   };
+
   state.list = outage;
 
   return () => {
@@ -172,6 +179,7 @@ const failState = (
 describe('PluginHost install atomicity', () => {
   test('an unsaved upgrade keeps the previous version running and both bundles until a later upgrade succeeds', async () => {
     const runtime = createRuntime();
+
     await runtime.host.install(
       runtime.bundles.register('v1', titlePlugin('upgrade', '!')),
     );
@@ -192,6 +200,7 @@ describe('PluginHost install atomicity', () => {
 
     await runtime.host.stop();
     const restarted = await restart(runtime);
+
     expect(await restarted.host.list()).toMatchObject([
       { id: 'upgrade', enabled: true, status: 'active' },
     ]);

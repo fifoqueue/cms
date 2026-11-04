@@ -17,6 +17,7 @@ const subjectAllowlistSchema = z
         message: Errors.ConfigNotJsonObject,
         input: value,
       });
+
       return z.NEVER;
     }
   })
@@ -42,6 +43,7 @@ const egressAllowlistSchema = z
         message: Errors.ConfigNotJsonArray,
         input: value,
       });
+
       return z.NEVER;
     }
   })
@@ -204,9 +206,11 @@ export const loadConfig = (
   env: Record<string, string | undefined> = process.env,
 ): AppConfig => {
   const result = configSchema.safeParse(env);
+
   if (result.success) return result.data;
   const problems = result.error.issues.map(
     ({ path, message }) => `${path.join('.')}: ${message}`,
   );
+
   throw new Error(Errors.ConfigInvalid(problems));
 };

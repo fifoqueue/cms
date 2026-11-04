@@ -20,6 +20,7 @@ export const revokeRoutes =
       '',
       async (context) => {
         await revoke(context);
+
         return noContent();
       },
       idParams,

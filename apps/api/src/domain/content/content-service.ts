@@ -92,18 +92,22 @@ export class ContentService {
       title: '',
       document: { type: 'doc', content: [{ type: 'paragraph' }] },
     });
+
     if (!this.deps.hooks.has('content.defaults')) return initial;
     const filtered = await this.deps.hooks.applyFilter(
       'content.defaults',
       initial,
       (value) => {
         const result = contentDefaultsSchema.safeParse(value);
+
         if (!result.success || result.data.type !== type) return false;
         this.deps.renderer.render(result.data.document);
         this.deps.blocks?.check(result.data.document);
+
         return true;
       },
     );
+
     return contentDefaultsSchema.parse(filtered);
   }
 
@@ -127,6 +131,7 @@ export class ContentService {
       pageSize,
     });
     const active = await this.deps.types.list?.();
+
     return {
       items: items.map((item) => ({
         ...toEntrySummary(item),
@@ -143,12 +148,15 @@ export class ContentService {
   async counts(query: unknown, actor: Actor) {
     authorize(actor, 'content.create');
     const { type } = parseInput(contentListQuerySchema, query);
+
     return this.deps.repository.counts(type);
   }
 
   async get(id: string, actor: Actor): Promise<ContentEntry> {
     const record = await this.require(id);
+
     await this.assertEditable(actor, record);
+
     return toEntry(record, actor);
   }
 
@@ -159,6 +167,7 @@ export class ContentService {
   ): Promise<ContentEntry> {
     authorize(actor, 'content.create');
     const data = await this.prepare(input, actor, null);
+
     await this.assertStatus(actor, data);
     const authorId = await this.authorFor(actor, data.authorId, actor.id);
     const id = this.deps.ids.next();
@@ -175,6 +184,7 @@ export class ContentService {
         () => this.deps.ids.next().slice(-8),
       ));
     const slug = await this.slug(initialSlug, data, null);
+
     if (data.slug !== undefined || slug !== initialSlug)
       await this.assertSlugFree(slug);
     const record = await this.deps.repository.insert(
@@ -199,6 +209,7 @@ export class ContentService {
     );
 
     const entry = toEntry(record);
+
     void this.deps.hooks.emit('content.created', entry);
     this.statusChanged(entry, null);
     void this.deps.hooks.emit('content.revisionSaved', entry);
@@ -208,6 +219,7 @@ export class ContentService {
       void this.deps.hooks.emit('content.scheduled', entry);
     if (record.status === 'published')
       void this.deps.hooks.emit('content.published', entry);
+
     return toEntry(record, actor);
   }
 
@@ -220,8 +232,10 @@ export class ContentService {
     origin?: ContentOrigin,
   ): Promise<ContentEntry> {
     const current = await this.require(id);
+
     await this.assertEditable(actor, current);
     const data = await this.prepare(input, actor, current);
+
     await this.assertStatus(actor, data, current);
     const authorId = await this.authorFor(
       actor,
@@ -229,11 +243,13 @@ export class ContentService {
       current.authorId,
     );
     const slug = await this.slug(data.slug ?? current.slug, data, current.id);
+
     if (slug !== current.slug) await this.assertSlugFree(slug);
     const now = this.deps.clock.now();
     const expected = data.expectedUpdatedAt
       ? new Date(data.expectedUpdatedAt)
       : undefined;
+
     if (expected && expected.getTime() !== current.updatedAt.getTime())
       throw conflict(Errors.ContentChanged);
     const record = await this.deps.repository.update(
@@ -260,6 +276,7 @@ export class ContentService {
     );
 
     const entry = toEntry(record);
+
     if (this.deps.hooks.has('content.updated'))
       void this.deps.hooks.emit('content.updated', {
         ...entry,
@@ -281,15 +298,18 @@ export class ContentService {
     )
       void this.deps.hooks.emit('content.scheduled', entry);
     if (revision) void this.deps.hooks.emit('content.revisionRestored', entry);
+
     if (record.status === 'published' && current.status !== 'published') {
       void this.deps.hooks.emit('content.published', entry);
     }
+
     return toEntry(record, actor);
   }
 
   /** Moves the entry to the trash; it stops being public and can be restored. */
   async trash(id: string, actor: Actor, origin?: ContentOrigin): Promise<void> {
     const current = await this.require(id);
+
     await this.assertEditable(actor, current);
     if (current.trashedAt) return;
     if (
@@ -309,6 +329,7 @@ export class ContentService {
       modifiedById: origin ? actor.id : null,
     });
     const entry = toEntry(await this.require(id));
+
     void this.deps.hooks.emit('content.trashed', entry);
     this.statusChanged(entry, current.status);
   }
@@ -319,6 +340,7 @@ export class ContentService {
     origin?: ContentOrigin,
   ): Promise<void> {
     const current = await this.require(id);
+
     await this.assertEditable(actor, current);
     if (!current.trashedAt) return;
     await this.deps.repository.setTrashed(id, null, {
@@ -327,6 +349,7 @@ export class ContentService {
       modifiedById: origin ? actor.id : null,
     });
     const entry = toEntry(await this.require(id));
+
     void this.deps.hooks.emit('content.restored', entry);
     this.statusChanged(entry, 'trash');
   }
@@ -334,6 +357,7 @@ export class ContentService {
   /** Deletes the entry for good, with its paths, assignments and revisions. */
   async remove(id: string, actor: Actor, cleanup = false): Promise<void> {
     const current = await this.require(id);
+
     if (cleanup) {
       authorize(actor, 'tools.manage');
       if (!current.trashedAt) throw conflict(Errors.ContentChanged);
@@ -346,10 +370,12 @@ export class ContentService {
   /** Publishes scheduled entries that are due. Run by the scheduler. */
   async publishDue(): Promise<void> {
     if (!(await this.allowed('content.publishAllowed'))) return;
+
     for (const id of await this.deps.repository.publishDue(
       this.deps.clock.now(),
     )) {
       const record = await this.deps.repository.findById(id);
+
       if (record) {
         void this.deps.hooks.emit('content.published', toEntry(record));
         this.statusChanged(toEntry(record), 'scheduled');
@@ -362,8 +388,10 @@ export class ContentService {
     const before = new Date(
       this.deps.clock.now().getTime() - days * 24 * 60 * 60 * 1000,
     );
+
     for (const id of await this.deps.repository.expiredTrash(before, 100)) {
       const record = await this.deps.repository.findById(id);
+
       if (!(await this.allowed('content.deleteAllowed'))) continue;
       await this.deps.repository.delete(id);
       if (record) void this.deps.hooks.emit('content.deleted', toEntry(record));
@@ -373,6 +401,7 @@ export class ContentService {
   /** The stored fields derived from validated input alone. */
   private async fields(data: ContentData, current: ContentRecord | null) {
     const type = await this.deps.types.require(data.type);
+
     this.deps.blocks?.check(data.document);
     const definitions = await this.deps.fields.forType(type.key);
     // Omitted values are kept on update; new entries still meet required fields.
@@ -390,6 +419,7 @@ export class ContentService {
       data.featuredMediaId === undefined
         ? (current?.featuredMediaId ?? null)
         : data.featuredMediaId;
+
     return {
       type: data.type,
       title: data.title,
@@ -445,6 +475,7 @@ export class ContentService {
 
   private async defaultCategories() {
     const id = await this.deps.defaultCategory?.();
+
     return id ? [id] : [];
   }
 
@@ -467,15 +498,18 @@ export class ContentService {
     const kept = current?.publishedAt ?? null;
     // Every explicit time is honored; forms resend the stored time exactly when untouched.
     const requested = data.publishedAt ? new Date(data.publishedAt) : null;
+
     if (data.status === 'scheduled') {
       if (!requested)
         throw invalidInput(Errors.ScheduleDateRequired, [
           { path: 'publishedAt', message: Errors.ScheduleDateRequired },
         ]);
+
       return requested > now
         ? { status: 'scheduled', publishedAt: requested }
         : { status: 'published', publishedAt: requested };
     }
+
     return {
       status: data.status,
       publishedAt:
@@ -485,6 +519,7 @@ export class ContentService {
 
   private async passwordHash(data: ContentData, current: string | null) {
     if (data.password === undefined) return current;
+
     return data.password ? this.deps.hasher.hash(data.password) : null;
   }
 
@@ -495,6 +530,7 @@ export class ContentService {
     origin?: ContentOrigin,
   ): Promise<RevisionSave> {
     let keep = REVISIONS_KEPT;
+
     if (this.deps.hooks.has('content.revisionsToKeep')) {
       const result = await this.deps.hooks.applyFilter(
         'content.revisionsToKeep',
@@ -510,8 +546,10 @@ export class ContentService {
           value.count >= 0 &&
           value.count <= REVISIONS_KEPT,
       );
+
       keep = result.count;
     }
+
     return {
       ip: origin?.ip ? canonicalAddress(origin.ip) : null,
       userAgent: origin?.userAgent ?? null,
@@ -545,6 +583,7 @@ export class ContentService {
       (value) => {
         if (typeof value !== 'object' || value === null) return false;
         if (!('slug' in value) || typeof value.slug !== 'string') return false;
+
         return (
           'title' in value &&
           value.title === data.title &&
@@ -556,6 +595,7 @@ export class ContentService {
         );
       },
     );
+
     return contentInputSchema.parse({ ...data, slug: filtered.slug }).slug!;
   }
 
@@ -580,6 +620,7 @@ export class ContentService {
           ],
         )
       : data;
+
     // The password and concurrency check are the client's, never a filter's.
     return {
       ...contentSaveSchema.parse(filtered),
@@ -600,6 +641,7 @@ export class ContentService {
         : !isUnpublished(record.status)
           ? 'content.publish'
           : 'content.create';
+
     return authorizeObject(
       this.deps.hooks,
       actor,
@@ -658,12 +700,15 @@ export class ContentService {
       throw invalidInput(Errors.UserNotFound, [
         { path: 'authorId', message: Errors.UserNotFound },
       ]);
+
     return requested;
   }
 
   async require(id: string): Promise<ContentRecord> {
     const record = await this.deps.repository.findById(id);
+
     if (!record) throw notFound(Errors.ContentNotFound);
+
     return record;
   }
 

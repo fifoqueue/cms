@@ -13,6 +13,7 @@ export const routes = (app: ApiApp) =>
       if (Number(request.headers.get('content-length')) > MAX_ARCHIVE_BYTES)
         throw invalidInput(Errors.ThemeArchiveTooLarge);
       const bytes = new Uint8Array(await request.arrayBuffer());
+
       if (bytes.byteLength > MAX_ARCHIVE_BYTES)
         throw invalidInput(Errors.ThemeArchiveTooLarge);
 

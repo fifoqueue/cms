@@ -57,6 +57,7 @@ const harness = (siteUrl = 'http://localhost:8000') => {
         }),
     },
   };
+
   return {
     passkeys,
     method: createPasskeyMethod(deps),
@@ -91,18 +92,22 @@ const signed = () => ({
 describe('passkey ceremonies using recorded SimpleWebAuthn fixtures', () => {
   test('usernameless authentication verifies UV/signature, advances counter and rejects replay', async () => {
     const h = harness();
+
     await h.passkeys.insert(saved());
     const begin = await h.method.begin(request);
+
     if (begin.kind !== 'webauthn') throw new Error('missing ceremony');
     expect(begin.options.allowCredentials).toEqual([]);
     expect(begin.options.userVerification).toBe('required');
     expect(JSON.stringify(begin.state).length).toBeLessThan(8192);
     const step = continuation(begin.state, signed());
+
     expect(await h.method.continue!(step)).toEqual({
       kind: 'user',
       userId: user.id,
     });
     const record = (await h.passkeys.list(user.id))[0]!;
+
     expect(record.counter).toBeGreaterThan(0);
     expect(record.lastUsedAt).toEqual(now);
     expect(await h.method.continue!(step)).toEqual({ kind: 'failed' });
@@ -111,8 +116,10 @@ describe('passkey ceremonies using recorded SimpleWebAuthn fixtures', () => {
   test('second factor is owner scoped, lists allowed keys and removes only its own', async () => {
     const h = harness();
     const record = saved();
+
     await h.passkeys.insert(record);
     const begin = await h.factor.challenge(user);
+
     if (begin.kind !== 'webauthn') throw new Error('missing ceremony');
     expect(begin.options.allowCredentials).toEqual([
       { id: assertion.id, type: 'public-key', transports: ['internal'] },
@@ -141,22 +148,27 @@ describe('passkey ceremonies using recorded SimpleWebAuthn fixtures', () => {
   ] as const)('uniform authentication failure: %s', async (failure) => {
     const h = harness();
     const record = saved();
+
     if (failure === 'counter') record.counter = 0xffffffff;
     if (failure === 'deviceType') record.deviceType = 'multiDevice';
     if (failure !== 'unknown') await h.passkeys.insert(record);
     const begin = await h.method.begin(request);
+
     if (begin.kind !== 'webauthn') throw new Error('missing ceremony');
     const state = { ...(begin.state as Record<string, unknown>) };
     const credential = signed();
+
     if (failure === 'origin') {
       h.setUrl('http://localhost:9000');
       state.origin = 'http://localhost:9000';
     }
+
     if (failure === 'rpId') {
       h.setUrl('https://example.com');
       state.origin = 'https://example.com';
       state.rpId = 'example.com';
     }
+
     if (failure === 'challenge') state.challenge = 'wrong';
     if (failure === 'handle')
       credential.response.userHandle = Buffer.from(other.id).toString(

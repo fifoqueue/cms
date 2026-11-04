@@ -54,6 +54,7 @@ export const createContainer = async (
     timeoutMs,
     logger,
   });
+
   registerPrivacy(registries.privacyErasers, repositories.privacyRepository);
   const content = createContent({
     ...repositories,
@@ -63,6 +64,7 @@ export const createContainer = async (
     ...late.reading,
     publicCache: infra.publicCache,
   });
+
   late.types.set(content.activeContentTypes);
   late.content.set(content.content);
   const site = createSite({
@@ -74,6 +76,7 @@ export const createContainer = async (
     logger,
     reconcileFunctions: late.reconcileFunctions,
   });
+
   late.writing.set(site.writing);
   late.site.set(site.site);
   const platform = createJobs({
@@ -88,6 +91,7 @@ export const createContainer = async (
     hooks: registries.hooks,
     logger,
   });
+
   late.scheduler.set(platform.scheduler);
   await platform.catchUp();
   content.schedulePermalinks(platform.scheduler);
@@ -126,6 +130,7 @@ export const createContainer = async (
     logger,
     ...late.users,
   });
+
   platform.maintenance();
   const media = createMedia({
     ...repositories,
@@ -139,6 +144,7 @@ export const createContainer = async (
     limits: security.mediaLimits,
     finalize: late.finalize,
   });
+
   late.media.set(media.media);
   content.scheduleContent(platform.scheduler);
   const comments = createComments({
@@ -154,6 +160,7 @@ export const createContainer = async (
     logger,
     discussion: late.discussion,
   });
+
   late.comments.set(comments.comments);
   users.registerJobs(platform.jobs);
   security.schedule(platform.scheduler);
@@ -169,6 +176,7 @@ export const createContainer = async (
     logger,
     otherMethod: late.otherMethod,
   });
+
   late.signIn.set(signIn.signInSettings);
   const plugins = createPlugins({
     ...registries,
@@ -194,6 +202,7 @@ export const createContainer = async (
     logger,
     invalidate: infra.invalidate,
   });
+
   late.functions.set(functions.functionsHost);
   const http = createHttp({
     config,
@@ -310,6 +319,7 @@ export const createContainer = async (
     publicContent: content.publicContent,
     plugins: plugins.plugins,
   });
+
   return {
     app,
     plugins: plugins.plugins,

@@ -45,6 +45,7 @@ const view = (row: PrivacyRecord) =>
     confirmedAt: row.confirmedAt?.toISOString() ?? null,
     completedAt: row.completedAt?.toISOString() ?? null,
   });
+
 export class PrivacyService {
   constructor(
     private readonly deps: {
@@ -63,32 +64,41 @@ export class PrivacyService {
       protection: Pick<ProtectionService, 'check'>;
     },
   ) {}
+
   async settings() {
     const result = privacySettingsSchema.safeParse(
       (await this.deps.settings.get('privacy')) ?? {},
     );
+
     return result.success
       ? result.data
       : { policyPageId: null, commentCookies: false };
   }
+
   async update(input: unknown, actor: Actor) {
     authorize(actor, 'settings.manage');
     const settings = parseInput(privacySettingsSchema, input);
+
     if (settings.policyPageId) {
       const [page] = await this.deps.published.summariesByIds([
         settings.policyPageId,
       ]);
+
       if (!page || page.type !== 'page' || page.protected)
         throw invalidInput(Errors.PrivacyPolicyInvalid);
     }
+
     await this.deps.settings.set('privacy', settings);
+
     return settings;
   }
+
   async publicSettings(): Promise<PublicPrivacy> {
     const settings = await this.settings();
     const [page] = settings.policyPageId
       ? await this.deps.published.summariesByIds([settings.policyPageId])
       : [];
+
     return {
       policy:
         page && page.type === 'page' && !page.protected
@@ -97,12 +107,14 @@ export class PrivacyService {
       commentCookies: settings.commentCookies,
     };
   }
+
   async list(action: PrivacyAction, page: number, actor: Actor) {
     authorize(actor, 'users.manage');
     const result = await this.deps.repository.list(
       action,
       Math.max(1, Math.min(10000, page)),
     );
+
     return {
       items: result.items.map(view),
       total: result.total,
@@ -110,15 +122,18 @@ export class PrivacyService {
       pageSize: 20,
     };
   }
+
   async create(input: unknown, actor: Actor, attempt: Omit<Attempt, 'action'>) {
     authorize(actor, 'users.manage');
     const data = parseInput(privacyInputSchema, input);
+
     await this.deps.protection.check({
       ...attempt,
       action: 'privacy',
       account: data.email,
     });
     const site = await this.deps.site();
+
     if (!site.siteUrl) throw invalidInput(Errors.SiteUrlRequired);
     if (!(await this.deps.email.enabled()))
       throw invalidInput(Errors.EmailDisabled);
@@ -137,6 +152,7 @@ export class PrivacyService {
       confirmedAt: null,
       completedAt: null,
     };
+
     await this.deps.repository.insert(row);
     void this.deps.hooks?.emit('privacy.requested', view(row));
     await this.deps.email.queue(
@@ -152,13 +168,16 @@ export class PrivacyService {
       },
       expiresAt,
     );
+
     return view(row);
   }
+
   async confirm(input: unknown, attempt: Omit<Attempt, 'action'>) {
     await this.deps.protection.check({ ...attempt, action: 'privacy' });
     const { token } = parseInput(privacyConfirmationSchema, input);
     const [id, expires, nonce, signature, extra] = token.split('.');
     const now = this.deps.clock.now();
+
     if (
       !id ||
       !nonce ||
@@ -178,50 +197,63 @@ export class PrivacyService {
     )
       throw invalidInput(Errors.PrivacyConfirmationInvalid);
   }
+
   async export(id: string, actor: Actor) {
     const row = await this.ready(id, 'export', actor);
     const repository = this.deps.repository;
     const clock = this.deps.clock;
     const hooks = this.deps.hooks;
+
     async function* chunks() {
       yield `{"email":${JSON.stringify(row.email)}`;
+
       for (const section of PERSONAL_SECTIONS) {
         yield `,${JSON.stringify(section)}:[`;
         let after: string | null = null;
         let comma = false;
+
         for (;;) {
           const records = await repository.data(row.email, section, after, 200);
+
           for (const record of records) {
             yield `${comma ? ',' : ''}${stringifyJson(record)}`;
             comma = true;
           }
+
           if (records.length < 200) break;
           after = String(records.at(-1)!.id);
         }
+
         yield ']';
       }
+
       const request = view(row);
       const extra = (await hooks?.applyFilter(
         'privacy.exportData',
         { request, data: {} },
         (value) => {
           const parsed = privacyExportDataSchema.safeParse(value);
+
           return (
             parsed.success &&
             JSON.stringify(parsed.data.request) === JSON.stringify(request)
           );
         },
       )) ?? { request, data: {} };
+
       yield `,"extensions":${stringifyJson(extra.data)}}`;
       const completedAt = clock.now();
+
       await repository.complete(row.id, completedAt);
       void hooks?.emit(
         'privacy.exported',
         view({ ...row, status: 'completed', completedAt }),
       );
     }
+
     return readable(chunks());
   }
+
   async erase(id: string, actor: Actor) {
     const row = await this.ready(id, 'erase', actor);
     const completedAt = this.deps.clock.now();
@@ -234,15 +266,19 @@ export class PrivacyService {
             completedAt,
           )
           .then(() => ({ results: {}, failed: [] }));
+
     void this.deps.hooks?.emit(
       'privacy.erased',
       view({ ...row, status: 'completed', completedAt }),
     );
+
     return report;
   }
+
   private async ready(id: string, action: PrivacyAction, actor: Actor) {
     authorize(actor, 'users.manage');
     const row = await this.deps.repository.get(id);
+
     if (!row || row.action !== action)
       throw notFound(Errors.PrivacyRequestMissing);
     if (
@@ -250,6 +286,7 @@ export class PrivacyService {
       !(action === 'export' && row.status === 'completed')
     )
       throw invalidInput(Errors.PrivacyNotConfirmed);
+
     return row;
   }
 }

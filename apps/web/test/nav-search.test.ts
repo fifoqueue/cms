@@ -94,6 +94,7 @@ test('whole and leading matches rank above matches inside a word', () => {
   const whole = matchScore(entries[6]!, 'webhooks')!;
   const start = matchScore(entries[6]!, 'web')!;
   const inside = matchScore(entries[6]!, 'hooks')!;
+
   expect(whole).toBeGreaterThan(start);
   expect(start).toBeGreaterThan(inside);
 });
@@ -120,6 +121,7 @@ test('a word that matches nothing excludes the screen; an empty query lists ever
 
 test('entries without keywords or with extra fields are accepted', () => {
   const plain: Searchable = { labels: ['Media'], groups: ['Media'] };
+
   expect(matchScore(plain, 'media')).toBeGreaterThan(0);
   expect(matchScore(plain, 'x')).toBeNull();
 });

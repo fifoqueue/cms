@@ -21,9 +21,12 @@ export class FsPluginPackageStore implements PluginPackageStore {
 
   async stage(source: string): Promise<StagedBundle> {
     const directory = join(this.root, '.staging');
+
     await mkdir(directory, { recursive: true });
     const path = join(directory, `${randomUUIDv7()}.js`);
+
     await writeFile(path, source, 'utf8');
+
     return { path, discard: () => rm(path, { force: true }) };
   }
 
@@ -32,9 +35,11 @@ export class FsPluginPackageStore implements PluginPackageStore {
     pluginId: string,
   ): Promise<CommittedBundle> {
     const directory = this.directory(pluginId);
+
     await mkdir(directory, { recursive: true });
 
     const entry = basename(bundle.path);
+
     await rename(bundle.path, join(directory, entry));
 
     return {
@@ -51,6 +56,7 @@ export class FsPluginPackageStore implements PluginPackageStore {
   locate(pluginId: string, entry: string): string {
     if (!ENTRY.test(entry))
       throw new Error(Errors.PluginBundleNameInvalid(entry));
+
     return join(this.directory(pluginId), entry);
   }
 
@@ -61,6 +67,7 @@ export class FsPluginPackageStore implements PluginPackageStore {
   private directory(pluginId: string): string {
     if (!KEBAB_CASE.test(pluginId))
       throw new Error(Errors.PluginIdInvalid, { cause: pluginId });
+
     return join(this.root, pluginId);
   }
 }

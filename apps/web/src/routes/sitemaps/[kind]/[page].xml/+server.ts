@@ -13,6 +13,7 @@ import type { RequestHandler } from './$types';
 /** `/sitemaps/<kind>/<page>.xml`: one API page of sitemap entries. */
 export const GET: RequestHandler = async ({ fetch, params }) => {
   const { kind } = params;
+
   if (!isSitemapKind(kind) || !/^[1-9]\d{0,6}$/.test(params.page))
     return notFound();
   const page = Number(params.page);
@@ -25,12 +26,14 @@ export const GET: RequestHandler = async ({ fetch, params }) => {
       .catch(notFoundFrom),
     api.reading().catch(() => null),
   ]);
+
   if (
     !settings.indexingEnabled ||
     page > sitemapChunkCount(kind, entries.total)
   )
     return notFound();
   if (!settings.siteUrl) return missingSiteUrl('The sitemap');
+
   return sitemapChunk(
     settings.siteUrl,
     // A static front page is listed as the home page, which redirects it.

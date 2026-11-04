@@ -20,6 +20,7 @@ describe('renderDocument', () => {
         { type: 'link', attrs: { href: 'javascript:alert(1)' } },
       ]),
     );
+
     expect(html).not.toContain('javascript:');
   });
 
@@ -48,6 +49,7 @@ describe('renderDocument', () => {
         ]).content[0]!,
       ],
     });
+
     expect(html).toContain('class="language-c#"');
     expect(html).toContain('target="report"');
     expect(html).toContain('alt="2024"');
@@ -70,6 +72,7 @@ describe('media and embeds', () => {
         attrs: { src: '/media/2026/10/a.webp', alt: 'A', mediaId: 'm1' },
       }),
     );
+
     expect(media).toContain('src="/media/2026/10/a.webp"');
     expect(media).toContain('data-media-id="m1"');
     for (const src of [
@@ -144,6 +147,7 @@ test('block attributes reject injected structure and escape captions, citations 
     ],
   };
   const html = renderDocument(document);
+
   expect(html).not.toContain('<img src=x');
   expect(html).not.toContain('javascript:');
   expect(html).toContain('&lt;img');
@@ -189,6 +193,7 @@ test('WordPress core block HTML keeps its structure and attributes through impor
     <hr class="wp-block-separator"><div class="wp-block-spacer" style="height:80px" aria-hidden="true"></div>
     <figure class="wp-block-table"><table><thead><tr><th>Header</th></tr></thead><tbody><tr><td>Cell</td></tr></tbody></table><figcaption>Table caption</figcaption></figure>
   `);
+
   expect(document.content?.map((node) => node.type)).toEqual([
     'image',
     'gallery',
@@ -220,6 +225,7 @@ test('WordPress core block HTML keeps its structure and attributes through impor
     caption: 'Table caption',
   });
   const html = renderDocument(document);
+
   expect(html).toContain('cms-text-center');
   expect(html).toContain('data-variant="outline"');
   expect(html).toContain('<th>');

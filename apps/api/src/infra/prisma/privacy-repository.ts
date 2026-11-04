@@ -35,14 +35,17 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
     private readonly kick: () => void = () => {},
     private readonly tokens?: PermalinkTokenRegistry,
   ) {}
+
   async insert(request: PrivacyRecord) {
     await this.db.privacyRequest.create({ data: request });
   }
+
   async get(id: string) {
     return (await this.db.privacyRequest.findUnique({
       where: { id },
     })) as PrivacyRecord | null;
   }
+
   async list(action: PrivacyAction, page: number) {
     const where = { action };
     const [items, total] = await this.db.$transaction([
@@ -54,21 +57,26 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
       }),
       this.db.privacyRequest.count({ where }),
     ]);
+
     return { items: items as PrivacyRecord[], total };
   }
+
   async confirm(id: string, tokenHash: string, now: Date) {
     const { count } = await this.db.privacyRequest.updateMany({
       where: { id, tokenHash, status: 'pending', expiresAt: { gt: now } },
       data: { status: 'confirmed', confirmedAt: now, tokenHash: null },
     });
+
     return count === 1;
   }
+
   async complete(id: string, now: Date) {
     await this.db.privacyRequest.updateMany({
       where: { id, status: 'confirmed' },
       data: { status: 'completed', completedAt: now },
     });
   }
+
   async data(
     email: string,
     section: PersonalSection,
@@ -81,11 +89,13 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
     });
     const page = { take: limit, orderBy: { id: 'asc' as const } };
     const id = after ? { gt: after } : undefined;
+
     if (section === 'profileFields') {
       if (!user || after) return [];
       const row = await this.db.setting.findUnique({
         where: { key: profileMetaKey(user.id) },
       });
+
       return row
         ? [
             {
@@ -95,6 +105,7 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
           ]
         : [];
     }
+
     if (section === 'profile') {
       if (!user || after) return [];
       const row = await this.db.user.findUnique({
@@ -110,8 +121,10 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
           createdAt: true,
         },
       });
+
       return row ? [dates(row)] : [];
     }
+
     if (section === 'comments')
       return (
         await this.db.comment.findMany({
@@ -292,6 +305,7 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
             modifiedById === user.id ? row.modifiedUserAgent : null,
         }),
       );
+
     return (
       await this.db.media.findMany({
         ...page,
@@ -309,6 +323,7 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
       })
     ).map(dates);
   }
+
   async erase(id: string, passwordHash: string, now: Date) {
     await this.db.$transaction(
       async (tx) => {
@@ -316,6 +331,7 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
         await lockSetting(tx, 'users.lock');
         await tx.$queryRaw`SELECT id FROM privacy_requests WHERE id = ${id} FOR UPDATE`;
         const request = await tx.privacyRequest.findUnique({ where: { id } });
+
         if (
           !request ||
           request.action !== 'erase' ||
@@ -326,6 +342,7 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
           where: { email: request.email },
           select: { id: true, role: true },
         });
+
         if (
           user?.role === 'administrator' &&
           (await tx.user.count({
@@ -356,6 +373,7 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
           ...comments.map((row) => row.id),
         ];
         let after = '';
+
         for (;;) {
           const jobs = await tx.$queryRaw<
             {
@@ -368,14 +386,18 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
           >(
             Prisma.sql`SELECT id, kind, payload, last_error AS lastError, locked_until AS lockedUntil FROM jobs WHERE id > ${after} ORDER BY id LIMIT 200 FOR UPDATE`,
           );
+
           for (const job of jobs) {
             let raw: unknown;
+
             try {
               raw = JSON.parse(job.payload);
             } catch {
               throw conflict(Errors.PrivacyJobsUnreadable);
             }
+
             const opened = openJob(raw, this.secrets);
+
             if (
               opened === null &&
               raw &&
@@ -385,11 +407,13 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
               throw conflict(Errors.PrivacyJobsUnreadable);
             const serialized =
               `${JSON.stringify(opened)} ${job.lastError ?? ''}`.toLowerCase();
+
             if (!needles.some((needle) => serialized.includes(needle))) {
               const message = opened as {
                 subject?: unknown;
                 subjects?: unknown;
               } | null;
+
               // Legacy author notices could omit both the email and comment link; ownership cannot be inferred safely.
               if (
                 job.kind === 'email.send' &&
@@ -401,14 +425,17 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
                 throw conflict(Errors.PrivacyJobsUnscoped);
               continue;
             }
+
             if (job.lockedUntil && job.lockedUntil > now)
               throw conflict(Errors.PrivacyJobsBusy);
             // Delete the snapshot, including failed jobs and any recipient/error metadata.
             await tx.job.delete({ where: { id: job.id } });
           }
+
           if (jobs.length < 200) break;
           after = jobs.at(-1)!.id;
         }
+
         await tx.pushSubscription.deleteMany({
           where: {
             OR: [
@@ -432,6 +459,7 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
             updatedAt: now,
           },
         });
+
         if (user) {
           await eraseContentOrigin(tx, user.id);
           await tx.setting.deleteMany({
@@ -472,6 +500,7 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
           await queueContentPaths(tx, { authorId: user.id }, this.tokens);
           await tx.searchOutbox.create({ data: { contentId: null } });
         }
+
         await tx.privacyRequest.updateMany({
           where: { email: request.email },
           data: {

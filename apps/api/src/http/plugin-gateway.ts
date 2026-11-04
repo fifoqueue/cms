@@ -78,6 +78,7 @@ export class PluginGateway {
   ) {
     const { auth, timeoutMs, logger } = this.deps;
     const user = await currentUser(auth, request);
+
     if (!this.deps.routes.list(pluginId).includes(route))
       return errorResponse(404, 'not_found', Errors.RouteNotFound);
 
@@ -90,6 +91,7 @@ export class PluginGateway {
     const result = await isolate(() => {
       if (!this.deps.routes.list(pluginId).includes(route))
         throw new Error(Errors.PluginInactive);
+
       return route.handler({
         request,
         url: new URL(request.url),
@@ -102,9 +104,12 @@ export class PluginGateway {
     if (result.ok && result.value instanceof Response) {
       if (route.access === 'admin' || user) {
         const response = new Response(result.value.body, result.value);
+
         response.headers.set('cache-control', 'private, no-store');
+
         return response;
       }
+
       return result.value;
     }
 

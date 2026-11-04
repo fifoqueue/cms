@@ -15,11 +15,13 @@ const encoder = new TextEncoder();
 const bounded = (parts: Iterable<string>) => {
   const output: string[] = [];
   let size = 0;
+
   for (const part of parts) {
     size += encoder.encode(part).length;
     if (size > MAX_OUTPUT) throw invalidInput(Errors.ImportContentLimit);
     output.push(part);
   }
+
   return output.join('');
 };
 
@@ -27,17 +29,22 @@ const bounded = (parts: Iterable<string>) => {
 const attributes = (source: string) => {
   const pairs: [string, string][] = [];
   const token = /([\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s\]]+)))?/y;
+
   for (let offset = 0; offset < source.length;) {
     token.lastIndex = offset;
     const match = token.exec(source);
+
     if (!match) {
       offset++;
       continue;
     }
+
     offset = token.lastIndex;
     const value = match[2] ?? match[3] ?? match[4];
+
     if (value !== undefined) pairs.push([match[1]!.toLowerCase(), value]);
   }
+
   return Object.fromEntries(pairs);
 };
 
@@ -58,37 +65,49 @@ const block = (html: string) => `\n\n${html}\n\n`;
 /** Tag and comment spans stay verbatim; quoted attributes may contain `>` or shortcode text. */
 const htmlTags = (html: string) => {
   const spans: number[] = [];
+
   for (let start = html.indexOf('<'); start !== -1;) {
     if (!/[A-Za-z!/?]/.test(html[start + 1] ?? '')) {
       start = html.indexOf('<', start + 1);
       continue;
     }
+
     let end = start + 1;
+
     if (html.startsWith('<!--', start)) {
       const closing = html.indexOf('-->', start + 4);
+
       end = closing === -1 ? html.length : closing + 3;
     } else {
       let quote = '';
+
       while (end < html.length) {
         const char = html[end++]!;
+
         if (quote) {
           if (char === quote) quote = '';
         } else if (char === '"' || char === "'") quote = char;
         else if (char === '>') break;
       }
     }
+
     spans.push(start, end);
     start = html.indexOf('<', end);
   }
+
   return (offset: number) => {
     let low = 0;
     let high = spans.length / 2;
+
     while (low < high) {
       const middle = (low + high) >>> 1;
+
       if (spans[middle * 2]! <= offset) low = middle + 1;
       else high = middle;
     }
+
     const end = low ? spans[low * 2 - 1]! : -1;
+
     return offset < end ? end : -1;
   };
 };
@@ -118,9 +137,11 @@ const paragraphs = (html: string) => {
             : `<p>${chunk.replace(/\n/g, '<br>')}</p>`,
         ),
     );
+
   return bounded(
     (function* () {
       let offset = 0;
+
       for (let match; (match = pre.exec(normalized));) {
         yield plain(normalized.slice(offset, match.index));
         closing.lastIndex = pre.lastIndex;
@@ -130,6 +151,7 @@ const paragraphs = (html: string) => {
         yield normalized.slice(match.index, offset);
         pre.lastIndex = offset;
       }
+
       yield plain(normalized.slice(offset));
     })(),
   );
@@ -166,54 +188,71 @@ export const classicHtml = (
   const converted = bounded(
     (function* () {
       let offset = 0;
+
       for (let match; (match = opening.exec(html));) {
         const protectedEnd = tagEnd(match.index);
+
         if (protectedEnd !== -1) {
           opening.lastIndex = protectedEnd;
           continue;
         }
+
         charge();
         yield html.slice(offset, match.index);
         const end = html.indexOf(']', opening.lastIndex);
+
         if (end === -1) {
           offset = match.index;
           break;
         }
+
         const source = html.slice(opening.lastIndex, end);
+
         if (source.length > MAX_ATTRIBUTES)
           throw invalidInput(Errors.ImportContentLimit);
         const kind = match[1]!.toLowerCase();
+
         offset = end + 1;
         const attrs = attributes(source);
         let output = html.slice(match.index, offset);
+
         if (kind === 'caption' || kind === 'embed') {
           const closing = `[/${kind}]`;
           const ending = endings[kind];
+
           ending.lastIndex = offset;
           let close = -1;
+
           if (!unclosed.has(kind)) {
             for (let found; (found = ending.exec(html));) {
               const protectedEnd = tagEnd(found.index);
+
               if (protectedEnd === -1) {
                 close = found.index;
                 break;
               }
+
               ending.lastIndex = protectedEnd;
             }
           }
+
           if (close === -1) unclosed.add(kind);
           else {
             const inner = html.slice(offset, close);
+
             offset = close + closing.length;
             output = html.slice(match.index, offset);
+
             if (kind === 'embed') {
               const address = webUrl(inner);
+
               if (address && address.length <= 2048) output = embed(address);
             } else {
               const media =
                 /^\s*((?:<a\b[^>]*>\s*)?<img\b[^>]*>(?:\s*<\/a>)?)([\s\S]*)$/i.exec(
                   inner,
                 );
+
               if (!media) output = inner;
               else {
                 const align = /^align(left|right|center|none)$/.test(
@@ -222,6 +261,7 @@ export const classicHtml = (
                   ? attrs.align
                   : '';
                 const caption = attrs.caption ?? media[2]!.trim();
+
                 output = block(
                   `<figure class="wp-block-image ${align}">${media[1]}${caption ? `<figcaption>${caption}</figcaption>` : ''}</figure>`,
                 );
@@ -235,9 +275,11 @@ export const classicHtml = (
                 .map((id) => attachments.url(id.trim()))
                 .filter((url): url is string => !!url)
             : attachments.childImages(entryId);
+
           if (urls.length > 100 || urls.some((url) => url.length > 2048))
             throw invalidInput(Errors.ImportContentLimit);
           const columns = Math.min(Math.max(Number(attrs.columns) || 3, 1), 6);
+
           output = urls.length
             ? block(
                 `<figure class="wp-block-gallery columns-${columns}">${bounded(urls.map((url) => `<img src="${escape(url)}" alt="">`))}</figure>`,
@@ -251,6 +293,7 @@ export const classicHtml = (
                 : (attrs.mp4 ?? attrs.webm ?? attrs.ogv ?? attrs.m4v)),
           );
           const closing = `[/${kind}]`;
+
           if (
             html.slice(offset, offset + closing.length).toLowerCase() ===
             closing
@@ -261,9 +304,11 @@ export const classicHtml = (
               ? block(`<${kind} src="${escape(src)}"></${kind}>`)
               : html.slice(match.index, offset);
         }
+
         yield output;
         opening.lastIndex = offset;
       }
+
       yield html.slice(offset);
     })(),
   );
@@ -272,6 +317,7 @@ export const classicHtml = (
   const linked = bounded(
     (function* () {
       let offset = 0;
+
       for (const match of converted.matchAll(
         /^[ \t]*(https?:\/\/[^\s<>"]+)[ \t]*$/gim,
       )) {
@@ -279,11 +325,14 @@ export const classicHtml = (
         charge();
         yield converted.slice(offset, match.index);
         const address = match[1]!;
+
         yield address.length <= 2048 ? embed(address) : match[0];
         offset = match.index + match[0].length;
       }
+
       yield converted.slice(offset);
     })(),
   );
+
   return linked.includes('<!-- wp:') ? linked : paragraphs(linked);
 };

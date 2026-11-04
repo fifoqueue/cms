@@ -104,8 +104,10 @@ export class SignInService {
     const policy = await this.deps.settings.effective();
     const methods = [];
     const setup = [];
+
     for (const id of policy.methods) {
       const method = this.deps.registry.method(id);
+
       if (!method || !(await (method.ready?.() ?? true))) continue;
       const dto = {
         id,
@@ -113,10 +115,12 @@ export class SignInService {
         fields: method.fields ?? [],
         options: (await method.options?.()) ?? [],
       };
+
       methods.push(dto);
       if (method.setup)
         setup.push({ ...dto, fields: method.setup.fields ?? dto.fields });
     }
+
     return signInInfoSchema.parse({
       methods,
       setup,
@@ -144,12 +148,14 @@ export class SignInService {
   private async method(id: string) {
     const policy = await this.deps.settings.effective();
     const method = this.deps.registry.method(id);
+
     if (
       !policy.methods.includes(id) ||
       !method ||
       !(await (method.ready?.() ?? true))
     )
       return this.fail(id);
+
     return method;
   }
 
@@ -171,6 +177,7 @@ export class SignInService {
   ): Promise<SignInStep> {
     const parsed = parseInput(signInStartSchema, input);
     const method = await this.method(id);
+
     if (method.fields?.length || Object.keys(parsed.values).length)
       await this.protect(parsed.values, visitor);
     const outcome = await method.begin({
@@ -180,6 +187,7 @@ export class SignInService {
       client: visitor.client,
       callbackUrl: `${await this.deps.siteUrl()}/admin/sign-in/callback`,
     });
+
     return this.advance(
       {
         handleHash: '',
@@ -204,6 +212,7 @@ export class SignInService {
   ): Promise<SignInStep> {
     const parsed = parseInput(signInSetupSchema, input);
     const method = await this.method(id);
+
     if (!method.setup || !this.deps.setupTokens) return this.fail(id);
     if (
       (method.setup.fields ?? method.fields)?.length ||
@@ -216,6 +225,7 @@ export class SignInService {
       this.deps.clock.now(),
     );
     const user = token && (await this.deps.users.findById(token.userId));
+
     if (!token || !user) return this.fail(id);
     const outcome = await method.setup.begin(user, {
       option: parsed.option ?? null,
@@ -224,6 +234,7 @@ export class SignInService {
       client: visitor.client,
       callbackUrl: `${await this.deps.siteUrl()}/admin/sign-in/callback`,
     });
+
     return this.advance(
       {
         handleHash: '',
@@ -252,12 +263,14 @@ export class SignInService {
     actor?: UserProfile,
   ): Promise<SignInStep> {
     const parsed = parseInput(signInContinueSchema, input);
+
     return this.use(parsed.transaction, visitor, async (row) => {
       if (row.stage === 'account' && (!actor || actor.id !== row.userId))
         return this.fail(row.methodId);
       const method =
         row.stage === 'account' ? undefined : await this.method(row.methodId);
       const state = pendingState.safeParse(row.state);
+
       if (!state.success) return this.fail(row.methodId);
       if (state.data.kind === 'fields' || Object.keys(parsed.values).length)
         await this.protect(parsed.values, visitor);
@@ -268,6 +281,7 @@ export class SignInService {
         query: parsed.query ?? null,
         address: visitor.address,
       };
+
       if (row.stage === 'setup') {
         const token =
           row.setupTokenHash &&
@@ -276,6 +290,7 @@ export class SignInService {
             this.deps.clock.now(),
           ));
         const user = row.userId && (await this.deps.users.findById(row.userId));
+
         if (
           !token ||
           !user ||
@@ -283,12 +298,14 @@ export class SignInService {
           !method?.setup?.continue
         )
           return this.fail(row.methodId);
+
         return this.advance(
           row,
           await method.setup.continue(user, continuation),
           parsed.values.email ?? null,
         );
       }
+
       if (
         row.stage === 'secondFactor' ||
         row.stage === 'enroll' ||
@@ -300,12 +317,14 @@ export class SignInService {
           row.factorId && policy.secondFactors.includes(row.factorId)
             ? this.deps.registry.factor(row.factorId)
             : undefined;
+
         if (!user || !factor) return this.fail(row.methodId);
         const enrolling = row.stage === 'enroll' || row.stage === 'account';
         const verified = enrolling
           ? await factor.enroll?.finish(user, continuation)
           : (await factor.enrolled(user)) &&
             (await factor.verify(user, continuation));
+
         if (!verified)
           return this.fail(
             row.methodId,
@@ -319,14 +338,17 @@ export class SignInService {
             change: 'enrolled',
           });
         if (row.stage === 'account') return { kind: 'done' };
+
         return this.advance(
           row,
           { kind: 'user', userId: user.id },
           parsed.values.email ?? null,
         );
       }
+
       if (row.stage !== 'primary' || !method?.continue)
         return this.fail(row.methodId);
+
       return this.advance(
         row,
         await method.continue(continuation),
@@ -337,11 +359,14 @@ export class SignInService {
 
   async factors(actor: UserProfile): Promise<UserFactors> {
     const user = await this.deps.users.findById(actor.id);
+
     if (!user) return this.fail('account');
     const policy = await this.deps.settings.effective();
     const factors = [];
+
     for (const id of policy.secondFactors) {
       const factor = this.deps.registry.factor(id);
+
       if (!factor) continue;
       factors.push({
         id,
@@ -357,6 +382,7 @@ export class SignInService {
         ),
       });
     }
+
     return userFactorsSchema.parse({
       factors,
       required: policy.requireSecondFactor.includes(user.role),
@@ -377,9 +403,12 @@ export class SignInService {
     const factor = policy.secondFactors.includes(id)
       ? this.deps.registry.factor(id)
       : undefined;
+
     if (!user || !factor?.enroll) return this.fail('account');
     const challenge = await factor.enroll.begin(user);
+
     if (!challenge) return this.fail('account');
+
     return this.advance(
       {
         handleHash: '',
@@ -408,10 +437,12 @@ export class SignInService {
       'signIn.admission',
       async () => {
         const user = await this.deps.users.findById(actor.id);
+
         if (!user) return this.fail('account');
         const list = await this.factors(user);
         const entry = list.factors.find((factor) => factor.id === id);
         const factor = entry && this.deps.registry.factor(id);
+
         if (!entry || !factor?.remove) return this.fail('account');
         if (
           entry.credentials.length &&
@@ -426,6 +457,7 @@ export class SignInService {
           throw conflict(SignInErrors.SignInLastFactor);
         if (!(await factor.remove(user, credential)))
           return this.fail('account');
+
         return {
           user,
           factor: id,
@@ -433,6 +465,7 @@ export class SignInService {
         };
       },
     );
+
     void this.deps.hooks.emit('user.secondFactorChanged', notification);
   }
 
@@ -441,6 +474,7 @@ export class SignInService {
     visitor: SignInVisitor,
   ): Promise<SignInStep> {
     const parsed = parseInput(chooseFactorSchema, input);
+
     return this.use(parsed.transaction, visitor, async (row) => {
       await this.method(row.methodId);
       if (
@@ -454,19 +488,24 @@ export class SignInService {
       const factor = policy.secondFactors.includes(parsed.factor)
         ? this.deps.registry.factor(parsed.factor)
         : undefined;
+
       if (!user || !factor) return this.fail(row.methodId);
       if (row.stage === 'secondFactor' && !(await factor.enrolled(user)))
         return this.fail(row.methodId);
+
       if (row.stage === 'enroll') {
         for (const id of policy.secondFactors)
           if (await this.deps.registry.factor(id)?.enrolled(user))
             return this.fail(row.methodId);
       }
+
       const challenge =
         row.stage === 'enroll'
           ? await factor.enroll?.begin(user)
           : await factor.challenge(user);
+
       if (!challenge) return this.fail(row.methodId);
+
       return this.advance({ ...row, factorId: parsed.factor }, challenge, null);
     });
   }
@@ -482,9 +521,12 @@ export class SignInService {
       this.deps.tokens.digest(visitor.client ?? 'unverified'),
       this.deps.clock.now(),
     );
+
     if (!row) return this.expired();
+
     try {
       const step = await work(row);
+
       if (step.kind === 'session' || step.kind === 'done') {
         if (
           !(await this.deps.transactions.replace(
@@ -495,6 +537,7 @@ export class SignInService {
         )
           return this.expired();
       }
+
       return step;
     } finally {
       await this.deps.transactions.release(hash, this.deps.clock.now());
@@ -505,6 +548,7 @@ export class SignInService {
     const transaction = this.deps.tokens.issue();
     const next = { ...row, handleHash: this.deps.tokens.digest(transaction) };
     const now = this.deps.clock.now();
+
     if (row.handleHash) {
       if (!(await this.deps.transactions.replace(row.handleHash, next, now)))
         return this.expired();
@@ -512,6 +556,7 @@ export class SignInService {
       !(await this.deps.transactions.admit(next, now, this.deps.limits))
     )
       throw rateLimited(Errors.TooManyAttempts);
+
     return transaction;
   }
 
@@ -522,11 +567,13 @@ export class SignInService {
   ): Promise<SignInStep> {
     if (outcome.kind === 'failed') return this.fail(row.methodId, account);
     if (row.expiresAt <= this.deps.clock.now()) return this.expired(account);
+
     if (outcome.kind === 'user') {
       // Core's passkey assertion only returns a user after cryptographic UV verification.
       // Setup is a registration, not an assertion; plugin method ids cannot equal "passkey".
       const verifiedPasskey =
         row.methodId === 'passkey' && row.stage === 'primary' && !row.factorId;
+
       if (row.stage === 'setup') {
         if (
           !row.userId ||
@@ -543,9 +590,11 @@ export class SignInService {
           return this.fail(row.methodId, account);
         row = { ...row, stage: 'primary', setupTokenHash: null };
       }
+
       if ('identityId' in outcome)
         row = { ...row, identityId: outcome.identityId ?? null };
       const user = await this.deps.users.findById(outcome.userId);
+
       if (!user) return this.fail(row.methodId, account);
       // Validate the whole hook payload. Reject identity/context edits so neither core
       // nor later plugins see a substituted user, method, or undeclared user data.
@@ -566,6 +615,7 @@ export class SignInService {
         required: z.boolean(),
       });
       let allowed = true;
+
       await this.deps.hooks.applyFilter(
         'user.signInAllowed',
         {
@@ -575,8 +625,10 @@ export class SignInService {
         },
         (value) => {
           const parsed = allowedSchema.safeParse(value);
+
           if (!parsed.success) return false;
           allowed = parsed.data.allowed;
+
           return true;
         },
       );
@@ -584,6 +636,7 @@ export class SignInService {
       const policy = await this.deps.settings.effective();
       let required =
         !verifiedPasskey && policy.requireSecondFactor.includes(user.role);
+
       await this.deps.hooks.applyFilter(
         'user.secondFactorRequired',
         {
@@ -593,26 +646,33 @@ export class SignInService {
         },
         (value) => {
           const parsed = requiredSchema.safeParse(value);
+
           if (!parsed.success) return false;
           required = parsed.data.required;
+
           return true;
         },
       );
       const enrolled = [];
       const enrollable = [];
+
       for (const id of policy.secondFactors) {
         const factor = this.deps.registry.factor(id);
+
         if (!factor) continue;
         const choice = { id, label: factor.label };
+
         if (await factor.enrolled(user)) enrolled.push(choice);
         if (factor.enroll) enrollable.push(choice);
       }
+
       if (
         !row.factorId &&
         (required || (!verifiedPasskey && enrolled.length))
       ) {
         const kind = enrolled.length ? 'secondFactor' : 'enroll';
         const factors = enrolled.length ? enrolled : enrollable;
+
         if (!factors.length) return this.fail(row.methodId, account);
         const transaction = await this.save({
           ...row,
@@ -620,8 +680,10 @@ export class SignInService {
           userId: user.id,
           state: null,
         });
+
         return signInStepSchema.parse({ kind, factors, transaction });
       }
+
       if (row.factorId && !policy.secondFactors.includes(row.factorId))
         return this.fail(row.methodId, account);
       if (
@@ -629,12 +691,14 @@ export class SignInService {
       )
         return this.fail(row.methodId, account);
       const session = await this.deps.session(user, row.identityId ?? null);
+
       void this.deps.hooks.emit('user.signedIn', {
         user,
         method: row.methodId,
         secondFactor: row.factorId ?? (verifiedPasskey ? 'passkey' : null),
       });
       let redirectTo: string | undefined;
+
       if (this.deps.hooks.has('user.loginRedirect')) {
         const schema = z.strictObject({
           ...context,
@@ -645,18 +709,22 @@ export class SignInService {
           { user, method: row.methodId, redirectTo: '/admin' },
           (value) => schema.safeParse(value).success,
         );
+
         redirectTo = result.redirectTo;
       }
+
       return signInStepSchema.parse({
         kind: 'session',
         session,
         redirectTo,
       });
     }
+
     const transaction = await this.save({
       ...row,
       state: { kind: outcome.kind, state: outcome.state ?? null },
     });
+
     if (outcome.kind === 'redirect')
       return signInStepSchema.parse({
         kind: 'redirect',
@@ -672,6 +740,7 @@ export class SignInService {
         display: outcome.display ?? [],
         transaction,
       });
+
     return signInStepSchema.parse({
       kind: 'fields',
       fields: outcome.fields,

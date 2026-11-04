@@ -20,11 +20,13 @@ describe('HookBus', () => {
         variant: null,
       };
       let borrowed: unknown;
+
       hooks.filter('media.url', (value, context) => {
         borrowed = context;
         value.url = 'javascript:alert(1)';
         value.key = 'changed';
         if (throws) throw new Error('failed after mutation');
+
         return value;
       });
       const result = await bus.applyFilter(
@@ -34,6 +36,7 @@ describe('HookBus', () => {
         undefined,
         [bytes],
       );
+
       expect(result).toEqual({
         url: '/original',
         key: 'original',
@@ -52,6 +55,7 @@ describe('HookBus', () => {
     const bytes = new Uint8Array(new SharedArrayBuffer(8));
     const graph = { nested: new Map([[{ key: true }, new Set([bytes])]]) };
     let calls = 0;
+
     plugin.on('site.updated', () => {
       calls++;
       bytes[0] = 9;
@@ -64,6 +68,7 @@ describe('HookBus', () => {
     site.define('memory', { kind: 'filter', validate: () => true });
     plugin.filter('memory', () => graph);
     const result = await site.apply('memory', { safe: true });
+
     bytes[0] = 7;
     expect(result).toEqual({ safe: true });
     expect(await plugin.apply('memory', graph)).toBe(graph);
@@ -74,16 +79,20 @@ describe('HookBus', () => {
     const bus = new HookBus({ timeoutMs: 100, logger });
     const hooks = bus.registrar('p');
     const source = { valid: true };
+
     for (const kind of ['action', 'filter'] as const) {
       source.valid = true;
       hooks.define(kind, {
         kind,
         validate: (value) => {
           const valid = (value as typeof source).valid;
+
           source.valid = false;
+
           return valid;
         },
       });
+
       if (kind === 'action') {
         hooks.on(kind, (value) => {
           expect(value).toEqual({ valid: true });
@@ -100,20 +109,25 @@ describe('HookBus', () => {
     const { logger } = recordingLogger();
     const bus = new HookBus({ timeoutMs: 100, logger });
     const hooks = bus.registrar('s');
+
     for (let i = 0; i < 32; i++) {
       const name = `missing.${i}`;
+
       await hooks.do(name, null);
       await hooks.apply(name, null);
       hooks.removeAll(name, 10);
       hooks.remove(name, () => {});
       const release = hooks.on(name, () => {});
+
       release();
       expect(hooks.did(name)).toBe(0);
     }
+
     const release = hooks.define('temporary', {
       kind: 'action',
       validate: () => true,
     });
+
     await hooks.do('temporary', null);
     release();
     expect(hooks.did('temporary')).toBe(0);
@@ -122,6 +136,7 @@ describe('HookBus', () => {
       actions: Map<string, unknown>;
       filters: Map<string, unknown>;
     };
+
     expect([state.counts.size, state.actions.size, state.filters.size]).toEqual(
       [0, 0, 0],
     );
@@ -131,13 +146,16 @@ describe('HookBus', () => {
     const { logger } = recordingLogger();
     const bus = new HookBus({ timeoutMs: 100, logger });
     const hooks = bus.registrar('s', { trusted: true });
+
     type Frame = { parent?: Frame };
     const context = (
       bus as unknown as { dispatchContext: AsyncLocalStorage<Frame> }
     ).dispatchContext;
     let next: () => Promise<void> = () => bus.emit('site.updated', {} as never);
+
     hooks.on('site.updated', () => {
       let depth = 0;
+
       for (let frame = context.getStore(); frame; frame = frame.parent) depth++;
       expect(depth).toBe(1);
       next = AsyncLocalStorage.bind(() =>
@@ -151,6 +169,7 @@ describe('HookBus', () => {
     const { logger } = recordingLogger();
     const bus = new HookBus({ timeoutMs: 100, logger });
     const retained = { user: {} as never, method: 'password', allowed: true };
+
     bus.registrar('plugin').filter('user.signInAllowed', () => retained);
     let entered!: () => void;
     let release!: () => void;
@@ -166,9 +185,11 @@ describe('HookBus', () => {
       async () => {
         entered();
         await gate;
+
         return true;
       },
     );
+
     await validating;
     retained.allowed = false;
     release();
@@ -181,9 +202,11 @@ describe('HookBus', () => {
     const validate = () => {
       throw new Error('must not validate');
     };
+
     hooks.define('empty.action', { kind: 'action', validate });
     hooks.define('empty.filter', { kind: 'filter', validate });
     const uncloneable = () => undefined;
+
     await hooks.do('empty.action', uncloneable);
     expect(await hooks.apply('empty.filter', uncloneable)).toBe(uncloneable);
     expect(hooks.did('empty.action')).toBe(1);
@@ -196,6 +219,7 @@ describe('HookBus', () => {
     const plugin = bus.registrar('plugin');
     const site = bus.registrar('site', { trusted: true });
     const scope = new PluginScope();
+
     plugin.filter('custom.price', () => 'invalid');
     site.filter('custom.price', (value) => (value as number) + 2);
     expect(await site.apply('custom.price', 3)).toBe(3);
@@ -232,6 +256,7 @@ describe('HookBus', () => {
       kind: 'filter',
       validate: () => true,
     });
+
     release();
   });
 
@@ -242,6 +267,7 @@ describe('HookBus', () => {
     const site = bus.registrar('site', { trusted: true });
     const payload = { message: 'original' };
     let calls = 0;
+
     plugin.on('custom.notice', (value) => {
       (value as typeof payload).message = 'changed';
       throw new Error('isolated');
@@ -270,6 +296,7 @@ describe('HookBus', () => {
       release = resolve;
     });
     let detached!: () => string | undefined;
+
     hooks.on('user.signInFailed', async () => {
       expect(hooks.current()).toBe('user.signInFailed');
       await gate;
@@ -286,6 +313,7 @@ describe('HookBus', () => {
       method: 'password',
       account: null,
     });
+
     expect(hooks.current()).toBeUndefined();
     expect(hooks.doing()).toBe(false);
     await bus.emit('site.updated', {} as never);
@@ -302,6 +330,7 @@ describe('HookBus', () => {
     const later = () => {
       seen.push(2);
     };
+
     hooks.on('user.signInFailed', later, 20);
     hooks.on('user.signInFailed', () => {
       seen.push(1);
@@ -330,6 +359,7 @@ describe('HookBus', () => {
     const bus = new HookBus({ timeoutMs: 100, logger });
     const hooks = bus.registrar('plugin');
     const order: number[] = [];
+
     hooks.on(
       'user.signInFailed',
       () => {
@@ -351,14 +381,18 @@ describe('HookBus', () => {
     });
     expect(order).toEqual([1, 2]);
     const context = { flag: false };
+
     hooks.filter('user.signInAllowed', (value, arg) => {
       (arg as typeof context).flag = true;
+
       return value;
     });
     const trusted = bus.registrar('site', { trusted: true });
+
     trusted.filter('user.signInAllowed', (value, arg) => {
       expect(arg).toBe(context);
       expect(context.flag).toBe(false);
+
       return value;
     });
     await bus.applyFilter(
@@ -376,12 +410,14 @@ describe('HookBus', () => {
     const bus = new HookBus({ timeoutMs: 20, logger });
     const hooks = bus.registrar('site', { trusted: true });
     const input = { user: {} as never, method: 'password', allowed: false };
+
     hooks.filter('user.signInAllowed', () => {
       throw new Error('boom');
     });
     hooks.filter('user.signInAllowed', () => null as never);
     hooks.filter('user.signInAllowed', (value) => {
       expect(value).toEqual(input);
+
       return { ...value, allowed: true };
     });
     const result = await bus.applyFilter(
@@ -389,6 +425,7 @@ describe('HookBus', () => {
       input,
       (value) => value !== null && typeof value === 'object',
     );
+
     expect(result.allowed).toBe(true);
     expect(lines.filter((line) => line.startsWith('warn'))).toHaveLength(2);
   });
@@ -397,6 +434,7 @@ describe('HookBus', () => {
     const { logger, lines } = recordingLogger();
     const bus = new HookBus({ timeoutMs: 20, logger });
     const hooks = bus.registrar('p');
+
     hooks.filter('content.beforeSave', () => {
       throw new Error('boom');
     });
@@ -423,6 +461,7 @@ describe('HookBus', () => {
       input,
       (value) => typeof value === 'object',
     );
+
     expect(result.title).toBe('T!');
     expect(lines.filter((line) => line.startsWith('warn'))).toHaveLength(3);
   });

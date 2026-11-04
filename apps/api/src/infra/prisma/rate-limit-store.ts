@@ -22,11 +22,13 @@ export class PrismaRateLimitStore implements RateLimitStore {
       where: { keyHash: hash(key) },
       select: { windowStart: true, hits: true, blockedUntil: true },
     });
+
     return isExceeded(bucket, rule, now);
   }
 
   async hit(key: string, rule: RateRule, now: Date) {
     const keyHash = hash(key);
+
     return this.db.$transaction(async (tx) => {
       // ON DUPLICATE KEY takes the row's exclusive lock at once. INSERT IGNORE would take a shared
       // lock first, and two requests upgrading it for the FOR UPDATE below deadlock each other.
@@ -49,10 +51,12 @@ export class PrismaRateLimitStore implements RateLimitStore {
           next.blockedUntil?.getTime() ?? 0,
         ),
       );
+
       await tx.rateLimitBucket.updateMany({
         where: { keyHash },
         data: { ...next, expiresAt },
       });
+
       return exceeded;
     });
   }

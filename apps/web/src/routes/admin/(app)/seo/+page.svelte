@@ -71,6 +71,7 @@
     const codes = [saved.googleVerification, saved.bingVerification].filter(
       Boolean,
     ).length;
+
     return [
       saved.siteUrl
         ? { label: m.seoSiteUrl, state: 'ok', detail: saved.siteUrl }

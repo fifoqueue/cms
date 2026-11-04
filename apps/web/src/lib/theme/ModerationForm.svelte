@@ -46,9 +46,12 @@
   const submit: SubmitFunction<Moderated> = ({ cancel }) => {
     if (locked) {
       cancel();
+
       return;
     }
+
     onbusy(true);
+
     return async ({ result, update }) => {
       try {
         if (result.type === 'success' && result.data?.moderated)

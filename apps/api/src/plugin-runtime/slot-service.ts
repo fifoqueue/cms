@@ -20,12 +20,14 @@ export class SlotService {
 
   async render(query: unknown): Promise<SlotMap> {
     const { path, contentId } = parseInput(slotQuerySchema, query);
+
     // Site and content only feed renderers; without any, skip the reads.
     if (this.deps.registry.empty) return emptySlots();
     const [site, content] = await Promise.all([
       this.deps.site.getPlugin(),
       contentId ? this.deps.content.getById(contentId) : this.byPath(path),
     ]);
+
     return this.deps.registry.render({ path, site, content });
   }
 
@@ -36,6 +38,7 @@ export class SlotService {
   private async byPath(path: string): Promise<PublicContent | null> {
     if (canonicalPermalinkPath(path) !== path) return null;
     const owner = await this.deps.paths.findByPath(path);
+
     return owner?.current ? this.deps.content.getById(owner.contentId) : null;
   }
 }

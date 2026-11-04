@@ -8,7 +8,9 @@ import {
 
 const formOf = (entries: [string, string][]) => {
   const form = new FormData();
+
   for (const [name, value] of entries) form.append(name, value);
+
   return form;
 };
 
@@ -29,6 +31,7 @@ test('steps become page data without their transaction, QR codes drawn as paths'
     ],
     transaction: 'secret-handle',
   });
+
   expect(JSON.stringify(view)).not.toContain('secret-handle');
   expect(view).toMatchObject({
     kind: 'fields',
@@ -62,6 +65,7 @@ test('only declared fields are sent, and secrets are never echoed back', () => {
     ]),
     fields,
   );
+
   expect(values).toEqual({
     email: 'a@example.com',
     password: 'hunter2',
@@ -72,6 +76,7 @@ test('only declared fields are sent, and secrets are never echoed back', () => {
 
 test('redirect steps leave only for http(s) addresses with a readable expiry', () => {
   const expiresAt = '2030-01-01T00:00:00.000Z';
+
   expect(
     redirectTarget({ url: 'https://id.example/auth?x=1', expiresAt }),
   ).toBe('https://id.example/auth?x=1');

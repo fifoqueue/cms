@@ -46,6 +46,7 @@ const str = (value: unknown): string => {
     return String(value);
   if (value && typeof value === 'object' && '#text' in value)
     return str((value as Node)['#text']);
+
   return '';
 };
 
@@ -57,11 +58,13 @@ const date = (value: unknown): Date | null => {
   const match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(
     str(value).trim(),
   );
+
   if (!match || match[1] === '0000') return null;
   const [, year, month, day, hours, minutes, seconds] = match.map(Number);
   const parsed = new Date(
     Date.UTC(year!, month! - 1, day!, hours!, minutes!, seconds!),
   );
+
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
@@ -86,6 +89,7 @@ const comment = (node: Node): WxrComment => ({
 /** WordPress stores non-ASCII slugs percent-encoded; malformed escapes stay as written. */
 const decodedSlug = (value: unknown) => {
   const raw = str(value);
+
   try {
     return decodeURIComponent(raw).normalize('NFC');
   } catch {
@@ -100,6 +104,7 @@ const item = (node: Node): WxrItem => {
       .filter((term) => str(term['@_domain']) === domain)
       .map((term) => decodedSlug(term['@_nicename']))
       .filter(Boolean);
+
   return {
     id: str(node['wp:post_id']),
     type: str(node['wp:post_type']) || 'post',
@@ -123,6 +128,7 @@ const item = (node: Node): WxrItem => {
     meta: Object.fromEntries(
       list(node['wp:postmeta']).flatMap((meta) => {
         const key = str(meta['wp:meta_key']);
+
         return META_KEY.test(key) ? [[key, str(meta['wp:meta_value'])]] : [];
       }),
     ),
@@ -158,15 +164,19 @@ export const fastXmlWxrParser: WxrParser = {
     if (/<!DOCTYPE|<!ENTITY/i.test(xml))
       throw invalidInput(Errors.ImportInvalid);
     let root: Node;
+
     try {
       root = parser.parse(xml) as Node;
     } catch {
       throw invalidInput(Errors.ImportInvalid);
     }
+
     const channel = (root.rss as Node | undefined)?.channel as Node | undefined;
+
     if (!channel || !('wp:wxr_version' in channel))
       throw invalidInput(Errors.ImportInvalid);
     const authors = list(channel['wp:author']);
+
     if (authors.length > MAX_AUTHORS)
       throw invalidInput(Errors.ImportAuthorsLimit);
     const document = {
@@ -185,6 +195,7 @@ export const fastXmlWxrParser: WxrParser = {
       tags: list(channel['wp:tag']).map((node) => term(node, 'tag')),
       items: list(channel.item).map(item),
     } satisfies WxrDocument;
+
     if (
       document.items.length > MAX_ITEMS ||
       document.categories.length + document.tags.length > MAX_TERMS ||
@@ -198,6 +209,7 @@ export const fastXmlWxrParser: WxrParser = {
       ) > MAX_META
     )
       throw invalidInput(Errors.ImportInvalid);
+
     return document;
   },
 };

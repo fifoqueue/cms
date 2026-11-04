@@ -36,8 +36,10 @@ export class VapidKeys {
     if (this.cached) return this.cached;
     const stored = await this.stored();
     const privateKey = this.deps.secrets.open(stored.privateKey);
+
     if (!privateKey) throw new Error(Errors.PushKeyUnreadable);
     this.cached = { publicKey: stored.publicKey, privateKey };
+
     return this.cached;
   }
 
@@ -46,19 +48,23 @@ export class VapidKeys {
   /** The pair never changes once stored, so one read per process suffices. */
   private async stored() {
     this.saved ??= await this.load();
+
     return this.saved;
   }
 
   private load() {
     return this.deps.transactions.run(KEY, async (settings) => {
       const current = storedSchema.safeParse(await settings.get(KEY));
+
       if (current.success) return current.data;
       const pair = await this.deps.generate();
       const stored = {
         publicKey: pair.publicKey,
         privateKey: this.deps.secrets.seal(pair.privateKey),
       };
+
       await settings.set(KEY, stored);
+
       return stored;
     });
   }

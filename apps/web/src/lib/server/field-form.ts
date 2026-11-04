@@ -16,6 +16,7 @@ const values = (form: FormData, key: string) => [
  */
 export const readFieldForm = (form: FormData): FieldDefinitionInput => {
   const type = text(form, 'type');
+
   return {
     key: text(form, 'key'),
     label: text(form, 'label'),

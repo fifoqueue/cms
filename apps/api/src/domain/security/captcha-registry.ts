@@ -20,19 +20,24 @@ export class CaptchaRegistry implements CaptchaVerifier {
       core: boolean;
     }
   >();
+
   constructor(
     private readonly options: { timeoutMs: number; logger: Logger },
   ) {}
+
   register(id: string, provider: CaptchaProviderDefinition) {
     return this.add(id, provider, false);
   }
+
   registerCore(id: string, provider: CaptchaProviderDefinition) {
     return this.add(id, provider, true);
   }
+
   private add(id: string, provider: CaptchaProviderDefinition, core: boolean) {
     parseInput(captchaProviderIdSchema, id);
     const label = parseInput(z.string().trim().min(1).max(100), provider.label);
     const token = {};
+
     this.entries.set(token, {
       id,
       core,
@@ -44,10 +49,12 @@ export class CaptchaRegistry implements CaptchaVerifier {
           : { widget: parseInput(captchaWidgetSchema, provider.widget) }),
       },
     });
+
     return () => {
       this.entries.delete(token);
     };
   }
+
   list() {
     return [
       ...new Map(
@@ -57,14 +64,17 @@ export class CaptchaRegistry implements CaptchaVerifier {
       ).values(),
     ];
   }
+
   widget(id: string) {
     const entry = [...this.entries.values()]
       .reverse()
       .find((entry) => entry.id === id);
+
     return entry?.provider.widget
       ? structuredClone(entry.provider.widget)
       : null;
   }
+
   async verify(input: CaptchaCheck): Promise<boolean> {
     for (const [token, entry] of [...this.entries].reverse()) {
       if (entry.id !== input.provider || !this.entries.has(token)) continue;
@@ -76,13 +86,16 @@ export class CaptchaRegistry implements CaptchaVerifier {
         () => entry.provider.verify(structuredClone(input)),
         this.options.timeoutMs,
       );
+
       if (!this.entries.has(token)) continue;
       const parsed = result.ok ? z.boolean().safeParse(result.value) : null;
+
       if (parsed?.success) return parsed.data;
       this.options.logger.warn(
         `Captcha provider "${entry.id}" failed; using fallback`,
       );
     }
+
     return false;
   }
 }

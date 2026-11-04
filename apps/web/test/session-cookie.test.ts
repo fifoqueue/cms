@@ -11,6 +11,7 @@ import {
 const cookies = (initial: Record<string, string> = {}) => {
   const values = new Map(Object.entries(initial));
   const options = new Map<string, Parameters<Cookies['set']>[2]>();
+
   return {
     values,
     options,
@@ -39,11 +40,13 @@ const grant = {
 describe('session cookie', () => {
   test('HTTPS uses a host-bound cookie while HTTP localhost keeps the development cookie', () => {
     const secure = cookies();
+
     startSession(secure.api, grant, new URL('https://cms.example/admin'));
     expect(secure.values.get(SESSION_COOKIE)).toBe('session-token');
     expect(secure.options.get(SESSION_COOKIE)?.secure).toBe(true);
 
     const local = cookies();
+
     startSession(local.api, grant, new URL('http://localhost:5173/admin'));
     expect(local.values.get(LEGACY_SESSION_COOKIE)).toBe('session-token');
     expect(local.options.get(LEGACY_SESSION_COOKIE)?.secure).toBe(false);
@@ -51,6 +54,7 @@ describe('session cookie', () => {
 
   test('HTTPS ignores a legacy cookie and logout clears both names', () => {
     const state = cookies({ [LEGACY_SESSION_COOKIE]: 'old-token' });
+
     expect(
       sessionToken(state.api, new URL('https://cms.example/admin')),
     ).toBeNull();

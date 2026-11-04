@@ -9,10 +9,13 @@ export const clampPage = (
   list: { total: number; page: number; pageSize: number },
 ) => {
   const last = Math.max(1, Math.ceil(list.total / list.pageSize));
+
   if (list.page <= last) return;
   const params = new URLSearchParams(url.searchParams);
+
   if (last === 1) params.delete('page');
   else params.set('page', String(last));
   const query = params.toString();
+
   redirect(303, `${url.pathname}${query ? `?${query}` : ''}`);
 };

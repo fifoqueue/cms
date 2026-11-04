@@ -31,10 +31,12 @@ export class SealedJobs {
 
   open<T>(payload: unknown, schema: z.ZodType<T>): T {
     const opened = inspectJob(payload, this.secrets);
+
     if (!opened.ok && opened.reason === 'unreadable')
       throw new RecoverableJobError(Errors.JobPayloadUnreadable);
     if (!opened.ok) throw new PermanentJobError(Errors.JobPayloadInvalid);
     const result = schema.safeParse(opened.value);
+
     if (result.success) return result.data;
     throw new PermanentJobError(Errors.JobPayloadInvalid);
   }
@@ -49,8 +51,10 @@ export class SealedJobs {
       );
       const readable = rows.flatMap(({ id, payload }) => {
         const opened = inspectJob(payload, this.secrets);
+
         return opened.ok && opened.sealed ? [id] : [];
       });
+
       if (readable.length) await this.queue.retry(readable);
     }
   }

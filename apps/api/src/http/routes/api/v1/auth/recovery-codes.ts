@@ -11,5 +11,6 @@ export const routes = (app: ApiApp) =>
     )
     .delete('', async ({ recovery, user }) => {
       await recovery.remove(user);
+
       return noContent();
     });

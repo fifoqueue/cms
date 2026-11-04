@@ -55,6 +55,7 @@ export const Embed = Node.create({
   },
   renderHTML({ node }) {
     const url = safeHttpsUrl(node.attrs.url) ?? '';
+
     return [
       'figure',
       { 'data-embed-url': url, class: 'embed' },
@@ -118,12 +119,15 @@ export const parseDocument = (document: ContentDocument) => {
       throw new Error(Errors.InvalidDocument);
     if (!validTocCount(document)) throw new Error(Errors.InvalidDocument);
     const stack: Record<string, unknown>[] = [document];
+
     while (stack.length) {
       const raw = stack.pop()!;
       const type = typeof raw.type === 'string' ? raw.type : '';
       const spec = schema.nodes[type] ?? schema.marks[type];
+
       if (!spec) throw new Error(Errors.InvalidDocument);
       const attrs = raw.attrs ?? {};
+
       if (typeof attrs !== 'object' || attrs === null || Array.isArray(attrs))
         throw new Error(Errors.InvalidDocument);
       // Unknown attributes are dropped by the schema, as they always were; known ones must be valid.
@@ -134,10 +138,12 @@ export const parseDocument = (document: ContentDocument) => {
       );
       const validator =
         contentAttributeSchemas[type as keyof typeof contentAttributeSchemas];
+
       if (validator && !validator.safeParse(known).success)
         throw new Error(Errors.InvalidDocument);
       if (type === 'footnote' && !validator?.safeParse(attrs).success)
         throw new Error(Errors.InvalidDocument);
+
       for (const child of [
         ...(Array.isArray(raw.content) ? raw.content : []),
         ...(Array.isArray(raw.marks) ? raw.marks : []),
@@ -147,8 +153,11 @@ export const parseDocument = (document: ContentDocument) => {
         stack.push(child as Record<string, unknown>);
       }
     }
+
     const node = schema.nodeFromJSON(document);
+
     node.check();
+
     return node;
   } catch (cause) {
     throw new InvalidDocumentError(

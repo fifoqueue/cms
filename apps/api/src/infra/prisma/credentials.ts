@@ -24,17 +24,20 @@ export class PrismaCredentialRepository implements CredentialRepository {
       where: { tokenHash },
       select: { expiresAt: true, userId: true },
     });
+
     return token && token.expiresAt > now ? token.userId : null;
   }
 
   reset(tokenHash: string, now: Date, passwordHash: string) {
     return this.db.$transaction(async (tx) => {
       const token = await tx.passwordToken.findUnique({ where: { tokenHash } });
+
       if (!token || token.expiresAt <= now) return false;
 
       const { count } = await tx.passwordToken.deleteMany({
         where: { tokenHash, expiresAt: { gt: now } },
       });
+
       if (count !== 1) return false;
 
       await tx.user.update({
@@ -45,6 +48,7 @@ export class PrismaCredentialRepository implements CredentialRepository {
       await tx.session.deleteMany({ where: { userId: token.userId } });
       await tx.apiToken.deleteMany({ where: { userId: token.userId } });
       await tx.recoveryCode.deleteMany({ where: { userId: token.userId } });
+
       return true;
     });
   }

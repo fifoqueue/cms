@@ -43,6 +43,7 @@ describe('email settings contract', () => {
       { domain: '-bad.example' },
     ]) {
       const settings = input('custom');
+
       Object.assign(settings.http, overrides);
       expect(emailSettingsInputSchema.safeParse(settings).success).toBe(false);
     }
@@ -59,6 +60,7 @@ describe('email settings contract', () => {
       },
       http: { ...settings.http, secret: 'api-secret', secretConfigured: true },
     });
+
     expect(admin.smtp.passwordConfigured).toBe(true);
     expect(admin.http.secretConfigured).toBe(true);
     expect(JSON.stringify(admin)).not.toContain('smtp-secret');

@@ -34,7 +34,9 @@ export const load: PageServerLoad = async (event) => {
     }),
     admin.comments.counts(),
   ]);
+
   clampPage(event.url, comments);
+
   return {
     filter: { status, q: search, contentId },
     counts,
@@ -85,16 +87,20 @@ export const actions: Actions = {
       (option) => option === text(form, 'action'),
     );
     const ids = form.getAll('ids').filter((id) => typeof id === 'string');
+
     if (!action || !ids.length) return {};
+
     try {
       await adminFor(event).comments.bulk({ ids, action });
     } catch (caught) {
       return failFrom(caught);
     }
+
     // Undo puts the comments back where they were, when that status is known.
     const previous = COMMENT_STATUSES.find(
       (option) => option === text(form, 'previous'),
     );
+
     return {
       notice: NOTICES[action],
       count: ids.length,
@@ -108,8 +114,10 @@ export const actions: Actions = {
   empty: async (event) => {
     const form = await event.request.formData();
     const status = text(form, 'status');
+
     if (status !== 'spam' && status !== 'trash') return {};
     const admin = adminFor(event);
+
     try {
       // Bounded: at most 100 pages of 100 per request.
       for (let round = 0; round < 100; round++) {
@@ -118,6 +126,7 @@ export const actions: Actions = {
           page: 1,
           pageSize: 100,
         });
+
         if (!items.length) break;
         await admin.comments.bulk({
           ids: items.map(({ id }) => id),
@@ -127,6 +136,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     // The request is bounded; when comments remain, say so instead of "Emptied".
     const remaining = await admin.comments
       .list({ status, page: 1, pageSize: 1 })
@@ -134,12 +144,14 @@ export const actions: Actions = {
         ({ total }) => total,
         () => 0,
       );
+
     return {
       notice: remaining ? 'commentNoticePartlyEmptied' : 'commentNoticeEmptied',
     };
   },
   reply: async (event) => {
     const form = await event.request.formData();
+
     try {
       await adminFor(event).comments.reply(
         text(form, 'id'),
@@ -149,10 +161,12 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'commentReplied' };
   },
   edit: async (event) => {
     const form = await event.request.formData();
+
     try {
       await adminFor(event).comments.update(text(form, 'id'), {
         authorName: text(form, 'authorName'),
@@ -163,6 +177,7 @@ export const actions: Actions = {
     } catch (caught) {
       return failFrom(caught);
     }
+
     return { notice: 'saved' };
   },
 };

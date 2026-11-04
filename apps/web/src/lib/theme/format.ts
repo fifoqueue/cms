@@ -22,9 +22,11 @@ export const formatDate = (
   { locale, dateFormat, timeZone }: DateStyle,
 ) => {
   const date = new Date(iso);
+
   if (dateFormat === 'iso')
     // `en-CA` writes YYYY-MM-DD in the site's time zone.
     return date.toLocaleDateString('en-CA', { timeZone });
+
   try {
     return date.toLocaleDateString(locale, {
       ...OPTIONS[dateFormat],
@@ -38,6 +40,7 @@ export const formatDate = (
 /** A site-local calendar month. UTC here prevents shifting its already-resolved year/month. */
 export const formatMonth = (year: number, month: number, locale: string) => {
   const date = new Date(Date.UTC(year, month - 1, 1));
+
   try {
     return date.toLocaleDateString(locale, {
       year: 'numeric',
@@ -58,6 +61,7 @@ export const provideDateStyle = (style: () => DateStyle) =>
 /** Formats dates in the site's style; English long dates in UTC outside the site layout. */
 export const useDateFormat = () => {
   const style = getContext<(() => DateStyle) | undefined>(KEY);
+
   return (iso: string) =>
     formatDate(
       iso,

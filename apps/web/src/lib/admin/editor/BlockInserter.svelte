@@ -92,27 +92,35 @@
   $effect(() => {
     if (!open) return;
     const query = search.trim();
+
     if (query !== lastSearch) {
       lastSearch = query;
       patternPage = 1;
     }
+
     const page = patternPage;
     const controller = new AbortController();
+
     patternLoading = true;
     patternError = '';
     const timer = setTimeout(async () => {
       const result = await loadPatterns(query, page, controller.signal);
+
       if (controller.signal.aborted) return;
       patternLoading = false;
+
       if (!result) {
         library = [];
         patternTotal = 0;
         patternError = m.patternLoadFailed;
+
         return;
       }
+
       library = result.items;
       patternTotal = Math.ceil(result.total / result.pageSize);
     }, 200);
+
     return () => {
       clearTimeout(timer);
       controller.abort();
@@ -123,12 +131,15 @@
     if (!editor || inserting) return;
     const current = editor;
     const state = current.state;
+
     inserting = true;
     const content =
       'source' in pattern
         ? (pattern.document.content ?? [])
         : await patternContent(pattern);
+
     inserting = false;
+
     if (
       !open ||
       !content ||
@@ -137,8 +148,10 @@
       current.state.doc !== state.doc
     ) {
       patternError = m.patternLoadFailed;
+
       return;
     }
+
     chosen = true;
     open = false;
     search = '';
@@ -161,10 +174,12 @@
 
   $effect(() => {
     const current = editor;
+
     if (!current) return;
     const changed = () => outsideRender(() => (revision += 1));
     const slash = (event: KeyboardEvent) => {
       const { selection } = current.state;
+
       if (
         event.key !== '/' ||
         event.isComposing ||
@@ -178,8 +193,10 @@
       slashed = true;
       open = true;
     };
+
     current.on('transaction', changed);
     current.view.dom.addEventListener('keydown', slash);
+
     return () => {
       current.off('transaction', changed);
       current.view.dom.removeEventListener('keydown', slash);
@@ -198,6 +215,7 @@
       .filter(({ media }) => media.kind === 'image')
       .slice(0, 100)
       .map(({ media, choice }) => mediaNode(media, choice));
+
     if (content.length) insert({ type: 'gallery', content });
   };
 
@@ -206,6 +224,7 @@
     chosen = true;
     open = false;
     search = '';
+
     if (['image', 'audio', 'video', 'file', 'gallery'].includes(type)) {
       mediaKind =
         type === 'file'
@@ -217,27 +236,36 @@
               : 'image';
       await tick();
       (type === 'gallery' ? galleryPicker : picker).open();
+
       return;
     }
+
     if (type.startsWith('plugin:')) {
       // Declared defaults apply when it renders; Block settings changes them.
       insert({ type: 'pluginBlock', attrs: { block: type, attrs: {} } });
+
       return;
     }
+
     if (type === 'footnote') {
       // Inline, at the caret; its text field opens right away.
       editor.chain().focus().insertFootnote().run();
+
       return;
     }
+
     const paragraph = { type: 'paragraph' };
+
     if (type === 'table') {
       editor
         .chain()
         .focus()
         .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
         .run();
+
       return;
     }
+
     const nodes: Record<string, JSONContent> = {
       tableOfContents: {
         type,
@@ -279,6 +307,7 @@
         ],
       },
     };
+
     insert(nodes[type] ?? { type });
   };
 </script>

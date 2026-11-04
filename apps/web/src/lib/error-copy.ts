@@ -13,6 +13,7 @@ export const errorCopy = (
   search = false,
 ) => {
   const known = catalogMessage(m, message);
+
   if (status === 404)
     return {
       title: m.themeNotFound,
@@ -25,5 +26,6 @@ export const errorCopy = (
     };
   if (status >= 500)
     return { title: m.errorPageServer, help: m.errorPageServerHelp };
+
   return { title: m.errorPageOther, help: known ?? '' };
 };

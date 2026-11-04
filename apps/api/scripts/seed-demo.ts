@@ -28,7 +28,9 @@ let state = 20240601;
 const random = () => {
   state = (state + 0x6d2b79f5) | 0;
   let value = Math.imul(state ^ (state >>> 15), 1 | state);
+
   value ^= value + Math.imul(value ^ (value >>> 7), 61 | value);
+
   return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
 };
 const between = (min: number, max: number) =>
@@ -700,6 +702,7 @@ const config = loadConfig({
   DATABASE_URL:
     process.env.DATABASE_URL ?? readInstallationConfig()?.DATABASE_URL,
 });
+
 if (!config.DATABASE_URL)
   throw new Error('No database configured: finish the setup wizard first.');
 
@@ -723,6 +726,7 @@ const seed = async () => {
     where: { name: AUTHOR_NAME },
     select: { id: true, role: true },
   });
+
   if (!user) throw new Error(`No user named "${AUTHOR_NAME}" found.`);
   const actor: Actor = {
     id: user.id,
@@ -732,12 +736,14 @@ const seed = async () => {
 
   // --- Remove previous demo data -----------------------------------------------------------
   const previous: { id: string; slug: string }[] = [];
+
   for (const view of ['active', 'trash'] as const)
     for (let page = 1; ; page += 1) {
       const result = await content.list(
         { type: 'post', view, page, pageSize: 100, search: 'Demo' },
         actor,
       );
+
       previous.push(
         ...result.items.filter(
           (entry) =>
@@ -747,7 +753,9 @@ const seed = async () => {
       );
       if (page * result.pageSize >= result.total) break;
     }
+
   let removedComments = 0;
+
   for (const entry of previous) {
     for (const status of COMMENT_STATUSES) {
       for (;;) {
@@ -755,6 +763,7 @@ const seed = async () => {
           { contentId: entry.id, status, pageSize: 100 },
           actor,
         );
+
         if (!items.length) break;
         await comments.bulk(
           { ids: items.map((comment) => comment.id), action: 'delete' },
@@ -763,8 +772,10 @@ const seed = async () => {
         removedComments += items.length;
       }
     }
+
     await content.remove(entry.id, actor);
   }
+
   console.log(
     `Removed ${previous.length} previous demo posts and ${removedComments} comments.`,
   );
@@ -785,6 +796,7 @@ const seed = async () => {
     const existing = (await taxonomy.list(kind)).find(
       (candidate) => candidate.slug === slug,
     );
+
     return existing
       ? taxonomy.update(kind, existing.id, input)
       : taxonomy.create(kind, input);
@@ -928,6 +940,7 @@ const seed = async () => {
     parentId: string | null = null,
   ) => {
     const index = submitted++;
+
     return idOf(
       await comments.submit(
         { contentId, parentId, body, ...guests[index % guests.length]! },
@@ -950,6 +963,7 @@ const seed = async () => {
   // Long-form: enough approved top-level comments for two comment pages.
   const article = posts.longForm.id;
   const topLevel: string[] = [];
+
   for (let index = 0; index < discussion.pageSize + 8; index += 1)
     topLevel.push(
       await guest(
@@ -969,15 +983,18 @@ const seed = async () => {
     topLevel.at(-1)!,
   ]) {
     let parent = root;
+
     for (let level = 1; level < discussion.threadDepth; level += 1) {
       const replies = [
         await guest(article, sentences(between(1, 3)), parent),
         ...(level === 1 ? [await guest(article, sentences(2), parent)] : []),
       ];
+
       await setStatus(replies, 'approve');
       parent = replies[0]!;
     }
   }
+
   // The post author answers (the "글쓴이" badge) on a top-level comment and inside a thread.
   await comments.reply(
     topLevel[0]!,
@@ -1002,6 +1019,7 @@ const seed = async () => {
     await guest(article, sentence()),
     await guest(article, sentences(2), topLevel[2]!),
   ];
+
   await setStatus(pending, 'unapprove');
   const spam = [
     await guest(
@@ -1011,11 +1029,13 @@ const seed = async () => {
     await guest(article, `Click here: ${sentence()} https://spam.example.com`),
     await guest(article, sentences(2)),
   ];
+
   await setStatus(spam, 'spam');
   await setStatus([await guest(article, `Trash: ${sentence()}`)], 'trash');
 
   // A few on the other posts.
   const approved: string[] = [];
+
   for (let index = 0; index < 3; index += 1)
     approved.push(await guest(posts.code.id, commentBody()));
   approved.push(await guest(posts.callouts.id, commentBody()));
@@ -1047,6 +1067,7 @@ const seed = async () => {
   const totals = Object.fromEntries(
     COMMENT_STATUSES.map((status) => [status, 0]),
   ) as Record<CommentStatus, number>;
+
   for (const entry of Object.values(posts)) {
     const counts = await Promise.all(
       COMMENT_STATUSES.map(
@@ -1062,16 +1083,19 @@ const seed = async () => {
           ] as const,
       ),
     );
+
     if (counts.every(([, count]) => count === 0)) continue;
     for (const [status, count] of counts) totals[status] += count;
     console.log(
       `  ${entry.path.padEnd(36)} ${counts.map(([status, count]) => `${status} ${count}`).join(', ')}`,
     );
   }
+
   console.log(
     `  ${'total'.padEnd(36)} ${COMMENT_STATUSES.map((status) => `${status} ${totals[status]}`).join(', ')}`,
   );
   const thread = await comments.publicPage(article, 1);
+
   console.log(
     `  ${posts.longForm.path}: ${thread.total} top-level comments → ${Math.ceil(thread.total / thread.pageSize)} comment pages`,
   );

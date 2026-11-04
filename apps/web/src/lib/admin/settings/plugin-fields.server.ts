@@ -7,8 +7,10 @@ import { text } from '#lib/server/errors.js';
 const fieldValue = (form: FormData, name: string, field: MailField) => {
   if (field.type === 'boolean') return form.has(name);
   const value = text(form, name);
+
   if (field.type !== 'number' || !value) return value;
   const number = Number(value);
+
   return Number.isFinite(number) ? number : value;
 };
 
@@ -24,15 +26,21 @@ export const readPluginFields = (
 ) => {
   const values: MailValues = {};
   const secrets: Record<string, string> = {};
+
   for (const field of fields) {
     const name = pluginFieldName(id, field.key);
+
     if (field.type === 'secret') {
       const secret = secretInput(form, name, `${name}.remove`);
+
       if (secret !== undefined) secrets[field.key] = secret;
       continue;
     }
+
     const value = fieldValue(form, name, field);
+
     if (value !== '' || field.type === 'text') values[field.key] = value;
   }
+
   return { values, secrets };
 };

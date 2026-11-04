@@ -26,10 +26,12 @@ const requestWith =
   async (...args: Parameters<HttpFetch>) => {
     const response = await fetcher(...args);
     const text = await response.text();
+
     if (!response.ok)
       throw new Error(Errors.SearchRequestFailed, {
         cause: response.status,
       });
+
     return text ? (JSON.parse(text) as unknown) : undefined;
   };
 
@@ -50,6 +52,7 @@ const done = async (
   allow: readonly string[] = [],
 ) => {
   const result = await task.waitTask({ timeout: TASK_TIMEOUT_MS });
+
   if (
     result.status !== 'succeeded' &&
     !allow.includes(result.error?.code ?? '')
@@ -71,15 +74,19 @@ const filters = ({
   sticky,
 }: SearchQuery) => {
   const parts: string[] = [];
+
   if (types) parts.push(`type IN [${types.map(quote).join(', ')}]`);
   if (category) parts.push(`categories = ${quote(category)}`);
   if (tag) parts.push(`tags = ${quote(tag)}`);
   if (sticky) parts.push(`sticky = ${sticky === 'only'}`);
+
   if (year) {
     const from = Date.UTC(year, month ? month - 1 : 0, 1) / 1000;
     const to = Date.UTC(month ? year : year + 1, month ?? 0, 1) / 1000;
+
     parts.push(`publishedAt >= ${from} AND publishedAt < ${to}`);
   }
+
   return parts;
 };
 
@@ -97,6 +104,7 @@ export const createMeilisearchEngine = (
     async rebuild(connection, batches) {
       const meili = connect(connection);
       const next = `${connection.index}_next`;
+
       await done(meili.deleteIndex(next), ['index_not_found']);
       await done(meili.createIndex(next, { primaryKey: 'id' }));
       await done(meili.index(next).updateSettings(SETTINGS));
@@ -139,6 +147,7 @@ export const createMeilisearchEngine = (
           hitsPerPage: query.pageSize,
           attributesToRetrieve: ['id'],
         });
+
       return {
         ids: result.hits.map((hit) => String(hit.id)),
         total: result.totalHits ?? 0,

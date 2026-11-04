@@ -45,7 +45,9 @@ export const pendingIn = async (
     where: { contentId, authorId, kind: 'autosave' },
     include: withAuthor,
   });
+
   if (!autosave) return null;
+
   return autosave.createdAt > savedAt ? toRecord(autosave) : null;
 };
 
@@ -79,11 +81,13 @@ export const saveRevisionIn = async (
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       skip: revision.keep,
     });
+
     if (stale.length)
       await tx.contentRevision.deleteMany({
         where: { id: { in: stale.map((row) => row.id) } },
       });
   }
+
   if (revision.clearAutosave)
     await tx.contentRevision.deleteMany({
       where: {
@@ -106,6 +110,7 @@ export class PrismaRevisionRepository implements RevisionRepository {
         where: { id: revision.contentId },
         select: { updatedAt: true },
       });
+
       // Dated after the last save even when that save committed while this one waited.
       if (saved && revision.createdAt <= saved.updatedAt)
         revision = {
@@ -130,17 +135,20 @@ export class PrismaRevisionRepository implements RevisionRepository {
         where: { id: contentId },
         select: { updatedAt: true, authorId: true, status: true },
       });
+
       checkDeleteGuard(current, guard);
       const revision = await tx.contentRevision.findFirst({
         where: { id, contentId },
         select: { kind: true },
       });
+
       if (!revision) throw notFound(Errors.RevisionNotFound);
       if (revision.kind !== 'revision')
         throw invalidInput(Errors.RevisionAutosaveDelete);
       const result = await tx.contentRevision.deleteMany({
         where: { id, contentId, kind: 'revision' },
       });
+
       if (!result.count) throw notFound(Errors.RevisionNotFound);
     });
   }
@@ -161,6 +169,7 @@ export class PrismaRevisionRepository implements RevisionRepository {
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
+
     return rows.map(({ author, ...row }) => ({
       ...row,
       kind: row.kind as RevisionRecord['kind'],
@@ -173,6 +182,7 @@ export class PrismaRevisionRepository implements RevisionRepository {
       where: { id },
       include: withAuthor,
     });
+
     return row && toRecord(row);
   }
 
@@ -185,6 +195,7 @@ export class PrismaRevisionRepository implements RevisionRepository {
       where: { contentId, authorId, kind: 'autosave' },
       include: withAuthor,
     });
+
     return row && toRecord(row);
   }
 }

@@ -57,6 +57,7 @@ const site = async (
     clock,
   });
   const users = new MemoryUsers();
+
   await users.insert(userRecord({ id: ADMIN.id, email: 'admin@example.com' }));
   const directory = new MemoryUserDirectory(users, content);
   const userAdmin =
@@ -106,6 +107,7 @@ const site = async (
         get: async () => menus,
         update: async (input) => {
           menus = input as MenusSettings;
+
           return menus;
         },
       },
@@ -204,6 +206,7 @@ test('a WXR export imports into another site with terms, entries and threaded co
     createdAt: at,
     updatedAt: at,
   };
+
   await source.comments.insert(parent);
   await source.comments.insert({
     ...parent,
@@ -218,6 +221,7 @@ test('a WXR export imports into another site with terms, entries and threaded co
     .replaceAll('지역', encodeURIComponent('지역'))
     .replaceAll('소식', encodeURIComponent('소식'));
   const target = await site();
+
   expect(await target.importer.importWxr(xml, ADMIN)).toMatchObject({
     content: 1,
     categories: 2,
@@ -228,6 +232,7 @@ test('a WXR export imports into another site with terms, entries and threaded co
 
   const [imported] = [...target.content.rows.values()];
   const entry = (await target.content.findById(imported!.id))!;
+
   expect(entry).toMatchObject({
     title: 'Storm ]]> warning',
     slug: post.slug,
@@ -247,6 +252,7 @@ test('a WXR export imports into another site with terms, entries and threaded co
   const [importedLocal] = (await target.taxonomy.list('category')).filter(
     (term) => term.slug === '지역',
   );
+
   expect(
     (await target.taxonomy.list('category')).find(
       (term) => term.id === importedLocal!.parentId,
@@ -261,9 +267,11 @@ test('a WXR export imports into another site with terms, entries and threaded co
     role: 'custom',
     capabilities: ['tools.manage'],
   });
+
   expect(operator).toContain('Stay safe');
   expect(operator).not.toMatch(/comment_author_IP|comment_agent|203\.0\.113/);
   const thread = (await target.comments.thread(entry.id, 1, 10, 3)).items;
+
   expect(
     thread.map((comment) => [
       comment.body,
@@ -292,6 +300,7 @@ Second <script>x()</script>para]]></content:encoded><wp:post_name>classic</wp:po
 <item><title>Long type</title><wp:status>draft</wp:status><wp:post_type>${'t'.repeat(600)}</wp:post_type></item>
 </channel></rss>`;
   const result = await target.importer.importWxr(xml, ADMIN);
+
   // An unusable body skips its entry only; out-of-range block settings fall back to defaults.
   expect(result).toMatchObject({
     content: 2,
@@ -316,6 +325,7 @@ Second <script>x()</script>para]]></content:encoded><wp:post_name>classic</wp:po
     params: { detail: expect.any(String) },
   });
   const [entry, gallery] = [...target.content.rows.values()];
+
   expect(entry!.html).toBe('<p>First line</p><p>Second para</p>');
   expect(gallery!.html).toContain('data-columns="3"');
   expect(
@@ -338,6 +348,7 @@ test('importing a WordPress file again keeps one menu, and member comments keep 
 <wp:postmeta><wp:meta_key>_menu_item_type</wp:meta_key><wp:meta_value>post_type</wp:meta_value></wp:postmeta>
 <wp:postmeta><wp:meta_key>_menu_item_object_id</wp:meta_key><wp:meta_value>1</wp:meta_value></wp:postmeta></item>
 </channel></rss>`;
+
   expect(await target.importer.importWxr(xml, ADMIN)).toMatchObject({
     content: 1,
     comments: 2,
@@ -350,6 +361,7 @@ test('importing a WordPress file again keeps one menu, and member comments keep 
   expect(target.menus().menus.map((menu) => menu.name)).toEqual(['Main']);
   const [entry] = [...target.content.rows.values()];
   const thread = (await target.comments.thread(entry!.id, 1, 10, 3)).items;
+
   expect(thread.map((comment) => [comment.body, comment.userId])).toEqual([
     ['Question', null],
     ['Answer', ADMIN.id],

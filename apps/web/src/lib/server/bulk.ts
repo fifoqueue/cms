@@ -31,9 +31,11 @@ export const eachBounded = async (
     message: Errors.BulkItemInvalid,
   }));
   let done = 0;
+
   await mapLimit(ids, async (id) => {
     try {
       const problem = await task(id);
+
       if (typeof problem === 'string') failed.push({ id, message: problem });
       else if (problem) failed.push({ id, ...problem });
       else done++;
@@ -43,10 +45,12 @@ export const eachBounded = async (
         const params = safeIssues(caught.issues)?.find(
           (issue) => issue.path === '' && issue.message === caught.message,
         )?.params;
+
         failed.push({ id, message: caught.message, ...(params && { params }) });
       } else failed.push({ id, message: Errors.BulkItemFailed });
     }
   });
+
   return { done, failed };
 };
 
@@ -72,6 +76,7 @@ export const readSelection = (
         .filter((id): id is string => typeof id === 'string' && id !== ''),
     ),
   ];
+
   if (ids.length > BULK_LIMIT)
     return {
       failure: fail(400, {
@@ -85,6 +90,7 @@ export const readSelection = (
         ],
       } satisfies FormFailure),
     } as const;
+
   return {
     ids: ids.filter(valid),
     invalid: ids.filter((id) => !valid(id)),

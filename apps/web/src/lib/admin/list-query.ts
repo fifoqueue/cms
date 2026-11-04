@@ -6,7 +6,9 @@ export const listQuery = (
   changes: Record<string, QueryValue>,
 ): `?${string}` => {
   const params = new URLSearchParams();
+
   for (const [key, value] of Object.entries({ ...current, ...changes }))
     if (value !== undefined) params.set(key, String(value));
+
   return `?${params}`;
 };

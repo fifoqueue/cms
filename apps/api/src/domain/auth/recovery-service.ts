@@ -59,6 +59,7 @@ export class RecoveryService {
 
   status(actor: Actor) {
     authorize(actor, 'settings.manage');
+
     return this.deps.codes.status(actor.id);
   }
 
@@ -82,6 +83,7 @@ export class RecoveryService {
         .toUpperCase(),
     );
     const createdAt = this.deps.clock.now();
+
     await this.deps.codes.replace(
       actor.id,
       codes.map((code) => ({
@@ -91,14 +93,17 @@ export class RecoveryService {
         codeHash: this.deps.tokens.digest(code),
       })),
     );
+
     try {
       const user = await this.deps.users.findById(actor.id);
+
       if (user) await this.notice(user, 10, false);
     } catch {
       this.deps.logger.warn('Recovery code notification failed', {
         userId: actor.id,
       });
     }
+
     return {
       codes: codes.map((code) => `${code.slice(0, 10)}-${code.slice(10)}`),
     };
@@ -111,6 +116,7 @@ export class RecoveryService {
 
   async recover(input: unknown, attempt: Omit<Attempt, 'action' | 'account'>) {
     const { email, code } = parseInput(recoveryLoginSchema, input);
+
     await this.deps.protection.check({
       ...attempt,
       action: 'login',
@@ -133,23 +139,28 @@ export class RecoveryService {
       { role: user?.role ?? 'subscriber', capabilities: verified },
       'settings.manage',
     );
+
     if (!user || !allowed || !consumed)
       throw unauthorized(Errors.InvalidCredentials);
     this.deps.logger.warn('Recovery code used', { userId: user.id });
+
     try {
       const { remaining } = await this.deps.codes.status(user.id);
+
       await this.notice(user, remaining, true);
     } catch {
       this.deps.logger.warn('Recovery code notification failed', {
         userId: user.id,
       });
     }
+
     return this.deps.sessions.startSession(user, null);
   }
 
   private async notice(user: UserRecord, remaining: number, used: boolean) {
     if (!(await this.deps.email.enabled())) return;
     const site = await this.deps.site();
+
     await this.deps.email.queue({
       to: user.email,
       sensitive: true,

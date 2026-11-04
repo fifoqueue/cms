@@ -48,8 +48,10 @@
   $effect(() => {
     const query = matchMedia(DARK_QUERY);
     const sync = () => shell?.classList.toggle('dark', query.matches);
+
     sync();
     query.addEventListener('change', sync);
+
     return () => query.removeEventListener('change', sync);
   });
 </script>

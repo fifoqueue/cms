@@ -28,6 +28,7 @@ export const createSearchProviders = (
     searchHookResultsSchema,
     options,
   );
+
   // Null selects the direct database path, avoiding a second hydration.
   registry.register('core', 'database', () => null, true);
   registry.register('core', 'meilisearch', (query) => search.find(query), true);
@@ -35,9 +36,11 @@ export const createSearchProviders = (
     find: async (query) => {
       const args = searchHookQuerySchema.parse(query);
       const hits = await registry.resolve(args);
+
       return hits && { ...hits, ids: hits.ids.slice(0, args.pageSize) };
     },
   };
+
   return { registry, lookup };
 };
 
@@ -49,6 +52,7 @@ export const createSitemapProviders = (
     sitemapPageSchema,
     options,
   );
+
   for (const kind of [
     'content',
     'category',
@@ -61,6 +65,7 @@ export const createSitemapProviders = (
       kind,
       async (query) => {
         const result = await repository.list({ ...query, kind });
+
         return {
           total: result.total,
           items: result.items.map((item) => ({
@@ -73,6 +78,7 @@ export const createSitemapProviders = (
       },
       true,
     );
+
   return registry;
 };
 
@@ -81,6 +87,8 @@ export const createThemeContributions = (options: Options) => {
     ThemeContributionRequest,
     ThemeContribution
   >(themeContributionSchema, options);
+
   registry.register('core', 'core', (query) => query.base, true);
+
   return registry;
 };

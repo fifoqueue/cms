@@ -21,5 +21,6 @@ export const storageKeyOf = (
     value.key === initialKey
       ? `${value.directory ? `${value.directory}/` : ''}${value.basename}.${extension}`
       : value.key.replace(/\.[^/.]*$/, '') + `.${extension}`;
+
   return key;
 };

@@ -10,9 +10,11 @@ export const GET: RequestHandler = async (event) => {
   requireCapability(event.locals, 'content.create');
   const id = event.url.searchParams.get('id');
   const headers = { 'cache-control': 'private, no-store' };
+
   // Patterns active plugins contribute: insertable copies, labelled by their plugin.
   if (event.url.searchParams.has('contributions')) {
     const groups = await adminFor(event).patterns.contributions();
+
     return json(
       groups.flatMap(({ key, source, patterns }) =>
         patterns.map(({ title, document }, index) => ({
@@ -25,6 +27,7 @@ export const GET: RequestHandler = async (event) => {
       { headers },
     );
   }
+
   if (id) {
     const {
       id: patternId,
@@ -33,17 +36,20 @@ export const GET: RequestHandler = async (event) => {
       status,
       document,
     } = await adminFor(event).patterns.get(id).catch(notFoundFrom);
+
     return json(
       { id: patternId, title, synced, status, document },
       { headers },
     );
   }
+
   const query = patternListQuerySchema.safeParse(
     Object.fromEntries(event.url.searchParams),
   );
   const patterns = await adminFor(event).patterns.list(
     query.success ? query.data : {},
   );
+
   return json(
     {
       items: patterns.items.map(
@@ -72,6 +78,7 @@ export const POST: RequestHandler = async (event) => {
     synced?: unknown;
     document?: unknown;
   } | null;
+
   try {
     const { id, title, synced, status, document } = await adminFor(
       event,
@@ -83,6 +90,7 @@ export const POST: RequestHandler = async (event) => {
         ? 'published'
         : 'draft',
     });
+
     return json({ id, title, synced, status, document }, { status: 201 });
   } catch (caught) {
     if (caught instanceof CmsApiError && caught.status < 500)

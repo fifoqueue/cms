@@ -75,6 +75,7 @@ export class ThemeStateStore {
 
     for (const [id, value] of Object.entries(recordOf(storedCustomizations))) {
       const result = themeCustomizationSchema.safeParse(value);
+
       if (result.success && findTheme(state, id))
         state.customizations[id] = result.data;
     }
@@ -85,6 +86,7 @@ export class ThemeStateStore {
     for (const theme of installed) {
       const id = theme.manifest.id;
       const source = recordOf(record.functions)[id];
+
       if (typeof source === 'string') state.functions[id] = source;
     }
 

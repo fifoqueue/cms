@@ -12,6 +12,7 @@ export const load: LayoutServerLoad = async (event) => {
   const layout = await siteLayout(event).catch(() => null);
   const theme = layout ? themeView(layout.theme) : null;
   const site = layout?.site;
+
   return {
     uiFont: theme ? { family: bodyFont(theme), fonts: theme.fonts } : null,
     /** The site icon (Settings → General) for screens without site data: admin, sign-in, errors. */

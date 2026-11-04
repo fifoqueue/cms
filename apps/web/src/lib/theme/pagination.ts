@@ -18,10 +18,12 @@ export type HomeListType = (typeof HOME_LIST_TYPES)[number];
 /** Query string (without `?`) for one page of a listing, keeping its filters. */
 export const pageQuery = (target: ListingTarget, page: number) => {
   const params = new URLSearchParams();
+
   if (target.kind === 'search') params.set('q', target.query);
   if (target.kind === 'home' && target.type !== 'post')
     params.set('type', target.type);
   params.set('page', String(page));
+
   return params.toString();
 };
 

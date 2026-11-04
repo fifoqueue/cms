@@ -338,6 +338,7 @@ export const issueParams = (
         ? value.slice(0, ISSUE_PARAMS_LIMITS.value)
         : value,
     ]);
+
   return kept.length ? Object.fromEntries(kept) : undefined;
 };
 
@@ -351,6 +352,7 @@ export const withParams = (
   path = '',
 ) => {
   const bounded = issueParams(params);
+
   return [{ path, message, ...(bounded && { params: bounded }) }];
 };
 
@@ -363,6 +365,7 @@ export const paramsOf = (error: DomainError): IssueParams | undefined => {
     first && typeof first === 'object' && 'params' in first
       ? first.params
       : undefined;
+
   return params && typeof params === 'object'
     ? issueParams(params as Record<string, unknown>)
     : undefined;

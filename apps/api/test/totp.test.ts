@@ -36,6 +36,7 @@ test.each([
   [20000000000, '65353130'],
 ] as const)('RFC 6238 SHA-1 at %s seconds', (seconds, expected) => {
   const counter = Math.floor(seconds / 30);
+
   expect(base32(key)).toBe(secret);
   expect(totpCode(key, counter, 8)).toBe(expected);
   expect(totpCode(key, counter)).toBe(expected.slice(-6));
@@ -57,6 +58,7 @@ test('enrollment remains pending, stores sealed secret only after proof, and con
     site: async () => ({ title: ':A & B:' }),
   });
   const begin = await factor.enroll!.begin(user);
+
   expect(begin.kind).toBe('fields');
   expect(begin.display).toEqual([
     { kind: 'code', text: secret },
@@ -67,6 +69,7 @@ test('enrollment remains pending, stores sealed secret only after proof, and con
   ]);
   expect(JSON.stringify(begin.state)).not.toContain(secret);
   const pending = begin.state as { userId: string; sealed: string };
+
   expect(box.open(pending.sealed)).toBe(secret);
   for (const state of [
     { userId: user.id, secret },
@@ -91,6 +94,7 @@ test('enrollment remains pending, stores sealed secret only after proof, and con
     true,
   );
   const record = (await secrets.find(user.id))!;
+
   await expect(Promise.resolve(factor.enroll!.begin(user))).rejects.toThrow(
     Errors.InvalidCredentials,
   );
@@ -107,6 +111,7 @@ test('enrollment remains pending, stores sealed secret only after proof, and con
   ]);
   now = new Date(now.getTime() + 30000);
   const next = totpCode(key, Math.floor(now.getTime() / 30000));
+
   expect(
     (
       await Promise.all([
@@ -125,9 +130,11 @@ test('enrollment remains pending, stores sealed secret only after proof, and con
 
 test('production secret generation has 160 bits and unreadable sealed secrets fail closed', async () => {
   const first = totpAlgorithm.secret();
+
   expect(first).toMatch(/^[A-Z2-7]{32}$/);
   expect(totpAlgorithm.secret()).not.toBe(first);
   const secrets = new MemoryTotpSecrets();
+
   await secrets.insert({
     id: 'key',
     userId: user.id,
@@ -143,6 +150,7 @@ test('production secret generation has 160 bits and unreadable sealed secrets fa
     totp: totpAlgorithm,
     site: async () => ({ title: 'CMS' }),
   });
+
   expect(await factor.verify(user, step(null, '287082'))).toBe(false);
   expect((await secrets.find(user.id))!.lastStep).toBe(-1);
 });

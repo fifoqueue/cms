@@ -12,10 +12,12 @@ export const obscureAccountLookup = async <T>(
   timing = systemTiming,
 ): Promise<T> => {
   const started = timing.now();
+
   try {
     return await task();
   } finally {
     const remaining = MINIMUM_MS - (timing.now() - started);
+
     if (remaining > 0) await timing.wait(remaining);
   }
 };

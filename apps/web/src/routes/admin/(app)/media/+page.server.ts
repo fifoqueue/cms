@@ -13,6 +13,7 @@ export const load: PageServerLoad = async (event) => {
   const { filter, query } = readMediaFilter(params);
   const page = Math.max(1, Math.trunc(Number(params.get('page'))) || 1);
   const screen = readScreenOptions(event.cookies, 'media', [], 48);
+
   // Polled while a resync runs. The list comes from the database only, never the storage.
   event.depends('media:resync');
   const admin = adminFor(event);
@@ -22,7 +23,9 @@ export const load: PageServerLoad = async (event) => {
       ? admin.media.storage.resyncStatus()
       : null,
   ]);
+
   clampPage(event.url, media);
+
   return {
     filter,
     screen,
@@ -35,6 +38,7 @@ export const actions: Actions = {
   /** Queues a pass over the current storage (or joins the one already running). */
   resync: async (event) => {
     requireCapability(event.locals, 'media.manage');
+
     return submitAction(
       () => adminFor(event).media.storage.resync(),
       'mediaResyncStarted',
@@ -50,6 +54,7 @@ export const actions: Actions = {
     const admin = adminFor(event);
     let deleted = 0;
     let kept = 0;
+
     for (const id of ids) {
       try {
         await admin.media.remove(id, false);
@@ -61,6 +66,7 @@ export const actions: Actions = {
         kept++;
       }
     }
+
     return { deleted, kept };
   },
 };

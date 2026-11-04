@@ -61,6 +61,7 @@ const WEB_ERRORS = [
 /** Only serializable, public copy leaves the server; administration remains server-only here. */
 export const siteCatalog = (language: string): SiteCatalog => {
   const m = messagesFor(language);
+
   return {
     language,
     strings: Object.fromEntries(

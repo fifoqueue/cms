@@ -58,6 +58,7 @@
   /** The saved order first; boxes the user never placed keep their default position after. */
   const rank = (id: string) => {
     const index = data.layout.order.indexOf(id);
+
     return index === -1 ? 1000 : index;
   };
   const visible = $derived(

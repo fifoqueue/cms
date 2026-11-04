@@ -14,6 +14,7 @@ export const countMonth = (
 ) => {
   const key = `${year}-${month}`;
   const item = counts.get(key) ?? { year, month, count: 0 };
+
   item.count += 1;
   counts.set(key, item);
 };

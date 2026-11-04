@@ -10,6 +10,7 @@ export const load: PageServerLoad = async (event) => {
     admin.reading.get(),
     admin.content.list({ type: 'page', status: 'published', pageSize: 100 }),
   ]);
+
   return {
     reading,
     pages: pages.items.map(({ id, title }) => ({ id, title })),
@@ -39,6 +40,7 @@ export const actions: Actions = {
         Math.trunc(Number(text(form, 'cacheSeconds'))) || 0,
       ),
     };
+
     return submitAction(() => adminFor(event).reading.update(input));
   },
 };

@@ -37,6 +37,7 @@
   const chosenImage = (key: string) => {
     if (key in imageFields) return imageFields[key];
     const id = values[key];
+
     return typeof id === 'string' ? { id, url: images[key] ?? '' } : null;
   };
   let fieldPicker = $state<ReturnType<typeof MediaPicker>>();

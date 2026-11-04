@@ -1,6 +1,7 @@
 // See https://svelte.dev/docs/kit/types#app.d.ts
 import type { UserProfile } from '@cms/sdk';
 import type { contentApi } from '#lib/server/api.js';
+
 declare global {
   namespace App {
     interface Locals {

@@ -26,12 +26,15 @@ export const pushRequest = async <T>(
   if (!request.headers.get('content-type')?.startsWith('application/json'))
     return null;
   let body: unknown;
+
   try {
     body = await request.json();
   } catch {
     return null;
   }
+
   const parsed = schema.safeParse(body);
+
   return parsed.success ? parsed.data : null;
 };
 
@@ -42,6 +45,7 @@ export const invalidPushRequest = () =>
 export const forwardPush = async (call: () => Promise<unknown>) => {
   try {
     await call();
+
     return new Response(null, { status: 204 });
   } catch (caught) {
     if (caught instanceof CmsApiError && caught.status < 500)

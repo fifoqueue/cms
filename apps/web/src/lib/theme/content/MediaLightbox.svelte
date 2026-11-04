@@ -24,12 +24,15 @@
   $effect(() => {
     const element = container;
     const label = m.themeLightboxOpen;
+
     // Another entry (or a re-render) replaces the images, so a viewer left open closes.
     open = false;
     items = [];
     if (!element || !html.includes('<img')) return;
     const images = [...element.querySelectorAll<HTMLImageElement>(ZOOMABLE)];
+
     if (!images.length) return;
+
     for (const image of images) {
       image.setAttribute('role', 'button');
       image.setAttribute('tabindex', '0');
@@ -58,19 +61,24 @@
         : null;
     const onClick = (event: MouseEvent) => {
       const image = target(event);
+
       if (image) show(image);
     };
     const onKeydown = (event: KeyboardEvent) => {
       const image = target(event);
+
       if (!image || (event.key !== 'Enter' && event.key !== ' ')) return;
       event.preventDefault();
       show(image);
     };
+
     element.addEventListener('click', onClick);
     element.addEventListener('keydown', onKeydown);
+
     return () => {
       element.removeEventListener('click', onClick);
       element.removeEventListener('keydown', onKeydown);
+
       for (const image of images) {
         for (const name of ['role', 'tabindex', 'aria-haspopup', 'aria-label'])
           image.removeAttribute(name);

@@ -44,15 +44,18 @@ export const noticeRecipients = async <U extends { email: string }>(
     { ...notice, to: [...notice.to] },
     async (value) => {
       const result = schema.safeParse(value);
+
       if (!result.success) return false;
       const added = result.data.to
         .map((address) => address.toLowerCase())
         .filter((address) => !core.has(address));
+
       if (!added.length) return true;
       const [known, refusedAddresses] = await Promise.all([
         lookup(),
         refused(),
       ]);
+
       return added.every(
         (address) => known.has(address) && !refusedAddresses.has(address),
       );
@@ -61,16 +64,21 @@ export const noticeRecipients = async <U extends { email: string }>(
   const seen = new Set<string>();
   const kept: string[] = [];
   const added: U[] = [];
+
   for (const address of to) {
     const key = address.toLowerCase();
+
     if (seen.has(key)) continue;
     seen.add(key);
     const listed = core.get(key);
+
     if (listed !== undefined) kept.push(listed);
     else {
       const user = (await lookup()).get(key);
+
       if (user) added.push(user);
     }
   }
+
   return { kept, added };
 };

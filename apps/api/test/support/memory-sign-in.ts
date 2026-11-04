@@ -11,11 +11,13 @@ export class MemorySignInTransactions implements SignInTransactions {
 
   async admit(record: SignInTransaction, now: Date, limits: AdmissionLimits) {
     const state = signInStateSchema.parse(record.state ?? null);
+
     for (const [key, row] of this.rows)
       if (row.expiresAt <= now) {
         this.rows.delete(key);
         this.busy.delete(key);
       }
+
     if (record.expiresAt <= now || this.rows.has(record.handleHash))
       return false;
     if (this.rows.size >= limits.total) return false;
@@ -26,16 +28,19 @@ export class MemorySignInTransactions implements SignInTransactions {
     )
       return false;
     this.rows.set(record.handleHash, structuredClone({ ...record, state }));
+
     return true;
   }
 
   async take(handleHash: string, clientKey: string, now: Date) {
     const row = await this.acquire(handleHash, clientKey, now);
+
     return row && (await this.replace(handleHash, null, now)) ? row : null;
   }
 
   async acquire(handleHash: string, clientKey: string, now: Date) {
     const row = this.rows.get(handleHash);
+
     if (
       !row ||
       this.busy.has(handleHash) ||
@@ -44,18 +49,21 @@ export class MemorySignInTransactions implements SignInTransactions {
     )
       return null;
     this.busy.add(handleHash);
+
     return structuredClone(row);
   }
 
   async release(handleHash: string, now: Date) {
     this.busy.delete(handleHash);
     const row = this.rows.get(handleHash);
+
     if (row && row.expiresAt <= now) this.rows.delete(handleHash);
   }
 
   async replace(handleHash: string, next: SignInTransaction | null, now: Date) {
     const state = next ? signInStateSchema.parse(next.state ?? null) : null;
     const row = this.rows.get(handleHash);
+
     if (
       !row ||
       !this.busy.has(handleHash) ||
@@ -67,6 +75,7 @@ export class MemorySignInTransactions implements SignInTransactions {
     this.rows.delete(handleHash);
     if (next)
       this.rows.set(next.handleHash, structuredClone({ ...next, state }));
+
     return true;
   }
 }

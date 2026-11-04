@@ -67,12 +67,15 @@
   // changes apply the stored choice here (the site editor and admin never set the attribute).
   $effect(() => {
     let stored: string | null = null;
+
     try {
       stored = localStorage.getItem(SCHEME_KEY);
     } catch {
       // Storage may be unavailable; the theme's own scheme shows.
     }
+
     const value = rememberedScheme(data.theme, stored);
+
     if (value) document.documentElement.setAttribute(SCHEME_ATTRIBUTE, value);
     else document.documentElement.removeAttribute(SCHEME_ATTRIBUTE);
   });

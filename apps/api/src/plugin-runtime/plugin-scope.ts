@@ -20,18 +20,23 @@ export class PluginScope {
   async run<T>(operation: () => T | Promise<T>): Promise<T> {
     this.assertActive();
     const result = await operation();
+
     this.assertActive();
+
     return result;
   }
 
   track(register: () => Unsubscribe): Unsubscribe {
     this.assertActive();
     const release = register();
+
     if (this.disposed) {
       release();
       throw new Error(Errors.PluginInactive);
     }
+
     this.releases.push(release);
+
     return () => {
       this.releases = this.releases.filter((entry) => entry !== release);
       release();

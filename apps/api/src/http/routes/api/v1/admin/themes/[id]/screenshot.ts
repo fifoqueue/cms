@@ -8,7 +8,9 @@ export const routes = (app: ApiApp) =>
     '',
     async ({ themes, params }) => {
       const image = await themes.screenshot(params.id);
+
       if (!image) return new Response(null, { status: 404 });
+
       return new Response(image.bytes, {
         headers: {
           'content-type': image.type,

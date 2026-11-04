@@ -28,6 +28,7 @@ export class InstallationService {
 
   async status(): Promise<InstallationStatus> {
     const databaseConfigured = this.backend.configured();
+
     return {
       databaseConfigured,
       setupRequired:
@@ -37,28 +38,33 @@ export class InstallationService {
 
   async database(input: unknown): Promise<InstallationStatus> {
     const { token, ...database } = parseInput(installDatabaseSchema, input);
+
     return this.exclusive(token, async () => {
       if (this.backend.configured())
         throw conflict(Errors.InstallDatabaseConfigured);
       await this.backend.configure(database);
+
       return this.status();
     });
   }
 
   async complete(input: unknown): Promise<SessionGrant> {
     const values = parseInput(installCompleteSchema, input);
+
     return this.exclusive(values.token, async () => {
       if (!this.backend.configured())
         throw conflict(Errors.InstallDatabaseRequired);
       if (!(await this.backend.setupRequired()))
         throw conflict(Errors.InstallCompleted);
       const result = await this.backend.complete(values);
+
       void this.hooks?.()?.emit('site.installed', {
         title: values.site.title,
         description: values.site.description,
         locale: values.site.locale,
         siteUrl: values.siteUrl,
       });
+
       return result;
     });
   }
@@ -70,6 +76,7 @@ export class InstallationService {
     if (!this.validToken(token)) throw unauthorized(Errors.InstallKeyInvalid);
     if (this.busy) throw conflict(Errors.InstallBusy);
     this.busy = true;
+
     try {
       return await task();
     } finally {

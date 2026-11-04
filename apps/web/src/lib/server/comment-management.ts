@@ -55,6 +55,7 @@ export const loadManagement = async (
   thread: Promise<PublicCommentPage | null>,
 ): Promise<CommentManagement | null> => {
   const token = sessionToken(event.cookies, event.url);
+
   if (!token) return null;
   const api = adminApi(event.fetch, token, clientProof(event));
   const pages = await Promise.all(
@@ -62,8 +63,10 @@ export const loadManagement = async (
       api.comments.list({ contentId, status, pageSize: HELD_LIMIT }),
     ),
   ).catch(() => null);
+
   if (!pages) return null;
   const held = pages.flatMap((page) => page.items);
+
   // A theme preview is a page shown to others (screenshots, shared screens): no origins at all.
   if (themePreviewToken(event.cookies))
     return { ...managementView(held, []), origins: {} };
@@ -87,5 +90,6 @@ export const loadManagement = async (
     (lists) => lists.flatMap((list) => list.items),
     () => [],
   );
+
   return managementView(held, shown);
 };

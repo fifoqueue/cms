@@ -63,8 +63,10 @@ const listingRoot = (target: ListingTarget) =>
 /** One page of a listing with only its own filters; page 1 carries no `page` parameter. */
 export const listingPath = (target: ListingTarget, page = 1) => {
   const params = new URLSearchParams(pageQuery(target, page));
+
   if (page <= 1) params.delete('page');
   const query = params.toString();
+
   return query ? `${listingRoot(target)}?${query}` : listingRoot(target);
 };
 

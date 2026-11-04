@@ -10,6 +10,7 @@ export const routes = (app: ApiApp) =>
       '',
       async ({ users, user, params, set }) => {
         set.headers['cache-control'] = 'private, no-store';
+
         return json(await users.profileFields(params.id, user));
       },
       idParams,
@@ -18,6 +19,7 @@ export const routes = (app: ApiApp) =>
       '',
       async ({ users, user, params, request, set }) => {
         set.headers['cache-control'] = 'private, no-store';
+
         return json(
           await users.saveProfileFields(
             params.id,

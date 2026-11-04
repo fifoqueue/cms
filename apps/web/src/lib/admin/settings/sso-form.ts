@@ -74,6 +74,7 @@ export const ssoIssueField = (
   path: string,
 ): { index: number; field: SsoProviderField } | null => {
   const [root, index, field] = path.split('.');
+
   return root === 'providers' &&
     /^\d+$/.test(index ?? '') &&
     (SSO_PROVIDER_FIELDS as readonly string[]).includes(field ?? '')

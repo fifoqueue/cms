@@ -7,7 +7,9 @@ export const routes = (app: ApiApp) =>
   app.get('', async ({ permalinkResolver, query, request, auth, set }) => {
     const user = await currentUser(auth, request);
     const proofs = unlockProofs(request);
+
     if (user || proofs.length)
       set.headers['cache-control'] = 'private, no-store';
+
     return json(await permalinkResolver.resolve(query, proofs, user));
   });

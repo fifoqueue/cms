@@ -6,6 +6,7 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = async (event) => {
   requireCapability(event.locals, 'content.create');
   const providers = await contentApi(event.fetch).embedProviders();
+
   return json(
     providers.map(({ id, label, urlPattern }) => ({ id, label, urlPattern })),
   );

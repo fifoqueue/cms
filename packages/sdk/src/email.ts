@@ -180,9 +180,11 @@ const bodyTemplate = z
         !EMAIL_TEMPLATE_PLACEHOLDERS.some((name) => name === match[1]!.trim())
       )
         return false;
+
     try {
       // Placeholders stand in for JSON strings; the template must stay valid JSON.
       JSON.parse(template.replaceAll(/\{\{\s*\w+\s*\}\}/g, '""'));
+
       return true;
     } catch {
       return false;
@@ -235,6 +237,7 @@ export const emailSettingsInputSchema = z
         .max(2048)
         .refine((url) => {
           if (!url) return true;
+
           try {
             return new URL(url).protocol === 'https:';
           } catch {
@@ -264,6 +267,7 @@ export const emailSettingsInputSchema = z
         path: ['fromEmail'],
       });
     if (settings.pluginTransport) return;
+
     if (settings.transport === 'smtp') {
       if (!settings.smtp.host)
         ctx.addIssue({
@@ -271,10 +275,13 @@ export const emailSettingsInputSchema = z
           message: Errors.EmailServerRequired,
           path: ['smtp', 'host'],
         });
+
       return;
     }
+
     const { http } = settings;
     const fields = EMAIL_PROVIDER_FIELDS[http.provider];
+
     for (const field of fields.required)
       if (!http[field].trim())
         ctx.addIssue({

@@ -19,6 +19,7 @@ test('storage secrets stay sealed, preserve on omission, and never follow a chan
     transactions: {
       run: async (key, task) => {
         await store.set(key, true);
+
         return task(store);
       },
     },
@@ -42,6 +43,7 @@ test('storage secrets stay sealed, preserve on omission, and never follow a chan
     driver: 's3',
     s3: { ...s3, secretAccessKey: 'private-secret' },
   });
+
   expect(JSON.stringify(saved)).not.toContain('private-secret');
   expect(saved.s3?.secretAccessKeyConfigured).toBe(true);
   await settings.update({ driver: 's3', s3 });

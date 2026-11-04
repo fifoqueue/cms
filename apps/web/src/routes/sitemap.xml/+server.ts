@@ -17,11 +17,13 @@ export const GET: RequestHandler = async ({ fetch }) => {
     api.seo.settings(),
     api.seo.providers(),
   ]);
+
   if (!settings.indexingEnabled) return notFound();
   if (!settings.siteUrl) return missingSiteUrl('The sitemap');
   const totals = await mapLimit(kinds, (kind) =>
     api.seo.sitemap({ kind, pageSize: 1 }).then((page) => page.total),
   );
+
   return sitemapIndex(
     settings.siteUrl,
     Object.fromEntries(kinds.map((kind, index) => [kind, totals[index]!])),

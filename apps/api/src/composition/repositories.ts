@@ -124,6 +124,7 @@ export const createRepositories = async ({
   );
   const revisions = new PrismaRevisionRepository(db);
   const jobQueue = new PrismaJobQueue(db, uuidV7, secrets);
+
   await jobQueue.sealLegacy();
   const taskLeases = new PrismaTaskLeases(db);
   const mediaKeyCatchUp = new PrismaMediaKeyCatchUp(db);
@@ -180,6 +181,7 @@ export const createRepositories = async ({
     expired: (now, limit) => expiredCleanup.batch(now, limit),
     expiredCount: (now) => expiredCleanup.count(now),
   });
+
   return {
     contentRepository,
     settingsRepository,

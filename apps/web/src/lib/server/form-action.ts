@@ -14,5 +14,6 @@ export const submitAction = async (
   } catch (caught) {
     return failFrom(caught);
   }
+
   return { notice };
 };

@@ -118,6 +118,7 @@ const TASK_TIMEOUT_MS = 60_000;
 const checkKey = (key: string) => {
   if (!STORAGE_KEY.test(key))
     throw new Error(Errors.PluginStorageKeyInvalid(key));
+
   return key;
 };
 
@@ -134,6 +135,7 @@ export class PluginContextFactory {
     services.fields ??= new DefinitionRegistry(fieldDefinitionSchema);
     services.capabilities ??= new CapabilityRegistry();
     const options = { timeoutMs: 3000, logger: services.logger('core') };
+
     services.roles ??= new RoleRegistry();
     services.profileFields ??= new ProfileFields();
     services.captchaProviders ??= new CaptchaRegistry(options);
@@ -260,15 +262,18 @@ export class PluginContextFactory {
       },
       jobs: (() => {
         const registrar = this.services.jobs?.registrar(id);
+
         return {
           register: (kind, definition) =>
             scope.track(() => {
               if (!registrar) throw new Error(Errors.PluginInactive);
+
               return registrar.register(kind, definition);
             }),
           enqueue: (kind, payload, options) =>
             scope.run(() => {
               if (!registrar) throw new Error(Errors.PluginInactive);
+
               return registrar.enqueue(kind, payload, options);
             }),
         } satisfies JobRegistrar;
@@ -278,6 +283,7 @@ export class PluginContextFactory {
           scope.track(() => {
             if (!this.services.mailTransports)
               throw new Error(Errors.EmailDisabled);
+
             return this.services.mailTransports.plugin(id, key, transport);
           }),
       },
@@ -305,12 +311,14 @@ export class PluginContextFactory {
             const snapshot = structuredClone(
               patternContributionSchema.parse(definitions),
             );
+
             for (const pattern of snapshot) {
               blocks.check(pattern.document);
               if (!this.services.patternRenderer)
                 throw new Error(Errors.PluginInactive);
               this.services.patternRenderer.render(pattern.document);
             }
+
             return this.services.patterns!.register(id, key, () =>
               structuredClone(snapshot),
             );
@@ -408,6 +416,7 @@ export class PluginContextFactory {
         every: (name, intervalMs, task) => {
           if (!TASK_NAME.test(name) || name.length > 64)
             throw new Error(Errors.PluginTaskNameInvalid(name));
+
           return scope.track(() =>
             scheduler.add({
               name: `plugin:${id}:${name}`,
@@ -417,6 +426,7 @@ export class PluginContextFactory {
                   () => scope.run(task),
                   TASK_TIMEOUT_MS,
                 );
+
                 if (!result.ok)
                   log.warn(`task "${name}" failed: ${result.error.message}`);
               },

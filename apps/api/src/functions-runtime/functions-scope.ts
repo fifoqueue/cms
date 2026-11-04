@@ -9,9 +9,11 @@ export class FunctionsScope extends PluginScope {
     if (!this.pending) return super.track(register);
     let cancelled = false;
     let release: Unsubscribe | undefined;
+
     this.pending.push(() => {
       if (!cancelled) release = super.track(register);
     });
+
     return () => {
       cancelled = true;
       release?.();
@@ -20,6 +22,7 @@ export class FunctionsScope extends PluginScope {
 
   commit(): void {
     const pending = this.pending ?? [];
+
     this.pending = null;
     for (const register of pending) register();
   }

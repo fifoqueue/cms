@@ -17,11 +17,13 @@ const assets = new Set(
 );
 const owners = new Map();
 const ordering = new Set();
+
 for (const asset of assets) {
   const css = await readFile(new URL(asset, client), 'utf8');
   const rules = css.replace(/\/\*[\s\S]*?\*\//g, '');
   const layers = [...rules.matchAll(/@layer\s+([^;{]+)[;{]/g)];
   const order = [...new Set(layers.flatMap((match) => match[1].split(',')))];
+
   for (const match of layers) {
     for (const name of match[1].split(','))
       assert.ok(
@@ -43,6 +45,7 @@ for (const asset of assets) {
     assert.ok(!owners.has(match[1]), `Duplicate utility owner: ${match[1]}`);
     owners.set(match[1], asset);
     const header = layers[0];
+
     assert.equal(
       header?.[0],
       '@layer properties,theme,base,components,utilities,admin-utilities;',
@@ -51,6 +54,7 @@ for (const asset of assets) {
     assert.ok(!css.includes('cms-layer-order:'), `${asset}: uncompiled marker`);
     ordering.add(header[0]);
   }
+
   if (order.includes('admin-utilities')) {
     assert.ok(
       order.indexOf('utilities') >= 0 &&
@@ -59,6 +63,7 @@ for (const asset of assets) {
     );
   }
 }
+
 assert.equal(owners.size, 2, 'Both isolated utility builds must exist');
 assert.equal(
   ordering.size,
@@ -70,22 +75,27 @@ assert.notEqual(owners.get('utilities'), owners.get('admin-utilities'));
 const adminEntry = new URL('../src/routes/layout.css', import.meta.url);
 const publicEntry = new URL('../src/lib/theme/public.css', import.meta.url);
 const adminSource = await readFile(adminEntry, 'utf8');
+
 assert.match(adminSource, /@source '\.\.';/);
 const scanRoot = fileURLToPath(new URL('../', adminEntry));
 const publicSource = await readFile(publicEntry, 'utf8');
+
 for (const match of publicSource.matchAll(/@source ['"]([^'"]+)['"];/g)) {
   const path = relative(
     scanRoot,
     fileURLToPath(new URL(match[1], publicEntry)),
   );
+
   assert.ok(
     !path.startsWith('..') && !isAbsolute(path),
     'Public source outside admin scan',
   );
 }
+
 const nodes = new URL('../server/nodes/', client);
 let publicLayout;
 let publicPage;
+
 for (const name of await readdir(nodes)) {
   if (!name.endsWith('.js')) continue;
   const code = await readFile(new URL(name, nodes), 'utf8');
@@ -94,6 +104,7 @@ for (const name of await readdir(nodes)) {
   );
   const site = code.includes('/entries/pages/(site)/');
   const admin = code.includes('/entries/pages/admin/');
+
   if (site || name === '0.js')
     assert.ok(
       !styles.includes(owners.get('admin-utilities')),
@@ -109,19 +120,24 @@ for (const name of await readdir(nodes)) {
   if (code.includes('/entries/pages/(site)/_page.svelte.js'))
     publicPage = styles;
 }
+
 assert.ok(publicLayout?.includes(owners.get('utilities')));
 assert.ok(publicPage);
 let raw = 0;
 let gzip = 0;
+
 for (const asset of new Set([...publicLayout, ...publicPage])) {
   const css = await readFile(new URL(asset, client));
+
   raw += css.length;
   gzip += gzipSync(css).length;
 }
+
 // Catches admin utilities leaking into public pages (that build was ~149K raw / ~27.6K gzip)
 // while leaving room for ordinary growth from public styles and Tailwind releases.
 const PUBLIC_RAW_BUDGET = 120_000;
 const PUBLIC_GZIP_BUDGET = 23_500;
+
 assert.ok(
   raw <= PUBLIC_RAW_BUDGET && gzip <= PUBLIC_GZIP_BUDGET,
   `Public CSS exceeds its budget: ${raw} raw / ${gzip} gzip`,

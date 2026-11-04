@@ -59,6 +59,7 @@ const partsOf = (theme: ThemePackage, custom: ThemeCustomization = EMPTY) => {
   const parts = new Map(
     theme.manifest.templateParts.map((part) => [part.slug, part]),
   );
+
   for (const slug of new Set([
     ...Object.keys(theme.parts),
     ...Object.keys(custom.parts),
@@ -69,6 +70,7 @@ const partsOf = (theme: ThemePackage, custom: ThemeCustomization = EMPTY) => {
         title: slug,
         area: AREAS[slug as keyof typeof AREAS] ?? 'uncategorized',
       });
+
   return [...parts.values()];
 };
 
@@ -86,10 +88,12 @@ const stylesOf = (
 ): ThemeStyles => {
   const fonts = fontSlugs(theme, siteFonts);
   const styles = { ...theme.manifest.styles, ...custom.styles };
+
   if (!fonts.includes(styles.fontFamily))
     styles.fontFamily = theme.manifest.styles.fontFamily;
   if (styles.headingFontFamily && !fonts.includes(styles.headingFontFamily))
     styles.headingFontFamily = theme.manifest.styles.headingFontFamily;
+
   return styles;
 };
 
@@ -111,6 +115,7 @@ const toPublic = (
   );
   const stack = (slug: string) =>
     fontFamilies.find((font) => font.slug === slug)?.fontFamily ?? '';
+
   return {
     id: manifest.id,
     name: manifest.name,
@@ -219,13 +224,16 @@ export class ThemeService {
   async activeFunctions(): Promise<{ owner: string; text: string } | null> {
     const state = await this.state.load();
     const text = state.functions[state.active];
+
     return text === undefined ? null : { owner: `theme:${state.active}`, text };
   }
 
   /** Replaces the site fonts; styles that chose a removed font fall back to the theme's. */
   async saveFonts(input: unknown): Promise<SiteFont[]> {
     const { fonts } = parseInput(siteFontsInputSchema, input);
+
     await this.exclusive(() => this.siteFonts.save(fonts));
+
     return fonts;
   }
 
@@ -266,6 +274,7 @@ export class ThemeService {
       this.siteFonts.load(),
     ]);
     const theme = findTheme(state, id);
+
     return theme
       ? this.contributed(
           toPublic(theme, state.customizations[id], fonts),
@@ -283,14 +292,17 @@ export class ThemeService {
     },
   ) {
     const base = { templates: theme.templates, parts: theme.parts };
+
     for (const key of this.contributions?.keys() ?? []) {
       const entry = await this.contributions!.resolveEntry(
         { themeId: theme.id, base },
         key,
       );
+
       if (!entry) continue;
       const contribution = entry.value;
       const parts = new Map(theme.parts.map((part) => [part.slug, part]));
+
       for (const part of contribution.parts)
         if (!parts.has(part.slug)) parts.set(part.slug, part);
       const merged = publicThemeSchema.safeParse({
@@ -302,6 +314,7 @@ export class ThemeService {
         },
         parts: [...parts.values()],
       });
+
       if (merged.success) {
         if (sources) {
           for (const name of Object.keys(contribution.templates))
@@ -311,9 +324,11 @@ export class ThemeService {
             if (!theme.parts.some((existing) => existing.slug === part.slug))
               sources.parts[part.slug] = entry.source;
         }
+
         theme = merged.data;
       }
     }
+
     return theme;
   }
 
@@ -333,8 +348,10 @@ export class ThemeService {
   async install(bytes: Uint8Array, actor: Actor): Promise<AdminTheme> {
     authorize(actor, 'appearance.manage');
     const { files, screenshot } = this.archive.read(bytes);
+
     if (files.has('functions.ts')) authorize(actor, 'functions.edit');
     const theme = parseInput(themePackageSchema, packageFromFiles(files));
+
     if (screenshot) await this.screenshots.check(screenshot);
 
     if (isBuiltinTheme(theme.manifest.id))
@@ -350,6 +367,7 @@ export class ThemeService {
       else state.installed[index] = theme;
 
       const functions = files.get('functions.ts');
+
       if (functions === undefined) delete state.functions[theme.manifest.id];
       else state.functions[theme.manifest.id] = functions;
       await this.state.save(state);
@@ -360,13 +378,16 @@ export class ThemeService {
       await this.screenshots.save(theme.manifest.id, screenshot);
 
       const dto = toAdmin(state, theme, await this.screenshots.versions());
+
       void this.hooks?.emit('theme.installed', dto);
+
       return dto;
     });
   }
 
   activate(id: string, actor: Actor): Promise<AdminTheme> {
     authorize(actor, 'appearance.manage');
+
     return this.exclusive(async () => {
       const state = await this.state.load();
       const theme = this.require(state, id);
@@ -377,7 +398,9 @@ export class ThemeService {
       await this.functionsChanged?.();
 
       const dto = toAdmin(state, theme);
+
       void this.hooks?.emit('theme.activated', dto);
+
       return dto;
     });
   }
@@ -398,10 +421,12 @@ export class ThemeService {
       delete state.functions[id];
       await this.state.save(state);
       await this.functionsChanged?.();
+
       if (state.customizations[id]) {
         delete state.customizations[id];
         await this.state.saveCustomizations(state);
       }
+
       await this.screenshots.save(id, null);
       void this.hooks?.emit('theme.deleted', dto);
     });
@@ -474,6 +499,7 @@ export class ThemeService {
   async saveTemplate(id: string, name: string, input: unknown): Promise<void> {
     if (!TEMPLATE_NAME.test(name)) throw notFound(Errors.ThemeTemplateNotFound);
     const { blocks } = parseInput(themeBlocksInputSchema, input);
+
     return this.customize(id, 'template.updated', (custom) => {
       custom.templates[name] = blocks;
     });
@@ -490,6 +516,7 @@ export class ThemeService {
 
   async savePart(id: string, slug: string, input: unknown): Promise<void> {
     const { blocks } = parseInput(themeBlocksInputSchema, input);
+
     return this.customize(id, 'templatePart.updated', (custom) => {
       if (!SLUG.test(slug) || slug.length > 64)
         throw invalidInput(Errors.ThemePartNotFound);
@@ -510,9 +537,11 @@ export class ThemeService {
   async saveStyles(id: string, input: unknown): Promise<void> {
     const { colors, styles } = parseInput(themeStylesInputSchema, input);
     const siteFonts = await this.siteFonts.load();
+
     return this.customize(id, 'styles.updated', (custom, theme) => {
       const palette = theme.manifest.settings.color.palette;
       const fonts = fontSlugs(theme, siteFonts);
+
       for (const slug of Object.keys(colors))
         if (!palette.some((entry) => entry.slug === slug))
           throw invalidInput(
@@ -557,6 +586,7 @@ export class ThemeService {
       const theme = this.require(state, id);
       const previous = state.customizations[id] ?? EMPTY;
       const custom = structuredClone(previous);
+
       change(custom, theme);
       parseInput(
         publicThemeSchema,
@@ -566,6 +596,7 @@ export class ThemeService {
       else delete state.customizations[id];
       await this.state.saveCustomizations(state);
       const payload = { themeId: id, customization: custom };
+
       void this.hooks?.emit(event, payload);
     });
   }

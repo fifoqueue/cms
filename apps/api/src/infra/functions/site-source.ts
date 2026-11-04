@@ -13,12 +13,14 @@ export class SiteSource {
 
   async source(): Promise<FunctionsSource | null> {
     let text: string;
+
     try {
       text = await readFile(join(this.directory, 'site.ts'), 'utf8');
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw error;
     }
+
     return versionedSource(this.directory, 'functions:site', text);
   }
 }

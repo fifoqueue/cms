@@ -27,6 +27,7 @@ interface AdminEvent {
 export const readSeoForm = (form: FormData): SeoFormValues | undefined => {
   if (!form.has(SEO_FIELDSET)) return undefined;
   const field = (key: keyof AdminEntrySeo) => text(form, seoField(key));
+
   return {
     title: field('title'),
     description: field('description'),
@@ -56,6 +57,7 @@ export const loadSeoContext = async (
     api.site(),
     api.reading(),
   ]);
+
   return {
     timeZone: reading.timeZone,
     siteTitle: site.title,
@@ -122,7 +124,9 @@ export const readSeoSettingsForm = (form: FormData) => {
     maxSnippet: limit(values.maxSnippet),
     maxVideoPreview: limit(values.maxVideoPreview),
   });
+
   if (result.success) return { values, input: result.data };
+
   return {
     values,
     failure: fail(400, {
@@ -149,7 +153,9 @@ export const readPermalinkForm = (form: FormData, types: readonly string[]) => {
       ),
   );
   const result = permalinkSettingsSchema.safeParse(values);
+
   if (result.success) return { values, input: result.data };
+
   return {
     values,
     failure: fail(400, {

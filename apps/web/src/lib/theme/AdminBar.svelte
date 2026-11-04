@@ -40,8 +40,10 @@
       content?: { id: string; author: { slug: string } | null };
     };
     const content = data.kind === 'content' ? data.content : null;
+
     if (!content) return null;
     const own = !!user.slug && content.author?.slug === user.slug;
+
     // The API also requires the base editing capability (custom roles may lack it).
     return can(user, 'content.create') &&
       can(user, own ? 'content.publish' : 'content.editOthers')
@@ -54,6 +56,7 @@
       kind?: string;
       term?: { id: string; taxonomy: string };
     };
+
     return data.kind === 'term' && data.term && can(user, 'taxonomy.manage')
       ? data.term
       : null;

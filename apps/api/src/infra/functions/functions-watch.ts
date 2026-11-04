@@ -26,6 +26,7 @@ export class FunctionsWatch {
 
   private attach(): void {
     if (this.watcher) return;
+
     try {
       this.watcher = watch(this.directory, (_event, file) => {
         if (file !== null && file.toString() !== 'site.ts') return;

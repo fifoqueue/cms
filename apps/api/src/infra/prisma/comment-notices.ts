@@ -35,7 +35,9 @@ export class PrismaCommentNoticeState implements CommentNoticeState {
         UPDATE comments SET notified_at = ${at}
         WHERE id = ${comment.id} AND content_id = ${comment.contentId}
           AND status = 'approved' AND notified_at IS NULL AND body <> ''`;
+
       if (count === 1) await insertJob(tx, this.ids, job);
+
       return count === 1;
     });
   }
@@ -45,6 +47,7 @@ export class PrismaCommentNoticeState implements CommentNoticeState {
       where: { id: commentId, status: { not: 'approved' } },
       data: { notifiedAt: null },
     });
+
     return count === 1;
   }
 
@@ -74,6 +77,7 @@ const digest = (key: string) => createHash('sha256').update(key).digest('hex');
 const lockWindow = async (tx: Prisma.TransactionClient, id: string) => {
   // One statement takes the exclusive row lock whether or not the row existed (no gap-lock deadlock).
   await tx.$executeRaw`INSERT INTO notice_windows (\`key\`, window_end, sent, deferred) VALUES (${id}, ${new Date(0)}, 0, 0) ON DUPLICATE KEY UPDATE \`key\` = \`key\``;
+
   return tx.noticeWindow.findUniqueOrThrow({ where: { key: id } });
 };
 
@@ -87,7 +91,9 @@ const count = async (
 ) => {
   const id = digest(key);
   const result = countNotice(await lockWindow(tx, id), limit, windowMs, now);
+
   await tx.noticeWindow.update({ where: { key: id }, data: result.next });
+
   return result;
 };
 
@@ -107,6 +113,7 @@ export class PrismaNoticeOutbox implements NoticeOutbox {
         await lockSetting(tx, JOBS_LOCK);
         const fresh =
           await tx.$executeRaw`INSERT IGNORE INTO notice_dispatches (\`key\`, created_at) VALUES (${digest(key)}, ${now})`;
+
         if (!fresh) return false;
         const jobs = plan.jobs ?? [];
         const items = plan.items ?? [];
@@ -120,7 +127,9 @@ export class PrismaNoticeOutbox implements NoticeOutbox {
         const insert = async (job: QueuedJob) => {
           if (live(job.subjects)) await insertJob(tx, this.ids, job);
         };
+
         for (const job of jobs) await insert(job);
+
         for (const item of items) {
           if (!live(item.subjects)) continue;
           const { window, thread } = item;
@@ -148,8 +157,10 @@ export class PrismaNoticeOutbox implements NoticeOutbox {
             : flood.firstHeld
               ? [item.collect(flood.next.windowEnd)]
               : [];
+
           for (const job of queued) await insert(job);
         }
+
         return true;
       },
       { timeout: 30_000 },
@@ -161,6 +172,7 @@ export class PrismaNoticeOutbox implements NoticeOutbox {
       await lockSetting(tx, JOBS_LOCK);
       const id = digest(window);
       const row = await lockWindow(tx, id);
+
       if (!row.deferred) return 0;
       const jobs = build(row.deferred);
       // Under the erasure lock: a summary about an erased subject is dropped with its count.
@@ -168,6 +180,7 @@ export class PrismaNoticeOutbox implements NoticeOutbox {
         tx,
         jobs.flatMap((job) => job.subjects),
       );
+
       for (const job of jobs)
         if (!job.subjects.some((subject) => erased.has(subject)))
           await insertJob(tx, this.ids, job);
@@ -175,6 +188,7 @@ export class PrismaNoticeOutbox implements NoticeOutbox {
         where: { key: id },
         data: { deferred: 0 },
       });
+
       return row.deferred;
     });
   }
@@ -187,6 +201,7 @@ export class PrismaNoticeOutbox implements NoticeOutbox {
     ) {
       /* bounded batches */
     }
+
     await this.db.noticeDispatch.deleteMany({
       where: { createdAt: { lt: before } },
     });

@@ -20,6 +20,7 @@ test('protection emits each blocked outcome with keyed digests only', async () =
     logger: recordingLogger().logger,
   });
   const events: ActionHookMap['protection.blocked'][] = [];
+
   hooks.registrar('test').on('protection.blocked', (value) => {
     events.push(value);
   });
@@ -36,6 +37,7 @@ test('protection emits each blocked outcome with keyed digests only', async () =
     signer: {
       sign: (value) => {
         signed.push(value);
+
         return `digest-${signed.length}`;
       },
       verify: () => false,
@@ -49,6 +51,7 @@ test('protection emits each blocked outcome with keyed digests only', async () =
     account: 'subject@example.com',
     captchaToken: null,
   };
+
   await settings.update({
     ...DEFAULT_SECURITY_SETTINGS,
     rules: {

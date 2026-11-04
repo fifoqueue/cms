@@ -22,6 +22,7 @@ import type { Paginated } from '#sdk/common';
 /** The media library (`media.upload`; changing others' files needs `media.manage`). */
 export const mediaAdminClient = (request: Request) => {
   const path = (id: string) => `/api/v1/admin/media/${encodeURIComponent(id)}`;
+
   return {
     storage: {
       resync: () =>

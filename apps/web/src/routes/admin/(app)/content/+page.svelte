@@ -144,12 +144,16 @@
     if (formData.get('action') === 'edit') {
       cancel();
       bulkEditing = true;
+
       return;
     }
+
     if (formData.get('action') === 'delete' && !confirm(m.confirmDelete))
       cancel();
+
     return ({ update }) => {
       selected = [];
+
       return update();
     };
   };

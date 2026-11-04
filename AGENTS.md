@@ -78,6 +78,7 @@ plugins/
 ### 4.3 코드 스타일
 
 - **이름 있는(named) import/export 사용.** `import * as` 금지, default export 금지, default import는 `.svelte`·에셋(`.svg` 등)·CSS 와 도구 설정 파일(`*.config.*`)에서만 허용(ESLint 강제). 타입은 `import type`.
+- **의미와 블록 단위로 빈 줄 한 줄을 넣어 구분합니다.** 블록 문(`if`/`for`/`switch`/`try`/함수/클래스) 앞뒤, `return` 앞, 변수 선언 묶음 뒤, import 묶음 뒤, 최상위 선언·export 앞, 여러 줄짜리 클래스 멤버 사이에는 빈 줄이 필요합니다(`@stylistic/padding-line-between-statements`·`lines-between-class-members`로 ESLint 강제). 규칙이 잡지 못하는 곳이라도 한 덩어리의 의미가 끝나면 빈 줄로 나눕니다.
 - **변수·함수명은 설명문처럼 짓지 않습니다.** `adminRequiredForAuthorizedTasks`처럼 조건·목적·행동을 문장으로 나열하지 말고 `requireAdmin`, `isPublished`, `permalinks`처럼 맥락에 맞는 짧고 정확한 도메인 명사·동사를 사용합니다. 모듈·클래스가 이미 알려주는 맥락을 이름에 반복하지 않으며, 긴 설명은 주석이나 타입으로 옮깁니다. 글자 수만 줄이는 불명확한 약어도 금지합니다. 기존 코드 수정 시에도 이 원칙을 적용하고 모든 참조를 함께 고칩니다. 공개/관리자 DTO 구분 등 필요한 계약 의미는 유지하며, 외부 라이브러리 옵션·표준 필드명은 임의로 바꾸지 않습니다.
 - **프로젝트 내부 모듈은 반드시 이름 있는 경로 alias로 import/re-export 합니다.** `../../../../`를 비롯한 모든 `../`·`./` 상대 모듈 경로를 금지합니다. API는 `#api/<src 기준 경로>`, API 테스트는 `#test/<test 기준 경로>`, SDK는 `#sdk/*`, 콘텐츠 패키지는 `#content/*`, 웹은 `#lib/*` 또는 `#web/*`, 예제 플러그인 내부는 `#plugin/*`를 사용합니다. `package.json`의 `imports`가 런타임과 TypeScript 모두에서 같은 경로를 해석해야 하며, 타입 전용·동적 import에도 적용합니다. 유일한 모듈 예외는 SvelteKit이 생성하는 `./$types`입니다. `tsconfig`의 `extends`, 파일시스템 경로, URL은 모듈 import가 아니므로 대상이 아닙니다. 패키지 간에는 기존 공개 `@cms/*` 계약만 사용하고 alias로 아키텍처 경계를 우회하지 않습니다. ESLint가 상대 import/re-export와 경계 위반을 차단합니다.
 - 웹 테스트와 테스트 픽스처에는 `#web-test/*`를 사용합니다. 테스트 때문에 상대 import 예외를 추가하지 않습니다.

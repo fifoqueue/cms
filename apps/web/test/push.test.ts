@@ -10,6 +10,7 @@ test('push payloads only open pages of the site itself', () => {
     url: '/hello#comment-1',
     tag: 'comment-1',
   };
+
   expect(pushMessage(payload, origin)).toEqual({
     ...payload,
     url: 'https://blog.example/hello#comment-1',

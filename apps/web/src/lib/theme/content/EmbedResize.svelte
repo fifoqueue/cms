@@ -15,9 +15,11 @@
     if (pointer === '') return value;
     if (!pointer.startsWith('/')) return undefined;
     let current = value;
+
     for (const raw of pointer.slice(1).split('/')) {
       if (/~(?![01])/.test(raw)) return undefined;
       const token = raw.replaceAll('~1', '/').replaceAll('~0', '~');
+
       if (Array.isArray(current)) {
         if (!/^(?:0|[1-9]\d*)$/.test(token)) return undefined;
         current = current[Number(token)];
@@ -29,12 +31,14 @@
         current = (current as Record<string, unknown>)[token];
       } else return undefined;
     }
+
     return current;
   };
 
   const parseMessage = (data: unknown): unknown => {
     if (typeof data !== 'string') return data;
     if (data.length > 4096) return undefined;
+
     try {
       return JSON.parse(data);
     } catch {
@@ -44,8 +48,10 @@
 
   $effect(() => {
     const element = container;
+
     if (!element || !html.includes(pathAttribute)) return;
     const view = element.ownerDocument.defaultView;
+
     if (!view) return;
 
     const handleMessage = (event: MessageEvent) => {
@@ -54,7 +60,9 @@
           `iframe[${pathAttribute}]`,
         ),
       ].find((candidate) => candidate.contentWindow === event.source);
+
       if (!iframe) return;
+
       try {
         if (
           new URL(iframe.src, element.ownerDocument.baseURI).origin !==
@@ -64,10 +72,12 @@
       } catch {
         return;
       }
+
       const height = resolvePointer(
         parseMessage(event.data),
         iframe.getAttribute(pathAttribute) ?? '',
       );
+
       if (
         typeof height !== 'number' ||
         !Number.isFinite(height) ||
@@ -80,6 +90,7 @@
     };
 
     view.addEventListener('message', handleMessage);
+
     return () => view.removeEventListener('message', handleMessage);
   });
 </script>

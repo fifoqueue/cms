@@ -35,6 +35,7 @@ export const pushSupported = () =>
 export const askPush = (): Promise<boolean> | null => {
   if (!pushSupported() || Notification.permission === 'denied') return null;
   if (Notification.permission === 'granted') return Promise.resolve(true);
+
   return Notification.requestPermission().then(
     (permission) => permission === 'granted',
     () => false,
@@ -84,14 +85,17 @@ const subscribe = async (key: string) => {
   const worker = await navigator.serviceWorker.ready;
   const bytes = keyBytes(key);
   let current = await worker.pushManager.getSubscription();
+
   if (current && !sameKey(current.options.applicationServerKey, bytes)) {
     await current.unsubscribe();
     current = null;
   }
+
   current ??= await worker.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: bytes,
   });
+
   return subscriptionValue(current.toJSON());
 };
 
@@ -107,6 +111,7 @@ export const enablePush = async (
   try {
     if (!(await permission)) return;
     const subscription = await subscribe(key);
+
     if (subscription && (await register(subscription))) remember(subscription);
   } catch {
     // Notifications stay off; the action itself already succeeded.
@@ -117,6 +122,7 @@ export const enablePush = async (
 export const currentSubscription = async () => {
   if (!pushSupported()) return null;
   const worker = await navigator.serviceWorker.getRegistration();
+
   return (await worker?.pushManager.getSubscription()) ?? null;
 };
 
@@ -125,10 +131,12 @@ export const disablePush = async (
   forget: (endpoint: string) => Promise<boolean>,
 ) => {
   const current = await currentSubscription();
+
   if (!current) return true;
   if (!(await forget(current.endpoint))) return false;
   await current.unsubscribe();
   remember(null);
+
   return true;
 };
 
@@ -142,10 +150,13 @@ export const disablePush = async (
  */
 export const resyncPush = () => {
   if (!pushSupported()) return;
+
   const run = async () => {
     const current = await currentSubscription();
+
     if (!current) return;
     const subscription = subscriptionValue(current.toJSON());
+
     if (!subscription) return;
     const now = Date.now();
     const plan = resyncPlan(
@@ -154,6 +165,7 @@ export const resyncPush = () => {
       read(PUSH_RENEWED_KEY),
       now,
     );
+
     if (plan.baseline) remember(subscription);
     if (!plan.renew) return;
     write(PUSH_RENEWED_KEY, String(now));
@@ -161,6 +173,7 @@ export const resyncPush = () => {
       remember(subscription);
   };
   const start = () => void run().catch(() => null);
+
   if ('requestIdleCallback' in window)
     requestIdleCallback(start, { timeout: 10_000 });
   else setTimeout(start, 3000);

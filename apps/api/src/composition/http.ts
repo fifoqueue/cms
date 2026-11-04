@@ -61,5 +61,6 @@ export const createHttp = ({
         }),
       },
     });
+
   return { clients, assemble, visitorProof: () => clients.proven };
 };

@@ -20,6 +20,7 @@ const youtube = await embedMatchers([
 
 test('only a single matching https URL is an embed URL', () => {
   const url = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+
   expect(embedPasteUrl(`  ${url}\n`, youtube)).toBe(url);
   expect(embedPasteUrl('http://youtu.be/dQw4w9WgXcQ', youtube)).toBeNull();
   expect(embedPasteUrl(`see ${url}`, youtube)).toBeNull();
@@ -33,6 +34,7 @@ test('patterns that do not compile are skipped', async () => {
     { id: 'bad', label: 'Bad', urlPattern: '(' },
     { id: 'any', label: 'Any', urlPattern: '^https://v\\.example/' },
   ]);
+
   expect(matchers).toHaveLength(1);
   expect(embedPasteUrl('https://v.example/1', matchers)).toBe(
     'https://v.example/1',
@@ -42,11 +44,14 @@ test('patterns that do not compile are skipped', async () => {
 test('caps both pasted and normalized URL length before matching', () => {
   const boundary =
     'https://example.com/' + 'a'.repeat(2048 - 'https://example.com/'.length);
+
   expect(embedPasteUrl(boundary, [/^https:/])).toBe(boundary);
   const matcher = /^https:/;
+
   matcher.test = () => {
     throw new Error('Oversized URL reached the matcher');
   };
+
   expect(embedPasteUrl(boundary + 'a', [matcher])).toBeNull();
   expect(
     embedPasteUrl('https://example.com/' + '한'.repeat(300), [matcher]),
@@ -75,10 +80,12 @@ test('text, a selection, code and table cells keep the normal paste', () => {
   expect(embedPasteTarget(at(doc(p('ab')), 2))).toBeNull();
   expect(embedPasteTarget(at(doc(p('ab')), 1, 3))).toBeNull();
   const code = schema.nodes.codeBlock!.create();
+
   expect(embedPasteTarget(at(doc(code), 1))).toBeNull();
   const cell = schema.nodes.tableCell!.create(null, p());
   const table = schema.nodes.table!.create(null, [
     schema.nodes.tableRow!.create(null, cell),
   ]);
+
   expect(embedPasteTarget(at(doc(table), 4))).toBeNull();
 });

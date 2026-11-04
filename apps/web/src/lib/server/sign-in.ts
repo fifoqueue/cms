@@ -29,6 +29,7 @@ type Event = Pick<
 /** The step runner shared by every method and factor, core or plugin. */
 export const stepPage = () => resolve('/admin/(auth)/sign-in');
 const account = () => resolve('/admin/(app)/account');
+
 /** The account page's two-step section, where enrollment steps are shown. */
 export const ENROLL_ANCHOR = 'two-step';
 
@@ -88,35 +89,45 @@ export const advance = async (
   owner: string | null = null,
 ): Promise<{ done: true }> => {
   const { cookies, url } = event;
+
   if (step.kind === 'session') {
     clearPending(cookies, url);
     startSession(cookies, step.session, url);
+
     return redirect(
       303,
       returnPath(step.redirectTo ?? back, await loginPathOf(event.fetch)),
     );
   }
+
   if (step.kind === 'done') {
     clearPending(cookies, url);
     if (flow === 'enroll')
       redirect(303, `${account()}?notice=factorEnrolled#${ENROLL_ANCHOR}`);
+
     return { done: true };
   }
+
   const user = ownerFor(event, flow);
+
   if (step.kind === 'redirect') {
     const target = redirectTarget(step);
+
     if (!target) {
       clearPending(cookies, url);
       error(502, Errors.SignInRedirectInvalid);
     }
+
     setPending(
       cookies,
       url,
       { transaction: step.transaction, flow, user, back, step: null, owner },
       step.expiresAt,
     );
+
     return redirect(303, target, { external: true });
   }
+
   setPending(cookies, url, {
     transaction: step.transaction,
     flow,
@@ -125,6 +136,7 @@ export const advance = async (
     step,
     owner,
   });
+
   return redirect(
     303,
     flow === 'enroll' ? `${account()}#${ENROLL_ANCHOR}` : stepPage(),
@@ -139,13 +151,16 @@ const refused = <Extra extends object>(
 ) => {
   if (isExpired(caught)) {
     clearPending(event.cookies, event.url);
+
     return failFrom(caught, { ...extra, expired: true });
   }
+
   return failFrom(caught, extra);
 };
 
 const pendingOf = (event: Event, flows: readonly PendingFlow[]) => {
   const pending = readPending(event.cookies, event.url);
+
   return pending?.step &&
     flows.includes(pending.flow) &&
     ownsPending(event, pending)
@@ -157,6 +172,7 @@ const expired = () => fail(400, { expired: true as const });
 
 const credentialOf = (form: FormData) => {
   const value = jsonField(form, 'credential');
+
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
@@ -168,11 +184,13 @@ export const continueStep = async (
   flows: readonly PendingFlow[],
 ) => {
   const pending = pendingOf(event, flows);
+
   if (!pending) return expired();
   const form = await event.request.formData();
   const fields = pending.step.kind === 'fields' ? pending.step.fields : [];
   const values = fieldValues(form, fields);
   let step: SignInStep;
+
   try {
     step = await apiFor(event, pending.flow).signIn.continue(
       {
@@ -186,6 +204,7 @@ export const continueStep = async (
   } catch (caught) {
     return refused(event, caught, { values: echoValues(values, fields) });
   }
+
   return advance(event, step, pending.flow, pending.back, pending.owner);
 };
 
@@ -195,10 +214,12 @@ export const chooseFactor = async (
   flows: readonly PendingFlow[],
 ) => {
   const pending = pendingOf(event, flows);
+
   if (!pending) return expired();
   const form = await event.request.formData();
   const factor = text(form, 'factor');
   let step: SignInStep;
+
   try {
     step = await apiFor(event, pending.flow).signIn.chooseFactor(
       { transaction: pending.transaction, factor },
@@ -207,17 +228,20 @@ export const chooseFactor = async (
   } catch (caught) {
     return refused(event, caught, {});
   }
+
   return advance(event, step, pending.flow, pending.back, factor);
 };
 
 /** Abandons the pending step and returns to where its flow started. */
 export const cancelStep = async (event: Event) => {
   const pending = readPending(event.cookies, event.url);
+
   clearPending(event.cookies, event.url);
   if (pending?.flow === 'enroll')
     redirect(303, `${account()}#${ENROLL_ANCHOR}`);
   const loginPath = await loginPathOf(event.fetch);
   const back = pending?.back ? returnPath(pending.back, loginPath) : null;
+
   redirect(
     303,
     back && back !== '/admin'
@@ -233,6 +257,7 @@ export const startStep = async (event: Event, form: FormData, back: string) => {
   let fields: SignInField[] = [];
   let values: Record<string, string> = {};
   let step: SignInStep;
+
   try {
     // Only the fields the method declares are sent.
     fields =
@@ -251,7 +276,9 @@ export const startStep = async (event: Event, form: FormData, back: string) => {
       values: echoValues(values, fields),
     });
   }
+
   await advance(event, step, 'login', back, method);
+
   return { done: true as const };
 };
 
@@ -262,6 +289,7 @@ export const setupStep = async (event: Event, form: FormData) => {
   let fields: SignInField[] = [];
   let values: Record<string, string> = {};
   let step: SignInStep;
+
   try {
     fields =
       (await api.signIn.info()).setup.find(({ id }) => id === method)?.fields ??
@@ -282,12 +310,14 @@ export const setupStep = async (event: Event, form: FormData) => {
       values: echoValues(values, fields),
     });
   }
+
   return advance(event, step, 'setup', null, method);
 };
 
 /** Starts setting up a second factor for the signed-in user (account page). */
 export const enrollStep = async (event: Event, factor: string) => {
   let step: SignInStep;
+
   try {
     // The API binds the step to this visitor; continuing it sends the same proof.
     step = await authApi(event.fetch, event.locals.token).factors.enroll(
@@ -297,6 +327,7 @@ export const enrollStep = async (event: Event, factor: string) => {
   } catch (caught) {
     return failFrom(caught);
   }
+
   return advance(event, step, 'enroll', null, factor);
 };
 
@@ -305,6 +336,7 @@ export const pendingEnrollment = (
   event: Pick<Event, 'cookies' | 'url' | 'locals'>,
 ) => {
   const pending = readPending(event.cookies, event.url);
+
   return pending?.step &&
     pending.flow === 'enroll' &&
     ownsPending(event, pending)

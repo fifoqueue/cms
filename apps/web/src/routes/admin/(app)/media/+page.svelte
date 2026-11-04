@@ -51,6 +51,7 @@
       () => void invalidate('media:resync'),
       RESYNC_POLL_MS,
     );
+
     return () => clearTimeout(timer);
   });
   let uploads = $state<{ name: string; progress: number }[]>([]);
@@ -70,8 +71,10 @@
   const confirmDelete: SubmitFunction = ({ cancel }) => {
     if (!confirm(m.confirmDelete)) {
       cancel();
+
       return;
     }
+
     return async ({ result, update }) => {
       selected = [];
       await update();
@@ -80,6 +83,7 @@
         deleted: number;
         kept: number;
       };
+
       // Files that entries still show, or other people's, are kept and said so.
       if (deleted)
         notifySuccess(m.mediaDeleted(deleted), {
@@ -94,11 +98,13 @@
   const upload = async (files: FileList | null | undefined) => {
     if (!files?.length || uploads.length) return;
     uploads = [...files].map((file) => ({ name: file.name, progress: 0 }));
+
     // Each file reports as it finishes.
     for (const [index, file] of [...files].entries()) {
       const result = await uploadFile(file, (fraction) => {
         uploads[index]!.progress = fraction;
       });
+
       if ('media' in result) notifySuccess(m.mediaUploadedFile(file.name));
       // Known refusals (a busy storage) read in the user's language.
       else
@@ -110,6 +116,7 @@
         );
       uploads[index]!.progress = 1;
     }
+
     uploads = [];
     await invalidateAll();
   };

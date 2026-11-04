@@ -12,6 +12,7 @@ test('hrefOptions marks same-origin endpoint links and never throws on malformed
   const { hrefOptions } = await import('#lib/route-link.js');
   const reload = (href: string | null) =>
     hrefOptions(href)['data-sveltekit-reload'];
+
   expect(reload('/feed.xml')).toBe(true);
   expect(reload('https://site.test/a-post.md')).toBe(true);
   expect(reload('https://other.test/feed.xml')).toBeUndefined();
@@ -23,6 +24,7 @@ test('hrefOptions marks same-origin endpoint links and never throws on malformed
 
 test('routePattern follows SvelteKit segment rules with groups dropped', () => {
   const matches = (id: string, path: string) => routePattern(id).test(path);
+
   expect(matches('/', '/')).toBe(true);
   expect(matches('/feed.xml', '/feed.xml')).toBe(true);
   expect(matches('/feed.xml', '/feed.xml/')).toBe(true);

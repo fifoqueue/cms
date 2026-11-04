@@ -27,8 +27,10 @@ export const richText = (source: string): RichRun[][] =>
     .map((paragraph) => {
       const runs: RichRun[] = [];
       let last = 0;
+
       for (const match of paragraph.matchAll(TOKEN)) {
         const [whole, label, href, strong, em] = match;
+
         if (match.index > last)
           runs.push(run(paragraph.slice(last, match.index)));
         if (label !== undefined)
@@ -39,6 +41,8 @@ export const richText = (source: string): RichRun[][] =>
         else runs.push(run(em!, { em: true }));
         last = match.index + whole.length;
       }
+
       if (last < paragraph.length) runs.push(run(paragraph.slice(last)));
+
       return runs;
     });

@@ -24,6 +24,7 @@ export const coreCommentChecker: CommentChecker = {
     ]
       .join('\n')
       .toLowerCase();
+
     if (settings.blockWords.some((word) => text.includes(word)))
       return { status: 'spam', reasons: ['blocklist'] };
     if (
@@ -31,6 +32,7 @@ export const coreCommentChecker: CommentChecker = {
       (comment.body.match(/https?:\/\//gi) ?? []).length > settings.maxLinks
     )
       return { status: 'hold', reasons: ['moderation-rule'] };
+
     return {
       status:
         settings.moderation === 'auto' ||
@@ -51,28 +53,37 @@ export class CommentCheckers implements CommentCheckerRegistrar {
     object,
     { check: CommentChecker['check']; core: boolean }
   >();
+
   constructor(private readonly timeoutMs = 3000) {
     this.registerCore(coreCommentChecker);
   }
+
   register(checker: CommentChecker) {
     return this.add(checker, false);
   }
+
   /** Composition-root only: plugin contexts expose `register`. */
   registerCore(checker: CommentChecker) {
     return this.add(checker, true);
   }
+
   private add(checker: CommentChecker, core: boolean) {
     const token = {};
+
     this.entries.set(token, { check: checker.check.bind(checker), core });
+
     return () => {
       this.entries.delete(token);
     };
   }
+
   async check(input: CommentCheck): Promise<CommentVerdict> {
     const combined: CommentVerdict = { status: 'approve', reasons: [] };
+
     for (const [token, entry] of [...this.entries]) {
       if (!this.entries.has(token)) continue;
       let verdict: CommentVerdict;
+
       if (entry.core)
         verdict = verdictSchema.parse(
           await entry.check(structuredClone(input)),
@@ -82,15 +93,19 @@ export class CommentCheckers implements CommentCheckerRegistrar {
           () => entry.check(structuredClone(input)),
           this.timeoutMs,
         );
+
         if (!result.ok || !this.entries.has(token)) continue;
         const parsed = verdictSchema.safeParse(result.value);
+
         if (!parsed.success) continue;
         verdict = parsed.data;
       }
+
       if (rank[verdict.status] > rank[combined.status])
         combined.status = verdict.status;
       combined.reasons.push(...verdict.reasons);
     }
+
     return combined;
   }
 }

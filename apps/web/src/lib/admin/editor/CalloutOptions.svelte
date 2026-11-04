@@ -27,6 +27,7 @@
       const variant = CALLOUT_VARIANTS.find(
         (name) => name === event.currentTarget.value,
       );
+
       if (variant) onchange({ variant });
     }}
   >

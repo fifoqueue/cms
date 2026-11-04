@@ -64,9 +64,11 @@ const repairFootnotes = (
     repaired: { name: unknown; text: string } | null;
   }[] = [];
   let anonymous: unknown;
+
   state.doc.descendants((node, pos) => {
     if (node.type.name !== 'footnote' || kept.has(pos)) return;
     const source = footnoteSource(node.attrs);
+
     // The schema's default name marks a numbered note.
     if (source && source.name === undefined)
       anonymous ??= node.type.create().attrs.name;
@@ -74,6 +76,7 @@ const repairFootnotes = (
       name: source.name ?? anonymous,
       text: source.text,
     };
+
     if (
       !repaired ||
       repaired.text !== node.attrs.text ||
@@ -84,6 +87,7 @@ const repairFootnotes = (
   if (!invalid.length) return null;
   const tr = state.tr;
   const cut: number[] = [];
+
   // From the end, so earlier positions stay valid.
   for (const { pos, node, repaired } of invalid.reverse()) {
     if (repaired)
@@ -92,15 +96,18 @@ const repairFootnotes = (
     if (repaired && repaired.text !== String(node.attrs.text).trim())
       cut.push(pos);
   }
+
   // Labeled as they show once repaired.
   if (cut.length && shortened) {
     const { notes } = footnotePages(tr.doc);
+
     shortened(
       cut
         .reverse()
         .flatMap((pos) => notes.get(tr.mapping.map(pos))?.label ?? []),
     );
   }
+
   return tr;
 };
 
@@ -136,6 +143,7 @@ export const footnoteView = (
       this.parent?.(event);
       // Loaded content; outside the history, so undo cannot bring blank footnotes back.
       const tr = repairFootnotes(this.editor.state, new Set(), shortened);
+
       if (tr) this.editor.view.dispatch(tr.setMeta('addToHistory', false));
     },
     addProseMirrorPlugins() {
@@ -151,17 +159,22 @@ export const footnoteView = (
               transactions
                 .slice(index + 1)
                 .reduce((at, tr) => tr.mapping.map(at), pos);
+
             // Open fields, by their position before these transactions.
             for (const position of this.storage.open) {
               const pos = position();
+
               if (typeof pos === 'number' && pos < oldState.doc.content.size)
                 kept.add(later(-1, pos));
             }
+
             // A footnote being inserted, whose field opens right after.
             transactions.forEach((tr, index) => {
               const pos = tr.getMeta(OPEN) as number | undefined;
+
               if (pos !== undefined) kept.add(later(index, pos));
             });
+
             return repairFootnotes(state, kept, shortened);
           },
         }),
@@ -175,6 +188,7 @@ export const footnoteView = (
             // After the selection, so selected text is kept (the note usually follows it).
             const pos = tr.selection.to;
             const $pos = tr.doc.resolve(pos);
+
             if (
               !$pos.parent.canReplaceWith($pos.index(), $pos.index(), this.type)
             )
@@ -184,6 +198,7 @@ export const footnoteView = (
                 .setSelection(NodeSelection.create(tr.doc, pos))
                 .setMeta('addToHistory', false)
                 .setMeta(OPEN, pos);
+
             return true;
           },
       };
@@ -196,18 +211,21 @@ export const footnoteView = (
         Enter: () => {
           const { state, view } = this.editor;
           const { selection } = state;
+
           if (
             !(selection instanceof NodeSelection) ||
             selection.node.type !== this.type
           )
             return false;
           view.dispatch(state.tr.setMeta(OPEN, selection.from));
+
           return true;
         },
       };
     },
     addNodeView() {
       const open = this.storage.open;
+
       return ({ node, editor, view, getPos }) => {
         let current: ProseMirrorNode = node;
         let editing = false;
@@ -215,41 +233,52 @@ export const footnoteView = (
         let note: FootnoteGroup | undefined;
         const position = () => getPos();
         const dom = document.createElement('span');
+
         dom.className = 'cms-editor-footnote';
         dom.contentEditable = 'false';
         // The number is the edit button. It is not a tab stop, so caret movement stays
         // ProseMirror's: the arrow keys select it and Enter opens the field.
         const mark = document.createElement('sup');
+
         mark.setAttribute('role', 'button');
         mark.setAttribute('aria-haspopup', 'dialog');
         mark.setAttribute('aria-expanded', 'false');
         const tip = document.createElement('span');
+
         tip.className = 'cms-editor-footnote-tip';
         tip.setAttribute('aria-hidden', 'true');
         const tipText = document.createElement('span');
         const tipHint = document.createElement('span');
+
         tipHint.className = 'cms-editor-footnote-tip-hint';
         tip.append(tipText, tipHint);
         dom.append(mark, tip);
 
         const panel = document.createElement('span');
+
         panel.className = 'cms-editor-footnote-panel not-prose';
         panel.id = `cms-footnote-panel-${++panels}`;
         panel.setAttribute('role', 'dialog');
         mark.setAttribute('aria-controls', panel.id);
         const heading = document.createElement('span');
+
         heading.className = 'font-medium';
         const field = document.createElement('textarea');
+
         field.maxLength = 2000;
         field.rows = 3;
         field.className = TEXTAREA_CLASS;
         const syntax = document.createElement('span');
+
         syntax.className = 'text-sm text-muted-foreground';
         const footer = document.createElement('span');
+
         footer.className = 'flex items-center justify-between gap-2';
         const hint = document.createElement('span');
+
         hint.className = 'text-sm text-muted-foreground';
         const remove = document.createElement('button');
+
         remove.type = 'button';
         remove.className = buttonVariants({
           variant: 'destructive',
@@ -267,6 +296,7 @@ export const footnoteView = (
         const resolved = () => note?.text || text();
         const render = () => {
           const { label: describe, empty, open: how } = labels();
+
           mark.textContent = label();
           mark.setAttribute(
             'aria-label',
@@ -279,6 +309,7 @@ export const footnoteView = (
         };
         const renumber = () => {
           const pos = getPos();
+
           if (typeof pos !== 'number') return;
           note = footnotePages(view.state.doc).notes.get(pos);
           render();
@@ -296,6 +327,7 @@ export const footnoteView = (
             Math.min(0, bounds.right - box.right),
             bounds.left - box.left,
           );
+
           panel.style.translate = `${shift}px 0`;
         };
         const edit = () => {
@@ -309,6 +341,7 @@ export const footnoteView = (
               syntax: shortcuts,
             } = labels();
             const named = name() !== undefined;
+
             heading.textContent = title(label());
             panel.setAttribute('aria-label', title(label()));
             mark.setAttribute('aria-expanded', 'true');
@@ -324,6 +357,7 @@ export const footnoteView = (
             dom.append(panel);
             place();
           }
+
           field.focus();
           field.setSelectionRange(field.value.length, field.value.length);
         };
@@ -343,6 +377,7 @@ export const footnoteView = (
         };
         const removeAt = (pos: number, leaving: boolean) => {
           const tr = view.state.tr.delete(pos, pos + current.nodeSize);
+
           // An empty new note was never in the history, so removing it stays out of it too.
           if (!text() && name() === undefined)
             tr.setMeta('addToHistory', false);
@@ -352,17 +387,23 @@ export const footnoteView = (
         const commit = (leaving: boolean) => {
           const value = field.value.trim();
           const stored = text();
+
           hide();
           const pos = getPos();
+
           if (typeof pos !== 'number') return;
           const caret = leaving ? null : pos + current.nodeSize;
           const named = name() !== undefined;
+
           // Emptied, a named note stays a reference to its name; a numbered one goes.
           if (!value && !named) return removeAt(pos, leaving);
+
           if (value === stored) {
             if (caret !== null) finish(view.state.tr, caret);
+
             return;
           }
+
           if (stored || named) {
             finish(
               closeHistory(
@@ -373,8 +414,10 @@ export const footnoteView = (
               ),
               caret,
             );
+
             return;
           }
+
           // The first text: the empty note leaves outside the history and the filled one is
           // inserted inside it, so undo removes the footnote instead of emptying it.
           view.dispatch(
@@ -386,6 +429,7 @@ export const footnoteView = (
             pos,
             current.type.create({ ...current.attrs, text: value }),
           );
+
           finish(closeHistory(tr), caret);
         };
 
@@ -393,6 +437,7 @@ export const footnoteView = (
           // The editor's own key handlers (and the slash menu) stay out of the field.
           event.stopPropagation();
           if (event.isComposing) return;
+
           if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
             commit(false);
@@ -412,6 +457,7 @@ export const footnoteView = (
         remove.addEventListener('click', () => {
           hide();
           const pos = getPos();
+
           if (typeof pos === 'number') removeAt(pos, false);
         });
         dom.addEventListener('click', (event) => {
@@ -421,6 +467,7 @@ export const footnoteView = (
         const changed = ({ transaction }: { transaction: Transaction }) => {
           if (transaction.docChanged) renumber();
           const opening = transaction.getMeta(OPEN) as number | undefined;
+
           if (opening === undefined || opening !== getPos()) return;
           // Kept (not repaired away while empty) until its field opens.
           open.add(position);
@@ -430,18 +477,22 @@ export const footnoteView = (
             else open.delete(position);
           });
         };
+
         editor.on('transaction', changed);
         renumber();
+
         return {
           dom,
           update(next) {
             if (next.type !== current.type) return false;
             const replaced = next.attrs.text !== current.attrs.text;
+
             current = next;
             // New text (undo, redo or this field's own commit) replaces what an open field
             // holds, so leaving it later stores nothing stale.
             if (replaced && editing) reset();
             render();
+
             return true;
           },
           selectNode: () => dom.classList.add('ProseMirror-selectednode'),

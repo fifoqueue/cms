@@ -51,8 +51,10 @@
       !confirm(m.confirmDelete)
     )
       cancel();
+
     return ({ update }) => {
       selected = [];
+
       return update();
     };
   };

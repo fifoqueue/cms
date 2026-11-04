@@ -11,6 +11,7 @@ test('login redirects accept local paths only after authentication and keep hook
   const { logger } = recordingLogger();
   const registry = new SignInRegistry({ logger, timeoutMs: 100 });
   const hooks = new HookBus({ logger, timeoutMs: 100 });
+
   registry.registrar('test', users).signInMethod('method', {
     label: 'Test',
     usableBy: () => true,
@@ -51,11 +52,13 @@ test('login redirects accept local paths only after authentication and keep hook
       {},
       { client: 'visitor', address: null, captchaToken: null },
     );
+
   expect(await start()).toMatchObject({
     kind: 'session',
     redirectTo: undefined,
   });
   const plugin = hooks.registrar('policy');
+
   for (const redirectTo of [
     '/welcome?from=login',
     'https://evil.example/',
@@ -69,19 +72,23 @@ test('login redirects accept local paths only after authentication and keep hook
         method: 'plugin:test:method',
         redirectTo: '/admin',
       });
+
       return { ...value, redirectTo };
     });
+
     expect(await start()).toMatchObject({
       kind: 'session',
       redirectTo: redirectTo === '/welcome?from=login' ? redirectTo : '/admin',
     });
     release();
   }
+
   hooks
     .registrar('functions:site', { trusted: true })
     .filter('user.loginRedirect', (value) => {
       value.method = 'password';
       value.redirectTo = '/changed';
+
       return value;
     });
   expect(await start()).toMatchObject({ redirectTo: '/admin' });

@@ -7,6 +7,7 @@ export const routes = (app: ApiApp) =>
   session(app)
     .get('', async ({ databaseCleanup, request, user }) => {
       const keep = new URL(request.url).searchParams.get('keepLatest');
+
       return json(
         await databaseCleanup!.preview(
           keep === null ? {} : { keepLatest: keep === '' ? NaN : Number(keep) },

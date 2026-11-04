@@ -6,10 +6,13 @@ import { Errors, failFrom, text } from '#lib/server/errors.js';
 import { visitorOf } from '#lib/server/visitor.js';
 import { erasureRows } from '#lib/admin/erasure-report.js';
 import type { Actions, PageServerLoad } from './$types';
+
 const actionOf = (value: string) => {
   if (value !== 'export' && value !== 'erase') error(404, Errors.NotFound);
+
   return value;
 };
+
 export const load: PageServerLoad = async (event) => {
   requireCapability(event.locals, 'users.manage');
   event.setHeaders({ 'cache-control': 'private, no-store' });
@@ -24,6 +27,7 @@ export const load: PageServerLoad = async (event) => {
       ),
     ),
   );
+
   return {
     action,
     requests,
@@ -33,6 +37,7 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
   create: async (event) => {
     const form = await event.request.formData();
+
     try {
       await adminFor(event).privacy.create(
         text(form, 'email'),
@@ -42,13 +47,16 @@ export const actions: Actions = {
     } catch (error) {
       return failFrom(error);
     }
+
     return { notice: 'privacySent' };
   },
   erase: async (event) => {
     const form = await event.request.formData();
+
     try {
       // Plugin eraser messages are plain text; the page never renders them as HTML.
       const report = await adminFor(event).privacy.erase(text(form, 'id'));
+
       return { notice: 'privacyErased', erasure: erasureRows(report) };
     } catch (error) {
       return failFrom(error);

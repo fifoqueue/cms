@@ -15,6 +15,7 @@ export const routes = (app: ApiApp) =>
       '',
       async ({ contentRevisions, params, user }) => {
         await contentRevisions.delete(params.id, params.revisionId, user);
+
         return noContent();
       },
       revisionParams,

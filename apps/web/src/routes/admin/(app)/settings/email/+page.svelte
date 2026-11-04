@@ -135,6 +135,7 @@
   /** A region starts empty when it does not fit the provider it is shown for. */
   const fitting = (target: EmailProvider, region: string) => {
     const fields = EMAIL_PROVIDER_FIELDS[target];
+
     return fields.regions
       ? fields.regions.includes(region)
       : (fields.regionPattern?.test(region) ?? true);
@@ -170,6 +171,7 @@
       regionChoice = '';
     if (!EMAIL_PROVIDER_FIELDS[next].regions && !fitting(next, regionText))
       regionText = '';
+
     if (usedBy(next, 'keyId') && keyIdOwner !== next) {
       keyId = next === saved.provider ? saved.keyId : '';
       keyIdOwner = next;
@@ -227,8 +229,10 @@
   /** Whether a field is on screen for the chosen transport and provider. */
   const shown = (path: string) => {
     const [panel, field] = path.split('.');
+
     if (!field) return true;
     if (panel !== transport) return false;
+
     return (
       panel === 'smtp' ||
       field === 'secret' ||
@@ -246,8 +250,10 @@
   /** Issues next to their inputs; the first per field. */
   const issues = $derived.by(() => {
     const found: Partial<Record<string, string>> = {};
+
     for (const issue of fieldIssues)
       if (shown(issue.path)) found[issue.path] ??= issue.text;
+
     return found;
   });
   /** Issues of fields the current choice hides, listed with their labels. */
@@ -265,6 +271,7 @@
   /** Invalid state and descriptions (help text first, then the issue). */
   const described = (path: string, help?: string) => {
     const ids = [help, issues[path] && `${path}-error`].filter(Boolean);
+
     return {
       'aria-invalid': issues[path] ? true : undefined,
       'aria-describedby': ids.length ? ids.join(' ') : undefined,

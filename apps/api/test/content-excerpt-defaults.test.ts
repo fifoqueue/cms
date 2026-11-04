@@ -28,8 +28,10 @@ test('excerpt options regenerate generated summaries, preserve manual text and p
   const manual = await service.create({ ...input, excerpt: 'Manual' }, ADMIN);
   const locked = await service.create({ ...input, password: 'secret' }, ADMIN);
   const registrar = hooks.registrar('functions:site', { trusted: true });
+
   registrar.filter('content.excerpt', (value, context) => {
     expect(context).toEqual({ length: 55, more: '…' });
+
     return { ...value, length: 2, more: ' [more]' };
   });
   registrar.filter('content.excerpt', (value) => ({ ...value, length: -1 }));
@@ -38,6 +40,7 @@ test('excerpt options regenerate generated summaries, preserve manual text and p
     manual.id,
     locked.id,
   ]);
+
   expect(summaries.map((item) => item.excerpt)).toEqual([
     'one two [more]',
     'Manual',
@@ -55,6 +58,7 @@ test('editor defaults validate the document and keep the selected type', async (
   });
   const service = testContentService({ hooks });
   const registrar = hooks.registrar('functions:site', { trusted: true });
+
   registrar.filter('content.defaults', (value) => ({
     ...value,
     title: 'Default title',

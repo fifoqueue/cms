@@ -172,6 +172,7 @@
             id: media.id,
             url: thumbnailUrl(media),
           };
+
           if (picking === 'icon') icon = chosen;
           else logo = chosen;
         }}

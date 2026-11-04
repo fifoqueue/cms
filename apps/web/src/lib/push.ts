@@ -25,8 +25,10 @@ export const keyBytes = (key: string): Uint8Array<ArrayBuffer> => {
   const base64 = key.replace(/-/g, '+').replace(/_/g, '/');
   const binary = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='));
   const bytes = new Uint8Array(binary.length);
+
   for (let index = 0; index < binary.length; index++)
     bytes[index] = binary.charCodeAt(index);
+
   return bytes;
 };
 
@@ -37,6 +39,7 @@ export const sameKey = (
 ) => {
   if (!current || current.byteLength !== key.byteLength) return false;
   const bytes = new Uint8Array(current);
+
   return bytes.every((byte, index) => byte === key[index]);
 };
 
@@ -54,10 +57,13 @@ export const subscriptionValue = (
 ): PushSubscriptionValue | null => {
   if (!value || typeof value !== 'object') return null;
   const { endpoint, keys } = value as Record<string, unknown>;
+
   if (!isText(endpoint, 2048) || !/^https:\/\//i.test(endpoint)) return null;
   if (!keys || typeof keys !== 'object') return null;
   const { p256dh, auth } = keys as Record<string, unknown>;
+
   if (!isText(p256dh, 200) || !isText(auth, 100)) return null;
+
   return { endpoint, keys: { p256dh, auth } };
 };
 
@@ -77,13 +83,16 @@ export const proofOf = (subscription: PushSubscriptionValue): PushProof => ({
 export const storedProof = (value: string | null): PushProof | null => {
   if (!value) return null;
   let parsed: unknown;
+
   try {
     parsed = JSON.parse(value);
   } catch {
     return null;
   }
+
   if (!parsed || typeof parsed !== 'object') return null;
   const { endpoint, auth } = parsed as Record<string, unknown>;
+
   return isText(endpoint, 2048) && isText(auth, 100)
     ? { endpoint, auth }
     : null;
@@ -93,7 +102,9 @@ export const storedProof = (value: string | null): PushProof | null => {
 export const keyText = (key: ArrayBuffer | null | undefined): string | null => {
   if (!key || !key.byteLength) return null;
   let binary = '';
+
   for (const byte of new Uint8Array(key)) binary += String.fromCharCode(byte);
+
   return btoa(binary)
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
@@ -104,6 +115,7 @@ export const keyText = (key: ArrayBuffer | null | undefined): string | null => {
 export const sameOrigin = (url: string, origin: string): string | null => {
   try {
     const parsed = new URL(url, origin);
+
     return parsed.origin === origin ? parsed.href : null;
   } catch {
     return null;
@@ -130,12 +142,15 @@ export const pushMessage = (
 ): PushMessage | null => {
   if (!value || typeof value !== 'object') return null;
   const { title, body, url, tag, icon } = value as Record<string, unknown>;
+
   if (!isText(title, 200) || typeof body !== 'string' || body.length > 1000)
     return null;
   if (!isText(url, 2048) || typeof tag !== 'string' || tag.length > 200)
     return null;
   const link = sameOrigin(url, origin);
+
   if (!link) return null;
+
   return {
     title,
     body,
@@ -148,6 +163,7 @@ export const pushMessage = (
 /** Whether another renewal may be sent, given the stored time of the last one. */
 export const renewDue = (last: string | null, now: number) => {
   const at = Number(last);
+
   return (
     !last || !Number.isFinite(at) || now - at >= RENEW_INTERVAL_MS || at > now
   );

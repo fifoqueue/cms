@@ -45,26 +45,32 @@ const listFiles = async (directory, base = directory) => {
   if (!(await exists(directory))) return [];
   const files = [];
   const entries = await readdir(directory, { withFileTypes: true });
+
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     const path = join(directory, entry.name);
+
     if (entry.isDirectory()) files.push(...(await listFiles(path, base)));
     else if (entry.isFile())
       files.push(relative(base, path).split(sep).join('/'));
   }
+
   return files;
 };
 
 const releaseId = async () => {
   const hash = createHash('sha256');
+
   for (const file of await listFiles(BUILD)) {
     hash.update(file).update('\0');
     hash.update(await readFile(join(BUILD, file))).update('\0');
   }
+
   return hash.digest('hex').slice(0, 24);
 };
 
 const writeAtomically = async (path, text) => {
   const temporary = `${path}.${process.pid}.tmp`;
+
   await writeFile(temporary, text);
   await rename(temporary, path);
 };
@@ -76,6 +82,7 @@ export const activeRelease = async () => {
     () => '',
   );
   const release = join(RELEASES, id);
+
   return RELEASE_ID.test(id) && (await exists(join(release, 'index.js')))
     ? release
     : BUILD;
@@ -95,34 +102,45 @@ const releaseIds = async () =>
 const syncReleases = async (active, now) => {
   const kept = [];
   const retained = new Map(); // asset -> release directory that owns it
+
   for (const id of await releaseIds()) {
     const directory = join(RELEASES, id);
     let retiredAt = null;
+
     if (id !== active) {
       const marker = join(directory, RETIRED);
+
       retiredAt = Number(await readFile(marker, 'utf8').catch(() => NaN));
+
       if (!Number.isFinite(retiredAt)) {
         retiredAt = now;
         await writeFile(marker, `${now}\n`);
       }
     } else await rm(join(directory, RETIRED), { force: true });
+
     if (retiredAt !== null && now - retiredAt >= RETENTION) {
       await rm(directory, { recursive: true, force: true });
       continue;
     }
+
     const own = JSON.parse(await readFile(join(directory, OWN), 'utf8'));
+
     for (const asset of own)
       if (!retained.has(asset)) retained.set(asset, directory);
     kept.push({ directory, own: new Set(own) });
   }
+
   for (const { directory, own } of kept) {
     const assets = immutable(directory);
+
     // Drop borrowed assets whose owners expired, then borrow what is missing.
     for (const asset of await listFiles(assets))
       if (!own.has(asset) && !retained.has(asset))
         await rm(join(assets, asset), { force: true });
+
     for (const [asset, owner] of retained) {
       const target = join(assets, asset);
+
       if (owner === directory || (await exists(target))) continue;
       await mkdir(join(target, '..'), { recursive: true });
       await link(join(immutable(owner), asset), target).catch((error) => {
@@ -138,8 +156,10 @@ export const promote = async (now = Date.now()) => {
     throw new Error('Run `vite build` first: build/index.js is missing.');
   const id = await releaseId();
   const directory = join(RELEASES, id);
+
   if (!(await exists(join(directory, OWN)))) {
     const staging = `${directory}.${process.pid}.staging`;
+
     await rm(staging, { recursive: true, force: true });
     await cp(BUILD, staging, { recursive: true });
     await writeFile(
@@ -149,13 +169,16 @@ export const promote = async (now = Date.now()) => {
     await rm(directory, { recursive: true, force: true });
     await rename(staging, directory);
   }
+
   await syncReleases(id, now);
   await writeAtomically(ACTIVE, `${id}\n`);
+
   return id;
 };
 
 if (import.meta.main) {
   const id = await promote();
+
   console.info(
     `[web:release] promoted ${id}; restart the web server to use it.`,
   );

@@ -30,6 +30,7 @@
   const submitted = (event: SubmitEvent) => {
     const chosen =
       event.submitter instanceof HTMLButtonElement ? event.submitter.value : '';
+
     // Disabled only after the browser has read the chosen button's value.
     setTimeout(() => (pending = chosen));
   };

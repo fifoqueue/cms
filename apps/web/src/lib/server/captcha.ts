@@ -28,8 +28,10 @@ export const allowCaptcha = <
 ): T => {
   if (captcha && captcha.provider !== 'none' && captcha.widget) {
     const { scriptOrigin, origins } = captcha.widget;
+
     event.locals.captchaOrigins = [...new Set([scriptOrigin, ...origins])];
   }
+
   return captcha;
 };
 
@@ -55,24 +57,30 @@ export const withWidgetOrigins = (
     .filter(Boolean)
     .map((part) => {
       const [name = '', ...sources] = part.split(/\s+/);
+
       return { name: name.toLowerCase(), sources };
     });
   // Browsers apply the first of repeated directives.
   const find = (name: string) =>
     directives.find((directive) => directive.name === name);
+
   for (const kind of KINDS) {
     const own = kind.own.map(find).find(Boolean);
+
     if (own) {
       own.sources = admit(own.sources, origins);
       continue;
     }
+
     const fallback = kind.fallback.map(find).find(Boolean);
+
     if (fallback)
       directives.push({
         name: kind.own.at(-1)!,
         sources: admit(fallback.sources, origins),
       });
   }
+
   return directives
     .map(({ name, sources }) => [name, ...sources].join(' '))
     .join('; ');

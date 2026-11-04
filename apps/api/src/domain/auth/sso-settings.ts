@@ -72,6 +72,7 @@ export class SsoSettingsService {
   async getAdmin(): Promise<AdminSsoSettings> {
     const { settings, secrets } = await this.stored();
     const siteUrl = await this.deps.siteUrl();
+
     return adminSsoSettingsSchema.parse({
       ...settings,
       providers: settings.providers.map((provider) => ({
@@ -90,13 +91,16 @@ export class SsoSettingsService {
 
   async update(input: unknown, actor: UserProfile): Promise<AdminSsoSettings> {
     const inputSettings = parseInput(ssoSettingsInputSchema, input);
+
     for (const provider of inputSettings.providers) {
       if (!provider.enabled) continue;
       if (!(await this.deps.siteUrl()))
         throw invalidInput(Errors.SsoSiteUrlRequired);
       await this.deps.checkIssuer?.(provider.issuer);
     }
+
     await this.deps.access.run((context) => this.save(input, actor, context));
+
     return this.getAdmin();
   }
 
@@ -110,6 +114,7 @@ export class SsoSettingsService {
     const settings = ssoSettingsSchema.parse(parsed);
     const current = await this.stored(context.settings);
     const secrets: Record<string, string> = {};
+
     for (const [index, provider] of parsed.providers.entries()) {
       const { clientSecret } = provider;
       const secret =
@@ -124,7 +129,9 @@ export class SsoSettingsService {
           : clientSecret
             ? this.deps.secrets.seal(clientSecret)
             : '';
+
       secrets[provider.id] = secret;
+
       if (provider.enabled) {
         if (provider.authMethod !== 'none' && !secret)
           throw invalidInput(Errors.SsoSecretRequired, [
@@ -135,6 +142,7 @@ export class SsoSettingsService {
           ]);
       }
     }
+
     if (!(await this.deps.otherMethod(actor, context.settings))) {
       const effective = this.deps.environment
         ? [this.deps.environment]
@@ -146,8 +154,10 @@ export class SsoSettingsService {
             }));
       const fail = (message: string) =>
         invalidInput(message, [{ path: 'providers', message }]);
+
       if (!effective.length) throw fail(Errors.SsoProviderRequired);
       const identities = await context.identities.findByUser(actor.id);
+
       if (
         !effective.some(
           (p) =>
@@ -157,6 +167,7 @@ export class SsoSettingsService {
       )
         throw fail(Errors.SsoAccessRequired);
     }
+
     await context.settings.set(KEY, {
       settings,
       secrets,
@@ -166,9 +177,11 @@ export class SsoSettingsService {
   /** What sign-in uses right now. The provider client is reused while its settings stay the same. */
   async setup(store = this.deps.settings): Promise<SsoSetup> {
     const { settings: stored, secrets } = await this.stored(store);
+
     if (this.deps.environment) return { providers: [this.deps.environment] };
     const siteUrl = await this.deps.siteUrl();
     const providers: SsoProviderSetup[] = [];
+
     for (const settings of stored.providers) {
       if (
         !settings.enabled ||
@@ -191,6 +204,7 @@ export class SsoSettingsService {
         scope: settings.scopes,
       };
       const key = JSON.stringify(client);
+
       if (this.cached.get(settings.id)?.key !== key)
         this.cached.set(settings.id, {
           key,
@@ -204,14 +218,17 @@ export class SsoSettingsService {
         subjects: new Map(Object.entries(settings.allowedSubjects)),
       });
     }
+
     for (const id of this.cached.keys())
       if (!providers.some((p) => p.id === id)) this.cached.delete(id);
+
     return { providers };
   }
 
   /** Policy-only reads use the lock's connection; no discovery, network or other pooled reads. */
   async policy(store: SettingsRepository) {
     const { settings } = await this.stored(store);
+
     return {
       providers: this.deps.environment
         ? [this.deps.environment]
@@ -236,6 +253,7 @@ export class SsoSettingsService {
           }
         : raw?.settings,
     );
+
     return {
       settings: parsed.success ? parsed.data : ssoSettingsSchema.parse({}),
       secrets: legacy

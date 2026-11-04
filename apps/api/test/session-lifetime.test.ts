@@ -16,6 +16,7 @@ import {
 test('session lifetimes persist accepted bounds and reject identity changes without exposing secrets', async () => {
   const users = new MemoryUsers();
   const user = userRecord({ id: 'writer' });
+
   await users.insert(user);
   const clock = fixedClock();
   const sessions = new MemorySessions(() => false, users);
@@ -35,6 +36,7 @@ test('session lifetimes persist accepted bounds and reject identity changes with
     sessionTtlMs: 60_000,
   });
   const plugin = hooks.registrar('policy');
+
   for (const ttlMs of [
     1,
     120_000,
@@ -48,26 +50,31 @@ test('session lifetimes persist accepted bounds and reject identity changes with
     const release = plugin.filter('user.sessionLifetime', (value) => {
       expect(value.user).not.toHaveProperty('passwordHash');
       expect(value).not.toHaveProperty('token');
+
       return { ...value, ttlMs };
     });
     const grant = await auth.startSession(user);
     const expected = [1, 120_000, 31_536_000_000].includes(ttlMs)
       ? ttlMs
       : 60_000;
+
     expect(Date.parse(grant.expiresAt) - clock.now().getTime()).toBe(expected);
     expect((await sessions.find(grant.token))?.expiresAt.toISOString()).toBe(
       grant.expiresAt,
     );
     release();
   }
+
   hooks
     .registrar('functions:site', { trusted: true })
     .filter('user.sessionLifetime', (value) => {
       value.user.id = 'replacement';
       value.ttlMs = 1;
+
       return value;
     });
   const grant = await auth.startSession(user);
+
   expect(Date.parse(grant.expiresAt) - clock.now().getTime()).toBe(60_000);
   expect(grant.user.id).toBe(user.id);
 });

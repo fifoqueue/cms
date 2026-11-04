@@ -84,6 +84,7 @@ const linkMedia = async (
     where: { id: { in: [...new Set(mediaIds)] } },
     select: { id: true },
   });
+
   if (existing.length)
     await tx.termMedia.createMany({
       data: existing.map(({ id }) => ({ termId, mediaId: id })),
@@ -108,6 +109,7 @@ export class PrismaTaxonomyRepository implements TaxonomyRepository {
       where: matching(taxonomy, scope, filter),
       include: counted(scope),
     });
+
     return sortTerms(rows.map(toRecord), filter);
   }
 
@@ -116,6 +118,7 @@ export class PrismaTaxonomyRepository implements TaxonomyRepository {
       where: { id },
       include: counted(scope),
     });
+
     return row && toRecord(row);
   }
 
@@ -128,6 +131,7 @@ export class PrismaTaxonomyRepository implements TaxonomyRepository {
       where: { taxonomy_slug: { taxonomy, slug } },
       include: counted(scope),
     });
+
     return row && toRecord(row);
   }
 
@@ -155,15 +159,19 @@ export class PrismaTaxonomyRepository implements TaxonomyRepository {
         where: { id: record.id },
         select: { taxonomy: true },
       });
+
       await this.checkParent(tx, { ...record, taxonomy });
       const { id, ...data } = toRow({ ...record, taxonomy });
+
       await tx.taxonomyTerm.update({ where: { id }, data });
+
       if (media) {
         await tx.termMedia.deleteMany({
           where: { termId: id, mediaId: { notIn: [...media.retain] } },
         });
         await linkMedia(tx, id, media.ids);
       }
+
       await queueContentPaths(
         tx,
         { id: { in: await this.pathIds(tx, id) } },
@@ -178,12 +186,14 @@ export class PrismaTaxonomyRepository implements TaxonomyRepository {
     const result = await this.db.$transaction(async (tx) => {
       await this.lock(tx);
       const term = await tx.taxonomyTerm.findUnique({ where: { id } });
+
       if (!term) return [];
       const assignments = await tx.contentTerm.findMany({
         where: { termId: id },
         select: { contentId: true },
       });
       const affected = await this.pathIds(tx, id);
+
       await tx.taxonomyTerm.updateMany({
         where: { parentId: id },
         data: { parentId: term.parentId },
@@ -192,9 +202,12 @@ export class PrismaTaxonomyRepository implements TaxonomyRepository {
       await tx.taxonomyTerm.delete({ where: { id } });
       await queueContentPaths(tx, { id: { in: affected } }, this.tokens);
       await tx.searchOutbox.create({ data: { contentId: null } });
+
       return assignments.map(({ contentId }) => contentId);
     });
+
     this.kick();
+
     return result;
   }
 
@@ -203,24 +216,31 @@ export class PrismaTaxonomyRepository implements TaxonomyRepository {
       select: { id: true, parentId: true },
     });
     const children = new Map<string, string[]>();
+
     for (const term of terms) {
       if (!term.parentId) continue;
       const ids = children.get(term.parentId) ?? [];
+
       ids.push(term.id);
       children.set(term.parentId, ids);
     }
+
     const ids = new Set<string>();
     const pending = [id];
+
     while (pending.length) {
       const next = pending.pop()!;
+
       if (ids.has(next)) continue;
       ids.add(next);
       pending.push(...(children.get(next) ?? []));
     }
+
     const contents = await tx.content.findMany({
       where: { terms: { some: { termId: { in: [...ids] } } } },
       select: { id: true },
     });
+
     return contents.map(({ id }) => id);
   }
 

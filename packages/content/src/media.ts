@@ -11,6 +11,7 @@ const number = (value: string | null) =>
   value && /^\d+$/.test(value) ? Number(value) : null;
 const captionOf = (element: HTMLElement) =>
   element.querySelector(':scope > figcaption')?.textContent ?? '';
+
 export const alignmentOf = (element: HTMLElement) =>
   /(?:^|\s)(?:align|cms-align-)(left|center|right|wide|full)(?:\s|$)/.exec(
     element.className,
@@ -20,6 +21,7 @@ export const alignmentOf = (element: HTMLElement) =>
 export const imageAttributes = (element: HTMLElement) => {
   const image = imageOf(element);
   const link = element.querySelector('a');
+
   return {
     src: safeImageSrc(image?.getAttribute('src')),
     alt: image?.getAttribute('alt') ?? '',
@@ -48,6 +50,7 @@ export const ContentImage = Image.extend({
       href: null,
       newTab: false,
     };
+
     return Object.fromEntries(
       Object.entries(defaults).map(([key, value]) => [
         key,
@@ -94,6 +97,7 @@ export const ContentImage = Image.extend({
           image,
         ]
       : image;
+
     return [
       'figure',
       { class: `cms-image cms-align-${a.align}` },
@@ -179,6 +183,7 @@ export const Video = Node.create({
   ],
   renderHTML({ node }) {
     const a = node.attrs;
+
     return [
       'figure',
       { class: 'cms-video' },
@@ -238,6 +243,7 @@ export const File = Node.create({
   ],
   renderHTML({ node }) {
     const a = node.attrs;
+
     return [
       'div',
       { class: 'cms-file' },
@@ -290,7 +296,9 @@ export const Gallery = Node.create({
       getContent: (dom: globalThis.Node, schema: Schema) => {
         const element = dom as HTMLElement;
         const images = Array.from(element.querySelectorAll('img'));
+
         if (images.length > 100) throw new Error(Errors.InvalidDocument);
+
         return Fragment.fromArray(
           images.map((image) =>
             schema.nodes.image!.create(
@@ -307,6 +315,7 @@ export const Gallery = Node.create({
   },
   renderHTML({ node }) {
     const a = node.attrs;
+
     return [
       'figure',
       {

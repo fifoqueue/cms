@@ -24,21 +24,27 @@ export const codeCopy = (
         );
       });
   const observer = new MutationObserver(prepare);
+
   observer.observe(element, { childList: true, subtree: true });
   prepare();
+
   const click = async (event: MouseEvent) => {
     const button = (event.target as Element).closest<HTMLButtonElement>(
       '[data-code-copy]',
     );
+
     if (!button || !element.contains(button)) return;
+
     try {
       await navigator.clipboard.writeText(
         button.closest('.cms-code')?.querySelector('code')?.textContent ?? '',
       );
     } catch {
       notifyFailure(messages.failed);
+
       return;
     }
+
     // The toast announces the outcome; the button shows it briefly where the reader clicked.
     notifySuccess(messages.done);
     button.textContent = messages.copied;
@@ -46,9 +52,12 @@ export const codeCopy = (
       button.textContent = messages.copy;
       timers.delete(timer);
     }, 2000);
+
     timers.add(timer);
   };
+
   element.addEventListener('click', click);
+
   return {
     destroy() {
       observer.disconnect();

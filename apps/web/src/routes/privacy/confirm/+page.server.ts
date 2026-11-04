@@ -16,6 +16,7 @@ const proofsOf = (cookies: Cookies, url: URL) => {
     const parsed = privacyProofsSchema.safeParse(
       JSON.parse(cookies.get(cookie(url)) ?? '[]'),
     );
+
     return parsed.success ? parsed.data : [];
   } catch {
     return [];
@@ -27,6 +28,7 @@ const saveProofs = (
   proofs: { id: string; token: string }[],
 ) => {
   const options = { path: '/', secure: url.protocol === 'https:' };
+
   if (proofs.length)
     cookies.set(cookie(url), JSON.stringify(proofs.slice(-5)), {
       ...options,
@@ -51,9 +53,11 @@ export const load: PageServerLoad = async ({
     'x-robots-tag': 'noindex, nofollow',
   });
   const token = url.searchParams.get('token');
+
   if (token !== null) {
     const id = requestId(token.split('.')[0] ?? '');
     const parsed = privacyProofsSchema.safeParse([{ id, token }]);
+
     if (!parsed.success) redirect(303, '/privacy/confirm');
     saveProofs(cookies, url, [
       ...proofsOf(cookies, url).filter((proof) => proof.id !== id),
@@ -61,12 +65,14 @@ export const load: PageServerLoad = async ({
     ]);
     redirect(303, `/privacy/confirm?request=${id}`);
   }
+
   const api = contentApi(fetch);
   const [site, captcha, privacy] = await Promise.all([
     api.site(),
     api.captcha(),
     api.privacy(),
   ]);
+
   return {
     requestId: requestId(url.searchParams.get('request') ?? ''),
     language: site.locale,
@@ -81,6 +87,7 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const id = requestId(text(form, 'requestId'));
     const proofs = proofsOf(event.cookies, event.url);
+
     try {
       await contentApi(event.fetch).confirmPrivacy(
         proofs.find((proof) => proof.id === id)?.token ?? '',
@@ -89,11 +96,13 @@ export const actions: Actions = {
     } catch (error) {
       return failFrom(error);
     }
+
     saveProofs(
       event.cookies,
       event.url,
       proofs.filter((proof) => proof.id !== id),
     );
+
     return { notice: 'privacyConfirmed' };
   },
 };

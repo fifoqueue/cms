@@ -17,13 +17,16 @@ export class WritingService {
     const result = writingSettingsSchema.safeParse(
       await this.settings.get(KEY),
     );
+
     return result.success ? result.data : writingSettingsSchema.parse({});
   }
 
   async update(input: unknown): Promise<WritingSettings> {
     const settings = parseInput(writingSettingsSchema, input);
+
     await this.settings.set(KEY, settings);
     void this.hooks?.emit('settings.updated', { section: KEY, settings });
+
     return settings;
   }
 }
