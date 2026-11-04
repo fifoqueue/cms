@@ -100,7 +100,7 @@ export default defineConfig(
       '**/.svelte-kit',
       '**/.web-releases',
       '**/generated',
-      'data',
+      '**/data',
       'apps/web/.functions-server-*',
       'apps/web/.functions-vite-*',
     ],

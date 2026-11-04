@@ -11,6 +11,7 @@ removeApiSecrets();
 
 // One .env at the repository root serves both the API and the web app.
 const envDir = '../..';
+const webRoot = fileURLToPath(new URL('.', import.meta.url));
 
 /**
  * Lightning CSS folds ordering statements into blocks. A preserved comment carries the
@@ -87,6 +88,12 @@ export default defineConfig(({ mode }) => {
     server: {
       port: Number(env.WEB_PORT) || undefined,
       host: env.WEB_HOST || undefined,
+      watch: {
+        ignored: (path) =>
+          /^(?:data|\.functions-(?:server|vite)-[^/\\]+)(?:[/\\]|$)/.test(
+            relative(webRoot, path),
+          ),
+      },
     },
     // Browser assets: Oxc minifies JS and Lightning CSS minifies CSS in production builds.
     // The server bundle keeps Vite's default (unminified JS) for readable stack traces.
