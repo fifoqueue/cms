@@ -1,17 +1,17 @@
-/*
- * Public pages' own Tailwind build. Admin screens import `site.css` alone: a second Tailwind
- * build there shares the admin's layer names and its base utilities (`.hidden`) override
- * the admin's responsive ones (`md:flex`).
- */
+/* A small public build; the admin's all-source utility superset has its own higher layer. */
 @import 'tailwindcss' source(none);
 @import 'tw-animate-css';
 @import './base.css';
 @import './content/toc.css';
 @import './site.css';
 
+/*! cms-layer-order: @layer properties,theme,base,components,utilities,admin-utilities; */
+
 @plugin '@tailwindcss/typography';
 @source '../../routes/(site)';
 @source '.';
+/* DOM props, array methods and inline style properties are not utility classes. */
+@source not inline('container filter transform');
 @source '../seo/Breadcrumbs.svelte';
 @source '../security/Captcha.svelte';
 @source '../components/NavigationProgress.svelte';

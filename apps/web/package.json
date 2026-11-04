@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && bun scripts/release.js",
+    "build": "vite build && bun scripts/check-styles.js && bun scripts/release.js",
     "preview": "vite preview",
     "start": "bun --no-env-file server.js",
     "prepare": "svelte-kit sync || echo ''",

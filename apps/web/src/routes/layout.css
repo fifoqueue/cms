@@ -1,9 +1,16 @@
-@import 'tailwindcss' source(none);
+/* Admin scans every public source too: its complete utility order must win over the
+ * smaller public build, regardless of preload/navigation order. Shared tokens stay shared. */
+@layer properties, theme, base, components, utilities, admin-utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss/utilities.css' layer(admin-utilities) source(none);
 @import 'tw-animate-css';
 @import 'shadcn-svelte/tailwind.css';
 @import '../lib/theme/base.css';
 @import '../lib/theme/content/toc.css';
 @import '../lib/admin/editor/content.css';
+
+/*! cms-layer-order: @layer properties,theme,base,components,utilities,admin-utilities; */
 
 @plugin '@tailwindcss/typography';
 @source '..';

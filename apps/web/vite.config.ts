@@ -13,6 +13,28 @@ removeApiSecrets();
 const envDir = '../..';
 
 /**
+ * Lightning CSS folds ordering statements into blocks. A preserved comment carries the
+ * header through minification and asset hashing; changing the header also changes the hash.
+ */
+const layerOrder = (): Plugin => ({
+  name: 'cms:layer-order',
+  enforce: 'post',
+  generateBundle: {
+    order: 'post',
+    handler(_options, bundle) {
+      for (const asset of Object.values(bundle)) {
+        if (asset.type !== 'asset' || !asset.fileName.endsWith('.css'))
+          continue;
+        const css = Buffer.from(asset.source).toString();
+        const marker = /\/\*! cms-layer-order: (@layer [^;]+;) \*\//;
+        const match = css.match(marker);
+        if (match) asset.source = `${match[1]}${css.replace(marker, '')}`;
+      }
+    },
+  },
+});
+
+/**
  * `virtual:cms/route-kinds`: route IDs (strings only) of endpoints without a page, read from
  * `src/routes` because `$app/manifest` is empty in dev whenever `svelte-kit sync` runs.
  */
@@ -65,6 +87,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       routeKinds(),
       tailwindcss(),
+      layerOrder(),
       sveltekit({
         compilerOptions: {
           // Force runes mode for the project, except for libraries. Can be removed in svelte 6.
