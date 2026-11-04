@@ -497,7 +497,7 @@ ${XXL} {
 .cms-prose th { ${heading}; font-weight: 700; letter-spacing: -0.04em; line-height: 1.12; }
 .cms-prose thead { border-bottom: 2px solid var(--cms-color-table-border); }
 .cms-prose img { border-radius: 8px; }
-.cms-prose :is(figcaption, caption) { margin-top: 1rem; color: var(--cms-color-muted); font-size: 1rem; text-align: left; }
+.cms-prose :is(figcaption, caption) { margin-top: 1rem; color: var(--cms-color-muted); font-size: 0.875rem; text-align: center; }
 .cms-prose hr { border-top-color: var(--cms-color-table-border); }
 .cms-prose :is(a, pre, code) { overflow-wrap: anywhere; word-break: break-word; }
 
