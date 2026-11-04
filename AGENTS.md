@@ -66,7 +66,7 @@ plugins/
 - **O** — 기능 추가는 기존 코드 수정이 아니라 **확장**으로 합니다. 새 HTTP 기능은 `http/routes/` 아래에 라우트 파일을 하나 추가합니다(기존 파일·목록은 수정하지 않습니다). 새 동작은 가능하면 플러그인으로 만듭니다.
 - **L** — 포트의 모든 구현체는 같은 계약을 지킵니다. 예: `MemoryContentRepository`(테스트)와 `PrismaContentRepository`는 슬러그 충돌 시 둘 다 `conflict`를 던집니다. 포트 주석에 적힌 계약을 구현체가 어기면 안 됩니다.
 - **I** — 인터페이스는 작게 나눕니다. 클라이언트는 `createContentClient`(공개)·`createAuthClient`·`createAdminClient`로 분리돼 있고, 플러그인 컨텍스트는 `hooks/slots/routes/settings/storage/content/logger` 능력 단위로 나뉩니다.
-- **D** — `domain/`, `plugin-runtime/`, `shared/`는 **인터페이스(포트)에만** 의존합니다. Prisma·파일시스템·Bun API 같은 구체 구현은 `infra/`에만 있고, 연결은 `container.ts`에서만 합니다. 이 방향은 ESLint가 강제합니다.
+- **D** — `domain/`, `plugin-runtime/`, `shared/`는 **인터페이스(포트)에만** 의존합니다. Prisma·파일시스템·Bun API 같은 구체 구현은 `infra/`에만 있고, 연결은 컴포지션 루트(`container.ts` + `composition/**`)에서만 합니다. 이 방향은 ESLint가 강제합니다.
 
 ### 4.2 코어 ↔ 플러그인
 
@@ -105,7 +105,7 @@ plugins/
 
 ## 10. 작업 체크리스트
 
-- [ ] 새 책임은 새 모듈로 분리했다 (SRP). 구체 구현은 `infra/`와 `container.ts`에만 있다 (DIP).
+- [ ] 새 책임은 새 모듈로 분리했다 (SRP). 구체 구현은 `infra/`에, 연결은 컴포지션 루트(`container.ts` + `composition/**`)에만 있다 (DIP).
 - [ ] 코어가 특정 플러그인을 알지 못한다. 새 확장 지점은 범용이다.
 - [ ] 플러그인이 꺼지거나 실패해도 코어가 동작함을 테스트했다.
 - [ ] 신뢰 경계 입력을 검증했다.

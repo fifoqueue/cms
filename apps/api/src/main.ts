@@ -1,4 +1,4 @@
-import { createBootstrap } from '#api/container';
+import { createBootstrap } from '#api/composition/bootstrap';
 
 // `app` is an Elysia instance; `stop` releases what the container owns (plugins, database).
 const { app, stop, port, hostname, logger, maxRequestBodySize } =

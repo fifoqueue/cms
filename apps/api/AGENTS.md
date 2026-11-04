@@ -18,14 +18,15 @@
       infra/                어댑터: prisma/, plugins/(파일시스템·동적 import), meilisearch-engine, wxr-parser, smtp-mailer,
                             captcha-verifier, sharp-images, fs-media-storage, webhook-transport, secret-box, system.ts
       http/                 app.ts(createApiApp·createInstallerApp, 오류 매핑), services.ts(DI 타입), session.ts(인증 가드), plugin-gateway.ts, request/respond, routes/{api,install}/** (파일 경로 = URL)
-      container.ts          컴포지션 루트 — 구현체를 아는 유일한 파일
+      composition/          컴포지션 루트 — 책임별 구현체 연결, bootstrap.ts(설치·런타임 수명주기)
+      container.ts          컴포지션 루트 — 모듈 조립과 지연 포트 연결
       main.ts               부트스트랩
     test/                   bun test, test/support 의 인메모리 어댑터
 ```
 
 ## 계층 구조
 
-- `domain/`·`plugin-runtime/`·`shared/`는 포트(`domain/ports.ts`)에만 의존하고, 구체 구현은 `infra/`에만 둡니다. 연결은 `container.ts`에서만 합니다. 전체 저장소 구조는 [루트 문서](../../AGENTS.md#3-저장소-구조)를 봅니다.
+- `domain/`·`plugin-runtime/`·`shared/`는 포트(`domain/ports.ts`)에만 의존하고, 구체 구현은 `infra/`에만 둡니다. 연결은 컴포지션 루트(`container.ts` + `composition/**`)에서만 합니다. 전체 저장소 구조는 [루트 문서](../../AGENTS.md#3-저장소-구조)를 봅니다.
 - 오류 메시지는 `#api/shared/errors`의 `Errors` 카탈로그에서 가져옵니다. 규칙 전문은 [루트 코드 스타일](../../AGENTS.md#43-코드-스타일)에 있습니다.
 - 확장 지점과 플러그인 문서: [docs/plugins/](../../docs/plugins/extension-points.md). 라우트 표: [docs/api/routes.md](../../docs/api/routes.md). SSO: [docs/auth/sso.md](../../docs/auth/sso.md). 기능별 규약: [docs/features/](../../docs/features/).
 
@@ -41,7 +42,7 @@
     session(app).get('', ({ user }) => json(user));
   ```
 
-- **DI**: 서비스는 `ApiServices`(`http/services.ts`)로 정의하고 `createApiApp({ services, logger })`가 Elysia decorator로 등록합니다. 핸들러는 컨텍스트에서 `({ site, auth })`처럼 꺼내 씁니다. 설치 단계는 `createInstallerApp({ services: { installation }, logger })`가 같은 방식으로 `InstallerServices`를 씁니다. 구현체는 `container.ts`만 압니다. 두 팩토리는 비동기입니다(파일 스캔).
+- **DI**: 서비스는 `ApiServices`(`http/services.ts`)로 정의하고 `createApiApp({ services, logger })`가 Elysia decorator로 등록합니다. 핸들러는 컨텍스트에서 `({ site, auth })`처럼 꺼내 씁니다. 설치 단계는 `createInstallerApp({ services: { installation }, logger })`가 같은 방식으로 `InstallerServices`를 씁니다. 구현체 연결은 컴포지션 루트(`container.ts` + `composition/**`)가 담당합니다. 두 팩토리는 비동기입니다(파일 스캔).
 - **`routes/` 아래에는 라우트 파일만** 둡니다(로더가 모든 파일을 가져옵니다). 공용 코드는 `http/` 바로 아래(`request.ts`, `respond.ts`, `session.ts`, `params.ts` …)에 둡니다.
 - **인증**: 라우트 파일에서 `session(app)`을 호출하면 그 뒤에 선언한 라우트에 로그인이 필요하고(401) 핸들러가 `user`를 받습니다. 가드는 그 파일 안에서만 적용됩니다. 가드를 쓰지 않은 파일은 공개입니다.
 - **경로 파라미터 타입**: `params.ts`의 `idParams`/`slugParams`/`pluginParams`를 라우트 옵션으로 넘깁니다(와일드카드 `*`는 허용).
@@ -75,13 +76,13 @@
 ## Public read cache
 
 `MemoryPublicCache` implements the domain `PublicCache` port, wired only in
-`container.ts`. Core layout, site and reading data are cached in-process for
+the composition root (`container.ts` + `composition/**`). Core layout, site and reading data are cached in-process for
 30 seconds. Layout preview queries bypass the cache entirely. No sessions,
 permissions or personalised responses are cached. Snapshots are copied for each
 reader, failed fills are evicted, and invalidated in-flight fills cannot repopulate
 the cache.
 
-Persistence decorators wired in `container.ts` invalidate before write promises
+Persistence decorators wired in the composition root (`container.ts` + `composition/**`) invalidate before write promises
 settle, including failures after partial commits. They cover settings writes and
 settings transactions, site/archive/permalink saves, content writes and scheduled
 publishing, taxonomy, media (including reconciliation), comments, user deletion/profile changes and privacy

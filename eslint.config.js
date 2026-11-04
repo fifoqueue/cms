@@ -24,7 +24,13 @@ const prisma = {
   message: 'Persistence lives in apps/api/src/infra only.',
 };
 const infra = {
-  group: ['**/infra/**', '**/http/**'],
+  group: [
+    '**/infra/**',
+    '**/http/**',
+    '**/composition/**',
+    '**/container',
+    '**/container.*',
+  ],
   message: 'Inner layers depend on ports, not on adapters.',
 };
 const content = {
@@ -144,6 +150,54 @@ export default defineConfig(
   },
   boundary(['packages/**'], [plugins, api, web, prisma]),
   boundary(['apps/api/**'], [plugins, web]),
+  boundary(
+    ['apps/api/src/infra/**'],
+    [
+      plugins,
+      web,
+      {
+        group: ['**/composition/**', '**/container', '**/container.*'],
+        message: 'Adapters must not import the composition root.',
+      },
+    ],
+  ),
+  boundary(
+    ['apps/api/src/main.ts'],
+    [
+      plugins,
+      web,
+      prisma,
+      {
+        group: ['**/infra/**'],
+        message: 'Concrete adapters are wired only by the composition root.',
+      },
+    ],
+  ),
+  {
+    ...boundary(
+      ['apps/api/src/**'],
+      [
+        plugins,
+        web,
+        prisma,
+        {
+          group: [
+            '**/infra/**',
+            '**/composition/**',
+            '**/container',
+            '**/container.*',
+          ],
+          message: 'Concrete adapters are wired only by the composition root.',
+        },
+      ],
+    ),
+    ignores: [
+      'apps/api/src/infra/**',
+      'apps/api/src/composition/**',
+      'apps/api/src/container.ts',
+      'apps/api/src/main.ts',
+    ],
+  },
   boundary(
     ['apps/api/src/{domain,plugin-runtime,shared}/**'],
     [plugins, web, prisma, infra],
