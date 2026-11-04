@@ -20,7 +20,7 @@
     },
     "apps/api": {
       "name": "@cms/api",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@cms/content": "workspace:*",
         "@cms/sdk": "workspace:*",
@@ -46,7 +46,7 @@
     },
     "apps/web": {
       "name": "@cms/web",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@cms/content": "workspace:*",
         "@cms/sdk": "workspace:*",
@@ -82,7 +82,7 @@
     },
     "packages/content": {
       "name": "@cms/content",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@cms/sdk": "workspace:*",
         "@tiptap/core": "^3.32.2",
@@ -99,7 +99,7 @@
     },
     "packages/sdk": {
       "name": "@cms/sdk",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "re2js": "2.9.1",
         "zod": "^4.6.7",
