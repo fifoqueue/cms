@@ -1,6 +1,6 @@
 // Regression guard for the public/admin page-data boundary: what loaders and the server hook
 // serialize to the browser. Sentinel values must never appear in returned data.
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { with_request_store } from '@sveltejs/kit/internal/server';
 import {
   DEFAULT_ENTRY_SEO,
@@ -33,6 +33,12 @@ Bun.plugin({
     }));
   },
 });
+
+// The web server is unpaired: no frontend secret, whatever `data/` the working directory holds.
+mock.module('#lib/server/frontend-secret.js', () => ({
+  frontendSecret: () => '',
+  pairFrontend: async () => undefined,
+}));
 
 const { load: loadSiteLayout } =
   await import('#web/routes/(site)/+layout.server.js');
