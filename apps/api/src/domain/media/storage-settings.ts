@@ -8,6 +8,29 @@ import { parseInput } from '#api/shared/validation';
 import type { StorageResync } from '#api/domain/media/storage-resync';
 import type { StorageDrivers } from '#api/domain/media/storage-drivers';
 import type { MailValues } from '@cms/sdk';
+import type { HookDispatcher } from '#api/domain/ports';
+import {
+  filterSettings,
+  settingsUpdated,
+} from '#api/domain/site/settings-hooks';
+import { z } from 'zod';
+
+const storedSchema = z.object({
+  settings: mediaStorageSettingsSchema,
+  secret: z.string(),
+  plugins: z
+    .record(
+      z.string(),
+      z.object({
+        values: z.record(
+          z.string(),
+          z.union([z.string(), z.number(), z.boolean()]),
+        ),
+        secrets: z.record(z.string(), z.string()),
+      }),
+    )
+    .optional(),
+});
 
 type Configuration = {
   driver: string;
@@ -36,6 +59,7 @@ export class StorageSettings {
       secrets: SecretBox;
       test: (configuration: Configuration) => Promise<void>;
       drivers?: StorageDrivers;
+      hooks?: HookDispatcher;
     },
   ) {}
 
@@ -178,13 +202,73 @@ export class StorageSettings {
   }
 
   async update(input: unknown): Promise<MediaStorageSettings> {
-    return this.deps.transactions.run(`${KEY}.lock`, async (store) => {
-      const value = this.prepare(input, await this.stored(store));
+    const projection = {
+      parseSettings: (value: unknown) =>
+        mediaStorageSettingsSchema.safeParse(value),
+      boundFields: [
+        'driver',
+        's3.endpoint',
+        's3.bucket',
+        's3.region',
+        's3.prefix',
+        's3.accessKeyId',
+        's3.forcePathStyle',
+      ],
+      redact: (value: Stored) => ({
+        section: 'storage' as const,
+        settings: this.dto(value),
+      }),
+      restore: (
+        value: { settings: MediaStorageSettings },
+        original: Stored,
+      ): Stored => {
+        const settings = mediaStorageSettingsSchema.parse(value.settings);
+        const driver = original.settings.driver;
+        const plugin = original.plugins?.[driver];
+        const values = { ...settings.pluginSettings };
 
-      await this.check(this.open(value));
-      await store.set(KEY, value);
+        if (plugin)
+          for (const field of this.deps.drivers?.fields(driver) ?? [])
+            if (field.type === 'secret') delete values[field.key];
 
-      return this.dto(value);
-    });
+        return {
+          ...original,
+          settings,
+          plugins: plugin
+            ? {
+                ...original.plugins,
+                [driver]: { values, secrets: plugin.secrets },
+              }
+            : original.plugins,
+        };
+      },
+      parse: (value: unknown) => storedSchema.safeParse(value),
+    };
+
+    const saved = await this.deps.transactions.run(
+      `${KEY}.lock`,
+      async (store) => {
+        const filtering = this.deps.hooks?.has('settings.beforeSave') ?? false;
+        const value = await filterSettings(
+          this.deps.hooks,
+          this.prepare(input, await this.stored(store)),
+          projection,
+        );
+
+        if (filtering && value.settings.driver.startsWith('plugin:'))
+          this.deps.drivers?.validate(
+            value.settings.driver,
+            this.open(value).pluginSettings ?? {},
+          );
+        await this.check(this.open(value));
+        await store.set(KEY, value);
+
+        return value;
+      },
+    );
+
+    settingsUpdated(this.deps.hooks, saved, projection);
+
+    return this.dto(saved);
   }
 }

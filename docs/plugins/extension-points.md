@@ -111,6 +111,49 @@ manifest의 `requires: { cms?: '<semver 범위>', plugins?: { '<id>': '<범위>'
 
 타입 정의: `packages/sdk/src/plugin.ts`. 새 훅/슬롯은 `ActionHookMap`/`FilterHookMap`/`SLOT_NAMES`에 범용 이름으로 추가하고, 코어에서 발행 지점을 만들고, 이 표와 테스트를 갱신합니다.
 
+## Settings
+
+설정 훅의 타입은 `@cms/sdk/plugin`의 `SettingsSection`과
+`PublicSettingsSection`으로 내보냅니다.
+
+| 훅                       | 전달 값                                                                   | 현재 연결된 저장/조회 경로                                                                                                              |
+| ------------------------ | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `settings.beforeSave`    | `{ section, settings }`; 플러그인은 `{ section: 'plugin', id, settings }` | site, reading, writing, embeds, permalinks, membership, search, storage, discussion, seo, security, egress, email, sign-in, sso, plugin |
+| `settings.updated`       | `settings.beforeSave`와 같은 구별 가능한 유니온                           | 위 저장 경로의 쓰기 완료 후                                                                                                             |
+| `plugin.settingsUpdated` | `{ id: string, keys: string[] }`                                          | 플러그인 설정 쓰기 완료 후                                                                                                              |
+| `site.public`            | `PublicSiteDto`                                                           | `SiteService.getPublic`                                                                                                                 |
+| `settings.public`        | `{ section, settings }`                                                   | reading, embeds, seo, discussion                                                                                                        |
+
+`section`과 플러그인 `id`는 변경할 수 없습니다. 반환 값은 해당 설정의
+코어 스키마로 다시 검증하며, 잘못된 반환 값은 이전 값으로 대체합니다.
+등록된 핸들러가 없으면 필터용 복사 및 검증을 실행하지 않습니다.
+공통 저장 헬퍼는 비밀 값을 제거한 투영만 핸들러에 전달하고 원래 비밀 값을
+복원하는 계약을 사용합니다.
+
+자격 증명의 전송 대상은 `settings.beforeSave`에서 변경할 수 없습니다.
+검색의 `host`(프로토콜·포트 포함), 메일의 전송 방식·플러그인 ID·SMTP
+호스트/포트/보안/계정·HTTP 공급자/지역/도메인/URL/키 ID/인증 헤더,
+저장소의 드라이버·S3 엔드포인트/버킷/지역/접두사/키 ID/주소 방식,
+SSO의 공급자 ID/issuer/clientId/인증 방식, 캡차 공급자를 고정합니다.
+코어 스키마로 정규화한 뒤 고정 필드를 비교하며, 변경한 핸들러의 결과
+전체를 버리고 이전 값을 유지하며 경고를 기록합니다.
+`settings.updated`의 자격 증명 설정 여부와 플러그인 전송 설정은
+입력 기본값이 아니라 실제 커밋된 상태를 나타냅니다.
+공개 토론 설정 필터는 조회 전에 실행되고, 이어서 `comment.publicQuery`가
+최종 페이지 크기와 정렬을 정합니다. 응답과 댓글 링크도 같은 조회 설정을 사용합니다.
+
+SEO는 `seo.beforeSave`, 토론은 `discussion.beforeSave` 다음에
+`settings.beforeSave`를 실행합니다.
+저장 후에는 `settings.updated`, 기존 섹션별 액션 순서로 알립니다.
+공개 SEO는 `seo.public` 다음에 `settings.public`을 실행합니다.
+
+검색 API 키, S3 및 플러그인 저장소 비밀 값, SMTP 비밀번호와 HTTP 메일
+자격 증명, OIDC 클라이언트 비밀 값, 캡차 비밀 값은 필터와 액션에 전달하지
+않습니다. 필터가 비밀 필드를 추가해도 저장에는 원래 제출/보관된 값을
+사용합니다. 저장소와 SSO 액션은 트랜잭션 완료 후 실행됩니다.
+공개 토론 설정에는 `requireLogin`, `fields`, `pageSize`, `threadDepth`만
+포함되며 보류/차단 단어와 관리자 정책은 노출하지 않습니다.
+
 ## 콘텐츠
 
 `content.excerpt`는 공개 요약을 만들 때

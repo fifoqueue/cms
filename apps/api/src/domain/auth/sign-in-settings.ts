@@ -17,6 +17,20 @@ import type { SettingsTransactions } from '#api/domain/site/settings-transaction
 import type { Logger } from '#api/shared/logger';
 import { invalidInput } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
+import type { HookDispatcher } from '#api/domain/ports';
+import {
+  filterSettings,
+  settingsUpdated,
+} from '#api/domain/site/settings-hooks';
+
+const projection = {
+  redact: (settings: SignInSettings) => ({
+    section: 'sign-in' as const,
+    settings,
+  }),
+  restore: (value: { settings: SignInSettings }) => value.settings,
+  parse: (value: unknown) => signInSettingsSchema.safeParse(value),
+};
 
 export interface SignInCatalog {
   available(): Promise<AdminSignInSettings['available']>;
@@ -55,6 +69,7 @@ export class SignInSettingsService {
       registry: SignInCatalog;
       passwordForced: boolean;
       logger: Logger;
+      hooks?: HookDispatcher;
     },
   ) {}
 
@@ -92,7 +107,11 @@ export class SignInSettingsService {
     actor: UserProfile,
   ): Promise<AdminSignInSettings> {
     authorize(actor, 'settings.manage');
-    const policy = parseInput(signInSettingsSchema, input);
+    const policy = await filterSettings(
+      this.deps.hooks,
+      parseInput(signInSettingsSchema, input),
+      projection,
+    );
 
     await this.deps.transactions.run('signIn.admission', async (store) => {
       const current = await this.stored(store);
@@ -148,6 +167,7 @@ export class SignInSettingsService {
         ]);
       await store.set('signIn', policy);
     });
+    settingsUpdated(this.deps.hooks, policy, projection);
 
     return this.getAdmin();
   }

@@ -3,8 +3,21 @@ import type { WritingSettings } from '@cms/sdk';
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import { parseInput } from '#api/shared/validation';
 import type { HookDispatcher } from '#api/domain/ports';
+import {
+  filterSettings,
+  settingsUpdated,
+} from '#api/domain/site/settings-hooks';
 
 const KEY = 'writing';
+
+const projection = {
+  redact: (settings: WritingSettings) => ({
+    section: KEY as typeof KEY,
+    settings,
+  }),
+  restore: (value: { settings: WritingSettings }) => value.settings,
+  parse: (value: unknown) => writingSettingsSchema.safeParse(value),
+};
 
 /** Defaults for new entries (Settings → Writing). */
 export class WritingService {
@@ -22,10 +35,14 @@ export class WritingService {
   }
 
   async update(input: unknown): Promise<WritingSettings> {
-    const settings = parseInput(writingSettingsSchema, input);
+    const settings = await filterSettings(
+      this.hooks,
+      parseInput(writingSettingsSchema, input),
+      projection,
+    );
 
     await this.settings.set(KEY, settings);
-    void this.hooks?.emit('settings.updated', { section: KEY, settings });
+    settingsUpdated(this.hooks, settings, projection);
 
     return settings;
   }

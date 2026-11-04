@@ -22,6 +22,36 @@ import type {
 } from '#api/domain/auth/sso-ports';
 import { invalidInput, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
+import type { HookDispatcher } from '#api/domain/ports';
+import type { z } from 'zod';
+import {
+  filterSettings,
+  settingsUpdated,
+} from '#api/domain/site/settings-hooks';
+
+type Input = z.output<typeof ssoSettingsInputSchema>;
+
+const projection = {
+  parseSettings: (value: unknown) => ssoSettingsSchema.safeParse(value),
+  boundFields: [
+    'providers.*.id',
+    'providers.*.issuer',
+    'providers.*.clientId',
+    'providers.*.authMethod',
+  ],
+  redact: (value: Input) => ({
+    section: 'sso' as const,
+    settings: ssoSettingsSchema.parse(value),
+  }),
+  restore: (value: { settings: SsoSettings }, original: Input) => ({
+    providers: value.settings.providers.map((provider) => ({
+      ...provider,
+      clientSecret: original.providers.find((entry) => entry.id === provider.id)
+        ?.clientSecret,
+    })),
+  }),
+  parse: (value: unknown) => ssoSettingsInputSchema.safeParse(value),
+};
 
 const KEY = 'sso';
 
@@ -66,6 +96,7 @@ export class SsoSettingsService {
         store: SettingsRepository,
       ) => Promise<boolean>;
       access: SsoAccessTransactions;
+      hooks?: HookDispatcher;
     },
   ) {}
 
@@ -90,7 +121,11 @@ export class SsoSettingsService {
   }
 
   async update(input: unknown, actor: UserProfile): Promise<AdminSsoSettings> {
-    const inputSettings = parseInput(ssoSettingsInputSchema, input);
+    const inputSettings = await filterSettings(
+      this.deps.hooks,
+      parseInput(ssoSettingsInputSchema, input),
+      projection,
+    );
 
     for (const provider of inputSettings.providers) {
       if (!provider.enabled) continue;
@@ -99,7 +134,10 @@ export class SsoSettingsService {
       await this.deps.checkIssuer?.(provider.issuer);
     }
 
-    await this.deps.access.run((context) => this.save(input, actor, context));
+    await this.deps.access.run((context) =>
+      this.save(inputSettings, actor, context),
+    );
+    settingsUpdated(this.deps.hooks, inputSettings, projection);
 
     return this.getAdmin();
   }

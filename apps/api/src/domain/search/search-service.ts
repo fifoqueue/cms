@@ -29,6 +29,27 @@ import { catalogOr, outboundFailure } from '#api/shared/failures';
 import { parseInput } from '#api/shared/validation';
 import type { HookDispatcher } from '#api/domain/ports';
 import { searchHookDocumentSchema } from '@cms/sdk/plugin';
+import {
+  filterSettings,
+  settingsUpdated,
+} from '#api/domain/site/settings-hooks';
+
+const projection = {
+  parseSettings: (value: unknown) => searchSettingsSchema.safeParse(value),
+  boundFields: ['host'],
+  redact: (settings: SearchSettings) => ({
+    section: 'search' as const,
+    settings,
+  }),
+  restore: (value: { settings: SearchSettings }) => value.settings,
+  parse: (value: unknown) => {
+    const parsed = searchSettingsSchema.safeParse(value);
+
+    return parsed.success
+      ? searchSettingsInputSchema.safeParse(parsed.data)
+      : parsed;
+  },
+};
 
 const KEY = 'search';
 const STATE_KEY = 'search.state';
@@ -94,10 +115,8 @@ export class SearchService {
   }
 
   async update(input: unknown): Promise<AdminSearchSettings> {
-    const { apiKey, ...settings } = parseInput(
-      searchSettingsInputSchema,
-      input,
-    );
+    const { apiKey, ...initial } = parseInput(searchSettingsInputSchema, input);
+    const settings = await filterSettings(this.deps.hooks, initial, projection);
     const current = await this.stored();
 
     if (settings.enabled) await this.deps.checkDestination?.(settings.host);
@@ -110,6 +129,7 @@ export class SearchService {
             ? this.deps.secrets.seal(apiKey)
             : '',
     } satisfies Stored);
+    settingsUpdated(this.deps.hooks, settings, projection);
     // A changed connection is retried at once rather than after the failure pause.
     await this.saveState({ failedAt: null, lastError: null });
 

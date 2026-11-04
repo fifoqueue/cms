@@ -266,6 +266,40 @@ const setup = (
 };
 
 const visitor = { client: 'ip:203.0.113.1', address: null, captchaToken: null };
+
+test('discussion settings filter before commit and public projection excludes moderation rules', async () => {
+  const { comments, hooks, settings, publish } = setup();
+  const announced: unknown[] = [];
+  const committed: unknown[] = [];
+  const publicSeen: unknown[] = [];
+  const registrar = hooks.registrar('functions:site', { trusted: true });
+
+  registrar.filter('settings.beforeSave', (value) =>
+    value.section === 'discussion'
+      ? { ...value, settings: { ...value.settings, requireLogin: true } }
+      : value,
+  );
+  registrar.on('settings.updated', (value) => {
+    announced.push(value);
+    committed.push(settings.values.get('discussion'));
+  });
+  await comments.updateDiscussion({ holdWords: ['private moderation'] }, ADMIN);
+  expect(announced).toHaveLength(1);
+  expect(committed[0]).toMatchObject({ requireLogin: true });
+  registrar.filter('settings.public', (value) => {
+    publicSeen.push(structuredClone(value));
+
+    return value.section === 'discussion'
+      ? { ...value, settings: { ...value.settings, requireLogin: false } }
+      : value;
+  });
+  const entry = await publish();
+  const page = await comments.publicPage(entry.id, 1);
+
+  expect(page.requireLogin).toBe(false);
+  expect(publicSeen).toHaveLength(1);
+  expect(JSON.stringify(publicSeen)).not.toContain('private moderation');
+});
 const comment = (
   contentId: string,
   overrides: Record<string, unknown> = {},
@@ -1012,6 +1046,76 @@ describe('CommentService', () => {
 
     expect(linked).toMatchObject({ page: 2, pageSize: 2 });
     expect(linked.items.map(({ id }) => id)).toContain('q-reply');
+  });
+
+  test('public discussion pagination controls the query, response and recent links together', async () => {
+    const { comments, publish, hooks, store } = setup();
+    const entry = await publish();
+
+    for (let index = 0; index < 13; index += 1) {
+      const at = new Date(Date.UTC(2026, 0, 1, 0, 0, index));
+
+      await store.insert({
+        id: `public-${index}`,
+        contentId: entry.id,
+        parentId: index === 12 ? 'public-0' : null,
+        userId: null,
+        authorName: 'Ann',
+        authorEmail: 'ann@example.com',
+        authorUrl: '',
+        authorIp: null,
+        authorUserAgent: null,
+        body: 'Note',
+        status: 'approved',
+        fields: {},
+        createdAt: at,
+        updatedAt: at,
+      });
+    }
+
+    hooks
+      .registrar('functions:site', { trusted: true })
+      .filter('settings.public', (value) =>
+        value.section === 'discussion'
+          ? {
+              ...value,
+              settings: { ...value.settings, pageSize: 5, threadDepth: 1 },
+            }
+          : value,
+      );
+    const first = await comments.publicPage(entry.id, 1);
+    const second = await comments.publicPage(entry.id, 2);
+
+    expect(first).toMatchObject({ pageSize: 5, threadDepth: 1, total: 12 });
+    expect(first.items.map(({ id }) => id)).toEqual([
+      'public-0',
+      'public-1',
+      'public-2',
+      'public-3',
+      'public-4',
+    ]);
+    expect(second.items.map(({ id }) => id)).toEqual([
+      'public-5',
+      'public-6',
+      'public-7',
+      'public-8',
+      'public-9',
+    ]);
+    expect(
+      (await comments.recent(2)).find(({ path }) =>
+        path.endsWith('#comment-public-11'),
+      )?.path,
+    ).toBe(`${entry.path}?cpage=3#comment-public-11`);
+    hooks
+      .registrar('query')
+      .filter('comment.publicQuery', (value) => ({ ...value, pageSize: 2 }));
+    const narrowed = await comments.publicPage(entry.id, 2);
+
+    expect(narrowed.pageSize).toBe(2);
+    expect(narrowed.items.map(({ id }) => id)).toEqual([
+      'public-2',
+      'public-3',
+    ]);
   });
 
   test('later comment pages keep the page size and order page 1 got, so links reach their comment', async () => {

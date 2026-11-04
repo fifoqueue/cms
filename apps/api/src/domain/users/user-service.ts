@@ -52,6 +52,19 @@ import {
 } from '#api/shared/errors';
 import { withParams } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
+import {
+  filterSettings,
+  settingsUpdated,
+} from '#api/domain/site/settings-hooks';
+
+const membershipProjection = {
+  redact: (settings: { enabled: boolean }) => ({
+    section: 'membership' as const,
+    settings,
+  }),
+  restore: (value: { settings: { enabled: boolean } }) => value.settings,
+  parse: (value: unknown) => membershipSchema.safeParse(value),
+};
 
 export interface UserServiceDeps {
   publicCache?: PublicCache;
@@ -225,11 +238,16 @@ export class UserService {
 
   async configureMembership(input: unknown, actor: Actor) {
     authorize(actor, 'users.manage');
-    const settings = parseInput(membershipSchema, input);
+    const settings = await filterSettings(
+      this.deps.hooks,
+      parseInput(membershipSchema, input),
+      membershipProjection,
+    );
 
     if (settings.enabled && !(await this.deps.invitations.available()))
       throw invalidInput(Errors.EmailDisabled);
     await this.deps.settings?.set('membership', settings);
+    settingsUpdated(this.deps.hooks, settings, membershipProjection);
     this.deps.publicCache?.invalidate();
 
     return settings;

@@ -13,8 +13,23 @@ import type { HookDispatcher } from '#api/domain/ports';
 import { parseInput } from '#api/shared/validation';
 import { presetProvider } from '#api/domain/content/embeds';
 import type { EmbedProvider } from '#api/domain/content/embeds';
+import {
+  filterSettings,
+  settingsUpdated,
+} from '#api/domain/site/settings-hooks';
 
 const KEY = 'embeds';
+
+const projection = {
+  redact: (settings: EmbedSettings) => ({
+    section: KEY as typeof KEY,
+    settings,
+  }),
+  restore: (value: { settings: EmbedSettings }) => value.settings,
+  parse: (value: unknown) => embedSettingsSchema.safeParse(value),
+};
+
+const publicSchema = publicEmbedProviderSchema.array();
 
 /** A cleared width is stored as `null` (no limit), so only settings older than the field lack it. */
 const withExplicitWidth = (
@@ -73,22 +88,43 @@ export class EmbedService {
   }
 
   async list(): Promise<PublicEmbedProvider[]> {
-    return (await this.get()).providers
+    const result = (await this.get()).providers
       .filter((provider) => provider.enabled)
       .map(({ id, label, urlPattern }) =>
         publicEmbedProviderSchema.parse({ id, label, urlPattern }),
       );
+
+    if (!this.hooks?.has('settings.public')) return result;
+
+    const filtered = await this.hooks.applyFilter(
+      'settings.public',
+      { section: KEY, settings: result },
+      (value) => {
+        const candidate = value as { section?: unknown; settings?: unknown };
+
+        return (
+          candidate?.section === KEY &&
+          publicSchema.safeParse(candidate.settings).success
+        );
+      },
+    );
+
+    return publicSchema.parse(filtered.settings);
   }
 
   async update(input: unknown): Promise<EmbedSettings> {
-    const settings = {
-      providers: parseInput(embedSettingsSchema, input).providers.map(
-        withExplicitWidth,
-      ),
-    };
+    const settings = await filterSettings(
+      this.hooks,
+      {
+        providers: parseInput(embedSettingsSchema, input).providers.map(
+          withExplicitWidth,
+        ),
+      },
+      projection,
+    );
 
     await this.settings.set(KEY, settings);
-    void this.hooks?.emit('settings.updated', { section: KEY, settings });
+    settingsUpdated(this.hooks, settings, projection);
 
     return settings;
   }

@@ -27,6 +27,57 @@ import { failureOf } from '#api/shared/failures';
 import { parseInput } from '#api/shared/validation';
 import type { Logger } from '#api/shared/logger';
 import type { MailTransportRegistry } from '#api/domain/email/transport-registry';
+import {
+  filterSettings,
+  settingsUpdated,
+} from '#api/domain/site/settings-hooks';
+
+type Input = z.output<typeof emailSettingsInputSchema>;
+
+const projection = {
+  parseSettings: (value: unknown) => emailSettingsInputSchema.safeParse(value),
+  boundFields: [
+    'transport',
+    'pluginTransport.id',
+    'smtp.host',
+    'smtp.port',
+    'smtp.security',
+    'smtp.username',
+    'http.provider',
+    'http.region',
+    'http.domain',
+    'http.url',
+    'http.keyId',
+    'http.authHeader',
+  ],
+  redact: (value: Input) => ({
+    section: 'email' as const,
+    settings: adminEmailSettingsSchema.parse({
+      ...value,
+      smtp: { ...value.smtp, passwordConfigured: false },
+      http: { ...value.http, secretConfigured: false },
+      pluginTransport: value.pluginTransport
+        ? {
+            id: value.pluginTransport.id,
+            values: value.pluginTransport.values,
+            secretsConfigured: [],
+          }
+        : null,
+    }),
+  }),
+  restore: (value: { settings: AdminEmailSettings }, original: Input) => ({
+    ...value.settings,
+    smtp: { ...value.settings.smtp, password: original.smtp.password },
+    http: { ...value.settings.http, secret: original.http.secret },
+    pluginTransport: value.settings.pluginTransport
+      ? {
+          ...value.settings.pluginTransport,
+          secrets: original.pluginTransport?.secrets ?? {},
+        }
+      : original.pluginTransport,
+  }),
+  parse: (value: unknown) => emailSettingsInputSchema.safeParse(value),
+};
 
 const KEY = 'email';
 
@@ -73,8 +124,15 @@ export class EmailService {
   ) {}
 
   async getAdmin(): Promise<AdminEmailSettings> {
-    const { settings, password, secret, pluginSecrets } = await this.stored();
+    return this.dto(await this.stored());
+  }
 
+  private dto({
+    settings,
+    password,
+    secret,
+    pluginSecrets,
+  }: Stored): AdminEmailSettings {
     return adminEmailSettingsSchema.parse({
       ...settings,
       availableTransports: this.deps.transports?.available() ?? [],
@@ -95,12 +153,33 @@ export class EmailService {
   }
 
   async update(input: unknown): Promise<AdminEmailSettings> {
+    const initial = parseInput(emailSettingsInputSchema, input);
+    const transport = initial.pluginTransport;
+
+    if (transport) {
+      const fields = this.deps.transports
+        ?.available()
+        .find((entry) => entry.id === transport.id)?.fields;
+
+      if (!fields) throw invalidInput(Errors.EmailDisabled);
+
+      if (
+        fields.some(
+          (field) =>
+            field.type === 'secret' &&
+            Object.hasOwn(transport.values, field.key),
+        )
+      )
+        throw invalidInput(Errors.InvalidInput);
+    }
+
+    const filtered = await filterSettings(this.deps.hooks, initial, projection);
     const {
       smtp: { password, ...smtp },
       http: { secret, ...http },
       pluginTransport,
       ...common
-    } = parseInput(emailSettingsInputSchema, input);
+    } = filtered;
     const current = await this.stored();
     const selected =
       pluginTransport === undefined
@@ -191,7 +270,7 @@ export class EmailService {
       ]);
     if (settings.enabled && !selected)
       await this.deps.checkDestination?.(settings);
-    await this.deps.settings.set(KEY, {
+    const saved: Stored = {
       settings,
       pluginSecrets,
       secret: sealedSecret,
@@ -201,7 +280,12 @@ export class EmailService {
           : password
             ? this.deps.secrets.seal(password)
             : '',
-    } satisfies Stored);
+    };
+
+    await this.deps.settings.set(KEY, saved);
+    settingsUpdated(this.deps.hooks, saved, {
+      redact: (value) => ({ section: 'email', settings: this.dto(value) }),
+    });
     const result = await this.getAdmin();
 
     void this.deps.hooks?.emit('email.settingsUpdated', result);

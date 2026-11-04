@@ -79,7 +79,7 @@ export const createPlugins = ({
   logger,
   timeoutMs,
 }: Input) => {
-  const pluginSettings = new PluginSettings(pluginData);
+  const pluginSettings = new PluginSettings(pluginData, hooks);
   const contexts = new PluginContextFactory({
     roles: roleDefaults,
     profileFields,

@@ -5,8 +5,22 @@ import { invalidInput, Errors } from '#api/shared/errors';
 import { parseRange } from '#api/shared/ip-address';
 import { parseInput } from '#api/shared/validation';
 import type { HookDispatcher } from '#api/domain/ports';
+import type { EgressSettingsInput } from '@cms/sdk';
+import {
+  filterSettings,
+  settingsUpdated,
+} from '#api/domain/site/settings-hooks';
 
 const KEY = 'egress';
+
+const projection = {
+  redact: (settings: EgressSettingsInput) => ({
+    section: KEY as typeof KEY,
+    settings,
+  }),
+  restore: (value: { settings: EgressSettingsInput }) => value.settings,
+  parse: (value: unknown) => egressSettingsInputSchema.safeParse(value),
+};
 
 const validateRanges = (rules: readonly EgressRule[]) => {
   for (const [index, rule] of rules.entries())
@@ -38,10 +52,15 @@ export class EgressSettingsService {
   }
 
   async update(input: unknown): Promise<AdminEgressSettings> {
-    const { rules } = parseInput(egressSettingsInputSchema, input);
+    const { rules } = await filterSettings(
+      this.hooks,
+      parseInput(egressSettingsInputSchema, input),
+      projection,
+    );
 
     validateRanges(rules);
     await this.settings.set(KEY, { rules });
+    settingsUpdated(this.hooks, { rules }, projection);
     const result = await this.getAdmin();
 
     void this.hooks?.emit('egress.updated', result);

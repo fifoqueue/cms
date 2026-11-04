@@ -90,6 +90,7 @@ export const createMedia = ({
 }: Input) => {
   const localMediaStorage = new FsMediaStorage(config.MEDIA_DIR);
   const mediaStorageSettings = new StorageSettings({
+    hooks,
     drivers: storageDrivers,
     settings: settingsRepository,
     transactions: storageTransactions,

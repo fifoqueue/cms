@@ -106,6 +106,7 @@ export const createSignIn = ({
     egressFetch('oidc')(url, options as RequestInit);
   const ssoProvider = createOidcProvider(config, logger, oidcFetch);
   const ssoSettings = new SsoSettingsService({
+    hooks,
     environmentRedirectUri: config.OIDC_REDIRECT_URI,
     access: ssoSettingsAccess,
     otherMethod,
@@ -151,6 +152,7 @@ export const createSignIn = ({
     startLimiter: ssoStarts,
   });
   const signInSettings = new SignInSettingsService({
+    hooks,
     settings: settingsRepository,
     transactions: signInSettingsTransactions,
     registry: authentication,

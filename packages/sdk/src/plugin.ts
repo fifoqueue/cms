@@ -114,6 +114,15 @@ import type {
   AppearanceFilterHooks,
 } from '#sdk/hooks/appearance';
 import type { SearchActionHooks, SearchFilterHooks } from '#sdk/hooks/search';
+import type {
+  SettingsActionHooks,
+  SettingsFilterHooks,
+} from '#sdk/hooks/settings';
+
+export type {
+  SettingsSection,
+  PublicSettingsSection,
+} from '#sdk/hooks/settings';
 import type { SeoActionHooks, SeoFilterHooks } from '#sdk/hooks/seo';
 import type { UserActionHooks, UserFilterHooks } from '#sdk/hooks/users';
 import type { MediaActionHooks, MediaFilterHooks } from '#sdk/hooks/media';
@@ -265,6 +274,7 @@ interface CoreFilterHooks {
  * `<Domain>FilterHooks`) and joins them here, so domains grow without editing one interface.
  */
 export type ActionHookMap = CoreActionHooks &
+  SettingsActionHooks &
   SearchActionHooks &
   AppearanceActionHooks &
   PlatformActionHooks &
@@ -274,6 +284,7 @@ export type ActionHookMap = CoreActionHooks &
   MediaActionHooks &
   CommentActionHooks;
 export type FilterHookMap = CoreFilterHooks &
+  SettingsFilterHooks &
   PlatformFilterHooks &
   SearchFilterHooks &
   AppearanceFilterHooks &

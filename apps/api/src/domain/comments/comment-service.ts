@@ -7,6 +7,7 @@ import {
   commentUpdateSchema,
   discussionSettingsSchema,
   publicCommentSchema,
+  publicCommentPageSchema,
 } from '@cms/sdk';
 import type {
   Capability,
@@ -64,6 +65,31 @@ import { parseInput } from '#api/shared/validation';
 import { CommentCheckers } from '#api/domain/comments/comment-checkers';
 import type { CommentNotifier } from '#api/domain/comments/comment-notifier';
 import { noticeRecipients } from '#api/domain/comments/notice-recipients';
+import {
+  filterSettings,
+  settingsUpdated,
+} from '#api/domain/site/settings-hooks';
+
+const settingsProjection = {
+  redact: (settings: DiscussionSettings) => ({
+    section: 'discussion' as const,
+    settings,
+  }),
+  restore: (value: { settings: DiscussionSettings }) => value.settings,
+  parse: (value: unknown) => discussionSettingsSchema.safeParse(value),
+};
+
+const publicSettingsSchema = publicCommentPageSchema
+  .pick({
+    requireLogin: true,
+    fields: true,
+    pageSize: true,
+    threadDepth: true,
+  })
+  .extend({
+    pageSize: discussionSettingsSchema.shape.pageSize,
+    threadDepth: discussionSettingsSchema.shape.threadDepth,
+  });
 
 const KEY = 'discussion';
 const DAY = 24 * 60 * 60 * 1000;
@@ -188,18 +214,54 @@ export class CommentService {
 
   async updateDiscussion(input: unknown, actor: Actor) {
     authorize(actor, 'settings.manage');
-    const settings = discussionSettingsSchema.parse(
+    const initial = discussionSettingsSchema.parse(
       await this.deps.hooks.applyFilter(
         'discussion.beforeSave',
         parseInput(discussionSettingsSchema, input),
         (value) => discussionSettingsSchema.safeParse(value).success,
       ),
     );
+    const settings = await filterSettings(
+      this.deps.hooks,
+      initial,
+      settingsProjection,
+    );
 
     await this.deps.settings.set(KEY, settings);
+    settingsUpdated(this.deps.hooks, settings, settingsProjection);
     void this.deps.hooks.emit('discussion.updated', settings);
 
     return settings;
+  }
+
+  private async publicSettings(settings: DiscussionSettings) {
+    const initial = {
+      requireLogin: settings.requireLogin,
+      fields: {
+        name: settings.showName,
+        email: settings.showEmail,
+        website: settings.showWebsite,
+      },
+      pageSize: settings.pageSize,
+      threadDepth: settings.threadDepth,
+    };
+
+    if (!this.deps.hooks.has('settings.public')) return initial;
+
+    const filtered = await this.deps.hooks.applyFilter(
+      'settings.public',
+      { section: 'discussion', settings: initial },
+      (value) => {
+        const candidate = value as { section?: unknown; settings?: unknown };
+
+        return (
+          candidate?.section === 'discussion' &&
+          publicSettingsSchema.safeParse(candidate.settings).success
+        );
+      },
+    );
+
+    return publicSettingsSchema.parse(filtered.settings);
   }
 
   /** Approved comments of a public entry; `not_found` for anything else. */
@@ -222,12 +284,16 @@ export class CommentService {
       Number.isSafeInteger(page) && page > 0
         ? Math.min(page, PAGINATION_MAX_PAGE)
         : 1;
-    const query = await this.query(target.id, current, settings);
+    const publicSettings = await this.publicSettings(settings);
+    const query = await this.query(target.id, current, {
+      ...settings,
+      pageSize: publicSettings.pageSize,
+    });
     const { items, total, truncated } = await this.deps.repository.thread(
       contentId,
       query.page,
       query.pageSize,
-      settings.threadDepth,
+      publicSettings.threadDepth,
       query.order,
     );
     const ownPending = await this.pending(pendingProof, target.id);
@@ -241,12 +307,8 @@ export class CommentService {
           this.toPublic(item, target, item.depth, settings, definitions),
         ),
       ),
-      requireLogin: settings.requireLogin,
-      fields: {
-        name: settings.showName,
-        email: settings.showEmail,
-        website: settings.showWebsite,
-      },
+      requireLogin: publicSettings.requireLogin,
+      fields: publicSettings.fields,
       customFields: definitions.flatMap(toFormField),
       viewer: viewer ? { name: viewer.name } : null,
       ownPending: ownPending
@@ -257,7 +319,7 @@ export class CommentService {
       page: query.page,
       pageSize: query.pageSize,
       open: await this.open(target, settings),
-      threadDepth: settings.threadDepth,
+      threadDepth: publicSettings.threadDepth,
       truncated,
     };
   }
@@ -518,15 +580,19 @@ export class CommentService {
 
   /** The thread page showing `record`, with the entry's page size and order (see `query`). */
   private async pageFor(record: CommentPosition, settings: DiscussionSettings) {
+    const publicSettings = await this.publicSettings(settings);
     let root = record;
 
     for (
       let level = 0;
-      root.parentId && level < settings.threadDepth;
+      root.parentId && level < publicSettings.threadDepth;
       level += 1
     )
       root = (await this.deps.repository.findById(root.parentId)) ?? root;
-    const { pageSize, order } = await this.query(record.contentId, 1, settings);
+    const { pageSize, order } = await this.query(record.contentId, 1, {
+      ...settings,
+      pageSize: publicSettings.pageSize,
+    });
 
     return this.deps.repository.pageOf(root, pageSize, order);
   }

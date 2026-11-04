@@ -18,6 +18,34 @@ import type { SettingsRepository } from '#api/domain/site/site-service';
 import { parseInput } from '#api/shared/validation';
 import { invalidInput } from '#api/shared/errors';
 import { Errors } from '@cms/sdk/errors';
+import {
+  filterSettings,
+  settingsUpdated,
+} from '#api/domain/site/settings-hooks';
+import type { z } from 'zod';
+
+type Input = z.output<typeof securitySettingsInputSchema>;
+
+const projection = {
+  parseSettings: (value: unknown) =>
+    securitySettingsInputSchema.safeParse(value),
+  boundFields: ['captcha.provider'],
+  redact: (value: Input) => ({
+    section: 'security' as const,
+    settings: adminSecuritySettingsSchema.parse({
+      ...value,
+      captcha: { ...value.captcha, secretConfigured: false },
+    }),
+  }),
+  restore: (value: { settings: AdminSecuritySettings }, original: Input) => ({
+    ...value.settings,
+    captcha: {
+      ...value.settings.captcha,
+      secretKey: original.captcha.secretKey,
+    },
+  }),
+  parse: (value: unknown) => securitySettingsInputSchema.safeParse(value),
+};
 
 const KEY = 'security';
 
@@ -109,7 +137,11 @@ export class SecuritySettingsService {
   }
 
   async update(input: unknown): Promise<AdminSecuritySettings> {
-    const data = parseInput(securitySettingsInputSchema, input);
+    const data = await filterSettings(
+      this.hooks,
+      parseInput(securitySettingsInputSchema, input),
+      projection,
+    );
 
     if (
       data.captcha.provider !== 'none' &&
@@ -131,6 +163,19 @@ export class SecuritySettingsService {
       settings: { captcha, rules: data.rules, media: data.media },
       secret,
     } satisfies Stored);
+    settingsUpdated(
+      this.hooks,
+      { captcha, rules: data.rules, media: data.media },
+      {
+        redact: (settings) => ({
+          section: 'security',
+          settings: adminSecuritySettingsSchema.parse({
+            ...settings,
+            captcha: { ...settings.captcha, secretConfigured: !!secret },
+          }),
+        }),
+      },
+    );
     const result = await this.getAdmin();
 
     void this.hooks?.emit('security.updated', result);

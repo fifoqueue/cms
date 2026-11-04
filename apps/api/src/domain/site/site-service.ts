@@ -1,4 +1,12 @@
-import { DEFAULT_SITE_SETTINGS, siteSettingsSchema } from '@cms/sdk';
+import {
+  DEFAULT_SITE_SETTINGS,
+  siteSettingsSchema,
+  publicSiteSchema,
+} from '@cms/sdk';
+import {
+  filterSettings,
+  settingsUpdated,
+} from '#api/domain/site/settings-hooks';
 import type {
   AdminSiteDto,
   PublicImage,
@@ -23,6 +31,15 @@ export type SiteImages = (
 ) => Promise<Map<string, PublicImage>>;
 
 const SITE_KEY = 'site';
+
+const siteProjection = {
+  redact: (settings: SiteSettings) => ({
+    section: 'site' as const,
+    settings,
+  }),
+  restore: (value: { settings: SiteSettings }) => value.settings,
+  parse: (value: unknown) => siteSettingsSchema.safeParse(value),
+};
 
 export interface SiteSettingsWriter {
   /** Saves settings while reserving the public login path against content and archive routes. */
@@ -68,7 +85,7 @@ export class SiteService {
       showLogin,
     } = await this.getAdmin();
 
-    return {
+    const result: PublicSiteDto = {
       title,
       description,
       locale,
@@ -77,6 +94,16 @@ export class SiteService {
       loginPath: await this.writer.publicLoginPath(configuredLoginPath),
       showLogin,
     };
+
+    if (!this.hooks.has('site.public')) return result;
+
+    const filtered = await this.hooks.applyFilter(
+      'site.public',
+      result,
+      (value) => publicSiteSchema.safeParse(value).success,
+    );
+
+    return publicSiteSchema.parse(filtered);
   }
 
   /** Public settings for plugin renderers, without resolving media records. */
@@ -101,7 +128,11 @@ export class SiteService {
   }
 
   async update(input: unknown): Promise<SiteSettings> {
-    const site = parseInput(siteSettingsSchema, input);
+    const site = await filterSettings(
+      this.hooks,
+      parseInput(siteSettingsSchema, input),
+      siteProjection,
+    );
     const images = await this.chosen(site);
 
     for (const key of ['iconId', 'logoId'] as const) {
@@ -114,6 +145,7 @@ export class SiteService {
     }
 
     await this.writer.save(site);
+    settingsUpdated(this.hooks, site, siteProjection);
     void this.hooks.emit('site.updated', site);
 
     return site;

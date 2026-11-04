@@ -1,4 +1,12 @@
-import { DEFAULT_READING_SETTINGS, readingSettingsSchema } from '@cms/sdk';
+import {
+  DEFAULT_READING_SETTINGS,
+  readingSettingsSchema,
+  publicReadingSchema,
+} from '@cms/sdk';
+import {
+  filterSettings,
+  settingsUpdated,
+} from '#api/domain/site/settings-hooks';
 import type { PublicReading, ReadingSettings } from '@cms/sdk';
 import type { PublishedContentRepository } from '#api/domain/content/published-content-repository';
 import type { SettingsRepository } from '#api/domain/site/site-service';
@@ -6,6 +14,15 @@ import { parseInput } from '#api/shared/validation';
 import type { HookDispatcher } from '#api/domain/ports';
 
 const KEY = 'reading';
+
+const projection = {
+  redact: (settings: ReadingSettings) => ({
+    section: KEY as typeof KEY,
+    settings,
+  }),
+  restore: (value: { settings: ReadingSettings }) => value.settings,
+  parse: (value: unknown) => readingSettingsSchema.safeParse(value),
+};
 
 /** Front page, list sizes and date presentation (Settings → Reading). */
 export class ReadingService {
@@ -43,7 +60,7 @@ export class ReadingService {
         ? (pages.get(settings.frontPageId) ?? null)
         : null;
 
-    return {
+    const result = {
       ...settings,
       frontPagePath,
       postsPagePath:
@@ -51,13 +68,34 @@ export class ReadingService {
           ? (pages.get(settings.postsPageId) ?? null)
           : null,
     };
+
+    if (!this.hooks?.has('settings.public')) return result;
+
+    const filtered = await this.hooks.applyFilter(
+      'settings.public',
+      { section: KEY, settings: result },
+      (value) => {
+        const candidate = value as { section?: unknown; settings?: unknown };
+
+        return (
+          candidate?.section === KEY &&
+          publicReadingSchema.safeParse(candidate.settings).success
+        );
+      },
+    );
+
+    return publicReadingSchema.parse(filtered.settings);
   }
 
   async update(input: unknown): Promise<ReadingSettings> {
-    const settings = parseInput(readingSettingsSchema, input);
+    const settings = await filterSettings(
+      this.hooks,
+      parseInput(readingSettingsSchema, input),
+      projection,
+    );
 
     await this.settings.set(KEY, settings);
-    void this.hooks?.emit('settings.updated', { section: KEY, settings });
+    settingsUpdated(this.hooks, settings, projection);
 
     return settings;
   }
