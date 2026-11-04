@@ -12,3 +12,5 @@ apps/api/src/infra/prisma/generated
 Thumbs.db
 apps/web/.web-releases/
 apps/web/.active-web-release
+apps/web/.functions-server-*/
+apps/web/.functions-vite-*/

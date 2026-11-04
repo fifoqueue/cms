@@ -101,6 +101,8 @@ export default defineConfig(
       '**/.web-releases',
       '**/generated',
       'data',
+      'apps/web/.functions-server-*',
+      'apps/web/.functions-vite-*',
     ],
   },
   js.configs.recommended,

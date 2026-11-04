@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { execFile } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { promisify } from 'node:util';
+import { constants } from 'node:fs';
+import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { delimiter, join, resolve } from 'node:path';
+import { Errors } from '#lib/errors.js';
+import { pathToFileURL } from 'node:url';
 import {
   webFunctionsDefinitionSchema,
   webFunctionsDeliverySchema,
@@ -16,26 +21,39 @@ import type {
 
 const hash = (code: string) => createHash('sha256').update(code).digest('hex');
 
-interface ModuleBuilder {
-  build(options: {
-    entrypoints: string[];
-    target: 'bun';
-    format: 'esm';
-    plugins: {
-      name: string;
-      setup(builder: {
-        onResolve(
-          options: { filter: RegExp },
-          resolve: (input: { path: string }) => { path: string },
-        ): void;
-      }): void;
-    }[];
-  }): Promise<{
-    success: boolean;
-    logs: unknown[];
-    outputs: { text(): Promise<string> }[];
-  }>;
+const compile = promisify(execFile);
+const require = createRequire(import.meta.url);
+const compiler = `
+import { build } from 'bun';
+import { createRequire } from 'node:module';
+import { writeFile } from 'node:fs/promises';
+
+const [input, output, sdk] = process.argv.slice(-3);
+const require = createRequire(sdk);
+const result = await build({
+  entrypoints: [input], target: 'node', format: 'esm',
+  plugins: [{
+    name: 'web-functions-sdk',
+    setup(builder) {
+      builder.onResolve({ filter: new RegExp('^@cms/sdk(?:/|$)') }, ({ path }) => ({
+        path: require.resolve(path),
+      }));
+    },
+  }],
+});
+
+if (!result.success) {
+  console.error(...result.logs);
+  process.exit(1);
 }
+
+await writeFile(output, await result.outputs[0].text(), { flag: 'wx', mode: 0o600 });
+`;
+
+/** Generated snapshots execute through the native module loader. */
+const importModule = new Function('specifier', 'return import(specifier)') as (
+  specifier: string,
+) => Promise<{ functions: unknown }>;
 
 const sourceSchema = webFunctionsSourceSchema.refine(
   (source) => hash(source.code) === source.hash,
@@ -54,6 +72,8 @@ type LoaderOptions = {
   scope(owner: string): WebFunctionsScope;
   fetch?: typeof fetch;
   logger: WebFunctionsContext['logger'];
+  compilerExecutable?: string;
+  compilerTimeoutMs?: number;
 };
 
 /** A new scope remains invisible until activation succeeds. */
@@ -66,8 +86,50 @@ export class WebFunctionsLoader {
   private readonly files = new Map<string, string>();
   private current = new Set<string>();
   private previous = new Set<string>();
+  private controller = new AbortController();
 
   constructor(private readonly options: LoaderOptions) {}
+
+  private async executable() {
+    if (this.options.compilerExecutable)
+      return resolve(this.options.compilerExecutable);
+    if (process.versions.bun) return process.execPath;
+
+    if (process.env.BUN_EXECUTABLE) {
+      const executable = resolve(process.env.BUN_EXECUTABLE);
+
+      await access(executable, constants.X_OK);
+
+      return executable;
+    }
+
+    for (const directory of (process.env.PATH ?? '')
+      .split(delimiter)
+      .filter(Boolean)) {
+      const executable = resolve(
+        directory,
+        process.platform === 'win32' ? 'bun.exe' : 'bun',
+      );
+
+      try {
+        await access(executable, constants.X_OK);
+
+        return executable;
+      } catch (error) {
+        if (
+          !['ENOENT', 'EACCES', 'ENOTDIR'].includes(
+            (error as NodeJS.ErrnoException).code ?? '',
+          )
+        )
+          throw error;
+      }
+    }
+
+    this.options.logger.error(
+      'Compiler executable unavailable; set BUN_EXECUTABLE to an absolute executable path',
+    );
+    throw new Error(Errors.PluginActivationFailed);
+  }
 
   private module(source: WebFunctionsSource) {
     let pending = this.modules.get(source.hash);
@@ -95,29 +157,40 @@ export class WebFunctionsLoader {
 
     this.files.set(source.hash, directory);
     await writeFile(input, source.code, { flag: 'wx', mode: 0o600 });
-    const runtime = globalThis as typeof globalThis & { Bun: ModuleBuilder };
-    const result = await runtime.Bun.build({
-      entrypoints: [input],
-      target: 'bun',
-      format: 'esm',
-      plugins: [
-        {
-          name: 'web-functions-sdk',
-          setup(build) {
-            build.onResolve({ filter: /^@cms\/sdk(?:\/|$)/ }, ({ path }) => ({
-              path: fileURLToPath(import.meta.resolve(path)),
-            }));
-          },
-        },
-      ],
-    });
+    const executable = await this.executable();
 
-    if (!result.success) throw result.logs[0];
-    await writeFile(output, await result.outputs[0]!.text(), {
-      flag: 'wx',
-      mode: 0o600,
-    });
-    const module = await import(/* @vite-ignore */ pathToFileURL(output).href);
+    this.controller.signal.throwIfAborted();
+    const compilation = compile(
+      executable,
+      [
+        '--eval',
+        compiler,
+        input,
+        output,
+        require.resolve('@cms/sdk/functions'),
+      ],
+      {
+        windowsHide: true,
+        timeout: Math.max(
+          1,
+          Math.min(this.options.compilerTimeoutMs ?? 15000, 15000),
+        ),
+        killSignal: 'SIGKILL',
+        signal: this.controller.signal,
+      },
+    );
+    const closed = new Promise<void>((resolve) =>
+      compilation.child.once('close', () => resolve()),
+    );
+
+    try {
+      await compilation;
+    } finally {
+      await closed;
+    }
+
+    this.controller.signal.throwIfAborted();
+    const module = await importModule(pathToFileURL(output).href);
 
     return webFunctionsDefinitionSchema.parse(module.functions);
   }
@@ -142,6 +215,9 @@ export class WebFunctionsLoader {
   }
 
   refresh(): Promise<void> {
+    if (!this.pending && this.controller.signal.aborted)
+      this.controller = new AbortController();
+
     return (this.pending ??= this.update()
       .catch((error: unknown) => {
         this.options.logger.error('Web functions refresh failed', error);
@@ -160,7 +236,10 @@ export class WebFunctionsLoader {
         [SSO_FRONTEND_SECRET_HEADER]: secret,
         ...(this.etag ? { 'if-none-match': this.etag } : {}),
       },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.any([
+        AbortSignal.timeout(5000),
+        this.controller.signal,
+      ]),
       redirect: 'error',
     });
 
@@ -177,6 +256,7 @@ export class WebFunctionsLoader {
 
     const payload = webFunctionsDeliverySchema.parse(await response.json());
 
+    this.controller.signal.throwIfAborted();
     payload.sources.forEach((source) => sourceSchema.parse(source));
     const staged = new Map<string, WebFunctionsScope>();
 
@@ -219,6 +299,7 @@ export class WebFunctionsLoader {
   async stop() {
     clearInterval(this.timer);
     this.timer = undefined;
+    this.controller.abort();
     await this.pending;
 
     for (const scope of this.active.values()) scope.dispose();

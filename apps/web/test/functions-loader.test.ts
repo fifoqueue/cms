@@ -6,6 +6,134 @@ import { join } from 'node:path';
 import type { WebFunctionsContext } from '@cms/sdk/functions';
 import { WebFunctionsLoader } from '#lib/server/functions-loader.js';
 import { WebHookBus } from '#lib/server/web-hooks.js';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { watch } from 'node:fs';
+import { withDeadline } from '#web-test/functions-test-process.mjs';
+
+test('compiler deadlines preserve last good scopes and stop kills an in-flight compiler', async () => {
+  const probe = promisify(execFile)('node', ['-p', 'process.execPath'], {
+    timeout: 3000,
+    killSignal: 'SIGKILL',
+    windowsHide: true,
+  });
+  const probeClosed = new Promise<void>((resolve) =>
+    probe.child.once('close', () => resolve()),
+  );
+  let node: string;
+
+  try {
+    node = (await probe).stdout.trim();
+  } finally {
+    probe.child.kill('SIGKILL');
+    await withDeadline(probeClosed, 3000, 'node probe exit');
+  }
+
+  const directory = await mkdtemp(join(tmpdir(), 'web-compiler-stop-'));
+  const saved = {
+    options: process.env.NODE_OPTIONS,
+    ready: process.env.COMPILER_READY,
+  };
+  const bus = new WebHookBus({ info() {}, warn() {}, error() {} });
+  let code = `export const functions = { web(ctx) { ctx.hooks.filter('page.bodyClasses', () => ['good']); } };`;
+  const options = {
+    directory,
+    url: 'http://localhost/internal/functions',
+    secret: () => 'proof',
+    logger: { info() {}, warn() {}, error() {} },
+    scope: (owner: string) => bus.scope(owner),
+    compilerExecutable: process.execPath,
+    compilerTimeoutMs: 1000,
+    fetch: (async () =>
+      Response.json({
+        version: digest(code),
+        sources: [{ owner: 'functions:site', hash: digest(code), code }],
+      })) as typeof fetch,
+  };
+  const loader = new WebFunctionsLoader(options);
+  const alive = () =>
+    bus.apply(
+      'page.bodyClasses',
+      [],
+      { path: '/', kind: 'home' },
+      (value) => value as string[],
+    );
+  const stall = async (name: string) => {
+    const ready = Promise.withResolvers<number>();
+    const marker = join(directory, name);
+    const watcher = watch(directory, (_event, file) => {
+      if (String(file) === name)
+        void readFile(marker, 'utf8').then(
+          (text) => ready.resolve(Number(text)),
+          ready.reject,
+        );
+    });
+
+    process.env.COMPILER_READY = marker;
+    options.compilerExecutable = node;
+    code += '\n';
+    const refresh = loader.refresh();
+
+    try {
+      const pid = await Promise.race([
+        ready.promise,
+        refresh.then(() => {
+          throw new Error('compiler exited before readiness');
+        }),
+      ]);
+
+      return { pid, refresh };
+    } finally {
+      watcher.close();
+    }
+  };
+
+  try {
+    await loader.refresh();
+    process.env.NODE_OPTIONS = `--import=${import.meta.resolve('#web-test/functions-stalled-compiler.mjs')}`;
+    const timed = await stall('deadline');
+
+    await timed.refresh;
+    expect(() => process.kill(timed.pid, 0)).toThrow();
+    expect(await alive()).toEqual(['good']);
+    const stopped = await stall('stopping');
+
+    await loader.stop();
+    await stopped.refresh;
+    expect(() => process.kill(stopped.pid, 0)).toThrow();
+    expect(await alive()).toEqual([]);
+    delete process.env.NODE_OPTIONS;
+    options.compilerExecutable = process.execPath;
+    await loader.refresh();
+    expect(await alive()).toEqual(['good']);
+  } finally {
+    await loader.stop();
+    if (saved.options === undefined) delete process.env.NODE_OPTIONS;
+    else process.env.NODE_OPTIONS = saved.options;
+    if (saved.ready === undefined) delete process.env.COMPILER_READY;
+    else process.env.COMPILER_READY = saved.ready;
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 10000);
+
+test('the running compiler works with an empty PATH under Bun', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'web-compiler-path-'));
+  const path = process.env.PATH;
+  const loader = deliveredLoader(
+    directory,
+    () => 'export const functions = { web() {} };',
+  );
+
+  try {
+    process.env.PATH = '';
+    await loader.refresh();
+    expect(await readdir(directory)).toHaveLength(1);
+  } finally {
+    process.env.PATH = path;
+    await loader.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 const digest = (code: string) =>
   createHash('sha256').update(code).digest('hex');
@@ -54,7 +182,7 @@ test('successful swaps retain current and last good files without pruning anothe
     await loader.refresh();
     const importing = other.refresh();
 
-    await started.promise;
+    await withDeadline(started.promise, 5000, 'module import readiness');
     const otherDirectory = (await readdir(directory)).find((name) =>
       name.startsWith(digest(blockedCode)),
     )!;
@@ -78,7 +206,7 @@ test('successful swaps retain current and last good files without pruning anothe
     );
     expect(await readFile(otherModule, 'utf8')).toBe(retained);
     gate.resolve();
-    await importing;
+    await withDeadline(importing, 5000, 'module import completion');
     await loader.stop();
     expect(await readdir(directory)).toEqual([otherDirectory]);
   } finally {
