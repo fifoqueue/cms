@@ -80,6 +80,7 @@ export const Errors = {
     'Use an available site path such as /login, without a query or reserved route',
   FieldOptionsRequired: 'Add at least one choice',
   FieldValuesInvalid: 'Field values must be plain data',
+  FieldCommentImage: 'Comment fields cannot be images',
   CommentUrlInvalid: 'Use a web address starting with https:// or http://',
   CommentDefaultNameRequired:
     'Enter a default commenter name when the name field is disabled.',

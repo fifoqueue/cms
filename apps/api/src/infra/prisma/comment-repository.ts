@@ -3,6 +3,7 @@ import type {
   CommentChanges,
   CommentCriteria,
   CleanupStatus,
+  CommentOrder,
   CommentPosition,
   CommentRecord,
   CommentRepository,
@@ -11,11 +12,22 @@ import type {
 import { lockSetting } from '#api/infra/prisma/client';
 import { unauthorized } from '#api/shared/errors';
 import type { Database } from '#api/infra/prisma/client';
-import { PUBLIC_CONTENT } from '#api/infra/prisma/content-criteria';
+import {
+  parseFields,
+  PUBLIC_CONTENT,
+} from '#api/infra/prisma/content-criteria';
 import { Prisma } from '#api/infra/prisma/generated/client';
 import { decodePath } from '#api/infra/prisma/permalink-repository';
 
 type Transaction = Prisma.TransactionClient;
+
+/** A comment row as stored: field values are JSON text. */
+type CommentRow = Omit<CommentRecord, 'fields'> & { fields: string };
+
+const toRecord = ({ fields, ...row }: CommentRow): CommentRecord => ({
+  ...row,
+  fields: parseFields(fields),
+});
 
 /** Exclusive locks on entries, in id order, before their comments change. */
 const lockEntries = async (tx: Transaction, ids: Iterable<string>) => {
@@ -37,14 +49,16 @@ const lockComments = async (
   ids: readonly string[],
 ): Promise<CommentRecord[]> =>
   ids.length
-    ? tx.$queryRaw<CommentRecord[]>(Prisma.sql`
+    ? (
+        await tx.$queryRaw<CommentRow[]>(Prisma.sql`
         SELECT id, content_id AS contentId, parent_id AS parentId, user_id AS userId,
           author_name AS authorName, author_email AS authorEmail, author_url AS authorUrl,
-          author_ip AS authorIp, author_user_agent AS authorUserAgent, body, status, created_at AS createdAt, updated_at AS updatedAt
+          author_ip AS authorIp, author_user_agent AS authorUserAgent, body, status, fields, created_at AS createdAt, updated_at AS updatedAt
         FROM comments WHERE id IN (${Prisma.join([...new Set(ids)])})
         ORDER BY id FOR UPDATE
       `)
-    : Promise.resolve([]);
+      ).map(toRecord)
+    : [];
 
 const ownColumns = {
   id: true,
@@ -58,6 +72,7 @@ const ownColumns = {
   authorUserAgent: true,
   body: true,
   status: true,
+  fields: true,
   createdAt: true,
   updatedAt: true,
 } as const satisfies Prisma.CommentSelect;
@@ -110,19 +125,35 @@ export class PrismaCommentRepository implements CommentRepository {
     };
   }
 
-  findById(id: string) {
-    return this.db.comment.findUnique({ where: { id }, select: ownColumns });
+  async findById(id: string) {
+    const row = await this.db.comment.findUnique({
+      where: { id },
+      select: ownColumns,
+    });
+    return row && toRecord(row);
   }
 
-  async pageOf(root: CommentPosition, pageSize: number) {
+  async pageOf(
+    root: CommentPosition,
+    pageSize: number,
+    order: CommentOrder = 'asc',
+  ) {
+    const earlier = order === 'asc';
     const before = await this.db.comment.count({
       where: {
         contentId: root.contentId,
         status: 'approved',
         parentId: null,
         OR: [
-          { createdAt: { lt: root.createdAt } },
-          { createdAt: root.createdAt, id: { lt: root.id } },
+          {
+            createdAt: earlier
+              ? { lt: root.createdAt }
+              : { gt: root.createdAt },
+          },
+          {
+            createdAt: root.createdAt,
+            id: earlier ? { lt: root.id } : { gt: root.id },
+          },
         ],
       },
     });
@@ -145,7 +176,9 @@ export class PrismaCommentRepository implements CommentRepository {
         )
           throw unauthorized();
       }
-      await tx.comment.create({ data: record });
+      await tx.comment.create({
+        data: { ...record, fields: JSON.stringify(record.fields) },
+      });
       if (record.status === 'approved')
         await adjustCounts(tx, new Map([[record.contentId, 1]]));
     });
@@ -156,18 +189,20 @@ export class PrismaCommentRepository implements CommentRepository {
     page: number,
     pageSize: number,
     depth: number,
+    order: CommentOrder = 'asc',
   ) {
     const approved = { contentId, status: 'approved' } as const;
-    const [roots, total] = await this.db.$transaction([
+    const [rows, total] = await this.db.$transaction([
       this.db.comment.findMany({
         where: { ...approved, parentId: null },
         select: ownColumns,
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        orderBy: [{ createdAt: order }, { id: order }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
       this.db.comment.count({ where: { ...approved, parentId: null } }),
     ]);
+    const roots = rows.map(toRecord);
     // One query per reply level, so a page costs at most `depth` reads.
     const children = new Map<string, CommentRecord[]>();
     let parents = roots.map((root) => root.id);
@@ -181,7 +216,7 @@ export class PrismaCommentRepository implements CommentRepository {
         take: remaining + 1,
       });
       if (found.length > remaining) truncated = true;
-      const replies = found.slice(0, remaining);
+      const replies = found.slice(0, remaining).map(toRecord);
       for (const reply of replies) {
         const siblings = children.get(reply.parentId!) ?? [];
         siblings.push(reply);
@@ -238,7 +273,7 @@ export class PrismaCommentRepository implements CommentRepository {
     });
     return {
       items: rows.map(({ content, parent, ...row }) => ({
-        ...row,
+        ...toRecord(row),
         contentTitle: content.title,
         parentAuthor: parent?.authorName ?? null,
       })),
@@ -246,13 +281,14 @@ export class PrismaCommentRepository implements CommentRepository {
     };
   }
 
-  exportPage(contentId: string, afterId: string | null, limit: number) {
-    return this.db.comment.findMany({
+  async exportPage(contentId: string, afterId: string | null, limit: number) {
+    const rows = await this.db.comment.findMany({
       where: { contentId, ...(afterId && { id: { gt: afterId } }) },
       select: ownColumns,
       orderBy: { id: 'asc' },
       take: limit,
     });
+    return rows.map(toRecord);
   }
 
   async counts() {

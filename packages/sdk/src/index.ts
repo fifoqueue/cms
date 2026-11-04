@@ -9,6 +9,7 @@ export * from '#sdk/content';
 export * from '#sdk/content-types';
 export * from '#sdk/site';
 export * from '#sdk/auth';
+export * from '#sdk/avatar';
 export * from '#sdk/installation';
 export * from '#sdk/slots';
 export * from '#sdk/plugins';

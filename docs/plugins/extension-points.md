@@ -21,7 +21,7 @@
 플러그인과 functions의 모든 핸들러가 `true` 또는 `false`를 반환할 수 있습니다.
 `content.publishAllowed`, `content.deleteAllowed`, `media.uploadAllowed`,
 `user.signInAllowed`, `user.secondFactorRequired`, `user.registrationAllowed`,
-`comment.submitAllowed`, `email.sendAllowed`, `term.deleteAllowed`에 적용됩니다.
+`comment.submitAllowed`, `comment.openAllowed`, `email.sendAllowed`, `term.deleteAllowed`에 적용됩니다.
 회원가입 설정도 초기값만 결정합니다. 결과의 타입·구조 및 변경 불가 식별 필드 검증은 유지합니다.
 
 `hooks.remove(name, handler)`는 해당 함수의 등록을 제거합니다.
@@ -205,7 +205,7 @@ ID는 바꿀 수 없으며 제목은 공개 DTO 제목 스키마로 검증합니
 `false`이면 `403 forbidden`으로 거부하며 아무것도 바꾸지 않습니다. 필터는 권한 검사를 대신하지 않습니다.
 
 용어 필드(WordPress term meta)는 필드 정의의 `taxonomies`(분류 키 배열, 기본 `[]`)로 지정합니다.
-`contentTypes`도 기본값이 `[]`이며 둘 중 하나 이상이 필요합니다. 플러그인은
+`contentTypes`도 기본값이 `[]`이며 `contentTypes`·`taxonomies`·`comments`([댓글 필드](#댓글)) 중 하나 이상이 필요합니다. 플러그인은
 `fields.register(key, { label, type, taxonomies: ['category'] })`로, 관리자는 같은 정의 API로
 용어 필드를 만듭니다. 값은 `taxonomy_terms.fields`(JSON)에 저장되고 용어와 함께 삭제됩니다.
 용어 입력의 `fields`는 `term.beforeSave` 이후 해당 분류의 정의로 검증합니다. 선언되지 않은 키는
@@ -273,7 +273,17 @@ URL과 저장 키는 최종 사용 시에도 다시 검증합니다.
 
 ## 댓글
 
-모더레이터는 `commentCheckers`를 건너뛰지만 `comment.beforeSave`는 여전히 실행됩니다. `comment.notification.to`는 코어 수신자로 고정되며, 필터는 subject/text만 바꿀 수 있습니다. 수신자가 바뀌면 필터 결과는 무효가 됩니다.
+모더레이터는 `commentCheckers`를 건너뛰지만 `comment.beforeSave`는 여전히 실행됩니다. 메일 한 통의 `comment.notification.to`는 고정되며, 필터는 subject/text만 바꿀 수 있습니다. 수신자가 바뀌면 필터 결과는 무효가 됩니다. 누구에게 보낼지는 아래 `comment.notificationRecipients`가 정합니다.
+
+아래 세 필터는 등록된 핸들러가 없으면 필터 값 구성·검증·추가 조회를 모두 생략합니다(`hooks.has` 확인). 잘못된 결과는 경고 후 무시하고 이전 값을 유지합니다.
+
+`comment.openAllowed`(WordPress `comments_open`)는 `{ contentId, type, allowed }`를 필터링합니다. `type`은 글의 콘텐츠 유형 키이며 `contentId`와 함께 바꿀 수 없습니다. 초기값은 코어 판단(토론 켜짐, 유형이 댓글 지원, 글이 댓글 허용, `closeAfterDays` 기간)이고, 모든 핸들러가 `true`·`false`를 반환할 수 있어 코어가 닫은 글을 열거나 열린 글을 닫을 수 있습니다. 결과는 댓글 작성(`false`이면 `403 forbidden`)과 공개 댓글 상태 `GET /api/v1/comments`의 `open`에 함께 쓰이므로 웹의 댓글 폼·캡차 표시도 따릅니다. 게시·보호(잠금 해제 증명)·`requireLogin`·속도 제한·캡차·`comment.submitAllowed` 검사는 우회하지 못합니다. WordPress의 `pings_open`에 해당하는 핑백·트랙백은 이 CMS에 없습니다.
+
+`comment.publicQuery`(WordPress `comments_template_query_args`)는 공개 스레드 조회 `{ contentId, page, pageSize, order }`를 필터링합니다. 초기값은 요청 페이지(1~`PAGINATION_MAX_PAGE`), 토론 설정의 `pageSize`, `order: 'asc'`(오래된 순)입니다. 결과는 `contentId`·`page` 고정(바꾸면 결과 전체가 무효), 1페이지 결과의 `pageSize`·`order`가 글 전체에 적용되며 2페이지 이후 필터는 그 값에서 시작하고 바꾼 결과는 무효, `pageSize` 1~200 정수, `order` `'asc' | 'desc'`로 다시 검증합니다. `order`는 최상위 댓글의 작성 시각(같으면 ID) 순서이며 답글은 항상 부모 아래 오래된 순입니다. 응답의 `page`·`pageSize`는 필터 결과를 따르므로 웹의 페이지 수 계산도 일치합니다. 새 댓글 작성 응답의 `page`와 최근 댓글 위젯 링크의 `cpage`는 같은 필터를 `page: 1`로 실행해 얻은 `pageSize`·`order`로 계산합니다(반환된 `page`는 무시). 공개·승인 조건과 잠금 해제 확인은 필터와 무관하게 유지됩니다.
+
+`comment.notificationRecipients`(WordPress `comment_notification_recipients`, `comment_moderation_recipients`)는 `{ commentId, kind, to: string[] }`를 필터링합니다. `kind`는 `'pending'`(검토 대기 댓글, 모더레이터 메일), `'approved'`(승인된 댓글, 글 작성자 메일), `'reply'`(승인된 답글, 부모 댓글 작성자 메일)이며 `commentId`와 함께 바꿀 수 없습니다. 초기값 `to`는 코어 수신자입니다: `pending`은 `notifyModerators`가 켜졌을 때 `comments.moderate` 권한이 있는 사용자, `approved`는 `notifyAuthors`가 켜졌을 때 글 작성자(댓글 작성자 본인이나 이미 답글 메일을 받는 경우 제외), `reply`는 `notifyCommenters`가 켜졌을 때 부모 댓글 작성자(수신 거부 시 제외)입니다. 설정이 꺼져 있으면 초기값은 `[]`이고 핸들러가 수신자를 추가할 수 있습니다. 메일 전송이 꺼져 있으면(승인·답글은 사이트 주소가 없을 때도) 실행되지 않습니다. 핸들러는 초기 주소를 제거할 수 있고, 기존 사용자 계정의 이메일 주소(대소문자 무시)만 추가할 수 있습니다. 그 밖의 주소가 하나라도 있으면 결과 전체가 무효입니다. 답글 메일 수신을 거부한 부모 댓글 작성자의 주소는 어떤 `kind`에서도 다시 추가할 수 없습니다. 추가된 사용자의 메일(대기 댓글 포함)은 사용자 ID를 담은 작업으로 대기열에 넣고, 발송 직전에 계정 존재·주소 유지·부모 작성자 수신 거부 여부와 댓글 상태(대기 메일은 여전히 검토 대기)를 다시 확인해 맞지 않으면 보내지 않습니다. 결과는 최대 100개(코어 수신자가 더 많으면 그 수)이며 중복 주소는 한 번만 보냅니다. 추가된 사용자는 대기 댓글이면 같은 검토 대기 메일을 받지만, 발송 시점에 `comments.moderate` 권한이 없으면 댓글 작성자의 이메일 주소가 빠진 본문을 받습니다(작업에는 주소를 저장하지 않음). 승인·답글이면 글 작성자와 같은 "새 댓글" 메일을 받고(요약 링크는 글 주소), 발송 직전에 그 계정이 같은 주소를 유지하는지 다시 확인합니다. 추가된 수신자도 메일 폭주 요약과 `comment.notification`(subject/text)을 똑같이 거칩니다. 브라우저 푸시 수신자는 바꾸지 않습니다.
+
+댓글 필드(WordPress `comment_form_default_fields`와 comment meta)는 필드 정의의 `comments: true`로 지정합니다(기본 `false`). 플러그인은 `fields.register(key, { label, type, comments: true })`로, 관리자는 필드 화면의 "댓글" 확인란이나 같은 정의 API로 만듭니다. 방문자가 미디어를 고를 수 없으므로 `image` 유형은 댓글 필드로 지정할 수 없습니다(`FieldCommentImage`). 공개 댓글 조회·작성은 저장된 필드 정의를 프로세스 공개 캐시(최대 5초, 설정 쓰기 시 즉시 무효화)에서 읽고 플러그인 정의는 항상 현재 값을 씁니다. 값은 `comments.fields`(JSON, 마이그레이션 `20261124000000_comment_fields`)에 댓글과 함께 저장되고 댓글과 함께 삭제됩니다. 작성 입력의 `fields`(최대 100개 키)는 허니팟 다음에 현재 댓글 필드 정의로 검증합니다. 선언되지 않은 키는 비활성 플러그인의 `plugin:` 키까지 모두 버리고, 유형·필수 여부를 검사하며 오류 경로는 `fields.<key>`입니다. 모더레이터의 관리자 답글은 필드 값이 없습니다. 저장된 값은 이후 정의가 바뀌거나 등록이 해제되어도 다시 쓰지 않으므로 보존됩니다. 관리자 댓글 DTO와 `PluginComment`의 `fields`는 저장된 값 전체이고, 공개 댓글 DTO의 `fields`는 현재 정의된 `public` 필드만 담습니다. 공개 댓글 상태의 `customFields`는 폼에 표시할 `{ key, label, type, options, required, help }` 목록이며 저장된 값은 담지 않습니다. 개인정보 내보내기는 댓글의 `fields`를 포함하고 삭제(익명화)는 비웁니다. 웹 댓글 폼은 신원 필드 다음에 이 필드를 `field.<key>` 입력으로 표시하고(라벨·도움말·선택지는 일반 텍스트로 이스케이프), 폼이 필드를 표시했을 때만 서버 액션이 공개 댓글 상태의 정의로 값을 유형별로 읽어 보냅니다. 검증은 항상 API가 다시 합니다.
 
 `PluginComment`(댓글 액션), `CommentCheck.comment`, `comment.beforeSave` 초안에는 `authorEmail`처럼 비공개 `authorIp`와 `authorUserAgent`(증명되지 않으면 null)가 들어 있으며, 스팸 방지 검사와 스팸/정상 신고에 사용합니다. 이 값은 `comment.public`에 나타나지 않으며, 플러그인도 공개로 노출하면 안 됩니다([댓글](../features/comments.md#작성자-ip-주소와-사용자-에이전트)). WXR `import.item`/`export.data` 댓글은 선택 항목인 `authorIp`/`authorUserAgent`를 받습니다.
 
@@ -282,12 +292,100 @@ URL과 저장 키는 최종 사용 시에도 다시 검증합니다.
 | 댓글 확장 | 계약                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 액션      | `comment.updated`, `comment.deleted`: 커밋된 댓글; 삭제는 단건·일괄·자동 정리 포함. 답글은 기존 `comment.created`의 `parentId`로 식별. 상태 변경은 기존 `comment.statusChanged`를 항목별 발행.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| 필터      | `comment.query`: 관리자 목록 조건, `comment.public`: 공개 댓글 DTO, `comment.notification`: 발송 전 to/subject/text(작성자·답글·요약 메일 공통), `comment.push`: 큐에 넣기 전 브라우저 푸시 `{ title, body, url, tag, icon? }`(title/body만 변경 가능, url·tag·icon은 코어 고정), `comment.submitAllowed`: 코어 검사 이후 contentId/authorName/authorEmail/address와 거부 전용 allowed.                                                                                                                                                                                                                                                                                  |
+| 필터      | `comment.query`: 관리자 목록 조건, `comment.public`: 공개 댓글 DTO, `comment.notification`: 발송 전 to/subject/text(작성자·답글·요약 메일 공통), `comment.push`: 큐에 넣기 전 브라우저 푸시 `{ title, body, url, tag, icon? }`(title/body만 변경 가능, url·tag·icon은 코어 고정), `comment.submitAllowed`: 코어 검사 이후 contentId/authorName/authorEmail/address와 양방향 allowed, `comment.openAllowed`: 댓글 허용 여부(양방향), `comment.publicQuery`: 공개 스레드 page/pageSize/order, `comment.notificationRecipients`: 알림 메일 수신자(제거 또는 기존 사용자 주소만 추가).                                                                                       |
 | 저장소    | `context.storageDrivers.register(key, { label, fields, connect(settings) })`는 `plugin:<owner>:<key>`를 등록합니다. `PluginStorageDriver`, `MediaStorageDriver`, `StorageDriverRegistrar`는 `@cms/sdk/plugin`에서 내보냅니다. 반환된 어댑터는 `commit`, 범위 지정 `read`, 멱등한 `remove`를 구현합니다. 코어 등록은 노출되지 않으며, 범위(scope)를 해제하면 가져간 어댑터는 대체 없이 회수됩니다. 설정 필드는 메일 전송 유형을 따르고, 비밀 값은 봉인되어 DTO 값에서 제외됩니다. 제공자 설정이 바뀐 뒤에도 기존 키는 계속 읽을 수 있어야 합니다. 로컬/S3 인벤토리 재동기화는 코어 전용이며, 플러그인 어댑터는 현재 전달과 정리만 제공하고 목록 열거는 제공하지 않습니다. |
 
 토론 설정 훅(`discussion.updated`, `discussion.beforeSave`)은 미디어 절의 “미디어·토론 추가 훅”에 함께 있습니다.
 
 ## 사용자
+
+역할 지정의 기본 목록은 행위자가 가진 권한의 부분집합 역할로 제한됩니다.
+관리자는 모든 역할을 지정할 수 있고 비관리자는 `administrator`를 지정할 수
+없습니다. `role.assignable` 핸들러는 이 기본 목록을 줄이거나 등록된 다른
+비관리자 역할을 명시적으로 허용할 수 있습니다. 코어의 행위자 권한 상한은
+필터의 초기값이며 반환값의 상한이 아닙니다. 핸들러는 기본 목록 밖의 기존
+역할을 허용할 수 있고 이는 서버 코드의 명시적 정책 결정입니다. 존재하지
+않는 역할·중복 키·행위자 변경은 거부합니다. 역할 삭제 후 재지정·생성/초대·가져오기에도
+같은 정책을 적용합니다.
+
+역할 정의의 생성·권한 수정은 역할 **지정** 필터와 별개입니다. 비관리자는
+자신이 가진 권한만 다른 역할에 저장할 수 있고, 자신이 현재 사용하는 역할에
+새 권한을 추가할 수 없습니다. 일시적으로 부여받은 권한도 자신의 역할에
+추가할 수 없으며 관리자 역할은 수정할 수 없습니다. 관리자는 사용자 지정
+역할의 권한 상한 제한을 받지 않습니다. 새 역할 생성에도 같은 저장 검증을
+적용하고, 사용자 가져오기는 이 검증을 우회해 역할 정의를 생성하거나 변경하지 않습니다.
+
+`avatar.url`은 `{ emailHash, size, url }`을 받습니다. 정규화된 이메일의 MD5와
+크기는 고정되며 반환 URL은 HTTP(S)만 허용합니다. 원문 이메일·인증 토큰은
+전달하지 않습니다. 기본 URL은 공개 아바타 프록시이며 변경하지 않으면 기존
+상대 경로를 유지합니다. 핸들러가 없으면 이메일 조회·해시·사이트 URL 조회를
+생략합니다. 외부 제공자를 선택하면 브라우저가 그 URL을 직접 요청합니다.
+
+`role.assignable`은 `{ actorId, roles: string[] }`로 현재 등록된 역할 키 목록을
+전달합니다. 반환값은 중복 없는 기존 역할의 부분집합이어야 하고 행위자는 고정됩니다.
+관리 화면의 역할 지정 옵션과 `UserService.setRole`에 같은 정책을 적용합니다.
+사용자 생성/수정으로 역할 제한을 우회할 수도 없습니다. 역할 관리 목록과
+기존 권한 해석은 필터하지 않으며 핸들러가 없으면 검증·필터 호출을 생략합니다.
+
+`capability.check`는 객체 가드에서 `{ userId, role, capability, object, allowed }`를
+전달합니다. `object`는 `{ kind: 'content' | 'media' | 'comment' | 'user' | 'term',
+id, ownerId?, status? }`이며 식별 문맥은 고정입니다. 핸들러는 코어 권한 판단을
+양방향으로 바꿀 수 있지만 비밀번호·토큰·본문은 받지 않습니다. 콘텐츠 편집과
+비공개 읽기(미리보기·리비전 포함), 미디어 상세/문맥 읽기와 편집/삭제, 댓글
+수정/일괄 조정/삭제, 사용자 역할 변경/수정/삭제, 분류 편집/삭제에 적용됩니다.
+핸들러가 없으면 문맥 생성·검증과
+댓글 추가 조회를 생략합니다. 일괄 댓글은 모든 객체의 허용을 확인한 뒤 쓰며,
+마지막 관리자 보호·자기 삭제 금지·게시 상태 전환 규칙은 유지됩니다.
+
+신원 없는 회원가입 정책 조회는 핸들러가 없으면 캐시·훅을 모두 생략합니다.
+핸들러가 있으면 5초짜리 공개 캐시에 진행 중인 Promise까지 공유하여 익명
+동시 요청이 훅 실행을 증폭하지 않게 합니다. 수명은 완료 시점부터 시작하며
+진행 중인 채우기는 수명 때문에 중복 실행되지 않습니다. 설정/회원가입 변경과 훅 등록·해제
+(functions/플러그인 재로딩 포함)는 진행 중인 결과까지 무효화합니다.
+실제 등록 요청은 캐시를 쓰지 않고 기존 속도 제한 후 신원 문맥으로 검증합니다.
+
+비밀번호 재설정 API와 로그인 설정 단계의 비밀번호 저장은 같은 최종 처리기를
+사용합니다. `user.passwordResetAllowed`가 거부하면 증명을 소비하지 않으며,
+성공한 단일 커밋만 `user.passwordReset`을 발행합니다.
+
+`user.registrationAllowed`는 `{ allowed, email, name }`을 받습니다. 등록 요청은
+속도 제한 통과 후 정규화된 이메일·이름을 전달하며 두 값은 변경할 수 없습니다.
+`GET /api/v1/auth/register`는 신원 없는 `{ email: null, name: null }`로 같은 필터를
+실행해 `registrationOpen`을 반환합니다. 웹 가입 폼과 로그인 화면의 가입 링크는
+이 유효 상태를 사용합니다. `enabled`는 원래 회원가입 설정이며 필터는 양방향입니다.
+핸들러가 없으면 필터 호출과 검증을 생략합니다.
+
+비밀번호 훅은 비밀번호·해시·토큰 없이 `{ user: UserProfile }`만 전달합니다.
+`user.passwordResetRequested`는 백그라운드 재설정 요청 또는 관리자 요청의
+사용자 확인 뒤, `user.passwordReset`은 재설정 커밋 뒤,
+`user.passwordChanged`는 현재 비밀번호 확인 후 변경 커밋 뒤 실행됩니다.
+`user.passwordResetAllowed`는 `{ user, allowed }`를 받으며 양방향 허용/거부가
+가능합니다. 사용자 정보 변경은 거부합니다. 일반 요청은 비밀번호 로그인 설정을
+초기값으로 쓰고 관리자 메일 요청은 기존처럼 허용에서 시작합니다. 필터는 실제
+재설정 시에도 적용됩니다. 공개 요청의 계정 존재 여부는 백그라운드 처리로 숨깁니다.
+
+`user.loginRedirect` 필터는 최종 로그인 성공 뒤 `{ user, method, redirectTo }`를
+받습니다. 사용자·방식은 고정이며 초기 경로는 `/admin`입니다.
+반환 경로는 `/`로 시작하는 같은 출처 경로만 허용하고 외부 URL·`//`·역슬래시·
+공백·제어 문자는 거부합니다. 웹은 콜백과 일반 로그인 모두 이 경로를 따르되
+인증 페이지 순환을 차단합니다. 핸들러가 없으면 기존 `redirect_to`를 유지합니다.
+세션 토큰은 훅에 전달하지 않습니다.
+
+`user.sessionLifetime` 필터는 세션 발급 시 `{ user: UserProfile, ttlMs: number }`를
+받습니다. 사용자 정보는 고정되며 수명은 양의 정수 밀리초, 최대 365일입니다.
+유효하지 않은 반환값은 무시합니다. 승인된 수명은 저장된 만료 시각과 로그인
+응답에 동일하게 반영됩니다. 토큰은 전달하지 않으며 핸들러가 없으면 생략합니다.
+
+`user.sessionAllowed` 필터는 유효한 세션 또는 API 토큰 인증 후
+`{ user: UserProfile, kind: 'session' | 'apiToken', allowed: boolean }`을 받습니다.
+초기값은 `true`이며 뒤의 핸들러가 이전 거부를 허용으로 바꿀 수 있습니다.
+사용자와 인증 종류는 변경할 수 없고 토큰은 전달하지 않습니다.
+핸들러가 없으면 검증과 필터 호출을 모두 생략합니다.
+
+`user.signedOut` 액션은 세션 삭제가 완료된 후 `{ user, scope, actorId }`를
+전달합니다. `user`는 비밀 값이 없는 `UserProfile`이며 `scope`는 현재 세션
+로그아웃의 `session`, 지정 세션 철회의 `other`, 전체 세션 철회의 `all`입니다.
+토큰과 토큰 해시는 전달하지 않으며 핸들러가 없으면 추가 사용자 조회를 하지 않습니다.
 
 캡차 제공자는 `label`, `verify`와 함께 `widget: { script, render, origins, attributes, responseField }`를 선언할 수 있습니다. 코어 Turnstile/hCaptcha/reCAPTCHA 등록도 같은 디스크립터를 사용합니다. `script`는 자격 증명이 없는 HTTPS URL이어야 하고(최대 2048자, 프래그먼트 없음), `attributes`는 `data-*` 이름 최대 20개(이름 최대 80자)와 문자열 값(최대 1024자)을 허용하며, `responseField`는 `[A-Za-z][A-Za-z0-9_-]*`(최대 100자)와 일치해야 합니다. 공개 DTO에는 파생된 `scriptOrigin`이 추가됩니다. 이 스크립트는 플러그인이 등록하는 신뢰된 스크립트이며 샌드박스 코드가 아닙니다. 속성에 비밀 값을 넣으면 안 됩니다. 비활성화하면 위젯도 검증기와 함께 철회되며, 덮어쓴 등록이 이전 등록의 위젯을 실수로 물려받는 일은 없습니다.
 
@@ -309,7 +407,7 @@ URL과 저장 키는 최종 사용 시에도 다시 검증합니다.
 | 확장             | API                                       | 설명                                                                                                                                                                                                                                              |
 | ---------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 사용자 관리 액션 | `hooks.on(name, handler)`                 | `user.created/updated/roleChanged/deleted`, `role.created/updated/deleted`, `security.updated`. 저장 성공 뒤에만 발행하며 비밀 값은 제외. 삭제는 `reassignTo`, 역할 변경은 `previousRole` 포함                                                    |
-| 사용자 필터      | `hooks.filter(name, handler)`             | `user.beforeSave`(create/update/profile/role; 비밀번호 제외, 작업·대상 고정), `user.query`(관리 목록 role/search), `user.public`(공개 저자 DTO), `user.registrationAllowed`(거부 전용), `user.capabilities`(아래 권한 정책). 잘못된 반환값은 무시 |
+| 사용자 필터      | `hooks.filter(name, handler)`             | `user.beforeSave`(create/update/profile/role; 비밀번호 제외, 작업·대상 고정), `user.query`(관리 목록 role/search), `user.public`(공개 저자 DTO), `user.registrationAllowed`(허용/거부), `user.capabilities`(아래 권한 정책). 잘못된 반환값은 무시 |
 | 개인정보 훅      | `hooks.on` / `hooks.filter`               | `privacy.requested/exported/erased`는 커밋된 요청 DTO(토큰 제외). `privacy.exportData`는 확인된 요청의 `data`에 플러그인 개인정보를 추가하며 코어 스트림을 대체하지 않음(직렬화 가능한 JSON, 최대 1 MiB). 요청 식별자는 고정                      |
 | 차단 액션        | `hooks.on('protection.blocked', handler)` | 작업·차단 사유와 계정/주소의 도메인 분리 HMAC만 전달. 원문 계정·IP·캡차 토큰·비밀은 제외                                                                                                                                                          |
 

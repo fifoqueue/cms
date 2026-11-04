@@ -61,6 +61,45 @@ const other = { id: 'b', role: 'author' };
 const editor = { id: 'e', role: 'editor' };
 
 describe('media library', () => {
+  test('object policy controls media detail and context reads in both directions', async () => {
+    const { media, hooks } = setup();
+    const image = await media.upload(PNG, 'read.png', author);
+    const reader = { id: 'reader', role: 'subscriber' };
+
+    hooks.registrar('reader-policy').filter('capability.check', (value) => ({
+      ...value,
+      allowed: value.userId === reader.id,
+    }));
+
+    expect((await media.get(image.id, reader)).id).toBe(image.id);
+    expect(await media.context(image.id, reader)).toHaveProperty('usedIn');
+    await expect(media.get(image.id, editor)).rejects.toMatchObject({
+      code: 'forbidden',
+    });
+    await expect(media.context(image.id, editor)).rejects.toMatchObject({
+      code: 'forbidden',
+    });
+  });
+
+  test('object capabilities grant a non-owner edit and deny a manager', async () => {
+    const { media, hooks } = setup();
+    const image = await media.upload(PNG, 'test.png', author);
+    const reader = { id: 'reader', role: 'subscriber' };
+    expect(await codeOf(media.remove(image.id, false, reader))).toBe(
+      'forbidden',
+    );
+    const release = hooks
+      .registrar('object-policy')
+      .filter('capability.check', (value) => ({
+        ...value,
+        allowed: value.userId === reader.id,
+      }));
+    expect(await codeOf(media.remove(image.id, false, editor))).toBe(
+      'forbidden',
+    );
+    expect(await codeOf(media.remove(image.id, false, reader))).toBe('ok');
+    release();
+  });
   test('UTF BOM uploads cannot bypass SVG policy as MPEG, and valid audio still uploads', async () => {
     const { media, storage } = setup();
     for (const bom of [

@@ -542,6 +542,8 @@ model Comment {
   authorUserAgent String?   @map("author_user_agent") @db.VarChar(255)
   body        String        @db.Text
   status      CommentStatus
+  /// Comment field values by key (JSON); definitions with `comments` in the `contentFields` setting.
+  fields      String        @default("{}") @db.LongText
   createdAt   DateTime      @map("created_at") @db.DateTime(3)
   updatedAt   DateTime      @map("updated_at") @db.DateTime(3)
   /// When the entry's author and the parent comment's author were notified; set once.

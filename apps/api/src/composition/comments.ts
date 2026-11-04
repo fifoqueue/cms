@@ -41,7 +41,7 @@ type Input = Pick<
   > &
   Pick<
     ReturnType<typeof createContent>,
-    'locks' | 'contentTypes' | 'publishedRepository'
+    'locks' | 'contentTypes' | 'publishedRepository' | 'fields'
   > &
   Pick<ReturnType<typeof createSite>, 'seo' | 'site' | 'menus'> &
   Pick<ReturnType<typeof createSecurity>, 'avatars' | 'protection'> &
@@ -70,6 +70,7 @@ export const createComments = ({
   locks,
   contentTypes,
   publishedRepository,
+  fields,
   seo,
   site,
   menus,
@@ -112,6 +113,7 @@ export const createComments = ({
     hooks,
     signer,
     users: directory,
+    roles,
     site: commentSite,
     discussion,
     ids: uuidV7,
@@ -144,6 +146,7 @@ export const createComments = ({
     repository: commentRepository,
     settings: settingsRepository,
     types: contentTypes,
+    fields,
     protection,
     hooks,
     email,

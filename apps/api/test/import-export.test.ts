@@ -7,7 +7,11 @@ import { TaxonomyService } from '#api/domain/taxonomy/taxonomy-service';
 import { ExportService } from '#api/domain/tools/export-service';
 import { ImportService } from '#api/domain/tools/import-service';
 import type { ImportMediaDeps } from '#api/domain/tools/import-media';
-import type { UserService } from '#api/domain/users/user-service';
+import { UserService } from '#api/domain/users/user-service';
+import { RoleService } from '#api/domain/users/role-service';
+import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
+import { MemoryJobQueue } from '#test/support/memory-jobs';
+import { plainSecretBox } from '#test/support/memory-security';
 import { tiptapHtmlParser, tiptapRenderer } from '#api/infra/system';
 import { fastXmlWxrParser } from '#api/infra/wxr-parser';
 import {
@@ -55,10 +59,25 @@ const site = async (
   const users = new MemoryUsers();
   await users.insert(userRecord({ id: ADMIN.id, email: 'admin@example.com' }));
   const directory = new MemoryUserDirectory(users, content);
+  const userAdmin =
+    accounts ??
+    new UserService({
+      users,
+      directory,
+      roles: new RoleService(settings, directory, hooks),
+      settings,
+      hasher: { hash: async (value) => value, verify: async () => true },
+      tokens: { issue: () => 'import-password' },
+      ids,
+      clock,
+      sealedJobs: new SealedJobs(new MemoryJobQueue(), plainSecretBox),
+      invitations: { available: async () => false, send: async () => {} },
+    });
   let menus: MenusSettings = {
     menus: [],
     locations: { primary: null, footer: null },
   };
+
   return {
     hooks,
     content,
@@ -80,7 +99,7 @@ const site = async (
       ids,
       clock,
       patterns,
-      accounts,
+      accounts: userAdmin,
       tokens: { issue: () => 'import-test-password' },
       redirects: content.permalinks,
       menus: {
@@ -103,6 +122,30 @@ const site = async (
     }),
   };
 };
+
+test('import cannot assign an author role stronger than the importing manager', async () => {
+  const target = await site();
+  const xml = `<rss xmlns:wp="http://wordpress.org/export/1.2/" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel>
+<wp:wxr_version>1.2</wp:wxr_version>
+<wp:author><wp:author_login>writer</wp:author_login><wp:author_email>writer@example.com</wp:author_email></wp:author>
+<item><title>Imported</title><dc:creator>writer</dc:creator><wp:post_id>1</wp:post_id><wp:status>draft</wp:status><wp:post_type>post</wp:post_type></item>
+</channel></rss>`;
+  const result = await target.importer.importWxr(
+    xml,
+    {
+      id: 'manager',
+      role: 'staff',
+      capabilities: ['tools.manage', 'users.manage'],
+    },
+    { authors: 'author' },
+  );
+
+  expect(result.users).toBe(0);
+  expect(result.skipped).toContainEqual({
+    title: 'writer',
+    reason: Errors.RoleUnknown,
+  });
+});
 
 test('a WXR export imports into another site with terms, entries and threaded comments', async () => {
   const source = await site();
@@ -157,6 +200,7 @@ test('a WXR export imports into another site with terms, entries and threaded co
     authorUserAgent: 'Mozilla/5.0 (WXR)' as string | null,
     body: 'Stay safe',
     status: 'approved' as const,
+    fields: {},
     createdAt: at,
     updatedAt: at,
   };

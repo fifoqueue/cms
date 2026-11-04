@@ -1,10 +1,6 @@
-import { FIELD_TYPES } from '@cms/sdk';
-import type {
-  ContentTypeInput,
-  FieldDefinitionInput,
-  FieldType,
-} from '@cms/sdk';
+import type { ContentTypeInput } from '@cms/sdk';
 import { failFrom, text } from '#lib/server/errors.js';
+import { readFieldForm } from '#lib/server/field-form.js';
 import { adminFor, requireCapability } from '#lib/server/session.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -22,27 +18,6 @@ const readType = (form: FormData): ContentTypeInput => ({
     featuredImage: form.has('supports.featuredImage'),
   },
 });
-
-const readField = (form: FormData): FieldDefinitionInput => {
-  const type = text(form, 'type');
-  return {
-    key: text(form, 'key'),
-    label: text(form, 'label'),
-    type: (FIELD_TYPES as readonly string[]).includes(type)
-      ? (type as FieldType)
-      : 'text',
-    options: text(form, 'options')
-      .split('\n')
-      .map((option) => option.trim())
-      .filter(Boolean),
-    required: form.has('required'),
-    public: form.has('public'),
-    help: text(form, 'help'),
-    contentTypes: form
-      .getAll('contentTypes')
-      .filter((value): value is string => typeof value === 'string'),
-  };
-};
 
 export const load: PageServerLoad = async (event) => {
   requireCapability(event.locals, 'fields.manage');
@@ -92,8 +67,8 @@ export const actions: Actions = {
     const original = text(form, 'original');
     const model = adminFor(event).contentModel;
     try {
-      if (original) await model.fields.update(original, readField(form));
-      else await model.fields.create(readField(form));
+      if (original) await model.fields.update(original, readFieldForm(form));
+      else await model.fields.create(readFieldForm(form));
     } catch (caught) {
       return failFrom(caught);
     }

@@ -1,5 +1,6 @@
 import type { AvatarDefault, DiscussionSettings } from '@cms/sdk';
-import type { Signer } from '#api/domain/ports';
+import { avatarUrlFilterSchema } from '@cms/sdk';
+import type { HookDispatcher, Signer } from '#api/domain/ports';
 
 export interface AvatarImage {
   bytes: Uint8Array;
@@ -44,13 +45,46 @@ export class AvatarService {
     private readonly directory: AvatarDirectory,
     private readonly source: AvatarSource,
     private readonly signer: Signer,
+    private readonly policy?: {
+      hooks: HookDispatcher;
+      hash(email: string): string;
+      siteUrl(): Promise<string>;
+    },
   ) {}
 
-  url(key: string, settings: DiscussionSettings): string | null {
+  url(
+    key: string,
+    settings: DiscussionSettings,
+  ): string | null | Promise<string> {
     if (!settings.showAvatars) return null;
     const id = encode(key);
     const signature = this.signer.sign(`avatar:v1:${id}`);
-    return `/avatars/${id}.${signature}?s=96`;
+    const url = `/avatars/${id}.${signature}?s=96`;
+    return this.policy?.hooks.has('avatar.url') ? this.filtered(key, url) : url;
+  }
+
+  private async filtered(key: string, fallback: string): Promise<string> {
+    const policy = this.policy!;
+    const email = await this.directory.email(key);
+    if (!email) return fallback;
+    const emailHash = policy.hash(email.trim().toLowerCase());
+    const origin = await policy.siteUrl();
+    const base = avatarUrlFilterSchema.shape.url.safeParse(origin);
+    if (!base.success) return fallback;
+    const url = new URL(fallback, base.data).href;
+    const result = await policy.hooks.applyFilter(
+      'avatar.url',
+      { emailHash, size: 96, url },
+      (value) => {
+        const parsed = avatarUrlFilterSchema.safeParse(value);
+        return (
+          parsed.success &&
+          parsed.data.emailHash === emailHash &&
+          parsed.data.size === 96
+        );
+      },
+    );
+    return result.url === url ? fallback : result.url;
   }
 
   async image(

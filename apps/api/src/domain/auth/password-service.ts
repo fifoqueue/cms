@@ -2,6 +2,7 @@ import {
   passwordChangeSchema,
   passwordResetRequestSchema,
   passwordResetSchema,
+  adminUserSchema,
 } from '@cms/sdk';
 import { z } from 'zod';
 import type { RateRule } from '@cms/sdk';
@@ -19,7 +20,8 @@ import type {
 import type { EmailService } from '#api/domain/email/email-service';
 import { templates } from '#api/domain/email/templates';
 import type { SealedJobs } from '#api/domain/jobs/sealed-jobs';
-import type { Clock } from '#api/domain/ports';
+import type { Clock, HookDispatcher } from '#api/domain/ports';
+import { toProfile } from '#api/domain/users/user-mapper';
 import type {
   Attempt,
   ProtectionService,
@@ -54,6 +56,7 @@ const LIFETIME: Record<PasswordTokenPurpose, number> = {
 };
 
 export interface PasswordServiceDeps {
+  hooks?: HookDispatcher;
   passwordLogin?: () => Promise<boolean>;
   users: UserRepository;
   tokens: PasswordTokenRepository;
@@ -77,7 +80,8 @@ export interface CredentialRepository {
     passwordHash: string,
     keepSessionHash: string | null,
   ): Promise<void>;
-  validReset(tokenHash: string, now: Date): Promise<boolean>;
+  /** The valid token's user id; null for expired or consumed tokens. */
+  validReset(tokenHash: string, now: Date): Promise<string | null>;
   reset(tokenHash: string, now: Date, passwordHash: string): Promise<boolean>;
 }
 
@@ -103,6 +107,10 @@ export class PasswordService {
       await this.deps.hasher.hash(password),
       this.deps.issuer.digest(sessionToken),
     );
+    if (this.deps.hooks?.has('user.passwordChanged'))
+      await this.deps.hooks.emit('user.passwordChanged', {
+        user: toProfile(user),
+      });
   }
 
   /**
@@ -113,7 +121,8 @@ export class PasswordService {
     input: unknown,
     attempt: Omit<Attempt, 'action' | 'account'>,
   ) {
-    await this.allowPassword();
+    if (!this.deps.hooks?.has('user.passwordResetAllowed'))
+      await this.allowPassword();
     const { email } = parseInput(passwordResetRequestSchema, input);
     const account = email.toLowerCase();
     const protectedAttempt = {
@@ -139,12 +148,16 @@ export class PasswordService {
     const { email } = this.deps.sealedJobs.open(payload, resetRequestSchema);
     const user = await this.deps.users.findByEmail(email);
     if (!user) return;
-    await this.queueReset(user, [user.id, user.email]);
+    await this.queueReset(
+      user,
+      [user.id, user.email],
+      await this.passwordLogin(),
+    );
   }
 
   /**
-   * Emails a user a reset link on an administrator's behalf (`users.manage`). No captcha or
-   * visitor limit applies; instead each administrator may send 20 an hour.
+   * Emails a reset link for an administrator (`users.manage`), limited to 20 per hour.
+   * Visitor limits and captcha do not apply.
    */
   async sendReset(userId: string, actor: Actor) {
     authorize(actor, 'users.manage');
@@ -163,7 +176,16 @@ export class PasswordService {
     await this.queueReset(user, [user.id]);
   }
 
-  private async queueReset(user: UserRecord, subjects: string[]) {
+  private async queueReset(
+    user: UserRecord,
+    subjects: string[],
+    allowed = true,
+  ) {
+    if (this.deps.hooks?.has('user.passwordResetRequested'))
+      await this.deps.hooks.emit('user.passwordResetRequested', {
+        user: toProfile(user),
+      });
+    if (!(await this.resetAllowed(user, allowed))) return;
     const site = await this.site();
     const link = await this.link(user, 'reset', site.siteUrl);
     await this.deps.email.queue(
@@ -203,18 +225,77 @@ export class PasswordService {
 
   /** Sets the password from a reset or invitation link and signs the user out everywhere. */
   async reset(input: unknown) {
-    await this.allowPassword();
     const { token, password } = parseInput(passwordResetSchema, input);
-    const tokenHash = this.deps.issuer.digest(token);
-    const now = this.deps.clock.now();
-    if (!(await this.deps.credentials.validReset(tokenHash, now)))
+
+    if (
+      !(await this.commitReset(
+        this.deps.issuer.digest(token),
+        this.deps.clock.now(),
+        password,
+      ))
+    )
       throw invalidInput(Errors.PasswordTokenInvalid);
+  }
+
+  /** Applies reset policy, consumes one proof, and emits an event after commit. */
+  async commitReset(
+    tokenHash: string,
+    now: Date,
+    password: string,
+    expectedUserId?: string,
+  ): Promise<boolean> {
+    const filter = this.deps.hooks?.has('user.passwordResetAllowed');
+
+    if (!filter) await this.allowPassword();
+
+    const userId = await this.deps.credentials.validReset(tokenHash, now);
+
+    if (!userId || (expectedUserId && userId !== expectedUserId)) return false;
+
+    const user =
+      filter || this.deps.hooks?.has('user.passwordReset')
+        ? await this.deps.users.findById(userId)
+        : null;
+
+    if (
+      filter &&
+      (!user || !(await this.resetAllowed(user, await this.passwordLogin())))
+    )
+      throw forbidden(Errors.PasswordLoginDisabled);
+
     const changed = await this.deps.credentials.reset(
       tokenHash,
       now,
       await this.deps.hasher.hash(password),
     );
-    if (!changed) throw invalidInput(Errors.PasswordTokenInvalid);
+
+    if (!changed) return false;
+
+    if (user && this.deps.hooks?.has('user.passwordReset'))
+      await this.deps.hooks.emit('user.passwordReset', {
+        user: toProfile(user),
+      });
+
+    return true;
+  }
+
+  private async resetAllowed(user: UserRecord, allowed: boolean) {
+    if (!this.deps.hooks?.has('user.passwordResetAllowed')) return allowed;
+    const profile = adminUserSchema.strict().parse(toProfile(user));
+    const snapshot = JSON.stringify(profile);
+    const schema = z.strictObject({
+      user: adminUserSchema
+        .strict()
+        .refine((value) => JSON.stringify(value) === snapshot),
+      allowed: z.boolean(),
+    });
+    return (
+      await this.deps.hooks.applyFilter(
+        'user.passwordResetAllowed',
+        { user: profile, allowed },
+        (value) => schema.safeParse(value).success,
+      )
+    ).allowed;
   }
 
   private async link(

@@ -29,7 +29,7 @@ const ids = (form: FormData, key: string) => [
 /** `CustomFields.svelte` inputs (`field.<key>`) of the given definitions, typed per field kind. */
 export const readFields = (
   form: FormData,
-  definitions: readonly FieldDefinition[],
+  definitions: readonly Pick<FieldDefinition, 'key' | 'type'>[],
 ) =>
   Object.fromEntries(
     definitions.flatMap((field): [string, unknown][] => {

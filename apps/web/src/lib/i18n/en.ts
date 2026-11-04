@@ -114,6 +114,7 @@ export const apiErrors: ApiErrorCatalog = {
     'Use an available site path such as /login, without a query or reserved route',
   FieldOptionsRequired: 'Add at least one choice',
   FieldValuesInvalid: 'Field values must be plain data',
+  FieldCommentImage: 'Comment fields cannot be images',
   CommentUrlInvalid: 'Use a web address starting with https:// or http://',
   CommentDefaultNameRequired:
     'Enter a default commenter name when the name field is disabled.',
@@ -914,6 +915,7 @@ export const en = {
   fieldPublic: 'Shown on the site',
   fieldHelp: 'Help text',
   fieldTypes: 'Content types',
+  fieldTaxonomies: 'Taxonomy terms',
   fieldAdd: 'Add field',
   fieldsEmpty: 'No custom fields yet.',
   fieldKindText: 'Text',

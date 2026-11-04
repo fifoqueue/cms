@@ -38,6 +38,8 @@ import {
 } from '#api/shared/errors';
 import { withParams } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
+import type { Actor } from '#api/domain/auth/authorization';
+import { authorizeObject } from '#api/domain/auth/object-authorization';
 
 /** The taxonomy named in a URL. Unknown taxonomies do not exist (`not_found`). */
 const taxonomyOf = (value: string): TaxonomyType => {
@@ -129,9 +131,15 @@ export class TaxonomyService {
     taxonomy: string,
     id: string,
     input: unknown,
+    actor?: Actor,
   ): Promise<AdminTaxonomyTerm> {
     const kind = await this.kind(taxonomy);
     const current = await this.require(kind, id);
+    if (actor)
+      await authorizeObject(this.deps.hooks, actor, 'taxonomy.manage', () => ({
+        kind: 'term',
+        id,
+      }));
     const data = await this.prepare(input);
     await this.assertParent(kind, data.parentId);
     const slug = data.slug ?? current.slug;
@@ -165,8 +173,13 @@ export class TaxonomyService {
    * Unassigns the term from content and drops its field values; its children move up to its
    * parent. Callers authorize first; `term.deleteAllowed` may then refuse or allow (`forbidden`).
    */
-  async remove(taxonomy: string, id: string): Promise<void> {
+  async remove(taxonomy: string, id: string, actor?: Actor): Promise<void> {
     const term = toAdminTerm(await this.require(await this.kind(taxonomy), id));
+    if (actor)
+      await authorizeObject(this.deps.hooks, actor, 'taxonomy.manage', () => ({
+        kind: 'term',
+        id,
+      }));
     const allowed = await this.deps.hooks?.applyFilter(
       'term.deleteAllowed',
       true,

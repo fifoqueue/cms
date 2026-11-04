@@ -5,7 +5,7 @@ import type { ApiApp } from '#api/http/services';
 import { session } from '#api/http/session';
 
 export const routes = (app: ApiApp) =>
-  session(app, 'media.upload').post(
+  session(app).post(
     '',
     async ({ media, params, request, user }) =>
       json(await media.edit(params.id, await readJson(request), user)),

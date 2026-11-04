@@ -5,12 +5,12 @@ import type {
   CoreSignInOutcome,
 } from '#api/domain/auth/core-sign-in';
 import type { PasswordHasher, UserRepository } from '#api/domain/auth/ports';
-import type { CredentialRepository } from '#api/domain/auth/password-service';
+import type { PasswordService } from '#api/domain/auth/password-service';
 
 export const createPasswordMethod = (deps: {
   users: UserRepository;
   hasher: PasswordHasher;
-  credentials: CredentialRepository;
+  passwords: Pick<PasswordService, 'commitReset'>;
 }): CoreSignInMethod => {
   let dummyHash: Promise<string> | undefined;
   const setup = async (
@@ -20,15 +20,17 @@ export const createPasswordMethod = (deps: {
     const parsed = passwordResetSchema.shape.password.safeParse(
       values.password,
     );
+
     if (!parsed.success) return { kind: 'failed' };
-    const hash = await deps.hasher.hash(parsed.data);
+
     return {
       kind: 'user',
       userId: user.id,
       commitSetup: (tokenHash, now) =>
-        deps.credentials.reset(tokenHash, now, hash),
+        deps.passwords.commitReset(tokenHash, now, parsed.data, user.id),
     };
   };
+
   return {
     label: 'Password',
     fields: [

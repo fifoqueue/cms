@@ -3,6 +3,7 @@ import type {
   CommentChanges,
   CommentCriteria,
   CleanupStatus,
+  CommentOrder,
   CommentPosition,
   CommentRecord,
   CommentRepository,
@@ -42,13 +43,17 @@ export class MemoryCommentRepository implements CommentRepository {
     return row ? { ...row } : null;
   }
 
-  async pageOf(root: CommentPosition, pageSize: number) {
+  async pageOf(
+    root: CommentPosition,
+    pageSize: number,
+    order: CommentOrder = 'asc',
+  ) {
     const before = [...this.rows.values()].filter(
       (row) =>
         row.contentId === root.contentId &&
         row.status === 'approved' &&
         row.parentId === null &&
-        byDate(row, root) < 0,
+        (order === 'asc' ? byDate(row, root) < 0 : byDate(row, root) > 0),
     ).length;
     return Math.floor(before / pageSize) + 1;
   }
@@ -63,11 +68,13 @@ export class MemoryCommentRepository implements CommentRepository {
     page: number,
     pageSize: number,
     depth: number,
+    order: CommentOrder = 'asc',
   ) {
     const approved = [...this.rows.values()]
       .filter((row) => row.contentId === contentId && row.status === 'approved')
       .sort(byDate);
     const roots = approved.filter((row) => row.parentId === null);
+    if (order === 'desc') roots.reverse();
     const items: ThreadRecord[] = [];
     let truncated = false;
     const visit = (comment: CommentRecord, level: number) => {

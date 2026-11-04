@@ -19,7 +19,7 @@
   title={m.registerTitle}
   description={m.registerHelp}
   sentTitle={auth.registerSent}
-  closed={data.membership.enabled ? undefined : m.registrationClosed}
+  closed={data.membership.registrationOpen ? undefined : m.registrationClosed}
   submit={m.registerTitle}
   maxlength={191}
   captcha={data.captcha}

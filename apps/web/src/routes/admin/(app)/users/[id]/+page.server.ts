@@ -14,7 +14,7 @@ export const load: PageServerLoad = async (event) => {
   const target = users.find((user) => user.id === event.params.id);
   if (!target) error(404, Errors.NotFound);
   const [roles, passwordAllowed, profileFields] = await Promise.all([
-    adminFor(event).roles.list(),
+    adminFor(event).roles.assignable(),
     passwordSignIn(event.fetch),
     profileFieldsOf(event, target.id),
   ]);

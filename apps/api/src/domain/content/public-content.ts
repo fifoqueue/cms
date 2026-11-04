@@ -18,7 +18,7 @@ import type {
   PublicMonth,
   PublicMonthNeighbours,
 } from '@cms/sdk';
-import { authorize } from '#api/domain/auth/authorization';
+import { objectAllowed } from '#api/domain/auth/object-authorization';
 import type { Actor } from '#api/domain/auth/authorization';
 import type { ContentReader } from '@cms/sdk/plugin';
 import {
@@ -209,13 +209,19 @@ export class PublishedContentReader implements ContentReader {
   async getPrivateById(
     id: string,
     fields: Present,
+    allow: (record: PublishedRecord) => boolean | Promise<boolean> = () => true,
   ): Promise<PublicContent | null> {
+    const record = await this.repository.privateById(id);
+
+    if (!record || !(await allow(record))) return null;
+
     const content = await this.read(
-      await this.repository.privateById(id),
+      record,
       async () => true,
       fields,
       'private',
     );
+
     return content
       ? { ...content, seo: { ...content.seo, noIndex: true } }
       : null;
@@ -421,12 +427,23 @@ export class PublicContentService {
       (contentId) => this.locks.unlocked(contentId, proofs),
       (type, values) => this.fields.present(type, values),
     );
-    if (!content && actor && can(actor, 'content.readPrivate')) {
-      authorize(actor, 'content.readPrivate');
-      content = await this.reader.getPrivateById(id, (type, values) =>
-        this.fields.present(type, values),
+    if (
+      !content &&
+      actor &&
+      (can(actor, 'content.readPrivate') || this.hooks.has('capability.check'))
+    ) {
+      content = await this.reader.getPrivateById(
+        id,
+        (type, values) => this.fields.present(type, values),
+        (record) =>
+          objectAllowed(this.hooks, actor, 'content.readPrivate', () => ({
+            kind: 'content',
+            id: record.id,
+            status: 'private',
+          })),
       );
     }
+
     return content ? this.present(content, context) : null;
   }
 

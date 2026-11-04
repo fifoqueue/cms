@@ -76,6 +76,56 @@ const locationOf = async (run: () => Promise<unknown>) => {
   return null;
 };
 
+test('sign-in callbacks honor filtered destinations while preserving the no-hook return path', async () => {
+  for (const redirectTo of ['/welcome?from=login', undefined]) {
+    const state = cookies();
+    setPending(state.api, plain, {
+      transaction: 'login-step',
+      flow: 'login',
+      user: null,
+      back: '/saved',
+      step: null,
+    });
+    const location = await locationOf(() =>
+      signInCallback({
+        fetch: (async (input) => {
+          if (String(input).includes('/site'))
+            return Response.json({
+              title: 'Site',
+              description: '',
+              locale: 'en',
+            });
+          return Response.json({
+            kind: 'session',
+            redirectTo,
+            session: {
+              token: 'secret',
+              expiresAt: '2030-01-01T00:00:00.000Z',
+              user: {
+                id: 'u',
+                email: 'u@example.com',
+                name: 'User',
+                role: 'subscriber',
+                slug: 'user',
+                bio: '',
+                locale: '',
+              },
+            },
+          });
+        }) as typeof fetch,
+        cookies: state.api,
+        url: plain,
+        locals: asUser(null),
+        getClientAddress: () => '127.0.0.1',
+        request: new Request(plain),
+        setHeaders: () => {},
+      }),
+    );
+    expect(location).toBe(redirectTo ?? '/saved');
+    expect(state.values.get('cms_session')).toBe('secret');
+  }
+});
+
 describe('pending sign-in cookie', () => {
   test('is host-bound on HTTPS, encrypted, and taken once', () => {
     const state = cookies({ cms_sso: 'planted' });

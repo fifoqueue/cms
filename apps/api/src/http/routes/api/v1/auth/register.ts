@@ -5,7 +5,7 @@ import { obscureAccountLookup } from '#api/http/account-response';
 
 export const routes = (app: ApiApp) =>
   app
-    .get('', async ({ users }) => json(await users.membership()))
+    .get('', async ({ users }) => json(await users.registrationStatus()))
     .post('', async ({ users, request, clients }) =>
       obscureAccountLookup(async () => {
         await users.register(

@@ -41,7 +41,7 @@ export class PreviewService {
 
   async create(contentId: string, actor: Actor): Promise<PreviewToken> {
     const record = await this.deps.content.require(contentId);
-    this.deps.content.assertEditable(actor, record);
+    await this.deps.content.assertEditable(actor, record);
     const expires = this.deps.clock.now().getTime() + LIFETIME_MS;
     const payload = `${contentId}.${actor.id}.${expires}`;
     return {

@@ -22,13 +22,12 @@ test('password method verifies unknown users against a dummy hash and defers set
         return hash === `hash:${password}`;
       },
     },
-    credentials: {
-      change: async () => {},
-      validReset: async () => true,
-      reset: async (token, _now, hash) => {
+    passwords: {
+      commitReset: async (token, _now, password, userId) => {
+        expect(userId).toBe(user.id);
         if (consumed || token !== 'valid-token-hash') return false;
         consumed = true;
-        await users.setPassword(user.id, hash);
+        await users.setPassword(user.id, `hash:${password}`);
         return true;
       },
     },

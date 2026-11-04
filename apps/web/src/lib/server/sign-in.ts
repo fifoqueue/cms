@@ -91,7 +91,10 @@ export const advance = async (
   if (step.kind === 'session') {
     clearPending(cookies, url);
     startSession(cookies, step.session, url);
-    return redirect(303, returnPath(back, await loginPathOf(event.fetch)));
+    return redirect(
+      303,
+      returnPath(step.redirectTo ?? back, await loginPathOf(event.fetch)),
+    );
   }
   if (step.kind === 'done') {
     clearPending(cookies, url);

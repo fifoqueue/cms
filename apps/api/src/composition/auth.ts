@@ -16,10 +16,7 @@ export const createAuth = (
   users: UserRepository,
   sessions: SessionRepository,
   config: Pick<AppConfig, 'SESSION_TTL_HOURS'>,
-  extras: Pick<
-    AuthServiceDeps,
-    'protection' | 'apiTokens' | 'roles' | 'passwordLogin'
-  > = {},
+  extras: Pick<AuthServiceDeps, 'apiTokens' | 'roles' | 'hooks'> = {},
 ) =>
   new AuthService({
     users,

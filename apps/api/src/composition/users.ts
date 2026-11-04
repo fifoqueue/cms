@@ -18,6 +18,7 @@ import type { SiteService } from '#api/domain/site/site-service';
 import type { SeoSettingsService } from '#api/domain/seo/seo-settings-service';
 import type { JobRunner } from '#api/domain/jobs/job-runner';
 import type { Logger } from '#api/shared/logger';
+import type { PublicCache } from '#api/domain/site/public-cache';
 import {
   bunPasswordHasher,
   randomTokenIssuer,
@@ -52,6 +53,7 @@ type Input = Pick<
     site: Pick<SiteService, 'get'>;
     seo: Pick<SeoSettingsService, 'getPublic'>;
     logger: Logger;
+    publicCache: PublicCache;
   };
 
 export const createUsers = ({
@@ -78,6 +80,7 @@ export const createUsers = ({
   site,
   seo,
   logger,
+  publicCache,
 }: Input) => {
   const apiTokens = new ApiTokenService({
     tokens: apiTokenRepository,
@@ -94,12 +97,12 @@ export const createUsers = ({
     roleDefaults,
   );
   const auth = createAuth(users, sessions, config, {
-    passwordLogin,
-    protection,
+    hooks,
     apiTokens,
     roles,
   });
   const passwords = new PasswordService({
+    hooks,
     passwordLogin,
     users,
     tokens: passwordTokens,
@@ -117,6 +120,7 @@ export const createUsers = ({
     }),
   });
   const userAdmin = new UserService({
+    publicCache,
     profiles: new ProfileMeta(profileFields, profileRepository),
     hooks,
     roles,

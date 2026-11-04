@@ -1,16 +1,23 @@
 import { redirect } from '@sveltejs/kit';
 import type { RequestEvent } from '@sveltejs/kit';
 import { commenterSchema } from '@cms/sdk';
-import type { PublicCaptcha, PublicComment, PublicCommentPage } from '@cms/sdk';
+import type {
+  PublicCaptcha,
+  PublicComment,
+  PublicCommentField,
+  PublicCommentPage,
+} from '@cms/sdk';
 import type { ContentClient } from '@cms/sdk/client';
 import { contentApi } from '#lib/server/api.js';
 import { loadManagement } from '#lib/server/comment-management.js';
+import { readFields } from '#lib/server/content-form.js';
 import { failFrom, text } from '#lib/server/errors.js';
 import { pageParam } from '#lib/server/public-view.js';
 import { unlockProofs } from '#lib/server/unlock.js';
 import { sessionToken } from '#lib/server/session-cookie.js';
 import { visitorOf } from '#lib/server/visitor.js';
 import { REPLY_PARAM } from '#lib/theme/comment-reply.js';
+import { CUSTOM_FIELDS_MARKER } from '#lib/theme/comment-fields.js';
 
 const COMMENTER_COOKIE = 'cms_commenter';
 const COMMENTER_PROOF_COOKIE = 'cms_commenter_proof';
@@ -28,6 +35,36 @@ const commentView = (item: PublicComment) => ({
   createdAt: item.createdAt,
 });
 
+/** A comment form field: its key, kind and the plain text the form shows. */
+const customFieldView = (field: PublicCommentField) => ({
+  key: field.key,
+  label: field.label,
+  type: field.type,
+  options: [...field.options],
+  required: field.required,
+  help: field.help,
+});
+
+/**
+ * The answers to `customFields` (`field.<key>` inputs): typed per field kind for the API, and as
+ * typed to echo back on failure. Inputs of undeclared keys are ignored.
+ */
+export const readCommentFields = (
+  form: FormData,
+  customFields: readonly PublicCommentField[],
+) => ({
+  fields: readFields(form, customFields),
+  typed: Object.fromEntries(
+    customFields.map((field): [string, string | boolean] => {
+      const name = `field.${field.key}`;
+      return [
+        field.key,
+        field.type === 'boolean' ? form.has(name) : text(form, name),
+      ];
+    }),
+  ),
+});
+
 /** Display fields only; email addresses never enter a public comment. */
 export const commentsView = (page: PublicCommentPage) => ({
   items: page.items.map(commentView),
@@ -39,6 +76,7 @@ export const commentsView = (page: PublicCommentPage) => ({
     email: page.fields.email,
     website: page.fields.website,
   },
+  customFields: page.customFields.map(customFieldView),
   total: page.total,
   count: page.count,
   page: page.page,
@@ -156,6 +194,15 @@ export const commentAction = async (event: RequestEvent) => {
   const form = await event.request.formData();
   const contentId = text(form, 'contentId');
   const api = contentApi(event.fetch, sessionToken(event.cookies, event.url));
+  // The site's comment fields decide how their inputs read; only a form that asked them has any.
+  const customFields = form.has(CUSTOM_FIELDS_MARKER)
+    ? ((
+        await api.comments
+          .list(contentId, 1, unlockProofs(event.cookies))
+          .catch(() => null)
+      )?.customFields ?? [])
+    : [];
+  const answers = readCommentFields(form, customFields);
   const typed = {
     authorName: text(form, 'authorName'),
     authorEmail: text(form, 'authorEmail'),
@@ -164,6 +211,7 @@ export const commentAction = async (event: RequestEvent) => {
     parentId: text(form, 'parentId'),
     parentName: text(form, 'parentName'),
     remember: form.has('remember'),
+    fields: answers.typed,
   };
   let result;
   try {
@@ -173,6 +221,7 @@ export const commentAction = async (event: RequestEvent) => {
         contentId,
         parentId: text(form, 'parentId') || null,
         website: text(form, 'website'),
+        fields: answers.fields,
       },
       visitorOf(event, form),
       unlockProofs(event.cookies),

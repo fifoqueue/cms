@@ -4,6 +4,33 @@ import type { ApiServices } from '#api/http/services';
 import { MemoryPublicCache } from '#api/infra/public-cache';
 import { invalidatingStore } from '#api/infra/invalidating-store';
 
+test('slow fills stay shared and the full TTL starts after they settle', async () => {
+  let now = 0;
+  let loads = 0;
+  const pending = Promise.withResolvers<string>();
+  const cache = new MemoryPublicCache(5_000, () => now);
+  const load = () => {
+    loads++;
+
+    return loads === 1 ? pending.promise : Promise.resolve('refreshed');
+  };
+  const first = cache.get('registration', load);
+
+  now = 20_000;
+
+  const second = cache.get('registration', load);
+
+  expect(loads).toBe(1);
+  pending.resolve('settled');
+  expect(await Promise.all([first, second])).toEqual(['settled', 'settled']);
+  now = 24_999;
+  expect(await cache.get('registration', load)).toBe('settled');
+  expect(loads).toBe(1);
+  now = 25_000;
+  expect(await cache.get('registration', load)).toBe('refreshed');
+  expect(loads).toBe(2);
+});
+
 test('a write invalidates the cached public layout', async () => {
   let title = 'Before';
   let reads = 0;

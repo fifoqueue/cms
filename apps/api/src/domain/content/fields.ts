@@ -8,8 +8,11 @@ import type { SettingsRepository } from '#api/domain/site/site-service';
 import { conflict, invalidInput, notFound, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 import type { DefinitionRegistry } from '#api/domain/content/definition-registry';
+import type { PublicCache } from '#api/domain/site/public-cache';
 
 const KEY = 'contentFields';
+/** How long a cached copy of the stored definitions serves; other processes' edits show by then. */
+const CACHE_TTL_MS = 5_000;
 
 /** The value schema of one field; optional unless required (required text must not be empty). */
 const valueSchema = (field: FieldDefinition): z.ZodType => {
@@ -74,11 +77,17 @@ export class FieldService {
       registry?: DefinitionRegistry<FieldDefinition>;
       /** Public projections of library images by id. */
       images: (ids: readonly string[]) => Promise<Map<string, PublicImage>>;
+      /** Keeps stored definitions for public comment reads; settings writes invalidate it. */
+      cache?: Pick<PublicCache, 'get'>;
     },
   ) {}
 
   async list(): Promise<FieldDefinition[]> {
-    return [...(this.deps.registry?.list() ?? []), ...(await this.stored())];
+    return this.merged(await this.stored());
+  }
+
+  private merged(stored: FieldDefinition[]): FieldDefinition[] {
+    return [...(this.deps.registry?.list() ?? []), ...stored];
   }
 
   private async stored(): Promise<FieldDefinition[]> {
@@ -175,6 +184,21 @@ export class FieldService {
     return project(fields, images, values);
   }
 
+  /**
+   * Fields of the public comment form. Stored definitions come from `cache` when given, plugin
+   * definitions are always current.
+   */
+  async forComments(): Promise<FieldDefinition[]> {
+    const stored = this.deps.cache
+      ? await this.deps.cache.get(
+          'fields:stored',
+          () => this.stored(),
+          CACHE_TTL_MS,
+        )
+      : await this.stored();
+    return this.merged(stored).filter((field) => field.comments);
+  }
+
   async forTaxonomy(taxonomy: string): Promise<FieldDefinition[]> {
     return (await this.list()).filter((field) =>
       field.taxonomies.includes(taxonomy),
@@ -253,6 +277,34 @@ const checkValues = (
     ),
   ]);
 };
+
+/**
+ * A visitor's comment field values checked against the comment fields in `definitions`. Every
+ * undeclared key is dropped, an inactive plugin's included: visitors only answer what is asked.
+ */
+export const commentValues = (
+  definitions: readonly FieldDefinition[],
+  values: FieldValues,
+): FieldValues =>
+  checkValues(
+    definitions,
+    Object.fromEntries(
+      Object.entries(values).filter(([key]) =>
+        definitions.some((field) => field.key === key),
+      ),
+    ),
+  );
+
+/** The public values among a comment's stored ones; comment fields are never images. */
+export const publicCommentValues = (
+  definitions: readonly FieldDefinition[],
+  values: FieldValues,
+): Record<string, unknown> =>
+  project(
+    definitions.filter((field) => field.public && field.type !== 'image'),
+    new Map(),
+    values,
+  );
 
 const project = (
   fields: readonly FieldDefinition[],

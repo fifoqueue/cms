@@ -46,6 +46,7 @@ export const createContainer = async (
     ...late.repositories,
   });
   const security = createSecurity({
+    avatarSiteUrl: async () => (await site.seo.getPublic()).siteUrl,
     ...repositories,
     ...registries,
     ...keys,
@@ -60,6 +61,7 @@ export const createContainer = async (
     ...security,
     ...keys,
     ...late.reading,
+    publicCache: infra.publicCache,
   });
   late.types.set(content.activeContentTypes);
   late.content.set(content.content);
@@ -113,6 +115,7 @@ export const createContainer = async (
     jobs: platform.jobs,
   });
   const users = createUsers({
+    publicCache: infra.publicCache,
     ...repositories,
     ...registries,
     ...security,

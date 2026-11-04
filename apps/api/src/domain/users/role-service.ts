@@ -4,12 +4,13 @@ import type { RoleWriter } from '#api/domain/users/user-directory';
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
-import { invalidInput, notFound, Errors } from '#api/shared/errors';
+import { forbidden, invalidInput, notFound, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 import type { HookDispatcher } from '#api/domain/ports';
 import type { UserCapabilities } from '#api/domain/users/user-capabilities';
 import { CapabilityRegistry } from '#api/domain/users/capability-registry';
 import { RoleRegistry } from '#api/domain/users/role-registry';
+import { z } from 'zod';
 
 /** Role definitions are validated again when resolving a session. */
 export class RoleService {
@@ -52,6 +53,48 @@ export class RoleService {
       : capabilities;
   }
 
+  async assignable(actor: Actor): Promise<RoleDefinition[]> {
+    const roles = await this.list();
+    const capabilities = new Set(
+      actor.capabilities ?? (await this.capabilities(actor.role, actor.id)),
+    );
+    const eligible = roles.filter(
+      (role) => actor.role === 'administrator' || role.key !== 'administrator',
+    );
+    const baseline = eligible.filter(
+      (role) =>
+        actor.role === 'administrator' ||
+        role.capabilities.every((capability) => capabilities.has(capability)),
+    );
+
+    if (!this.hooks?.has('role.assignable')) return baseline;
+
+    const keys = new Set(eligible.map((role) => role.key));
+    const schema = z.strictObject({
+      actorId: z.literal(actor.id),
+      roles: z
+        .array(z.string())
+        .max(keys.size)
+        .refine(
+          (values) =>
+            new Set(values).size === values.length &&
+            values.every((key) => keys.has(key)),
+        ),
+    });
+    const result = await this.hooks.applyFilter(
+      'role.assignable',
+      { actorId: actor.id, roles: baseline.map((role) => role.key) },
+      (value) => schema.safeParse(value).success,
+    );
+
+    return result.roles.map((key) => roles.find((role) => role.key === key)!);
+  }
+
+  async requireAssignable(key: string, actor: Actor) {
+    if (!(await this.assignable(actor)).some((role) => role.key === key))
+      throw invalidInput(Errors.RoleUnknown);
+  }
+
   capabilityDefinitions() {
     return this.catalog.list();
   }
@@ -63,17 +106,39 @@ export class RoleService {
 
   async save(input: unknown, actor: Actor) {
     authorize(actor, 'users.manage');
+
     const role = {
       ...parseInput(roleDefinitionSchema, input),
       source: 'admin',
     };
+
     if (role.capabilities.some((key) => !this.catalog.has(key)))
       throw invalidInput(Errors.RoleUnknown);
+
     if ((ROLES as readonly string[]).includes(role.key))
       throw invalidInput(Errors.RoleBuiltin);
-    const exists = (await this.list()).some((item) => item.key === role.key);
+
+    const previous = (await this.list()).find((item) => item.key === role.key);
+
+    if (actor.role !== 'administrator') {
+      const ceiling = new Set(
+        actor.capabilities ?? (await this.capabilities(actor.role, actor.id)),
+      );
+
+      if (
+        role.capabilities.some(
+          (capability) =>
+            !ceiling.has(capability) ||
+            (role.key === actor.role &&
+              !previous?.capabilities.includes(capability)),
+        )
+      )
+        throw forbidden();
+    }
+
     await this.writer.saveRole(role);
-    void this.hooks?.emit(exists ? 'role.updated' : 'role.created', role);
+    void this.hooks?.emit(previous ? 'role.updated' : 'role.created', role);
+
     return role;
   }
 
@@ -93,6 +158,8 @@ export class RoleService {
       throw invalidInput(Errors.RoleUnknown, [
         { path: 'reassignTo', message: Errors.RoleUnknown },
       ]);
+    await this.requireAssignable(reassignTo, actor);
+
     await this.writer.removeRole(key, reassignTo);
     void this.hooks?.emit('role.deleted', {
       role: roles.find((role) => role.key === key)!,

@@ -142,7 +142,7 @@
       <label class="sr-only" for="users-role">{m.role}</label>
       <NativeSelect id="users-role" name="role" size="sm" required>
         <NativeSelectOption value="">{m.usersChangeRoleTo}</NativeSelectOption>
-        {#each data.roles as role (role.key)}
+        {#each data.assignableRoles as role (role.key)}
           <NativeSelectOption value={role.key}
             >{roleName(role.key)}</NativeSelectOption
           >
@@ -334,7 +334,7 @@
           name="role"
           value={values?.role ?? 'author'}
         >
-          <RoleOptions roles={data.roles} />
+          <RoleOptions roles={data.assignableRoles} />
         </NativeSelect>
       </div>
       <label class="flex items-center gap-2 text-sm sm:col-span-2">

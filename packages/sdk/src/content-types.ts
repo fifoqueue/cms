@@ -80,8 +80,8 @@ export const FIELD_TYPES = [
 export type FieldType = (typeof FIELD_TYPES)[number];
 
 /**
- * A custom field shown in the editor for the listed content types and on the terms of the listed
- * taxonomies (WordPress post and term meta). At least one target is required.
+ * A custom field shown in the editor for the listed content types, on the terms of the listed
+ * taxonomies and, with `comments`, in the public comment form. At least one target is required.
  */
 export const fieldDefinitionSchema = z
   .object({
@@ -107,13 +107,22 @@ export const fieldDefinitionSchema = z
     help: z.string().trim().max(300).default(''),
     contentTypes: z.array(contentTypeKeySchema).max(50).default([]),
     taxonomies: z.array(taxonomyTypeSchema).max(50).default([]),
+    /** Asked in the public comment form and stored with each comment (visitors cannot pick media). */
+    comments: z.boolean().default(false),
   })
   .refine((field) => field.type !== 'select' || field.options.length > 0, {
     message: Errors.FieldOptionsRequired,
     path: ['options'],
   })
+  .refine((field) => !field.comments || field.type !== 'image', {
+    message: Errors.FieldCommentImage,
+    path: ['type'],
+  })
   .refine(
-    (field) => field.contentTypes.length > 0 || field.taxonomies.length > 0,
+    (field) =>
+      field.contentTypes.length > 0 ||
+      field.taxonomies.length > 0 ||
+      field.comments,
     { message: Errors.FieldRequired, path: ['contentTypes'] },
   );
 

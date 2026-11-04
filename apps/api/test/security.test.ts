@@ -5,7 +5,14 @@ import type {
   ApiTokenRecord,
   ApiTokenRepository,
 } from '#api/domain/auth/api-tokens';
-import { AuthService } from '#api/domain/auth/auth-service';
+import { SignInService } from '#api/domain/auth/sign-in-service';
+import { createPasswordMethod } from '#api/domain/auth/password-method';
+import { SignInRegistry } from '#api/plugin-runtime/sign-in-registry';
+import { MemorySignInTransactions } from '#test/support/memory-sign-in';
+import { toProfile } from '#api/domain/users/user-mapper';
+import type { Clock } from '#api/domain/ports';
+import type { SetupTokens } from '#api/domain/auth/setup-tokens';
+import { HookBus } from '#api/plugin-runtime/hook-bus';
 import { PasswordService } from '#api/domain/auth/password-service';
 import { EmailService } from '#api/domain/email/email-service';
 import { SealedJobs } from '#api/domain/jobs/sealed-jobs';
@@ -19,6 +26,7 @@ import {
   fixedClock,
   sequentialIds,
   userRecord,
+  recordingLogger,
 } from '#test/support/memory';
 import { MemoryJobQueue } from '#test/support/memory-jobs';
 import {
@@ -43,9 +51,71 @@ const tokens = {
   digest: (token: string) => `digest:${token}`,
 };
 
+const signInFor = (
+  users: MemoryUsers,
+  clock: Clock,
+  protection: Pick<ProtectionService, 'check'>,
+  passwords: Pick<PasswordService, 'commitReset'>,
+  setupTokens?: SetupTokens,
+  hooks = new HookBus({ logger: recordingLogger().logger, timeoutMs: 100 }),
+) => {
+  const profiles = {
+    findById: async (id: string) => {
+      const user = await users.findById(id);
+
+      return user ? toProfile(user) : null;
+    },
+    findByEmail: async (email: string) => {
+      const user = await users.findByEmail(email);
+
+      return user ? toProfile(user) : null;
+    },
+  };
+  const registry = new SignInRegistry({
+    logger: recordingLogger().logger,
+    timeoutMs: 100,
+  });
+
+  registry.core(profiles).signInMethod(
+    'password',
+    createPasswordMethod({
+      users,
+      passwords,
+      hasher: { hash: async (value) => value, verify: async (a, b) => a === b },
+    }),
+  );
+
+  return new SignInService({
+    registry,
+    users: profiles,
+    hooks,
+    setupTokens,
+    factorChanges: new MemorySettings(),
+    settings: {
+      effective: async () => ({
+        methods: ['password'],
+        secondFactors: [],
+        requireSecondFactor: [],
+      }),
+    },
+    transactions: new MemorySignInTransactions(),
+    tokens,
+    clock,
+    limits: { total: 100, perClient: 100 },
+    protection,
+    siteUrl: async () => 'https://example.com',
+    session: async (user) => ({
+      user,
+      token: 'session',
+      expiresAt: new Date(clock.now().getTime() + 60_000).toISOString(),
+    }),
+  });
+};
+
 const setup = async () => {
   const clock = fixedClock();
   const users = new MemoryUsers();
+
   await users.insert(
     userRecord({
       id: 'admin',
@@ -63,15 +133,8 @@ const setup = async () => {
     captcha: { verify: async () => true },
     clock,
   });
-  const auth = new AuthService({
-    users,
-    sessions: new MemorySessions(() => false, users),
-    hasher: { hash: async (value) => value, verify: async (a, b) => a === b },
-    tokens,
-    ids: sequentialIds(),
-    clock,
-    sessionTtlMs: 60_000,
-    protection,
+  const signIn = signInFor(users, clock, protection, {
+    commitReset: async () => false,
   });
   const login = (
     password: string,
@@ -79,11 +142,13 @@ const setup = async () => {
     client: string | null = 'ip:203.0.113.1',
   ) =>
     codeOf(
-      auth.login(
-        { email: 'admin@example.com', password },
+      signIn.start(
+        'password',
+        { values: { email: 'admin@example.com', password } },
         { client, address: null, captchaToken },
       ),
     );
+
   return { settings, login, clock };
 };
 
@@ -104,7 +169,7 @@ describe('sign-in protection', () => {
       expect(await login('wrong')).toBe('unauthorized');
     // Even the right password is refused while blocked, so guessing gains nothing.
     expect(await login('right')).toBe('rate_limited');
-    // Unproven clients skip per-client limits but still meet the per-account one.
+    // Unproven clients remain subject to the per-account limit.
     expect(await login('right', null, null)).toBe('rate_limited');
 
     clock.set('2026-01-01T00:30:00.000Z');
@@ -234,7 +299,22 @@ describe('password reset', () => {
     let hashes = 0;
     let issued = '';
     let passwordLogin = true;
+    const hooks = new HookBus({
+      logger: recordingLogger().logger,
+      timeoutMs: 100,
+    });
+    const events: { name: string; payload: unknown }[] = [];
+    const registrar = hooks.registrar('password-policy');
+    for (const name of [
+      'user.passwordResetRequested',
+      'user.passwordReset',
+      'user.passwordChanged',
+    ] as const)
+      registrar.on(name, (payload) => {
+        events.push({ name, payload });
+      });
     const passwords = new PasswordService({
+      hooks,
       passwordLogin: async () => passwordLogin,
       users,
       tokens: passwordTokens,
@@ -280,6 +360,25 @@ describe('password reset', () => {
     await passwords.requestReset({ email: 'Admin@Example.com' }, visitor);
     const request = [...queue.rows.values()].at(-1)!;
     expect(JSON.stringify(request.payload)).not.toContain('admin@example.com');
+    const deny = registrar.filter('user.passwordResetAllowed', (value) => ({
+      ...value,
+      allowed: false,
+    }));
+    const invalid = hooks
+      .registrar('functions:site', { trusted: true })
+      .filter('user.passwordResetAllowed', (value) => {
+        value.user.id = 'another-user';
+        value.allowed = true;
+        return value;
+      });
+    const beforeDenied = queue.rows.size;
+    await passwords.deliverResetRequest(request.payload);
+    expect(queue.rows.size).toBe(beforeDenied);
+    expect(passwordTokens.rows.size).toBe(0);
+    const allow = registrar.filter('user.passwordResetAllowed', (value) => ({
+      ...value,
+      allowed: true,
+    }));
     await passwords.deliverResetRequest(request.payload);
     const job = [...queue.rows.values()].at(-1)!;
     const token = passwordTokens.rows.get(`digest:${issued}`)!;
@@ -296,7 +395,9 @@ describe('password reset', () => {
     await email.deliver(job.payload);
     expect(sent[0]).toContain(issued);
 
+    passwordLogin = false;
     await passwords.reset({ token: issued, password: 'new-password' });
+    passwordLogin = true;
     expect(users.rows.get('admin')!.passwordHash).toBe('hash:new-password');
     expect(sessions.rows.size).toBe(0);
     expect(apiTokensRevoked).toBe(true);
@@ -305,6 +406,33 @@ describe('password reset', () => {
         passwords.reset({ token: issued, password: 'other-password' }),
       ),
     ).toBe('invalid_input');
+    await passwords.change(
+      { current: 'new-password', password: 'changed-password' },
+      { id: 'admin', role: 'administrator' },
+      'own-session',
+    );
+    expect(events.map((event) => event.name)).toEqual([
+      'user.passwordResetRequested',
+      'user.passwordResetRequested',
+      'user.passwordReset',
+      'user.passwordChanged',
+    ]);
+    for (const event of events) {
+      expect(event.payload).toEqual({
+        user: {
+          id: 'admin',
+          email: 'admin@example.com',
+          name: users.rows.get('admin')!.name,
+          role: 'administrator',
+          slug: users.rows.get('admin')!.slug,
+          bio: '',
+          locale: '',
+        },
+      });
+    }
+    deny();
+    allow();
+    invalid();
 
     // Administrators send resets without captcha or visitor limits, but only so many an hour.
     expect(
@@ -315,6 +443,58 @@ describe('password reset', () => {
     const queued = queue.rows.size;
     await passwords.sendReset('admin', { id: 'boss', role: 'administrator' });
     expect(queue.rows.size).toBe(queued + 1);
+    const signIn = signInFor(
+      users,
+      clock,
+      { check: async () => {} },
+      passwords,
+      {
+        find: async (hash, now) => {
+          const row = passwordTokens.rows.get(hash);
+
+          return row && row.expiresAt > now ? row : null;
+        },
+        consume: async () => false,
+      },
+      hooks,
+    );
+    const refuse = registrar.filter('user.passwordResetAllowed', (value) => ({
+      ...value,
+      allowed: false,
+    }));
+    const beforeSetup = events.filter(
+      (event) => event.name === 'user.passwordReset',
+    ).length;
+    const setupPassword = () =>
+      signIn.setup(
+        'password',
+        { token: issued, values: { password: 'setup-password' } },
+        visitor,
+      );
+
+    await expect(setupPassword()).rejects.toMatchObject({ code: 'forbidden' });
+    expect(passwordTokens.rows.has(`digest:${issued}`)).toBe(true);
+    expect(users.rows.get('admin')?.passwordHash).toBe('hash:changed-password');
+    expect(
+      events.filter((event) => event.name === 'user.passwordReset'),
+    ).toHaveLength(beforeSetup);
+    refuse();
+    passwordLogin = false;
+    const permit = registrar.filter('user.passwordResetAllowed', (value) => ({
+      ...value,
+      allowed: true,
+    }));
+
+    expect((await setupPassword()).kind).toBe('session');
+    expect(users.rows.get('admin')?.passwordHash).toBe('hash:setup-password');
+    expect(
+      events.filter((event) => event.name === 'user.passwordReset'),
+    ).toHaveLength(beforeSetup + 1);
+    await expect(setupPassword()).rejects.toMatchObject({
+      code: 'unauthorized',
+    });
+    permit();
+    passwordLogin = true;
     for (let sent = 1; sent < 20; sent++)
       await passwords.sendReset('admin', { id: 'boss', role: 'administrator' });
     expect(

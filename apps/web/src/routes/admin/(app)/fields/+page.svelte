@@ -35,7 +35,43 @@
     () =>
     ({ update }) =>
       update({ reset: false });
+  /**
+   * The choices of one target list: the site's, then the field's targets the site does not
+   * declare (an inactive plugin's), shown by key and checked.
+   */
+  const targets = (
+    known: readonly { key: string; name: string }[],
+    chosen: readonly string[],
+  ) => [
+    ...known.map(({ key, name }) => ({ key, name, code: false })),
+    ...chosen
+      .filter((key) => !known.some((option) => option.key === key))
+      .map((key) => ({ key, name: key, code: true })),
+  ];
 </script>
+
+{#snippet targetList(
+  name: string,
+  legend: string,
+  choices: { key: string; name: string; code: boolean }[],
+  chosen: readonly string[],
+)}
+  <fieldset class="flex flex-wrap gap-4 text-sm sm:col-span-2">
+    <legend class="mb-2 font-medium">{legend}</legend>
+    {#each choices as choice (choice.key)}
+      <label class="flex items-center gap-2"
+        ><input
+          type="checkbox"
+          {name}
+          value={choice.key}
+          checked={chosen.includes(choice.key)}
+        />
+        {#if choice.code}<code class="text-xs">{choice.name}</code
+          >{:else}{choice.name}{/if}</label
+      >
+    {/each}
+  </fieldset>
+{/snippet}
 
 {#snippet typeForm(type: ContentTypeDefinition | null)}
   <form
@@ -200,20 +236,26 @@
         value={field?.options.join('\n') ?? ''}
       />
     </div>
-    <fieldset class="flex flex-wrap gap-4 text-sm sm:col-span-2">
-      <legend class="mb-2 font-medium">{m.fieldTypes}</legend>
-      {#each data.types as type (type.key)}
-        <label class="flex items-center gap-2"
-          ><input
-            type="checkbox"
-            name="contentTypes"
-            value={type.key}
-            checked={field?.contentTypes.includes(type.key) ?? false}
-          />
-          {type.name}</label
-        >
-      {/each}
-    </fieldset>
+    {@render targetList(
+      'contentTypes',
+      m.fieldTypes,
+      targets(data.types, field?.contentTypes ?? []),
+      field?.contentTypes ?? [],
+    )}
+    {@render targetList(
+      'taxonomies',
+      m.fieldTaxonomies,
+      targets(data.taxonomies, field?.taxonomies ?? []),
+      field?.taxonomies ?? [],
+    )}
+    <label class="flex items-center gap-2 text-sm sm:col-span-2"
+      ><input
+        type="checkbox"
+        name="comments"
+        checked={field?.comments ?? false}
+      />
+      {m.navComments}</label
+    >
     <div class="flex flex-wrap gap-4 text-sm sm:col-span-2">
       <label class="flex items-center gap-2"
         ><input

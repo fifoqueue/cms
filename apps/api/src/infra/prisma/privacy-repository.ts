@@ -11,6 +11,7 @@ import type { Database } from '#api/infra/prisma/client';
 import { lockSetting } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
 import { eraseContentOrigin } from '#api/infra/prisma/content-origin';
+import { parseFields } from '#api/infra/prisma/content-criteria';
 import { openJob } from '#api/domain/jobs/payload';
 import {
   lockPermalinks,
@@ -133,11 +134,15 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
             authorUserAgent: true,
             body: true,
             status: true,
+            fields: true,
             createdAt: true,
             updatedAt: true,
           },
         })
-      ).map(dates);
+      ).map(({ fields, ...row }) => ({
+        ...dates(row),
+        fields: parseFields(fields),
+      }));
     if (section === 'pushSubscriptions')
       return (
         await this.db.pushSubscription.findMany({
@@ -421,6 +426,8 @@ export class PrismaPrivacyRepository implements PrivacyRepository {
             authorIp: null,
             authorUserAgent: null,
             body: '',
+            // Comment field values are the commenter's own answers.
+            fields: '{}',
             userId: null,
             updatedAt: now,
           },

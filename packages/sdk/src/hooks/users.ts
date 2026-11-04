@@ -3,11 +3,19 @@ import type { AdminSecuritySettings, ProtectedAction } from '#sdk/security';
 import type { AdminUserSummary, UserSave, UserQuery } from '#sdk/users';
 import type { Capability } from '#sdk/capabilities';
 import type { PrivacyRequest, PrivacyExportData } from '#sdk/privacy';
-import type { UserProfile } from '#sdk/auth';
+import type { UserProfile, CapabilityObject } from '#sdk/auth';
 import type { PublicAuthor } from '#sdk/content';
 
 /** Committed administrative changes; credentials are never included. */
 export interface UserActionHooks {
+  'user.passwordResetRequested': { user: UserProfile };
+  'user.passwordReset': { user: UserProfile };
+  'user.passwordChanged': { user: UserProfile };
+  'user.signedOut': {
+    user: UserProfile;
+    scope: 'session' | 'other' | 'all';
+    actorId: string;
+  };
   'user.created': AdminUserSummary;
   'user.updated': UserProfile;
   'user.roleChanged': { user: UserProfile; previousRole: string };
@@ -28,6 +36,35 @@ export interface UserActionHooks {
 }
 
 export interface UserFilterHooks {
+  'avatar.url': { emailHash: string; size: number; url: string };
+
+  /**
+   * The core baseline contains roles within the actor's capability ceiling.
+   * Handlers may narrow or widen it as an explicit server-code policy decision.
+   * Results contain only existing, unique role keys; actorId is immutable.
+   * Non-administrators cannot assign the administrator role.
+   */
+  'role.assignable': { actorId: string; roles: string[] };
+
+  'capability.check': {
+    userId: string;
+    role: string;
+    capability: Capability;
+    object: CapabilityObject;
+    allowed: boolean;
+  };
+  'user.passwordResetAllowed': { user: UserProfile; allowed: boolean };
+  'user.loginRedirect': {
+    user: UserProfile;
+    method: string;
+    redirectTo: string;
+  };
+  'user.sessionLifetime': { user: UserProfile; ttlMs: number };
+  'user.sessionAllowed': {
+    user: UserProfile;
+    kind: 'session' | 'apiToken';
+    allowed: boolean;
+  };
   'user.beforeSave': UserSave;
   'user.query': UserQuery;
   /** Only a verified user's registered capabilities may change; identity is immutable. */
@@ -39,5 +76,9 @@ export interface UserFilterHooks {
   'privacy.exportData': PrivacyExportData;
   'user.public': PublicAuthor;
   /** Membership supplies the initial boolean; every handler may allow or refuse registration. */
-  'user.registrationAllowed': boolean;
+  'user.registrationAllowed': {
+    allowed: boolean;
+    email: string | null;
+    name: string | null;
+  };
 }

@@ -15,6 +15,14 @@ export type RoleDeleteInput = z.input<typeof roleDeleteSchema>;
 export const membershipSchema = z.object({
   enabled: z.boolean().default(false),
 });
+export const registrationStatusSchema = membershipSchema.extend({
+  registrationOpen: z.boolean(),
+});
+export const registrationDecisionSchema = z.strictObject({
+  allowed: z.boolean(),
+  email: z.string().nullable(),
+  name: z.string().nullable(),
+});
 export const registrationSchema = z.object({
   name: z.string().trim().min(1).max(191),
   email: z.email().max(191),

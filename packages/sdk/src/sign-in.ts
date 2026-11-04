@@ -30,6 +30,18 @@ export const secondFactorIdSchema = z.union([
 const label = z.string().trim().min(1).max(100);
 const transaction = z.string().min(1).max(256);
 
+/** A local navigation target, never a scheme, authority or browser-normalized external URL. */
+export const loginRedirectSchema = z
+  .string()
+  .max(2000)
+  .refine(
+    (value) =>
+      value.startsWith('/') &&
+      !value.startsWith('//') &&
+      !/[\\\s]/.test(value) &&
+      [...value].every((char) => char.charCodeAt(0) >= 32 && char !== '\x7f'),
+  );
+
 /** A field a sign-in step asks for. Values always arrive as strings. */
 export const signInFieldSchema = z.object({
   name: z.string().regex(/^[a-z][a-zA-Z0-9]{0,39}$/),
@@ -88,7 +100,11 @@ export const secondFactorChoiceSchema = choice.extend({
  * httpOnly cookie in the web app) and send it back with `continue`.
  */
 export const signInStepSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('session'), session: sessionGrantSchema }),
+  z.object({
+    kind: z.literal('session'),
+    session: sessionGrantSchema,
+    redirectTo: loginRedirectSchema.optional(),
+  }),
   /** Enrollment from the account page finished; there is no new session. */
   z.object({ kind: z.literal('done') }),
   /** Send the browser to `url`; the callback continues with the query it receives. */

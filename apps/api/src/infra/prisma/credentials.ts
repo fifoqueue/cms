@@ -22,9 +22,9 @@ export class PrismaCredentialRepository implements CredentialRepository {
   async validReset(tokenHash: string, now: Date) {
     const token = await this.db.passwordToken.findUnique({
       where: { tokenHash },
-      select: { expiresAt: true },
+      select: { expiresAt: true, userId: true },
     });
-    return !!token && token.expiresAt > now;
+    return token && token.expiresAt > now ? token.userId : null;
   }
 
   reset(tokenHash: string, now: Date, passwordHash: string) {

@@ -1,4 +1,5 @@
 import { Errors } from '#sdk/errors';
+import { avatarUrlSchema } from '#sdk/avatar';
 import { extraTermSummarySchema, taxonomyTypeSchema } from '#sdk/taxonomy';
 import { z } from 'zod';
 import { CONTENT_SLUG } from '#sdk/common';
@@ -539,8 +540,8 @@ export const publicAuthorSchema = z.object({
   name: z.string(),
   slug: z.string(),
   bio: z.string(),
-  /** Same-origin proxy URL while Settings → Discussion shows avatars; never an email digest. */
-  avatarUrl: z.string().startsWith('/avatars/').nullable().default(null),
+  /** Core proxy URL or a validated HTTP(S) avatar provider URL. */
+  avatarUrl: avatarUrlSchema.nullable().default(null),
 });
 
 export type PublicAuthor = z.output<typeof publicAuthorSchema>;

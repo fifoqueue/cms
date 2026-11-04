@@ -92,6 +92,7 @@ export const SITE_STRINGS = [
   'moveToTrash',
   'navAccount',
   'newer',
+  'noChoice',
   'noPosts',
   'notifications',
   'older',

@@ -1,6 +1,9 @@
 import { z } from 'zod';
+import { avatarUrlSchema } from '#sdk/avatar';
 import { Errors } from '#sdk/errors';
 import { PAGINATION_MAX_PAGE } from '#sdk/common';
+import { FIELD_TYPES } from '#sdk/content-types';
+import { fieldValuesSchema } from '#sdk/field-values';
 
 export const COMMENT_PENDING_HEADER = 'x-cms-comment-pending';
 export const COMMENTER_PROOF_HEADER = 'x-cms-commenter-proof';
@@ -106,6 +109,13 @@ export const commentInputSchema = z.object({
   authorUrl: authorUrlSchema,
   body: z.string().trim().min(1).max(5000),
   website: z.string().max(500).optional(),
+  /** Values of the site's comment fields by key; undeclared keys are dropped by the service. */
+  fields: fieldValuesSchema
+    .refine(
+      (values) => Object.keys(values).length <= 100,
+      Errors.FieldValuesInvalid,
+    )
+    .default({}),
 });
 
 export const commenterSchema = commentInputSchema
@@ -136,13 +146,30 @@ export const publicCommentSchema = z.strictObject({
   authorUrl: z.string().nullable(),
   /** Written by the entry's author. */
   byAuthor: z.boolean(),
-  avatarUrl: z.string().startsWith('/avatars/').nullable().default(null),
+  avatarUrl: avatarUrlSchema.nullable().default(null),
   pending: z.boolean().default(false),
   body: z.string(),
   createdAt: z.string(),
+  /** Values of the `public` comment fields only, by key. */
+  fields: z.record(z.string(), z.unknown()).default({}),
 });
 
 export type PublicComment = z.output<typeof publicCommentSchema>;
+
+/**
+ * A comment field as the public comment form asks it.
+ * Labels and choices are plain text set by administrators or plugins.
+ */
+export const publicCommentFieldSchema = z.strictObject({
+  key: z.string(),
+  label: z.string(),
+  type: z.enum(FIELD_TYPES).exclude(['image']),
+  options: z.array(z.string()),
+  required: z.boolean(),
+  help: z.string(),
+});
+
+export type PublicCommentField = z.output<typeof publicCommentFieldSchema>;
 
 /** One page of top-level comments with all their shown replies, in thread order. */
 export const publicCommentPageSchema = z.strictObject({
@@ -156,6 +183,8 @@ export const publicCommentPageSchema = z.strictObject({
   open: z.boolean(),
   requireLogin: z.boolean().default(false),
   fields: commentFieldsSchema.default(() => commentFieldsSchema.parse({})),
+  /** The site's comment fields, asked of every commenter after the identity fields. */
+  customFields: z.array(publicCommentFieldSchema).default([]),
   viewer: z.object({ name: z.string() }).nullable().default(null),
   ownPending: publicCommentSchema.nullable().default(null),
   threadDepth: z.number().int(),
@@ -322,6 +351,8 @@ export const adminCommentSchema = z.object({
   status: z.enum(COMMENT_STATUSES),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /** Every stored comment field value by key, public or not, including inactive plugins' fields. */
+  fields: z.record(z.string(), z.unknown()).default({}),
 });
 
 export type AdminComment = z.output<typeof adminCommentSchema>;

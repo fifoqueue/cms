@@ -3,7 +3,11 @@ import { functionsStatusSchema, functionsSourceSchema } from '#sdk/functions';
 import type { ArchiveBases, ArchivePathsState } from '#sdk/archive-paths';
 import { taxonomyDefinitionSchema } from '#sdk/taxonomy';
 import type { TaxonomyDefinition } from '#sdk/taxonomy';
-import { membershipSchema, roleDefinitionSchema } from '#sdk/roles';
+import {
+  membershipSchema,
+  roleDefinitionSchema,
+  registrationStatusSchema,
+} from '#sdk/roles';
 import type { RoleDefinition } from '#sdk/roles';
 import { dashboardPreferencesSchema } from '#sdk/dashboard';
 import type { DashboardPreferences } from '#sdk/dashboard';
@@ -355,9 +359,13 @@ export const createAuthClient = (options: ClientOptions, token?: string) => {
       remove: () => request<void>('DELETE', '/api/v1/auth/recovery-codes'),
     },
     membership: () =>
-      request<{ enabled: boolean }>('GET', '/api/v1/auth/register', {
-        response: membershipSchema,
-      }),
+      request<{ enabled: boolean; registrationOpen: boolean }>(
+        'GET',
+        '/api/v1/auth/register',
+        {
+          response: registrationStatusSchema,
+        },
+      ),
     register: (input: { name: string; email: string }, visitor?: Visitor) =>
       request<void>('POST', '/api/v1/auth/register', {
         json: input,
@@ -461,6 +469,10 @@ export const createAdminClient = (
         }),
     },
     roles: {
+      assignable: () =>
+        request<RoleDefinition[]>('GET', '/api/v1/admin/roles/assignable', {
+          response: roleDefinitionSchema.array(),
+        }),
       capabilities: () =>
         request<CapabilityInfo[]>('GET', '/api/v1/admin/capabilities', {
           response: capabilityInfoSchema.array(),

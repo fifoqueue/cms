@@ -15,6 +15,8 @@ import type {
   PublicCommentPage,
   RateRule,
 } from '@cms/sdk';
+import type { Capability } from '@cms/sdk';
+import { can } from '@cms/sdk/capabilities';
 import { z } from 'zod';
 import type {
   CommentRecord,
@@ -44,7 +46,11 @@ import type {
   Signer,
 } from '#api/domain/ports';
 import type { RateLimitStore } from '#api/domain/security/ports';
-import type { UserDirectory } from '#api/domain/users/user-directory';
+import type {
+  UserDirectory,
+  UserListItem,
+} from '#api/domain/users/user-directory';
+import { noticeRecipients } from '#api/domain/comments/notice-recipients';
 import { Errors, invalidInput, rateLimited } from '#api/shared/errors';
 import type { Logger } from '#api/shared/logger';
 import { parseInput } from '#api/shared/validation';
@@ -103,7 +109,9 @@ const tagSchema = z.string().min(1).max(64);
 
 /**
  * Whose eligibility a delivery re-checks right before it goes out: the parent comment (and its
- * signed-in author) for replies, the user for entry authors.
+ * signed-in author) for replies, the user for entry authors, and for a `user` that
+ * `comment.notificationRecipients` added, that the account still has the address and that it
+ * is not the address of `parentId`'s author after they unsubscribed from reply mail.
  */
 const recipientSchema = z.discriminatedUnion('audience', [
   z.object({
@@ -112,6 +120,12 @@ const recipientSchema = z.discriminatedUnion('audience', [
     userId: idSchema.nullable(),
   }),
   z.object({ audience: z.literal('author'), userId: idSchema }),
+  z.object({
+    audience: z.literal('user'),
+    userId: idSchema,
+    /** The announced comment's parent, if it is a reply. */
+    parentId: idSchema.nullable(),
+  }),
 ]);
 
 type Recipient = z.output<typeof recipientSchema>;
@@ -131,6 +145,16 @@ const contentSchema = z.discriminatedUnion('kind', [
     kind: z.literal('summary'),
     count: z.number().int().positive(),
     link: z.url(),
+  }),
+  z.object({
+    /** A comment waiting for review; it must still wait (and not be erased) when sent. */
+    kind: z.literal('pending'),
+    commentId: idSchema,
+    name: z.string(),
+    body: z.string(),
+    title: z.string(),
+    /** The review queue; empty without a site address. */
+    link: z.url().or(z.literal('')),
   }),
 ]);
 
@@ -173,7 +197,8 @@ type Owner = { commentId: string | null; userId: string | null };
 
 /**
  * Why a queued notice did not go out (logged with how many notices it stood for). `withdrawn`:
- * the announced comment was unapproved, trashed, deleted or erased since it was queued.
+ * the announced comment was unapproved (a review notice: reviewed), trashed, deleted or erased
+ * since it was queued.
  */
 type Refusal = 'disabled' | 'recipient' | 'unsubscribed' | 'withdrawn';
 
@@ -214,12 +239,16 @@ export interface CommentNotifierDeps {
   keys: Pick<VapidKeys, 'publicKey' | 'pair'>;
   sender: PushSender;
   email: Pick<EmailService, 'enabled' | 'queue' | 'sendNow'>;
-  jobs: Pick<SealedJobs, 'seal' | 'open'>;
+  jobs: Pick<SealedJobs, 'seal' | 'open' | 'enqueue'>;
   logger: Pick<Logger, 'info'>;
   limits: Pick<RateLimitStore, 'hit'>;
   hooks: HookDispatcher;
   signer: Signer;
   users: Pick<UserDirectory, 'get' | 'list'>;
+  /** Role capabilities; without it a role has its default capabilities. */
+  roles?: {
+    capabilities(role: string, userId?: string): Promise<Capability[]>;
+  };
   /** `icon`: the site icon's URL (absolute or site-relative), if any. */
   site: () => Promise<{
     siteUrl: string;
@@ -236,6 +265,7 @@ export interface CommentNotifierDeps {
  * Who hears about an approved comment: the entry's author (email and their browsers) and, for
  * a reply, the parent comment's author (email automatically, push when registered). Every
  * comment is announced once, never to its own author, and floods collapse into one summary.
+ * `comment.notificationRecipients` may drop mail recipients or add existing users' addresses.
  */
 export class CommentNotifier {
   constructor(private readonly deps: CommentNotifierDeps) {}
@@ -280,6 +310,66 @@ export class CommentNotifier {
   /** Moderator mail about held comments, queued as plugins shape it; the recipient is fixed. */
   async notice(input: EmailMessage) {
     await this.deps.email.queue(await this.shaped(input));
+  }
+
+  /**
+   * Review mail about a held comment for users `comment.notificationRecipients` added: one job
+   * each, re-checked right before sending like every comment notice (the account must still have
+   * the address, an unsubscribed parent author stays unsubscribed, and the comment must still
+   * wait for review). The commenter's address is added when the mail is sent, only for a
+   * recipient who may then moderate comments.
+   */
+  async pending(
+    record: CommentRecord,
+    target: CommentTarget,
+    recipients: readonly UserListItem[],
+    link: string,
+  ) {
+    const expires = new Date(this.deps.clock.now().getTime() + JOB_LIFETIME_MS);
+
+    for (const user of recipients)
+      await this.deps.jobs.enqueue(
+        COMMENT_MAIL_JOB,
+        {
+          subjects: [
+            user.id,
+            record.authorEmail,
+            record.id,
+            ...(record.userId ? [record.userId] : []),
+          ].filter(Boolean),
+          to: user.email,
+          recipient: {
+            audience: 'user',
+            userId: user.id,
+            parentId: record.parentId,
+          },
+          content: {
+            kind: 'pending',
+            commentId: record.id,
+            name: record.authorName,
+            body: record.body,
+            title: target.title,
+            link,
+          },
+        } satisfies z.input<typeof mailJobSchema>,
+        expires,
+      );
+  }
+
+  /**
+   * Addresses no `comment.notificationRecipients` result may add to a notice about a reply to
+   * `parentId`: the parent author's, once they unsubscribed from reply mail.
+   */
+  async unsubscribed(parentId: string | null): Promise<string[]> {
+    return this.muted(
+      parentId ? await this.deps.comments.findById(parentId) : null,
+    );
+  }
+
+  private async muted(parent: CommentRecord | null): Promise<string[]> {
+    return parent?.authorEmail && !(await this.deps.state.replyMail(parent.id))
+      ? [parent.authorEmail]
+      : [];
   }
 
   /**
@@ -409,26 +499,6 @@ export class CommentNotifier {
       title: target.title,
       link,
     };
-    let replyMailed = false;
-    if (
-      replyTo &&
-      reply &&
-      mail &&
-      settings.notifyCommenters &&
-      replyTo.authorEmail &&
-      (await this.deps.state.replyMail(replyTo.id))
-    ) {
-      replyMailed = true;
-      items.push(
-        this.mailItem(
-          replyTo.authorEmail,
-          reply,
-          replyContent,
-          entry,
-          replySubjects,
-        ),
-      );
-    }
     const writer: Recipient | null = notified && {
       audience: 'author',
       userId: notified.id,
@@ -439,19 +509,88 @@ export class CommentNotifier {
       title: target.title,
       link,
     };
-    if (
-      notified &&
-      writer &&
-      mail &&
-      settings.notifyAuthors &&
-      !(authorAnswered && replyMailed)
-    )
-      items.push(
-        this.mailItem(notified.email, writer, authorContent, comments, [
-          ...subjects,
-          notified.id,
-        ]),
+    // `comment.notificationRecipients` may change who is mailed; without handlers it never runs.
+    const filtered =
+      mail && this.deps.hooks.has('comment.notificationRecipients');
+    let directory: Promise<UserListItem[]> | undefined;
+    const users = () => (directory ??= this.deps.users.list());
+    /** Lowercase addresses mailed about this comment, each once. */
+    const mailed = new Set<string>();
+    const mailTo = (address: string, item: () => NoticeItem) => {
+      const key = address.toLowerCase();
+      if (mailed.has(key)) return false;
+      mailed.add(key);
+      items.push(item());
+      return true;
+    };
+    /** A user a handler added: sent the entry author's notice. */
+    const mailUser = (user: UserListItem) =>
+      mailTo(user.email, () =>
+        this.mailItem(
+          user.email,
+          { audience: 'user', userId: user.id, parentId: record.parentId },
+          authorContent,
+          entry,
+          [...subjects, user.id],
+        ),
       );
+    // An unsubscribed parent author stays unsubscribed: no handler may add the address back.
+    let muted: Promise<string[]> | undefined;
+    const unsubscribed = () => (muted ??= this.muted(parent));
+    let replyMailed = false;
+    if (replyTo && reply && mail && (settings.notifyCommenters || filtered)) {
+      const { kept, added } = await noticeRecipients(
+        this.deps.hooks,
+        {
+          commentId: record.id,
+          kind: 'reply',
+          to:
+            settings.notifyCommenters &&
+            replyTo.authorEmail &&
+            !(await unsubscribed()).length
+              ? [replyTo.authorEmail]
+              : [],
+        },
+        users,
+        unsubscribed,
+      );
+      if (kept.length)
+        replyMailed = mailTo(replyTo.authorEmail, () =>
+          this.mailItem(
+            replyTo.authorEmail,
+            reply,
+            replyContent,
+            entry,
+            replySubjects,
+          ),
+        );
+      for (const user of added) mailUser(user);
+    }
+    if (mail && (settings.notifyAuthors || filtered)) {
+      const { kept, added } = await noticeRecipients(
+        this.deps.hooks,
+        {
+          commentId: record.id,
+          kind: 'approved',
+          to:
+            notified &&
+            settings.notifyAuthors &&
+            !(authorAnswered && replyMailed)
+              ? [notified.email]
+              : [],
+        },
+        users,
+        unsubscribed,
+      );
+      if (notified && writer && kept.length)
+        mailTo(notified.email, () =>
+          this.mailItem(notified.email, writer, authorContent, comments, [
+            ...subjects,
+            notified.id,
+          ]),
+        );
+      for (const user of added) mailUser(user);
+    }
 
     if (!settings.pushNotifications) return items;
     let replyPushed = false;
@@ -624,20 +763,42 @@ export class CommentNotifier {
             content.link,
             unsubscribe,
           )
-        : content.kind === 'reply'
-          ? copy.commentReply(
+        : content.kind === 'pending'
+          ? copy.commentPending(
               site.title,
               content.title,
-              { authorName: content.name, authorEmail: '', body: content.body },
+              {
+                authorName: content.name,
+                authorEmail: await this.commenterAddress(
+                  job.recipient,
+                  content.commentId,
+                ),
+                body: content.body,
+              },
               content.link,
-              unsubscribe,
             )
-          : copy.commentApproved(
-              site.title,
-              content.title,
-              { authorName: content.name, authorEmail: '', body: content.body },
-              content.link,
-            );
+          : content.kind === 'reply'
+            ? copy.commentReply(
+                site.title,
+                content.title,
+                {
+                  authorName: content.name,
+                  authorEmail: '',
+                  body: content.body,
+                },
+                content.link,
+                unsubscribe,
+              )
+            : copy.commentApproved(
+                site.title,
+                content.title,
+                {
+                  authorName: content.name,
+                  authorEmail: '',
+                  body: content.body,
+                },
+                content.link,
+              );
     await this.deps.email.sendNow(
       await this.shaped({ to: job.to, subjects: job.subjects, ...message }),
     );
@@ -856,8 +1017,23 @@ export class CommentNotifier {
     settings: DiscussionSettings,
     siteUrl: string,
   ): Promise<Refusal | null> {
-    if (!siteUrl || !(await this.deps.email.enabled())) return 'disabled';
+    // Every notice but a review notice requires a site address.
+    if (
+      (!siteUrl && job.content.kind !== 'pending') ||
+      !(await this.deps.email.enabled())
+    )
+      return 'disabled';
     const { recipient } = job;
+    if (recipient.audience === 'user') {
+      const user = await this.deps.users.get(recipient.userId);
+      if (user?.email !== job.to) return 'recipient';
+      const to = job.to.toLowerCase();
+      return (await this.unsubscribed(recipient.parentId)).some(
+        (address) => address.toLowerCase() === to,
+      )
+        ? 'unsubscribed'
+        : null;
+    }
     if (recipient.audience === 'author') {
       if (!settings.notifyAuthors) return 'disabled';
       const user = await this.deps.users.get(recipient.userId);
@@ -869,11 +1045,34 @@ export class CommentNotifier {
     return (await this.deps.state.replyMail(parent.id)) ? null : 'unsubscribed';
   }
 
-  /** `withdrawn` when the announced comment is no longer approved or was erased (empty body). */
+  /** The held comment's author address for a recipient who may moderate comments now, else empty. */
+  private async commenterAddress(recipient: Recipient, commentId: string) {
+    if (recipient.audience !== 'user') return '';
+
+    const user = await this.deps.users.get(recipient.userId);
+    if (!user) return '';
+
+    const moderator = can(
+      {
+        role: user.role,
+        capabilities: await this.deps.roles?.capabilities(user.role, user.id),
+      },
+      'comments.moderate',
+    );
+    if (!moderator) return '';
+
+    return (await this.deps.comments.findById(commentId))?.authorEmail ?? '';
+  }
+
+  /**
+   * `withdrawn` when the announced comment is no longer approved (a review notice's: no longer
+   * pending) or was erased (empty body).
+   */
   private async withdrawn(content: Content): Promise<Refusal | null> {
     if (content.kind === 'summary') return null;
     const record = await this.deps.comments.findById(content.commentId);
-    return record?.status === 'approved' && record.body ? null : 'withdrawn';
+    const status = content.kind === 'pending' ? 'pending' : 'approved';
+    return record?.status === status && record.body ? null : 'withdrawn';
   }
 
   private dropped(

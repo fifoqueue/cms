@@ -4,7 +4,7 @@ import { session } from '#api/http/session';
 
 /** Explicit, authenticated generation; public file reads never trigger expensive transforms. */
 export const routes = (app: ApiApp) =>
-  session(app, 'media.upload').post(
+  session(app).post(
     '',
     async ({ media, params, request, user }) => {
       const name = new URL(request.url).searchParams.get('name') ?? '';

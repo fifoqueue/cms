@@ -160,6 +160,9 @@ export type {
   CommentChecker,
   CommentCheckerRegistrar,
   CommentVerdict,
+  CommentNoticeKind,
+  CommentNoticeRecipients,
+  CommentPublicQuery,
 } from '#sdk/hooks/comments';
 
 /**
@@ -181,6 +184,8 @@ export interface PluginComment {
   body: string;
   status: CommentStatus;
   createdAt: string;
+  /** Stored comment field values by key, public or not. */
+  fields: Record<string, unknown>;
 }
 
 /**

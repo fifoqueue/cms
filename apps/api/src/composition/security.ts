@@ -11,7 +11,7 @@ import { AvatarService } from '#api/domain/comments/avatar-service';
 import { SecuritySettingsService } from '#api/domain/security/security-settings';
 import { ProtectionService } from '#api/domain/security/protection-service';
 import { SearchService } from '#api/domain/search/search-service';
-import { GravatarSource } from '#api/infra/gravatar-source';
+import { GravatarSource, avatarEmailHash } from '#api/infra/gravatar-source';
 import { createMeilisearchEngine } from '#api/infra/meilisearch-engine';
 import { systemClock } from '#api/infra/system';
 import { createSearchProviders } from '#api/plugin-runtime/discovery-providers';
@@ -41,6 +41,7 @@ type Input = Pick<
     allowlist: AppConfig['CMS_EGRESS_ALLOWLIST'];
     timeoutMs: number;
     logger: Logger;
+    avatarSiteUrl: () => Promise<string>;
   };
 
 export const createSecurity = ({
@@ -55,11 +56,15 @@ export const createSecurity = ({
   allowlist,
   timeoutMs,
   logger,
+  avatarSiteUrl,
 }: Input) => {
   const avatars = new AvatarService(
     avatarDirectory,
     new GravatarSource(),
     signer,
+    hooks
+      ? { hooks, hash: avatarEmailHash, siteUrl: avatarSiteUrl }
+      : undefined,
   );
   const security = new SecuritySettingsService(
     settingsRepository,

@@ -9,6 +9,7 @@
 </script>
 
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '$app/forms';
   import { buttonVariants } from '#lib/components/ui/button/button.svelte';
@@ -21,6 +22,7 @@
     CommentSection,
   } from '#lib/server/comments.js';
   import type { ReplyTarget } from '#lib/theme/comment-reply.js';
+  import { CUSTOM_FIELDS_MARKER } from '#lib/theme/comment-fields.js';
   import PrivacyPolicyLink from '#lib/theme/PrivacyPolicyLink.svelte';
   import { notifyFailure } from '#lib/feedback.js';
   import { askPush, enablePush, sendJson } from '#lib/push-client.js';
@@ -73,6 +75,21 @@
       (field): field is CommenterField => fields[field],
     ),
   );
+  /** Answers to the site's comment fields, by key: a refused submission's, else none. */
+  const echoed = (failure: Record<string, unknown> | null) => {
+    const answers = failure?.fields;
+    if (!answers || typeof answers !== 'object') return {};
+    return Object.fromEntries(
+      Object.entries(answers).filter(
+        ([, value]) => typeof value === 'string' || typeof value === 'boolean',
+      ),
+    ) as Record<string, string | boolean>;
+  };
+  let answers = $state(untrack(() => echoed(refusal)));
+  /** Bumped after a comment is posted, so the field inputs start over empty. */
+  let generation = $state(0);
+  const inputType = (type: string) =>
+    type === 'number' || type === 'date' || type === 'url' ? type : 'text';
 
   const submit: SubmitFunction<CommentActionResult> = ({ cancel }) => {
     if (submitting || locked || (showCaptcha && !captchaReady)) {
@@ -88,6 +105,8 @@
       try {
         if (result.type === 'success' && result.data?.commented) {
           body = '';
+          answers = {};
+          generation += 1;
           const token = result.data.pushToken;
           if (permission && key && token)
             void enablePush(permission, key, (subscription) =>
@@ -205,6 +224,81 @@
           />{m.commentRemember(remembered)}</label
         >
       {/if}
+    {/if}
+    {#if section.customFields.length}
+      <input type="hidden" name={CUSTOM_FIELDS_MARKER} value="1" />
+      {#key generation}
+        <div
+          class="grid grid-cols-[minmax(0,1fr)] gap-4 @min-[40rem]:grid-cols-2"
+        >
+          {#each section.customFields as field (field.key)}
+            {@const name = `field.${field.key}`}
+            {@const value = answers[field.key]}
+            {@const text = typeof value === 'string' ? value : ''}
+            {#if field.type === 'boolean'}
+              <label
+                class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-1 text-sm @min-[40rem]:col-span-2"
+                ><input
+                  type="checkbox"
+                  {name}
+                  checked={value === true}
+                  class="mt-0.5"
+                />{field.label}
+                {#if field.help}<span
+                    class="col-start-2 text-xs text-muted-foreground"
+                    >{field.help}</span
+                  >{/if}
+              </label>
+            {:else}
+              <label
+                class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 text-sm {field.type ===
+                'textarea'
+                  ? '@min-[40rem]:col-span-2'
+                  : ''}"
+                >{field.label}
+                {#if field.type === 'textarea'}
+                  <textarea
+                    {name}
+                    required={field.required}
+                    maxlength={20000}
+                    rows={3}
+                    value={text}
+                    class="rounded-md border bg-background p-3"></textarea>
+                {:else if field.type === 'select'}
+                  <select
+                    {name}
+                    required={field.required}
+                    value={text}
+                    class="h-9 rounded-md border bg-background px-3"
+                  >
+                    <option value="">{m.noChoice}</option>
+                    {#each field.options as option, index (index)}
+                      <option value={option}>{option}</option>
+                    {/each}
+                  </select>
+                {:else}
+                  <input
+                    {name}
+                    type={inputType(field.type)}
+                    step={field.type === 'number' ? 'any' : undefined}
+                    maxlength={field.type === 'url'
+                      ? 2048
+                      : field.type === 'text'
+                        ? 1000
+                        : undefined}
+                    required={field.required}
+                    value={text}
+                    class="h-9 rounded-md border bg-background px-3"
+                  />
+                {/if}
+                {#if field.help}<span class="text-xs text-muted-foreground"
+                    >{field.help}</span
+                  >{/if}
+              </label>
+            {/if}
+          {/each}
+        </div>
+      {/key}
     {/if}
     <label class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 text-sm"
       >{m.commentBody}

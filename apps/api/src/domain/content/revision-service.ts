@@ -192,7 +192,7 @@ export class RevisionService {
 
   private async editable(contentId: string, actor: Actor) {
     const record = await this.deps.content.require(contentId);
-    this.deps.content.assertEditable(actor, record);
+    await this.deps.content.assertEditable(actor, record);
     return record;
   }
 

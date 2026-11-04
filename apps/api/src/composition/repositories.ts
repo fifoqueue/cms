@@ -168,7 +168,6 @@ export const createRepositories = async ({
     'run',
   ]);
   const methodIdentities = new PrismaIdentityRepository(db);
-  const methodCredentials = new PrismaCredentialRepository(db);
   const passkeys = new PrismaPasskeyRepository(db);
   const factorCodes = new PrismaRecoveryCodeRepository(db);
   const factorChanges = new PrismaSettingsTransactions(db);
@@ -226,7 +225,6 @@ export const createRepositories = async ({
     pluginData,
     signInSettingsTransactions,
     methodIdentities,
-    methodCredentials,
     passkeys,
     factorCodes,
     factorChanges,

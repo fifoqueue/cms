@@ -42,6 +42,8 @@ const { load: loadEntry } =
 const { load: loadCategory } =
   await import('#web/routes/(site)/category/[slug]/+page.server.js');
 const { removeApiSecrets } = await import('#web-env');
+const { load: loadRegister } =
+  await import('#web/routes/admin/(auth)/register/+page.server.js');
 
 const SECRET = 'SECRET-SENTINEL-7f3a';
 const TOKEN = 'TOKEN-SENTINEL-91c2';
@@ -186,7 +188,7 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         passwordReset: true,
       });
     case '/api/v1/auth/register':
-      return json({ enabled: false });
+      return json({ enabled: false, registrationOpen: false });
     case '/api/v1/security/captcha':
       return json({ provider: 'none', siteKey: '', always: [] });
     case '/api/v1/layout':
@@ -510,6 +512,16 @@ describe('public page data', () => {
     ).toMatchObject({ status: 502 });
   });
 
+  test('registration page receives the effective policy even while membership is disabled', async () => {
+    override = ({ url }) =>
+      url.pathname === '/api/v1/auth/register'
+        ? json({ enabled: false, registrationOpen: true })
+        : undefined;
+    expect(await loadRegister(publicEvent('/admin/register'))).toMatchObject({
+      membership: { enabled: false, registrationOpen: true },
+    });
+  });
+
   test('the configured public login path renders there with a safe return path', async () => {
     const data = await loadEntry(
       publicEvent(
@@ -557,7 +569,17 @@ describe('public comment moderation', () => {
     authorUserAgent: `${UA}/${id}`,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-02T00:00:00.000Z',
+    // Every stored comment field value, private ones included: never public page data.
+    fields: { phone: `${SECRET}-phone` },
   });
+  const cityField = {
+    key: 'city',
+    label: 'City',
+    type: 'text',
+    options: [],
+    required: true,
+    help: 'Where you write from',
+  };
   /** A public thread page of `count` approved comments, the first `shown`. */
   const threadOf = (count: number) => (call: Call) =>
     call.url.pathname === '/api/v1/comments' && call.method === 'GET'
@@ -577,6 +599,7 @@ describe('public comment moderation', () => {
           page: 1,
           pageSize: 50,
           open: true,
+          customFields: [cityField],
           threadDepth: 3,
           truncated: false,
         })
@@ -672,8 +695,10 @@ describe('public comment moderation', () => {
     override = moderationList;
     const { event, headers } = entryEvent('/hello', true);
     const data = (await loadEntry(event)) as {
-      comments: { management: unknown };
+      comments: { management: unknown; customFields: unknown };
     };
+    // The comment form gets the site's comment fields.
+    expect(data.comments.customFields).toEqual([cityField]);
 
     const lists = calls.filter(
       ({ url }) => url.pathname === '/api/v1/admin/comments',

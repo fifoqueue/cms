@@ -1,4 +1,5 @@
-import { loginSchema, setupSchema } from '@cms/sdk';
+import { setupSchema, sessionLifetimeSchema } from '@cms/sdk';
+import { z } from 'zod';
 import type {
   Capability,
   SessionInfo,
@@ -6,25 +7,15 @@ import type {
   SetupStatus,
   UserProfile,
 } from '@cms/sdk';
-import {
-  conflict,
-  notFound,
-  unauthorized,
-  forbidden,
-  Errors,
-} from '#api/shared/errors';
+import { conflict, notFound, Errors } from '#api/shared/errors';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
 import { requireRecentSignIn } from '#api/domain/auth/recent-sign-in';
 import { parseInput } from '#api/shared/validation';
 import { toProfile } from '#api/domain/users/user-mapper';
 import { slugify } from '#api/domain/content/slug';
-import type { Clock, IdGenerator } from '#api/domain/ports';
+import type { Clock, IdGenerator, HookDispatcher } from '#api/domain/ports';
 import type { ApiTokenService } from '#api/domain/auth/api-tokens';
-import type {
-  Attempt,
-  ProtectionService,
-} from '#api/domain/security/protection-service';
 import type {
   PasswordHasher,
   SessionRepository,
@@ -34,7 +25,7 @@ import type {
 } from '#api/domain/auth/ports';
 
 export interface AuthServiceDeps {
-  passwordLogin?: () => Promise<boolean>;
+  hooks?: HookDispatcher;
   roles?: { capabilities(role: string, userId: string): Promise<Capability[]> };
   users: UserRepository;
   sessions: SessionRepository;
@@ -43,15 +34,11 @@ export interface AuthServiceDeps {
   ids: IdGenerator;
   clock: Clock;
   sessionTtlMs: number;
-  /** Rate limits and captcha for sign-in; absent during installation. */
-  protection?: ProtectionService;
   /** Application passwords accepted as bearer tokens besides sessions. */
   apiTokens?: Pick<ApiTokenService, 'authenticate'>;
 }
 
 export class AuthService {
-  private dummyHash: Promise<string> | undefined;
-
   constructor(private readonly deps: AuthServiceDeps) {}
 
   requireRecent(actor: Actor, token: string) {
@@ -84,41 +71,18 @@ export class AuthService {
     return this.startSession(user);
   }
 
-  /**
-   * Signs in with email and password. `client` identifies the visitor for rate limits; only
-   * attempts count atomically before password work, so parallel guesses cannot bypass limits.
-   */
-  async login(
-    input: unknown,
-    client: Omit<Attempt, 'action' | 'account'> = {
-      client: null,
-      address: null,
-      captchaToken: null,
-    },
-  ): Promise<SessionGrant> {
-    if (this.deps.passwordLogin && !(await this.deps.passwordLogin()))
-      throw forbidden(Errors.PasswordLoginDisabled);
-    const { email, password } = parseInput(loginSchema, input);
-    const attempt: Attempt = {
-      ...client,
-      action: 'login',
-      account: email.toLowerCase(),
-    };
-    await this.deps.protection?.check(attempt);
-    const user = await this.deps.users.findByEmail(email.toLowerCase());
-    // Verify against a dummy hash for unknown emails so response time does not reveal accounts.
-    const hash =
-      user?.passwordHash ??
-      (await (this.dummyHash ??= this.deps.hasher.hash('dummy-password')));
-    const valid = await this.deps.hasher.verify(password, hash);
-    if (!user || !valid) {
-      throw unauthorized(Errors.InvalidCredentials);
-    }
-    return this.startSession(user);
-  }
-
   async logout(token: string): Promise<void> {
-    await this.deps.sessions.delete(this.deps.tokens.digest(token));
+    const hash = this.deps.tokens.digest(token);
+    const session = this.deps.hooks?.has('user.signedOut')
+      ? await this.deps.sessions.find(hash)
+      : null;
+    await this.deps.sessions.delete(hash);
+    if (session)
+      await this.deps.hooks!.emit('user.signedOut', {
+        user: toProfile(session.user),
+        scope: 'session',
+        actorId: session.user.id,
+      });
   }
 
   /** The opaque id a session is listed under: derived from its digest, never the digest itself. */
@@ -146,6 +110,7 @@ export class AuthService {
     ).find((candidate) => this.sessionId(candidate.tokenHash) === id);
     if (!session) throw notFound(Errors.SessionNotFound);
     await this.deps.sessions.delete(session.tokenHash);
+    await this.signedOut(actor.id, 'other', actor.id);
   }
 
   /** Signs a user out of every session (`users.manage`). API tokens are kept. */
@@ -154,12 +119,28 @@ export class AuthService {
     if (!(await this.deps.users.findById(userId)))
       throw notFound(Errors.UserNotFound);
     await this.deps.sessions.deleteForUser(userId);
+    await this.signedOut(userId, 'all', actor.id);
+  }
+
+  private async signedOut(
+    userId: string,
+    scope: 'other' | 'all',
+    actorId: string,
+  ) {
+    if (!this.deps.hooks?.has('user.signedOut')) return;
+    const user = await this.deps.users.findById(userId);
+    if (user)
+      await this.deps.hooks.emit('user.signedOut', {
+        user: toProfile(user),
+        scope,
+        actorId,
+      });
   }
 
   /** The user of a session token or, when enabled, an application password. */
   async authenticate(token: string): Promise<UserProfile | null> {
     const apiUser = await this.deps.apiTokens?.authenticate(token);
-    if (apiUser) return this.profile(apiUser);
+    if (apiUser) return this.sessionAllowed(apiUser, 'apiToken');
     const tokenHash = this.deps.tokens.digest(token);
     const session = await this.deps.sessions.find(tokenHash);
     if (!session) return null;
@@ -167,7 +148,27 @@ export class AuthService {
       await this.deps.sessions.delete(tokenHash);
       return null;
     }
-    return this.profile(session.user);
+    return this.sessionAllowed(session.user, 'session');
+  }
+
+  private async sessionAllowed(
+    user: UserRecord,
+    kind: 'session' | 'apiToken',
+  ): Promise<UserProfile | null> {
+    const profile = await this.profile(user);
+    if (!this.deps.hooks?.has('user.sessionAllowed')) return profile;
+    const snapshot = JSON.stringify(profile);
+    const schema = z.strictObject({
+      user: z.unknown().refine((value) => JSON.stringify(value) === snapshot),
+      kind: z.literal(kind),
+      allowed: z.boolean(),
+    });
+    const result = await this.deps.hooks.applyFilter(
+      'user.sessionAllowed',
+      { user: profile, kind, allowed: true },
+      (value) => schema.safeParse(value).success,
+    );
+    return result.allowed ? profile : null;
   }
 
   private async profile(user: UserRecord): Promise<UserProfile> {
@@ -190,7 +191,24 @@ export class AuthService {
   ): Promise<SessionGrant> {
     const token = this.deps.tokens.issue();
     const now = this.deps.clock.now();
-    const expiresAt = new Date(now.getTime() + this.deps.sessionTtlMs);
+    let ttlMs = this.deps.sessionTtlMs;
+    if (this.deps.hooks?.has('user.sessionLifetime')) {
+      const profile = await this.profile(user);
+      const snapshot = JSON.stringify(profile);
+      const result = await this.deps.hooks.applyFilter(
+        'user.sessionLifetime',
+        { user: profile, ttlMs },
+        (value) => {
+          const parsed = sessionLifetimeSchema.safeParse(value);
+          return (
+            parsed.success &&
+            JSON.stringify((value as { user: UserProfile }).user) === snapshot
+          );
+        },
+      );
+      ttlMs = result.ttlMs;
+    }
+    const expiresAt = new Date(now.getTime() + ttlMs);
     await this.deps.sessions.insert({
       tokenHash: this.deps.tokens.digest(token),
       userId: user.id,

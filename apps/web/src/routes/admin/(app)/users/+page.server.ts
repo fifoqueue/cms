@@ -21,6 +21,7 @@ export const load: PageServerLoad = async (event) => {
       passwordAllowed(event.fetch),
     ]);
   const params = event.url.searchParams;
+  const assignableRoles = await admin.roles.assignable();
   // Only existing roles filter; anything else lists everyone.
   const role = roles.find(({ key }) => key === params.get('role'))?.key;
   const search = (params.get('q') ?? '').trim().slice(0, 200).toLowerCase();
@@ -46,6 +47,14 @@ export const load: PageServerLoad = async (event) => {
       capabilities,
       source,
     })),
+    assignableRoles: assignableRoles.map(
+      ({ key, name, capabilities, source }) => ({
+        key,
+        name,
+        capabilities,
+        source,
+      }),
+    ),
     capabilities:
       capabilities?.map(({ key, label, source }) => ({ key, label, source })) ??
       null,

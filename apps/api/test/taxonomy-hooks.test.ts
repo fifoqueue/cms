@@ -54,6 +54,25 @@ const setup = () => {
 const names = (terms: readonly { name: string }[]) =>
   terms.map((term) => term.name);
 
+test('object capabilities govern term edits in both directions', async () => {
+  const { admin, hooks } = setup();
+  const term = await admin.create('tag', { name: 'Original' });
+  const reader = { id: 'reader', role: 'subscriber' };
+  await expect(
+    admin.update('tag', term.id, { name: 'Denied' }, reader),
+  ).rejects.toMatchObject({ code: 'forbidden' });
+  hooks.registrar('policy').filter('capability.check', (value) => ({
+    ...value,
+    allowed: value.userId === reader.id,
+  }));
+  expect(
+    (await admin.update('tag', term.id, { name: 'Granted' }, reader)).name,
+  ).toBe('Granted');
+  await expect(admin.remove('tag', term.id, ADMIN)).rejects.toMatchObject({
+    code: 'forbidden',
+  });
+});
+
 test('term.query narrows, orders and retargets admin and public lists; invalid results are ignored', async () => {
   const { admin, visitor, entries, hooks } = setup();
   const news = await admin.create('category', { name: 'News' });

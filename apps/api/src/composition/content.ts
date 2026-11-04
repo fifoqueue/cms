@@ -64,6 +64,8 @@ type Input = Pick<
     signer: ConstructorParameters<typeof ContentLocks>[0]['signer'];
     protection: ConstructorParameters<typeof ContentLocks>[0]['protection'];
     searchLookup: ConstructorParameters<typeof PublicContentService>[6];
+    /** Invalidated by settings writes, which include field definition changes. */
+    publicCache: ConstructorParameters<typeof FieldService>[0]['cache'];
   };
 
 export const createContent = ({
@@ -90,6 +92,7 @@ export const createContent = ({
   signer,
   protection,
   searchLookup,
+  publicCache,
 }: Input) => {
   const embedSettings = new EmbedService(settingsRepository, hooks);
   const embeds = new Embeds(async () => [
@@ -123,6 +126,7 @@ export const createContent = ({
     hooks,
     settings: settingsRepository,
     images: (ids) => mediaRepository.publicImages(ids),
+    cache: publicCache,
   });
   const adminTaxonomy = new TaxonomyService({
     content: contentRepository,

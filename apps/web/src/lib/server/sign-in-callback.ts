@@ -29,7 +29,7 @@ type Event = Pick<
 /**
  * Where a redirect-based method (an identity provider, or a plugin's) sends the browser back.
  * Only the API sees the query; it verifies everything. The pending cookie is taken once, so
- * a response replayed into another browser fails. A session opens the saved destination, any
+ * a response replayed into another browser fails. A session opens its filtered or saved destination, any
  * further step (a second factor) is shown by the step page, links end on the account page.
  */
 export const signInCallback = async (event: Event) => {

@@ -136,6 +136,73 @@ const codeOf = async (promise: Promise<unknown>) =>
   ((await promise.catch((error: unknown) => error)) as DomainError).code;
 
 describe('ContentService', () => {
+  test('private content applies object policy before revealing its body', async () => {
+    const { service, publicContent, hooks } = setup();
+    const entry = await service.create(input({ status: 'private' }), ADMIN);
+    const reader = { id: 'reader', role: 'subscriber' };
+    let calls = 0;
+
+    hooks.registrar('read-policy').filter('capability.check', (value) => {
+      calls++;
+      expect(value.object).toEqual({
+        kind: 'content',
+        id: entry.id,
+        status: 'private',
+      });
+
+      return { ...value, allowed: value.userId === reader.id };
+    });
+
+    expect(await publicContent.getById(entry.id)).toBeNull();
+    expect(calls).toBe(0);
+    expect(await publicContent.getById(entry.id, [], ADMIN)).toBeNull();
+    expect((await publicContent.getById(entry.id, [], reader))?.html).toContain(
+      'Body',
+    );
+  });
+
+  test('object capability policy can grant edits and deny privileged reads without changing identity', async () => {
+    const { service, hooks } = setup();
+    const entry = await service.create(input({ status: 'published' }), ADMIN);
+    const actor = { id: 'reader', role: 'subscriber' };
+    await expect(service.get(entry.id, actor)).rejects.toMatchObject({
+      code: 'forbidden',
+    });
+    const plugin = hooks.registrar('object-policy');
+    plugin.filter('capability.check', (value) => ({
+      ...value,
+      allowed: false,
+    }));
+    const release = plugin.filter('capability.check', (value) => {
+      expect(value.object).toEqual({
+        kind: 'content',
+        id: entry.id,
+        ownerId: ADMIN.id,
+        status: 'published',
+      });
+      return { ...value, allowed: true };
+    });
+    expect(
+      (
+        await service.update(
+          entry.id,
+          input({ title: 'Granted', status: 'published' }),
+          actor,
+        )
+      ).title,
+    ).toBe('Granted');
+    release();
+    hooks
+      .registrar('functions:site', { trusted: true })
+      .filter('capability.check', (value) => {
+        value.object.id = 'other';
+        value.allowed = true;
+        return value;
+      });
+    await expect(service.get(entry.id, ADMIN)).rejects.toMatchObject({
+      code: 'forbidden',
+    });
+  });
   test('origin is private, immutable on creation and attributed to each saved revision', async () => {
     const { service, revisionService, publicContent } = setup();
     const actor = { id: ADMIN.id, role: 'author' };

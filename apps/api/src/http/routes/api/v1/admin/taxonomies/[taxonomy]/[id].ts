@@ -9,23 +9,24 @@ const termParams = {
 };
 
 export const routes = (app: ApiApp) =>
-  session(app, 'taxonomy.manage')
+  session(app)
     .put(
       '',
-      async ({ adminTaxonomy, params, request }) =>
+      async ({ adminTaxonomy, params, request, user }) =>
         json(
           await adminTaxonomy.update(
             params.taxonomy,
             params.id,
             await readJson(request),
+            user,
           ),
         ),
       termParams,
     )
     .delete(
       '',
-      async ({ adminTaxonomy, params }) => {
-        await adminTaxonomy.remove(params.taxonomy, params.id);
+      async ({ adminTaxonomy, params, user }) => {
+        await adminTaxonomy.remove(params.taxonomy, params.id, user);
 
         return noContent();
       },

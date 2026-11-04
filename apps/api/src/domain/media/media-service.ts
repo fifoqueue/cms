@@ -16,6 +16,7 @@ import type {
 import { can } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
+import { authorizeObject } from '#api/domain/auth/object-authorization';
 import { toAdminMedia, projectMedia } from '#api/domain/media/media-mapper';
 import type {
   ImageProcessor,
@@ -147,21 +148,21 @@ export class MediaService {
   }
 
   async get(id: string, actor: Actor): Promise<AdminMedia> {
-    authorize(actor, 'media.upload');
-    return toAdminMedia(
-      await projectMedia(await this.require(id), this.deps.hooks),
-    );
+    const media = await this.readable(id, actor);
+
+    return toAdminMedia(await projectMedia(media, this.deps.hooks));
   }
 
   /** Previous/next files for the details screen and the entries that show this one. */
   async context(id: string, actor: Actor): Promise<MediaContext> {
-    authorize(actor, 'media.upload');
-    await this.require(id);
+    await this.readable(id, actor);
+
     const [{ newer, older }, usedIn] = await Promise.all([
       this.deps.repository.neighbors(id),
       // Writers list every entry anyway; others learn only of published ones.
       this.deps.repository.usedIn(id, 50, !can(actor, 'content.create')),
     ]);
+
     return { newerId: newer, olderId: older, usedIn };
   }
 
@@ -662,16 +663,44 @@ export class MediaService {
 
   /** Own uploads need `media.upload`; other people's need `media.manage`. */
   private async editable(id: string, actor: Actor) {
-    authorize(actor, 'media.upload');
+    if (!this.deps.hooks.has('capability.check'))
+      authorize(actor, 'media.upload');
     const media = await this.require(id);
-    if (media.uploaderId !== actor.id && !can(actor, 'media.manage'))
-      throw forbidden();
+    const capability =
+      media.uploaderId === actor.id ? 'media.upload' : 'media.manage';
+    await authorizeObject(
+      this.deps.hooks,
+      actor,
+      capability,
+      () => ({
+        kind: 'media',
+        id,
+        ...(media.uploaderId ? { ownerId: media.uploaderId } : {}),
+      }),
+      can(actor, 'media.upload') && can(actor, capability),
+    );
     return media;
   }
 
   private async require(id: string) {
     const media = await this.deps.repository.get(id);
     if (!media) throw notFound(Errors.MediaNotFound);
+    return media;
+  }
+
+  private async readable(id: string, actor: Actor) {
+    if (!this.deps.hooks.has('capability.check')) {
+      authorize(actor, 'media.upload');
+    }
+
+    const media = await this.require(id);
+
+    await authorizeObject(this.deps.hooks, actor, 'media.upload', () => ({
+      kind: 'media',
+      id,
+      ...(media.uploaderId ? { ownerId: media.uploaderId } : {}),
+    }));
+
     return media;
   }
 }

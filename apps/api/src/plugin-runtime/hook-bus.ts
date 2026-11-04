@@ -28,12 +28,13 @@ const sourceOrder = (owner: string) =>
 const coreNames = new Set(
   `user.signedIn user.signInFailed user.secondFactorChanged content.created content.updated content.published content.deleted content.trashed content.restored media.uploaded media.deleted site.updated comment.created comment.statusChanged content.public content.publicSummary comment.beforeSave user.signInAllowed user.secondFactorRequired
 pattern.created pattern.updated pattern.deleted theme.activated theme.installed theme.deleted template.updated templatePart.updated styles.updated menu.created menu.updated menu.deleted widgets.updated settings.updated pattern.beforeSave menu.beforeSave menu.items widgets.beforeSave
-discussion.updated comment.updated comment.deleted discussion.beforeSave comment.query comment.public comment.notification comment.push comment.submitAllowed
+discussion.updated comment.updated comment.deleted discussion.beforeSave comment.query comment.public comment.notification comment.push comment.submitAllowed comment.openAllowed comment.publicQuery comment.notificationRecipients
 content.revisionSaved content.autosaved content.termsChanged contentType.created contentType.updated contentType.deleted field.created field.updated field.deleted permalinks.updated term.created term.updated term.deleted content.scheduled content.revisionRestored content.beforeSave content.publishAllowed content.deleteAllowed content.permalink contentType.beforeSave field.beforeSave term.beforeSave term.query term.public term.deleteAllowed content.query
 content.publicQuery content.publicResults content.statusChanged content.trashAllowed content.html content.title content.slug content.revisionsToKeep contentType.definition content.defaults content.excerpt
 media.updated media.beforeSave media.filename media.uploadAllowed export.data import.item dashboard.data webhook.payload email.beforeSend email.sendAllowed import.completed export.generated site.installed egress.updated webhook.created webhook.updated webhook.deleted webhook.delivered webhook.failed plugin.installed plugin.upgraded plugin.activated plugin.deactivated plugin.removed email.sent email.failed email.settingsUpdated job.failed
+avatar.url role.assignable capability.check user.sessionAllowed user.sessionLifetime user.loginRedirect user.passwordResetRequested user.passwordResetAllowed user.passwordReset user.passwordChanged
 search.query search.results search.document search.indexed sitemap.entries feed.items feed.channel robots.txt llms.txt seo.markdown seo.meta seo.updated seo.beforeSave seo.public
-user.created user.updated user.roleChanged user.deleted role.created role.updated role.deleted security.updated privacy.requested privacy.exported privacy.erased protection.blocked user.beforeSave user.query user.capabilities privacy.exportData user.public user.registrationAllowed`.split(
+user.signedOut user.created user.updated user.roleChanged user.deleted role.created role.updated role.deleted security.updated privacy.requested privacy.exported privacy.erased protection.blocked user.beforeSave user.query user.capabilities privacy.exportData user.public user.registrationAllowed`.split(
     /\s+/,
   ),
 );
@@ -176,6 +177,7 @@ export class HookBus implements HookDispatcher {
     name: string,
     entries: Registration[],
   ): void {
+    this.options.publicCache?.invalidate();
     if (entries.length) table.set(name, entries);
     else table.delete(name);
     if (
@@ -583,6 +585,7 @@ export class HookBus implements HookDispatcher {
       trusted,
     };
     const list = [...(table.get(name) ?? []), registration];
+    this.options.publicCache?.invalidate();
     table.set(
       name,
       list.sort(

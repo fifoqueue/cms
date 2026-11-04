@@ -1006,6 +1006,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       authorIp: '203.0.113.9',
       authorUserAgent: 'Mozilla/5.0',
       body: 'First',
+      fields: { city: 'Seoul' } as Record<string, unknown>,
       createdAt: at,
       updatedAt: at,
     };
@@ -1027,11 +1028,17 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     await comments.setStatus(['c2'], 'spam', new Date());
     expect((await repository.findById(entry.id))?.commentCount).toBe(1);
     await comments.setStatus(['c2'], 'approved', new Date());
+    await comments.update('c2', { body: 'Edited' }, new Date());
+    // Field values round-trip and survive moderation writes.
     expect(
-      (await comments.thread(entry.id, 1, 10, 3)).items.map(
-        (item) => item.depth,
-      ),
-    ).toEqual([0, 1]);
+      (await comments.thread(entry.id, 1, 10, 3)).items.map((item) => [
+        item.depth,
+        item.fields,
+      ]),
+    ).toEqual([
+      [0, { city: 'Seoul' }],
+      [1, { city: 'Seoul' }],
+    ]);
     await comments.delete(['c1']);
     expect(await comments.findById('c2')).toMatchObject({ parentId: null });
     expect((await repository.findById(entry.id))?.commentCount).toBe(1);
@@ -1115,7 +1122,12 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
     expect(
       await privacy.data('ann@example.com', 'comments', null, 10),
     ).toMatchObject([
-      { id: 'c2', authorIp: '203.0.113.9', authorUserAgent: 'Mozilla/5.0' },
+      {
+        id: 'c2',
+        authorIp: '203.0.113.9',
+        authorUserAgent: 'Mozilla/5.0',
+        fields: { city: 'Seoul' },
+      },
     ]);
     await db.content.update({
       where: { id: entry.id },
@@ -1172,9 +1184,11 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       authorEmail: '',
       authorIp: null,
       authorUserAgent: null,
+      fields: {},
     });
     expect(await comments.findById('c3')).toMatchObject({
       authorEmail: 'bob@example.com',
+      fields: { city: 'Seoul' },
     });
   });
 

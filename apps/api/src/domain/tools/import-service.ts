@@ -721,6 +721,7 @@ export class ImportService {
         authorUserAgent: cleanUserAgent(comment.authorUserAgent ?? ''),
         body,
         status,
+        fields: {},
         createdAt: comment.createdAt,
         updatedAt: comment.createdAt,
       });

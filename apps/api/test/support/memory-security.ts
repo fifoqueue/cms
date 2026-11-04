@@ -82,6 +82,6 @@ export class MemoryCredentials implements CredentialRepository {
 
   async validReset(tokenHash: string, now: Date) {
     const row = this.tokens.rows.get(tokenHash);
-    return !!row && row.expiresAt > now;
+    return row && row.expiresAt > now ? row.userId : null;
   }
 }

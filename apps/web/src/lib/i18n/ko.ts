@@ -106,6 +106,7 @@ export const apiErrors: ApiErrorCatalog = {
     '/login처럼 쿼리가 없고 예약되지 않은, 사용할 수 있는 사이트 경로를 입력하세요.',
   FieldOptionsRequired: '선택지를 하나 이상 추가하세요.',
   FieldValuesInvalid: '필드 값이 올바르지 않습니다.',
+  FieldCommentImage: '댓글 필드는 이미지 유형을 사용할 수 없습니다.',
   CommentUrlInvalid: 'https:// 또는 http://로 시작하는 웹 주소를 입력하세요.',
   CommentDefaultNameRequired:
     '이름 입력란을 끄려면 기본 작성자 이름을 입력하세요.',
@@ -896,6 +897,7 @@ export const ko: Messages = {
   fieldPublic: '사이트에 표시',
   fieldHelp: '도움말',
   fieldTypes: '콘텐츠 유형',
+  fieldTaxonomies: '분류 용어',
   fieldAdd: '필드 추가',
   fieldsEmpty: '사용자 정의 필드가 없습니다.',
   fieldKindText: '텍스트',

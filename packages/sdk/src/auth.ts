@@ -48,6 +48,31 @@ export const adminUserSchema = z.object({
 export type AdminUserDto = z.output<typeof adminUserSchema>;
 export type UserProfile = AdminUserDto;
 
+export const capabilityObjectSchema = z.strictObject({
+  kind: z.enum(['content', 'media', 'comment', 'user', 'term']),
+  id: z.string(),
+  ownerId: z.string().optional(),
+  status: z.string().optional(),
+});
+export type CapabilityObject = z.output<typeof capabilityObjectSchema>;
+export const capabilityCheckSchema = z.strictObject({
+  userId: z.string(),
+  role: roleSchema,
+  capability: capabilitySchema,
+  object: capabilityObjectSchema,
+  allowed: z.boolean(),
+});
+
+/** Session extensions may retain a login for at most one year. */
+export const sessionLifetimeSchema = z.strictObject({
+  user: adminUserSchema.strict(),
+  ttlMs: z
+    .number()
+    .int()
+    .positive()
+    .max(365 * 24 * 60 * 60 * 1000),
+});
+
 export interface SessionGrant {
   token: string;
   expiresAt: string;

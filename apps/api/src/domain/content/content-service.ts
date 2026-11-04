@@ -18,6 +18,7 @@ import type { Actor } from '#api/domain/auth/authorization';
 import type { ContentOrigin } from '#api/domain/content/origin';
 import { canonicalAddress } from '#api/shared/ip-address';
 import { authorize } from '#api/domain/auth/authorization';
+import { authorizeObject } from '#api/domain/auth/object-authorization';
 import type { PasswordHasher, UserRepository } from '#api/domain/auth/ports';
 import { toEntry, toEntrySummary } from '#api/domain/content/content-mapper';
 import type {
@@ -147,7 +148,7 @@ export class ContentService {
 
   async get(id: string, actor: Actor): Promise<ContentEntry> {
     const record = await this.require(id);
-    this.assertEditable(actor, record);
+    await this.assertEditable(actor, record);
     return toEntry(record, actor);
   }
 
@@ -219,9 +220,9 @@ export class ContentService {
     origin?: ContentOrigin,
   ): Promise<ContentEntry> {
     const current = await this.require(id);
-    this.assertEditable(actor, current);
+    await this.assertEditable(actor, current);
     const data = await this.prepare(input, actor, current);
-    await this.assertStatus(actor, data);
+    await this.assertStatus(actor, data, current);
     const authorId = await this.authorFor(
       actor,
       data.authorId,
@@ -289,7 +290,7 @@ export class ContentService {
   /** Moves the entry to the trash; it stops being public and can be restored. */
   async trash(id: string, actor: Actor, origin?: ContentOrigin): Promise<void> {
     const current = await this.require(id);
-    this.assertEditable(actor, current);
+    await this.assertEditable(actor, current);
     if (current.trashedAt) return;
     if (
       this.deps.hooks.has('content.trashAllowed') &&
@@ -318,7 +319,7 @@ export class ContentService {
     origin?: ContentOrigin,
   ): Promise<void> {
     const current = await this.require(id);
-    this.assertEditable(actor, current);
+    await this.assertEditable(actor, current);
     if (!current.trashedAt) return;
     await this.deps.repository.setTrashed(id, null, {
       modifiedIp: origin?.ip ? canonicalAddress(origin.ip) : null,
@@ -336,7 +337,7 @@ export class ContentService {
     if (cleanup) {
       authorize(actor, 'tools.manage');
       if (!current.trashedAt) throw conflict(Errors.ContentChanged);
-    } else this.assertEditable(actor, current);
+    } else await this.assertEditable(actor, current);
     if (!(await this.allowed('content.deleteAllowed'))) throw forbidden();
     await this.deps.repository.delete(id, cleanup);
     void this.deps.hooks.emit('content.deleted', toEntry(current));
@@ -593,15 +594,46 @@ export class ContentService {
    * users' entries need `content.editOthers`.
    */
   assertEditable(actor: Actor, record: ContentRecord) {
-    authorize(actor, 'content.create');
-    if (record.authorId !== actor.id) authorize(actor, 'content.editOthers');
-    else if (!isUnpublished(record.status)) authorize(actor, 'content.publish');
+    const capability =
+      record.authorId !== actor.id
+        ? 'content.editOthers'
+        : !isUnpublished(record.status)
+          ? 'content.publish'
+          : 'content.create';
+    return authorizeObject(
+      this.deps.hooks,
+      actor,
+      capability,
+      () => ({
+        kind: 'content',
+        id: record.id,
+        ownerId: record.authorId,
+        status: record.status,
+      }),
+      can(actor, 'content.create') && can(actor, capability),
+    );
   }
 
   /** Only `content.publish` may publish, schedule or make private. */
-  private async assertStatus(actor: Actor, data: ContentData) {
+  private async assertStatus(
+    actor: Actor,
+    data: ContentData,
+    current?: ContentRecord,
+  ) {
     if (!isUnpublished(data.status)) {
-      authorize(actor, 'content.publish');
+      if (current)
+        await authorizeObject(
+          this.deps.hooks,
+          actor,
+          'content.publish',
+          () => ({
+            kind: 'content',
+            id: current.id,
+            ownerId: current.authorId,
+            status: current.status,
+          }),
+        );
+      else authorize(actor, 'content.publish');
       if (!(await this.allowed('content.publishAllowed'))) throw forbidden();
     }
   }

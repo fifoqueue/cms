@@ -15,15 +15,22 @@ import type {
   CommentStatus,
   CommentSubmitted,
   DiscussionSettings,
+  FieldDefinition,
   PublicComment,
+  PublicCommentField,
   PublicCommentPage,
 } from '@cms/sdk';
 import { COMMENT_AUTHOR_NAME_MAX, PAGINATION_MAX_PAGE } from '@cms/sdk';
 import { can } from '@cms/sdk/capabilities';
-import type { CommentDraft, PluginComment } from '@cms/sdk/plugin';
+import type {
+  CommentDraft,
+  CommentPublicQuery,
+  PluginComment,
+} from '@cms/sdk/plugin';
 import { z } from 'zod';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
+import { authorizeComments } from '#api/domain/auth/object-authorization';
 import type {
   CommentOrigin,
   CleanupStatus,
@@ -36,6 +43,8 @@ import { canonicalAddress } from '#api/shared/ip-address';
 import type { AvatarService } from '#api/domain/comments/avatar-service';
 import type { ContentLocks } from '#api/domain/content/content-locks';
 import type { ContentTypeService } from '#api/domain/content/content-types';
+import type { FieldService } from '#api/domain/content/fields';
+import { commentValues, publicCommentValues } from '#api/domain/content/fields';
 import { templates } from '#api/domain/email/templates';
 import type { EmailService } from '#api/domain/email/email-service';
 import type {
@@ -54,6 +63,7 @@ import { forbidden, invalidInput, notFound, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 import { CommentCheckers } from '#api/domain/comments/comment-checkers';
 import type { CommentNotifier } from '#api/domain/comments/comment-notifier';
+import { noticeRecipients } from '#api/domain/comments/notice-recipients';
 
 const KEY = 'discussion';
 const DAY = 24 * 60 * 60 * 1000;
@@ -66,6 +76,24 @@ const draftSchema = z.object({
   body: z.string().trim().min(1).max(5000),
   status: z.enum(['pending', 'approved', 'spam']),
 });
+
+/** Top-level comments per page a `comment.publicQuery` result may ask for. */
+const QUERY_PAGE_SIZE_MAX = 200;
+
+/** The form's view of a comment field: plain text labels and choices, never stored values. */
+const toFormField = (field: FieldDefinition): PublicCommentField[] =>
+  field.type === 'image'
+    ? []
+    : [
+        {
+          key: field.key,
+          label: field.label,
+          type: field.type,
+          options: field.options,
+          required: field.required,
+          help: field.help,
+        },
+      ];
 
 /** Profile names may exceed the comment column; cut on a code point, never mid-surrogate. */
 const authorName = (name: string) =>
@@ -86,6 +114,7 @@ const toPlugin = (record: CommentRecord): PluginComment => ({
   body: record.body,
   status: record.status,
   createdAt: record.createdAt.toISOString(),
+  fields: record.fields,
 });
 
 /** The stored form of a proven address: canonical text, or null. */
@@ -110,6 +139,7 @@ const toAdmin = (
   status: record.status,
   createdAt: record.createdAt.toISOString(),
   updatedAt: record.updatedAt.toISOString(),
+  fields: record.fields,
 });
 
 export interface CommentServiceDeps {
@@ -120,11 +150,16 @@ export interface CommentServiceDeps {
   avatar: Pick<AvatarService, 'url'>;
   settings: SettingsRepository;
   types: Pick<ContentTypeService, 'list'>;
+  /** Comment field definitions; without it comments carry no field values. */
+  fields?: Pick<FieldService, 'forComments'>;
   protection: Pick<ProtectionService, 'check'>;
   hooks: HookDispatcher;
   email: Pick<EmailService, 'enabled'>;
   /** Approval notices (entry author, parent comment author), push tokens and the page offer. */
-  notifier: Pick<CommentNotifier, 'offer' | 'pushToken' | 'notice' | 'claim'>;
+  notifier: Pick<
+    CommentNotifier,
+    'offer' | 'pushToken' | 'notice' | 'pending' | 'unsubscribed' | 'claim'
+  >;
   roles?: {
     capabilities(role: string, userId?: string): Promise<Capability[]>;
   };
@@ -182,18 +217,23 @@ export class CommentService {
       Number.isSafeInteger(page) && page > 0
         ? Math.min(page, PAGINATION_MAX_PAGE)
         : 1;
+    const query = await this.query(target.id, current, settings);
     const { items, total, truncated } = await this.deps.repository.thread(
       contentId,
-      current,
-      settings.pageSize,
+      query.page,
+      query.pageSize,
       settings.threadDepth,
+      query.order,
     );
     const ownPending = await this.pending(pendingProof, target.id);
     const viewer = actor ? await this.deps.users.get(actor.id) : null;
+    const definitions = await this.commentFields();
     return {
       notifications: await this.deps.notifier.offer(settings, !!viewer),
       items: await Promise.all(
-        items.map((item) => this.toPublic(item, target, item.depth, settings)),
+        items.map((item) =>
+          this.toPublic(item, target, item.depth, settings, definitions),
+        ),
       ),
       requireLogin: settings.requireLogin,
       fields: {
@@ -201,14 +241,15 @@ export class CommentService {
         email: settings.showEmail,
         website: settings.showWebsite,
       },
+      customFields: definitions.flatMap(toFormField),
       viewer: viewer ? { name: viewer.name } : null,
       ownPending: ownPending
-        ? await this.toPublic(ownPending, target, 0, settings)
+        ? await this.toPublic(ownPending, target, 0, settings, definitions)
         : null,
       total,
       count: target.commentCount,
-      page: current,
-      pageSize: settings.pageSize,
+      page: query.page,
+      pageSize: query.pageSize,
       open: await this.open(target, settings),
       threadDepth: settings.threadDepth,
       truncated,
@@ -272,6 +313,8 @@ export class CommentService {
         commenterProof: null,
         pushToken: null,
       };
+    const definitions = await this.commentFields();
+    const fields = commentValues(definitions, data.fields);
 
     const target = await this.deps.repository.target(data.contentId);
     if (
@@ -367,6 +410,7 @@ export class CommentService {
       userId: user?.id ?? null,
       body,
       status,
+      fields,
       createdAt: now,
       updatedAt: now,
     };
@@ -383,7 +427,7 @@ export class CommentService {
       status: status === 'approved' ? 'approved' : 'pending',
       comment:
         status === 'approved'
-          ? await this.toPublic(record, target, depth, settings)
+          ? await this.toPublic(record, target, depth, settings, definitions)
           : null,
       page,
       // Spam gets the same receipt shape, but a receipt can only reveal a pending comment.
@@ -453,6 +497,7 @@ export class CommentService {
     );
   }
 
+  /** The thread page showing `record`, with the entry's page size and order (see `query`). */
   private async pageFor(record: CommentPosition, settings: DiscussionSettings) {
     let root = record;
     for (
@@ -461,7 +506,68 @@ export class CommentService {
       level += 1
     )
       root = (await this.deps.repository.findById(root.parentId)) ?? root;
-    return this.deps.repository.pageOf(root, settings.pageSize);
+    const { pageSize, order } = await this.query(record.contentId, 1, settings);
+    return this.deps.repository.pageOf(root, pageSize, order);
+  }
+
+  /**
+   * The public thread page read: core's page, page size and oldest-first order, then
+   * `comment.publicQuery`. The entry and the page are fixed. Page 1's result sets the entry's
+   * page size and order; a later page starts from them and must keep them. An invalid result
+   * keeps the previous value.
+   */
+  private async query(
+    contentId: string,
+    page: number,
+    settings: DiscussionSettings,
+  ): Promise<CommentPublicQuery> {
+    const initial: CommentPublicQuery = {
+      contentId,
+      page: 1,
+      pageSize: settings.pageSize,
+      order: 'asc',
+    };
+    if (!this.deps.hooks.has('comment.publicQuery'))
+      return { ...initial, page };
+
+    const first = await this.filterQuery(
+      initial,
+      z.number().int().min(1).max(QUERY_PAGE_SIZE_MAX),
+      z.enum(['asc', 'desc']),
+    );
+    if (page === 1) return first;
+
+    return this.filterQuery(
+      { ...first, page },
+      z.literal(first.pageSize),
+      z.literal(first.order),
+    );
+  }
+
+  /** Runs `comment.publicQuery` on `initial`, accepting only results that match the schemas. */
+  private async filterQuery(
+    initial: CommentPublicQuery,
+    pageSize: z.ZodType<number>,
+    order: z.ZodType<CommentPublicQuery['order']>,
+  ): Promise<CommentPublicQuery> {
+    const schema = z.strictObject({
+      contentId: z.literal(initial.contentId),
+      page: z.literal(initial.page),
+      pageSize,
+      order,
+    });
+    return schema.parse(
+      await this.deps.hooks.applyFilter(
+        'comment.publicQuery',
+        initial,
+        (value) => schema.safeParse(value).success,
+      ),
+    );
+  }
+
+  /** Comment field definitions, or none without a field service. */
+  private async commentFields(): Promise<FieldDefinition[]> {
+    return (await this.deps.fields?.forComments()) ?? [];
   }
 
   async list(query: unknown, actor: Actor) {
@@ -488,7 +594,7 @@ export class CommentService {
   }
 
   async update(id: string, input: unknown, actor: Actor) {
-    authorize(actor, 'comments.moderate');
+    await authorizeComments(this.deps.hooks, actor, this.deps.repository, [id]);
     const changes = parseInput(commentUpdateSchema, input);
     const result = await this.deps.repository.update(
       id,
@@ -509,7 +615,7 @@ export class CommentService {
     actor: Actor,
     origin: CommentOrigin = { address: null, userAgent: null },
   ) {
-    authorize(actor, 'comments.moderate');
+    await authorizeComments(this.deps.hooks, actor, this.deps.repository, [id]);
     const { body } = parseInput(commentReplySchema, input);
     const parent = await this.deps.repository.findById(id);
     if (!parent) throw notFound(Errors.CommentNotFound);
@@ -528,6 +634,7 @@ export class CommentService {
       authorUserAgent: origin.userAgent,
       body,
       status: 'approved',
+      fields: {},
       createdAt: now,
       updatedAt: now,
     };
@@ -540,8 +647,8 @@ export class CommentService {
   }
 
   async bulk(input: unknown, actor: Actor) {
-    authorize(actor, 'comments.moderate');
     const { ids, action, contentId } = parseInput(commentBulkSchema, input);
+    await authorizeComments(this.deps.hooks, actor, this.deps.repository, ids);
     if (contentId) {
       const found = await Promise.all(
         ids.map((id) => this.deps.repository.findById(id)),
@@ -580,7 +687,13 @@ export class CommentService {
     actor: Actor,
     expected?: CleanupStatus,
   ): Promise<boolean> {
-    authorize(actor, expected ? 'tools.manage' : 'comments.moderate');
+    await authorizeComments(
+      this.deps.hooks,
+      actor,
+      this.deps.repository,
+      [id],
+      expected ? 'tools.manage' : 'comments.moderate',
+    );
     const [deleted] = await this.deps.repository.delete([id], expected);
     if (!deleted) {
       if (expected) return false;
@@ -611,8 +724,30 @@ export class CommentService {
     });
   }
 
-  /** Open when discussion is on, the type and entry allow comments, and it is not too old. */
+  /**
+   * Whether the entry takes comments: core's decision, then `comment.openAllowed`, whose
+   * handlers may open or close. The entry and its type stay fixed.
+   */
   private async open(target: CommentTarget, settings: DiscussionSettings) {
+    const allowed = await this.coreOpen(target, settings);
+    if (!this.deps.hooks.has('comment.openAllowed')) return allowed;
+
+    const schema = z.strictObject({
+      contentId: z.literal(target.id),
+      type: z.literal(target.type),
+      allowed: z.boolean(),
+    });
+    return schema.parse(
+      await this.deps.hooks.applyFilter(
+        'comment.openAllowed',
+        { contentId: target.id, type: target.type, allowed },
+        (value) => schema.safeParse(value).success,
+      ),
+    ).allowed;
+  }
+
+  /** Open when discussion is on, the type and entry allow comments, and it is not too old. */
+  private async coreOpen(target: CommentTarget, settings: DiscussionSettings) {
     if (!settings.enabled || !target.allowComments) return false;
     const type = (await this.deps.types.list()).find(
       (option) => option.key === target.type,
@@ -653,6 +788,7 @@ export class CommentService {
     target: CommentTarget,
     depth: number,
     settings: DiscussionSettings,
+    definitions: readonly FieldDefinition[],
   ): Promise<PublicComment> {
     const output = publicCommentSchema.parse({
       id: record.id,
@@ -662,11 +798,12 @@ export class CommentService {
       authorUrl: record.authorUrl || null,
       byAuthor: record.userId !== null && record.userId === target.authorId,
       avatarUrl: record.authorEmail
-        ? this.avatarUrl(`comment:${record.id}`, settings)
+        ? await this.avatarUrl(`comment:${record.id}`, settings)
         : null,
       pending: record.status === 'pending',
       body: record.body,
       createdAt: record.createdAt.toISOString(),
+      fields: publicCommentValues(definitions, record.fields),
     });
     return publicCommentSchema.parse(
       await this.deps.hooks.applyFilter(
@@ -725,7 +862,11 @@ export class CommentService {
     return id;
   }
 
-  /** Mail to moderators about a comment waiting for review; approval notices are `notifier`'s. */
+  /**
+   * Mail about a comment waiting for review: to moderators (with `notifyModerators`), then
+   * `comment.notificationRecipients` (`kind: 'pending'`); users it adds are re-checked when
+   * their mail is sent. Approval notices are `notifier`'s.
+   */
   private async notify(
     record: CommentRecord,
     target: CommentTarget,
@@ -733,18 +874,22 @@ export class CommentService {
   ) {
     if (record.status !== 'pending' || !(await this.deps.email.enabled()))
       return;
+    if (
+      !settings.notifyModerators &&
+      !this.deps.hooks.has('comment.notificationRecipients')
+    )
+      return;
     const site = await this.deps.site();
     const copy = templates(site.locale);
-    if (record.status === 'pending' && settings.notifyModerators) {
-      const link = site.siteUrl
-        ? `${site.siteUrl}/admin/comments?status=pending`
-        : '';
-      const users = await this.deps.users.list();
-      const moderators = (
+    const link = site.siteUrl
+      ? `${site.siteUrl}/admin/comments?status=pending`
+      : '';
+    const users = await this.deps.users.list();
+    const moderators = new Set(
+      (
         await Promise.all(
-          users.map(async (user) => ({
-            user,
-            allowed: can(
+          users.map(async (user) =>
+            can(
               {
                 role: user.role,
                 capabilities: await this.deps.roles?.capabilities(
@@ -753,23 +898,39 @@ export class CommentService {
                 ),
               },
               'comments.moderate',
-            ),
-          })),
+            )
+              ? [user.id]
+              : [],
+          ),
         )
-      )
-        .filter((item) => item.allowed)
-        .map((item) => item.user);
-      for (const user of moderators)
-        await this.deps.notifier.notice({
-          to: user.email,
-          subjects: [
-            user.id,
-            record.authorEmail,
-            record.id,
-            ...(record.userId ? [record.userId] : []),
-          ],
-          ...copy.commentPending(site.title, target.title, record, link),
-        });
-    }
+      ).flat(),
+    );
+    const { kept, added } = await noticeRecipients(
+      this.deps.hooks,
+      {
+        commentId: record.id,
+        kind: 'pending',
+        to: settings.notifyModerators
+          ? users
+              .filter((user) => moderators.has(user.id))
+              .map((user) => user.email)
+          : [],
+      },
+      async () => users,
+      () => this.deps.notifier.unsubscribed(record.parentId),
+    );
+    const byAddress = new Map(users.map((user) => [user.email, user]));
+    for (const user of kept.flatMap((to) => byAddress.get(to) ?? []))
+      await this.deps.notifier.notice({
+        to: user.email,
+        subjects: [
+          user.id,
+          record.authorEmail,
+          record.id,
+          ...(record.userId ? [record.userId] : []),
+        ],
+        ...copy.commentPending(site.title, target.title, record, link),
+      });
+    await this.deps.notifier.pending(record, target, added, link);
   }
 }

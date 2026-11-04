@@ -7,6 +7,7 @@ import {
   signInSetupSchema,
   userFactorsSchema,
   adminUserSchema,
+  loginRedirectSchema,
 } from '@cms/sdk';
 import type {
   SessionGrant,
@@ -633,7 +634,24 @@ export class SignInService {
         method: row.methodId,
         secondFactor: row.factorId ?? (verifiedPasskey ? 'passkey' : null),
       });
-      return signInStepSchema.parse({ kind: 'session', session });
+      let redirectTo: string | undefined;
+      if (this.deps.hooks.has('user.loginRedirect')) {
+        const schema = z.strictObject({
+          ...context,
+          redirectTo: loginRedirectSchema,
+        });
+        const result = await this.deps.hooks.applyFilter(
+          'user.loginRedirect',
+          { user, method: row.methodId, redirectTo: '/admin' },
+          (value) => schema.safeParse(value).success,
+        );
+        redirectTo = result.redirectTo;
+      }
+      return signInStepSchema.parse({
+        kind: 'session',
+        session,
+        redirectTo,
+      });
     }
     const transaction = await this.save({
       ...row,

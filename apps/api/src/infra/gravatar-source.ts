@@ -24,7 +24,8 @@ const ALLOWED_TYPES = new Set([
   'image/avif',
 ]);
 
-const hash = (value: string) => createHash('md5').update(value).digest('hex');
+export const avatarEmailHash = (value: string) =>
+  createHash('md5').update(value).digest('hex');
 
 const fallback = (emailHash: string, style: AvatarDefault, size: number) => {
   const color = `#${emailHash.slice(0, 6)}`;
@@ -73,7 +74,7 @@ export class GravatarSource implements AvatarSource {
   constructor(private readonly fetcher: HttpFetch = publicFetch) {}
 
   async image(email: string, style: AvatarDefault, size: number) {
-    const emailHash = hash(email);
+    const emailHash = avatarEmailHash(email);
     const key = `${emailHash}:${style}:${size}`;
     const cached = this.cache.get(key);
     if (cached && cached.expires > Date.now()) return cached.image;

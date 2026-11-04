@@ -45,7 +45,7 @@ export const loginPage = async (
       passwordReset: info.passwordReset,
     },
     captcha: allowCaptcha(event, captcha),
-    membership,
+    membership: { enabled: membership.registrationOpen },
     back,
     signedOut: takeSignedOut(event.cookies, event.url),
   };

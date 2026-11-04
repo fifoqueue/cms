@@ -1,4 +1,4 @@
-import type { CommentStatus, FeedComment } from '@cms/sdk';
+import type { CommentStatus, FeedComment, FieldValues } from '@cms/sdk';
 
 /** Statuses a database cleanup may permanently delete. */
 export type CleanupStatus = Extract<CommentStatus, 'spam' | 'trash'>;
@@ -21,9 +21,17 @@ export interface CommentRecord {
   /** Plain text. */
   body: string;
   status: CommentStatus;
+  /**
+   * Comment field values by key, set when the comment is written and
+   * kept when a definition goes away. Only `public` fields are ever public.
+   */
+  fields: FieldValues;
   createdAt: Date;
   updatedAt: Date;
 }
+
+/** Order of an entry's top-level comments by creation time (then id). */
+export type CommentOrder = 'asc' | 'desc';
 
 /** The fields needed to locate a comment in its paginated thread. */
 export type CommentPosition = Pick<
@@ -86,18 +94,24 @@ export interface CommentRepository {
   ): Promise<(Omit<FeedComment, 'createdAt'> & { createdAt: Date })[]>;
   target(contentId: string): Promise<CommentTarget | null>;
   findById(id: string): Promise<CommentRecord | null>;
-  /** Page containing this top-level comment, ordered by creation time then id. */
-  pageOf(root: CommentPosition, pageSize: number): Promise<number>;
+  /** Page containing this top-level comment, ordered by creation time then id (`order`). */
+  pageOf(
+    root: CommentPosition,
+    pageSize: number,
+    order?: CommentOrder,
+  ): Promise<number>;
   insert(record: CommentRecord): Promise<void>;
   /**
-   * Approved comments of an entry: a page of top-level comments, oldest first, each followed by
-   * its approved replies down to `depth` levels (thread order). `total` counts top-level ones.
+   * Approved comments of an entry: a page of top-level comments in `order` (oldest first by
+   * default), each followed by its approved replies, oldest first, down to `depth` levels
+   * (thread order). `total` counts top-level ones.
    */
   thread(
     contentId: string,
     page: number,
     pageSize: number,
     depth: number,
+    order?: CommentOrder,
   ): Promise<{ items: ThreadRecord[]; total: number; truncated: boolean }>;
   /** Newest first, with the entry's title. */
   list(criteria: CommentCriteria): Promise<{

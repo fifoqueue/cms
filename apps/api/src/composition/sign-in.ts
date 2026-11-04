@@ -42,7 +42,6 @@ type Input = Pick<
   | 'ssoTransactions'
   | 'signInSettingsTransactions'
   | 'methodIdentities'
-  | 'methodCredentials'
   | 'passkeys'
   | 'totpSecrets'
   | 'factorCodes'
@@ -55,7 +54,7 @@ type Input = Pick<
     ReturnType<typeof createSecurity>,
     'egressFetch' | 'checkUrl' | 'protection'
   > &
-  Pick<ReturnType<typeof createUsers>, 'auth' | 'roles'> &
+  Pick<ReturnType<typeof createUsers>, 'auth' | 'roles' | 'passwords'> &
   Pick<ReturnType<typeof createSite>, 'site' | 'seo'> & {
     config: Pick<
       AppConfig,
@@ -82,7 +81,6 @@ export const createSignIn = ({
   ssoTransactions,
   signInSettingsTransactions,
   methodIdentities,
-  methodCredentials,
   passkeys,
   totpSecrets,
   factorCodes,
@@ -95,6 +93,7 @@ export const createSignIn = ({
   checkUrl,
   protection,
   auth,
+  passwords,
   roles,
   site,
   seo,
@@ -176,7 +175,7 @@ export const createSignIn = ({
     createPasswordMethod({
       users,
       hasher: bunPasswordHasher,
-      credentials: methodCredentials,
+      passwords,
     }),
   );
   const passkeyDeps = {
