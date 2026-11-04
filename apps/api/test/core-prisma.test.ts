@@ -83,108 +83,126 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
   test(
     'database cleanup retains revisions and watermarks, removes trash paths and enqueues search deletion',
     async () => {
-      const { content } = services();
-      const entries = [];
-
-      for (const title of ['Cleanup one', 'Cleanup two']) {
-        const entry = await content.create(
-          {
-            type: 'post',
-            title,
-            status: 'published',
-            document: textDocument('Body'),
-          },
-          ADMIN,
-        );
-
-        entries.push(entry);
-        await db.contentRevision.deleteMany({ where: { contentId: entry.id } });
-        for (let index = 0; index < 4; index++)
-          await db.contentRevision.create({
-            data: {
-              id: uuidV7.next(),
-              contentId: entry.id,
-              authorId: ADMIN.id,
-              kind: 'revision',
-              title: `${index}`,
-              excerpt: '',
-              document: JSON.stringify(textDocument('History')),
-              createdAt: new Date(1000 + index),
-            },
-          });
-      }
-
-      const original = await db.content.findMany({
-        where: { id: { in: entries.map((entry) => entry.id) } },
-        orderBy: { id: 'asc' },
-      });
-      const expired = new PrismaExpiredCleanup(db);
-      const store = new PrismaDatabaseCleanupStore(db, {
-        content: (id, actor) => content.remove(id, actor, true),
-        comment: async () => {
-          throw new Error('Unexpected comment deletion');
-        },
-        expired: (now, limit) => expired.batch(now, limit),
-        expiredCount: (now) => expired.count(now),
-      });
-      const cleanup = new DatabaseCleanupService({
-        store,
-        leases: new PrismaTaskLeases(db),
-        clock: systemClock,
-        ids: uuidV7,
-      });
-      const actor = {
-        id: ADMIN.id,
-        role: 'custom',
-        capabilities: ['tools.manage'] as const,
-      };
-      const preview = await cleanup.preview({ keepLatest: 2 }, actor);
-
-      expect(preview.counts.revisions).toBe(4);
-      const result = await cleanup.run(
-        { categories: ['revisions'], options: { keepLatest: 2 } },
-        actor,
+      const { db, drop } = await scratchDatabase(
+        serverUrl!,
+        'cms_cleanup_test',
       );
 
-      expect(result.deleted.revisions).toBe(4);
-      for (const entry of entries)
-        expect(
-          (
-            await db.contentRevision.findMany({
-              where: { contentId: entry.id },
-              orderBy: { createdAt: 'asc' },
-            })
-          ).map((row) => row.title),
-        ).toEqual(['2', '3']);
-      expect(
-        await db.content.findMany({
+      try {
+        await new PrismaUserRepository(db).insert(
+          userRecord({ id: ADMIN.id, createdAt: new Date() }),
+        );
+        const { content } = services(
+          new PrismaContentRepository(db),
+          undefined,
+          db,
+        );
+        const entries = [];
+
+        for (const title of ['Cleanup one', 'Cleanup two']) {
+          const entry = await content.create(
+            {
+              type: 'post',
+              title,
+              status: 'published',
+              document: textDocument('Body'),
+            },
+            ADMIN,
+          );
+
+          entries.push(entry);
+          await db.contentRevision.deleteMany({
+            where: { contentId: entry.id },
+          });
+          for (let index = 0; index < 4; index++)
+            await db.contentRevision.create({
+              data: {
+                id: uuidV7.next(),
+                contentId: entry.id,
+                authorId: ADMIN.id,
+                kind: 'revision',
+                title: `${index}`,
+                excerpt: '',
+                document: JSON.stringify(textDocument('History')),
+                createdAt: new Date(1000 + index),
+              },
+            });
+        }
+
+        const original = await db.content.findMany({
           where: { id: { in: entries.map((entry) => entry.id) } },
           orderBy: { id: 'asc' },
-        }),
-      ).toEqual(original);
-      await content.trash(entries[0]!.id, ADMIN);
-      const outbox = await db.searchOutbox.count({
-        where: { contentId: entries[0]!.id },
-      });
+        });
+        const expired = new PrismaExpiredCleanup(db);
+        const store = new PrismaDatabaseCleanupStore(db, {
+          content: (id, actor) => content.remove(id, actor, true),
+          comment: async () => {
+            throw new Error('Unexpected comment deletion');
+          },
+          expired: (now, limit) => expired.batch(now, limit),
+          expiredCount: (now) => expired.count(now),
+        });
+        const cleanup = new DatabaseCleanupService({
+          store,
+          leases: new PrismaTaskLeases(db),
+          clock: systemClock,
+          ids: uuidV7,
+        });
+        const actor = {
+          id: ADMIN.id,
+          role: 'custom',
+          capabilities: ['tools.manage'] as const,
+        };
+        const preview = await cleanup.preview({ keepLatest: 2 }, actor);
 
-      expect(
-        (await cleanup.run({ categories: ['trashedContent'] }, actor)).deleted
-          .trashedContent,
-      ).toBe(1);
-      expect(
-        await db.contentPath.count({ where: { contentId: entries[0]!.id } }),
-      ).toBe(0);
-      expect(
-        await db.searchOutbox.count({ where: { contentId: entries[0]!.id } }),
-      ).toBe(outbox + 1);
-      await store.optimize('contents');
-      await expect(store.optimize('foreign_table')).rejects.toMatchObject({
-        code: 'invalid_input',
-      });
-      expect(
-        (await store.tables()).some((row) => row.table === 'contents'),
-      ).toBe(true);
-      await content.remove(entries[1]!.id, ADMIN);
+        expect(preview.counts.revisions).toBe(4);
+        const result = await cleanup.run(
+          { categories: ['revisions'], options: { keepLatest: 2 } },
+          actor,
+        );
+
+        expect(result.deleted.revisions).toBe(4);
+        for (const entry of entries)
+          expect(
+            (
+              await db.contentRevision.findMany({
+                where: { contentId: entry.id },
+                orderBy: { createdAt: 'asc' },
+              })
+            ).map((row) => row.title),
+          ).toEqual(['2', '3']);
+        expect(
+          await db.content.findMany({
+            where: { id: { in: entries.map((entry) => entry.id) } },
+            orderBy: { id: 'asc' },
+          }),
+        ).toEqual(original);
+        await content.trash(entries[0]!.id, ADMIN);
+        const outbox = await db.searchOutbox.count({
+          where: { contentId: entries[0]!.id },
+        });
+
+        expect(
+          (await cleanup.run({ categories: ['trashedContent'] }, actor)).deleted
+            .trashedContent,
+        ).toBe(1);
+        expect(
+          await db.contentPath.count({ where: { contentId: entries[0]!.id } }),
+        ).toBe(0);
+        expect(
+          await db.searchOutbox.count({ where: { contentId: entries[0]!.id } }),
+        ).toBe(outbox + 1);
+        await store.optimize('contents');
+        await expect(store.optimize('foreign_table')).rejects.toMatchObject({
+          code: 'invalid_input',
+        });
+        expect(
+          (await store.tables()).some((row) => row.table === 'contents'),
+        ).toBe(true);
+        await content.remove(entries[1]!.id, ADMIN);
+      } finally {
+        await drop();
+      }
     },
     SLOW,
   );
@@ -192,8 +210,9 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
   const services = (
     repository = new PrismaContentRepository(db),
     registry?: DefinitionRegistry<FieldDefinition>,
+    database = db,
   ) => {
-    const settings = new PrismaSettingsRepository(db);
+    const settings = new PrismaSettingsRepository(database);
     const types = new ContentTypeService(settings, async () => false);
     const fields = new FieldService({
       settings,
@@ -206,16 +225,16 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       hooks: new HookBus({ timeoutMs: 50, logger: recordingLogger().logger }),
       ids: uuidV7,
       clock: systemClock,
-      users: new PrismaUserRepository(db),
+      users: new PrismaUserRepository(database),
 
       hasher: plainHasher,
       types,
       fields,
     });
-    const revisions = new PrismaRevisionRepository(db);
-    const terms = new PrismaTaxonomyRepository(db);
+    const revisions = new PrismaRevisionRepository(database);
+    const terms = new PrismaTaxonomyRepository(database);
     const secrets = aesSecretBox('core-privacy-test');
-    const jobs = new PrismaJobQueue(db, uuidV7, secrets);
+    const jobs = new PrismaJobQueue(database, uuidV7, secrets);
     const email = new EmailService({
       settings,
       secrets,
@@ -223,9 +242,9 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       mailer: { send: async () => undefined },
     });
     const privacy = new PrivacyService({
-      repository: new PrismaPrivacyRepository(db, secrets),
+      repository: new PrismaPrivacyRepository(database, secrets),
       settings,
-      published: new PrismaPublishedContentRepository(db),
+      published: new PrismaPublishedContentRepository(database),
       email,
       site: async () => ({
         title: 'Site',
@@ -239,7 +258,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       clock: systemClock,
       protection: new ProtectionService({
         settings: new SecuritySettingsService(settings, secrets),
-        store: new PrismaRateLimitStore(db),
+        store: new PrismaRateLimitStore(database),
         captcha: { verify: async () => false },
         clock: systemClock,
       }),
@@ -268,8 +287,8 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         ids: uuidV7,
         clock: systemClock,
       }),
-      comments: new PrismaCommentRepository(db),
-      source: new PrismaSearchSource(db),
+      comments: new PrismaCommentRepository(database),
+      source: new PrismaSearchSource(database),
     };
   };
 
