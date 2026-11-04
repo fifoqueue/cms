@@ -22,6 +22,9 @@ export interface PluginMailTransport {
     to: string;
     subject: string;
     text: string;
+    html?: string;
+    replyTo?: string;
+    headers?: Record<string, string>;
     settings: MailValues;
   }): void | Promise<void>;
 }
@@ -96,12 +99,15 @@ export const EMAIL_PROVIDER_FIELDS: Record<
 
 /**
  * Placeholders a custom body template may use. Each stands alone as a JSON value
- * (`"to": {{to}}`) and is replaced by a JSON string, so values are always escaped.
+ * (`"to": {{to}}`) and is replaced by an escaped JSON value.
  */
 export const EMAIL_TEMPLATE_PLACEHOLDERS = [
   'to',
   'subject',
   'text',
+  'html',
+  'replyTo',
+  'headers',
   'fromName',
   'fromEmail',
 ] as const;

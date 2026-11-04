@@ -49,6 +49,9 @@ export const createSmtpMailer = (resolve: Resolve) => ({
           to: message.to,
           subject: message.subject,
           text: message.text,
+          html: message.html,
+          replyTo: message.replyTo,
+          headers: message.headers,
         });
 
         return;

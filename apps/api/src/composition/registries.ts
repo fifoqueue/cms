@@ -22,6 +22,8 @@ import { MenuTypeRegistry } from '#api/plugin-runtime/menu-type-registry';
 import { coreMenuTypes } from '#api/domain/appearance/menu-types';
 import { createThemeContributions } from '#api/plugin-runtime/discovery-providers';
 import { EraserRegistry } from '#api/domain/privacy/eraser-registry';
+import { ExporterRegistry } from '#api/domain/privacy/exporter-registry';
+import { ShortcodeRegistry } from '#api/domain/tools/shortcode-registry';
 import { CommentCheckers } from '#api/domain/comments/comment-checkers';
 import { SignInRegistry } from '#api/plugin-runtime/sign-in-registry';
 import { RoleRegistry } from '#api/domain/users/role-registry';
@@ -65,6 +67,8 @@ export const createRegistries = ({
   const contentTypeRegistry = new ContentTypeRegistry(BUILTIN_TYPES);
   const { captchaProviders } = createCaptcha(timeoutMs, logger);
   const privacyErasers = new EraserRegistry({ timeoutMs, logger });
+  const privacyExporters = new ExporterRegistry(timeoutMs);
+  const importShortcodes = new ShortcodeRegistry(timeoutMs);
   const menuItemTypes = new MenuTypeRegistry({ timeoutMs, logger });
 
   for (const [key, provider] of Object.entries(coreMenuTypes))
@@ -96,6 +100,8 @@ export const createRegistries = ({
     contentTypeRegistry,
     captchaProviders,
     privacyErasers,
+    privacyExporters,
+    importShortcodes,
     menuItemTypes,
     themeContributions,
     roleDefaults,

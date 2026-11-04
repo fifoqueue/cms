@@ -199,6 +199,14 @@ export class PasswordService {
         to: user.email,
         subjects,
         sensitive: true,
+        system: {
+          kind: 'reset',
+          actionUrl: link,
+          context: {
+            user: { id: user.id, name: user.name, email: user.email },
+            site: { title: site.title, url: site.siteUrl, locale: site.locale },
+          },
+        },
         ...templates(site.locale).reset(
           site.title,
           link,
@@ -219,6 +227,14 @@ export class PasswordService {
         to: user.email,
         subjects: [user.id],
         sensitive: true,
+        system: {
+          kind: 'invite',
+          actionUrl: link,
+          context: {
+            user: { id: user.id, name: user.name, email: user.email },
+            site: { title: site.title, url: site.siteUrl, locale: site.locale },
+          },
+        },
         ...templates(site.locale).invite(
           site.title,
           user.name,

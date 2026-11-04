@@ -10,6 +10,7 @@ import { aesSecretBox, secretKey } from '#api/infra/secret-box';
 import { hmacSigner } from '#api/infra/hmac-signer';
 import { outbound } from '#api/infra/egress-policy';
 import type { EgressService } from '@cms/sdk';
+import { hookFetch } from '#api/shared/http-hooks';
 
 export const CMS_VERSION = (
   JSON.parse(readFileSync(join(API_DIRECTORY, 'package.json'), 'utf8')) as {
@@ -58,10 +59,10 @@ export const createEgress = (
     service,
     rules: await egress.rules(service),
   });
-  const egressFetch =
-    (service: EgressService) =>
-    async (input: string | URL | Request, init?: RequestInit) =>
-      outbound.fetch(input, init, await access(service));
+  const egressFetch = (service: EgressService) =>
+    hookFetch(hooks, service, async (input, init) =>
+      outbound.fetch(input, init, await access(service)),
+    );
   const checkUrl = async (service: EgressService, url: string) =>
     outbound.check(url, await access(service));
 

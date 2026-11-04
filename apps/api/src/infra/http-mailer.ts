@@ -73,7 +73,12 @@ const adapters: Record<HttpTransport['provider'], Adapter> = {
       from: address(t.from),
       personalizations: [{ to: [{ email: m.to }] }],
       subject: m.subject,
-      content: [{ type: 'text/plain', value: m.text }],
+      content: [
+        { type: 'text/plain', value: m.text },
+        ...(m.html !== undefined ? [{ type: 'text/html', value: m.html }] : []),
+      ],
+      ...(m.replyTo && { reply_to: { email: m.replyTo } }),
+      ...(m.headers && { headers: m.headers }),
     },
   }),
   mailgun: (t, m) => ({
@@ -84,6 +89,14 @@ const adapters: Record<HttpTransport['provider'], Adapter> = {
       to: m.to,
       subject: m.subject,
       text: m.text,
+      ...(m.html !== undefined && { html: m.html }),
+      ...(m.replyTo && { 'h:Reply-To': m.replyTo }),
+      ...Object.fromEntries(
+        Object.entries(m.headers ?? {}).map(([key, value]) => [
+          `h:${key}`,
+          value,
+        ]),
+      ),
     }).reduce((form, [key, value]) => {
       form.set(key, value);
 
@@ -98,9 +111,21 @@ const adapters: Record<HttpTransport['provider'], Adapter> = {
       Content: {
         Simple: {
           Subject: { Data: m.subject, Charset: 'UTF-8' },
-          Body: { Text: { Data: m.text, Charset: 'UTF-8' } },
+          Body: {
+            Text: { Data: m.text, Charset: 'UTF-8' },
+            ...(m.html !== undefined && {
+              Html: { Data: m.html, Charset: 'UTF-8' },
+            }),
+          },
+          ...(m.headers && {
+            Headers: Object.entries(m.headers).map(([Name, Value]) => ({
+              Name,
+              Value,
+            })),
+          }),
         },
       },
+      ...(m.replyTo && { ReplyToAddresses: [m.replyTo] }),
     },
   }),
   postmark: (t, m) => ({
@@ -110,6 +135,14 @@ const adapters: Record<HttpTransport['provider'], Adapter> = {
       To: m.to,
       Subject: m.subject,
       TextBody: m.text,
+      ...(m.html !== undefined && { HtmlBody: m.html }),
+      ...(m.replyTo && { ReplyTo: m.replyTo }),
+      ...(m.headers && {
+        Headers: Object.entries(m.headers).map(([Name, Value]) => ({
+          Name,
+          Value,
+        })),
+      }),
     },
   }),
   resend: (t, m) => ({
@@ -119,6 +152,9 @@ const adapters: Record<HttpTransport['provider'], Adapter> = {
       to: [m.to],
       subject: m.subject,
       text: m.text,
+      ...(m.html !== undefined && { html: m.html }),
+      ...(m.replyTo && { reply_to: m.replyTo }),
+      ...(m.headers && { headers: m.headers }),
     },
   }),
   brevo: (t, m) => ({
@@ -128,13 +164,23 @@ const adapters: Record<HttpTransport['provider'], Adapter> = {
       to: [{ email: m.to }],
       subject: m.subject,
       textContent: m.text,
+      ...(m.html !== undefined && { htmlContent: m.html }),
+      ...(m.replyTo && { replyTo: { email: m.replyTo } }),
+      ...(m.headers && { headers: m.headers }),
     },
   }),
   sparkpost: (t, m) => ({
     headers: { authorization: t.secret },
     body: {
       recipients: [{ address: m.to }],
-      content: { from: address(t.from), subject: m.subject, text: m.text },
+      content: {
+        from: address(t.from),
+        subject: m.subject,
+        text: m.text,
+        ...(m.html !== undefined && { html: m.html }),
+        ...(m.replyTo && { reply_to: m.replyTo }),
+        ...(m.headers && { headers: m.headers }),
+      },
     },
   }),
   mailjet: (t, m) => ({
@@ -149,6 +195,9 @@ const adapters: Record<HttpTransport['provider'], Adapter> = {
           To: [{ Email: m.to }],
           Subject: m.subject,
           TextPart: m.text,
+          ...(m.html !== undefined && { HTMLPart: m.html }),
+          ...(m.replyTo && { ReplyTo: { Email: m.replyTo } }),
+          ...(m.headers && { Headers: m.headers }),
         },
       ],
     },
@@ -160,6 +209,14 @@ const adapters: Record<HttpTransport['provider'], Adapter> = {
       to: [{ email: m.to }],
       subject: m.subject,
       text: m.text,
+      ...(m.html !== undefined && { html: m.html }),
+      ...(m.replyTo && { reply_to: { email: m.replyTo } }),
+      ...(m.headers && {
+        headers: Object.entries(m.headers).map(([name, value]) => ({
+          name,
+          value,
+        })),
+      }),
     },
   }),
   custom: (t, m) => {
@@ -167,6 +224,9 @@ const adapters: Record<HttpTransport['provider'], Adapter> = {
       to: m.to,
       subject: m.subject,
       text: m.text,
+      html: m.html ?? '',
+      replyTo: m.replyTo ?? '',
+      headers: m.headers ?? {},
       fromName: t.from.name,
       fromEmail: t.from.email,
     };

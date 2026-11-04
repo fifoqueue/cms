@@ -67,6 +67,7 @@ export const ServerErrors = {
     `Admin page key "${key}" must be kebab-case, at most 64 characters`,
   PluginTaskNameInvalid: (name: string) =>
     `Task name "${name}" must be kebab-case, at most 64 characters`,
+  PluginTaskFailed: 'Plugin task failed',
   PluginWidgetKeyInvalid: (key: string) =>
     `Widget key "${key}" must be kebab-case`,
   PluginTimedOut: (timeoutMs: number) => `Timed out after ${timeoutMs}ms`,

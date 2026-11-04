@@ -33,6 +33,7 @@ export const registerPrivacy = (
 type Input = Pick<
   ConstructorParameters<typeof PrivacyService>[0],
   | 'erasers'
+  | 'exporters'
   | 'hooks'
   | 'repository'
   | 'settings'
@@ -47,6 +48,7 @@ type Input = Pick<
 
 export const createPrivacy = ({
   erasers,
+  exporters,
   hooks,
   repository,
   settings,
@@ -59,6 +61,7 @@ export const createPrivacy = ({
 }: Input) =>
   new PrivacyService({
     erasers,
+    exporters,
     hooks,
     repository,
     settings,

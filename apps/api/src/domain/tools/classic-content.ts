@@ -4,6 +4,54 @@
 
 import { Errors, invalidInput } from '#api/shared/errors';
 import { gutenbergHtml } from '#api/domain/tools/gutenberg-content';
+import type { ShortcodeRegistry } from '#api/domain/tools/shortcode-registry';
+
+/** Converted HTML is consumed by the importer's sanitizing document parser. */
+export const customShortcodes = async (
+  html: string,
+  registry?: ShortcodeRegistry,
+): Promise<string> => {
+  if (!registry?.has()) return html;
+  if (encoder.encode(html).length > MAX_INPUT)
+    throw invalidInput(Errors.ImportContentLimit);
+  const protectedEnd = htmlTags(html);
+  const lower = html.toLowerCase();
+  const opening = /\[([a-z][a-z0-9_-]*)\b([^\]]*)\]/gi;
+  const parts: string[] = [];
+  let offset = 0;
+  let count = 0;
+
+  for (let match; (match = opening.exec(html));) {
+    if (protectedEnd(match.index) !== -1) continue;
+    const tag = match[1]!.toLowerCase();
+
+    if (!registry.has(tag)) continue;
+    if (++count > MAX_SHORTCODES || match[2]!.length > MAX_ATTRIBUTES)
+      throw invalidInput(Errors.ImportContentLimit);
+    const start = opening.lastIndex;
+    const closing = `[/${tag}]`;
+    const end = lower.indexOf(closing, start);
+    const paired = !match[2]!.trimEnd().endsWith('/') && end !== -1;
+    const next = paired ? end + closing.length : start;
+    const output = await registry.convert(
+      tag,
+      attributes(match[2]!),
+      paired ? html.slice(start, end) : '',
+    );
+
+    parts.push(
+      html.slice(offset, match.index),
+      output ?? html.slice(match.index, next),
+    );
+    bounded(parts);
+    offset = next;
+    opening.lastIndex = next;
+  }
+
+  parts.push(html.slice(offset));
+
+  return bounded(parts);
+};
 
 const MAX_INPUT = 1024 * 1024;
 const MAX_OUTPUT = 2 * MAX_INPUT;

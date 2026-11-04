@@ -36,6 +36,8 @@ export type {
 import type {
   HealthCheckRegistrar,
   JobRegistrar,
+  ImportShortcodeRegistrar,
+  PrivacyExporterRegistrar,
 } from '#sdk/platform-contracts';
 import type {
   MenuItemRegistrar,
@@ -50,6 +52,10 @@ import type {
 export type {
   HealthCheckRegistrar,
   JobRegistrar,
+  ImportShortcode,
+  ImportShortcodeRegistrar,
+  PrivacyExporter,
+  PrivacyExporterRegistrar,
 } from '#sdk/platform-contracts';
 export type {
   MenuItemRegistrar,
@@ -101,13 +107,19 @@ export type {
 } from '#sdk/capability-contracts';
 export {
   outgoingEmailSchema,
+  emailHeadersSchema,
+  emailFromSchema,
+  systemEmailSchema,
   platformImportItemSchema,
   platformWxrItemSchema,
 } from '#sdk/hooks/platform';
 import type {
   PlatformActionHooks,
   PlatformFilterHooks,
+  PlatformFilterArgs,
 } from '#sdk/hooks/platform';
+
+export type { OutgoingEmail, SystemEmailContext } from '#sdk/hooks/platform';
 import type { UserProfile } from '#sdk/auth';
 import type {
   AppearanceActionHooks,
@@ -317,7 +329,9 @@ export type FilterHandler<K extends string> = (
       ? ContentFilterArgs[K]
       : K extends keyof TaxonomyFilterArgs
         ? TaxonomyFilterArgs[K]
-        : readonly unknown[]
+        : K extends keyof PlatformFilterArgs
+          ? PlatformFilterArgs[K]
+          : readonly unknown[]
 ) => Awaitable<K extends FilterName ? FilterHookMap[K] : unknown>;
 
 export interface CustomHookDefinition {
@@ -657,6 +671,8 @@ export interface PluginLogger {
  * started work and arbitrary JavaScript cannot be cancelled.
  */
 export interface PluginContext {
+  readonly importShortcodes: ImportShortcodeRegistrar;
+  readonly privacyExporters: PrivacyExporterRegistrar;
   readonly healthChecks: HealthCheckRegistrar;
   readonly roles: RoleRegistrar;
   readonly profileFields: ProfileFieldRegistrar;

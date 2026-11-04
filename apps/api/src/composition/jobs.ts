@@ -38,6 +38,7 @@ export const createJobs = ({
   const owner = `${hostname()}:${process.pid}:${uuidV7.next().slice(-12)}`;
   const sealedJobs = new SealedJobs(jobQueue, secrets);
   const scheduler = new Scheduler({
+    hooks,
     leases: taskLeases,
     clock: systemClock,
     logger,

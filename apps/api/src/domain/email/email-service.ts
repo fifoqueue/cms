@@ -6,7 +6,10 @@ import {
 } from '@cms/sdk';
 import type { AdminEmailSettings } from '@cms/sdk';
 import { z } from 'zod';
-import { outgoingEmailSchema } from '@cms/sdk/plugin';
+import { outgoingEmailSchema, emailFromSchema } from '@cms/sdk/plugin';
+import { parseHtml } from '@cms/content/parse';
+import { renderDocument } from '@cms/content/render';
+import { filterSystemMail } from '#api/domain/email/system-mail';
 import type {
   EmailMessage,
   MailTransport,
@@ -97,13 +100,18 @@ interface Stored {
   pluginSecrets?: Record<string, string>;
 }
 
-const messageSchema = z.object({
+const messageSchema = outgoingEmailSchema.extend({
   sensitive: z.boolean().optional(),
   to: z.email(),
   subjects: z.array(z.string().max(191)).max(100).optional(),
   subject: z.string(),
   text: z.string(),
 });
+
+const protectSystemMail = (message: EmailMessage): EmailMessage =>
+  message.system && !message.sensitive
+    ? { ...message, sensitive: true }
+    : message;
 
 /**
  * Outgoing mail. Messages are queued and sent by the job runner with retries, so a slow or
@@ -296,6 +304,18 @@ export class EmailService {
   /** Queues `message`; throws `invalid_input` while email is disabled. */
   async queue(message: EmailMessage, expiresAt?: Date): Promise<void> {
     if (!(await this.enabled())) throw invalidInput(Errors.EmailDisabled);
+
+    message = protectSystemMail(message);
+
+    if (this.deps.hooks?.has('email.system') && message.system) {
+      const { system, ...core } = message;
+
+      message = {
+        ...core,
+        ...(await filterSystemMail(this.deps.hooks, core, system)),
+      };
+    }
+
     await this.deps.sealedJobs.enqueue(EMAIL_JOB, message, expiresAt);
   }
 
@@ -339,17 +359,20 @@ export class EmailService {
   }
 
   private async send(transport: MailTransport, message: EmailMessage) {
+    message = protectSystemMail(message);
+
     const original = parseInput(outgoingEmailSchema, message);
+    const recipient = original.to;
     // Sensitive mail (reset/invite/recovery/privacy) carries tokens: filters never see it.
     const filtered =
-      this.deps.hooks && !message.sensitive
+      this.deps.hooks?.has('email.beforeSend') && !message.sensitive
         ? await this.deps.hooks.applyFilter(
             'email.beforeSend',
             original,
             (value) => {
               const parsed = outgoingEmailSchema.safeParse(value);
 
-              return parsed.success && parsed.data.to === original.to;
+              return parsed.success && parsed.data.to === recipient;
             },
           )
         : original;
@@ -357,6 +380,31 @@ export class EmailService {
       ...message,
       ...outgoingEmailSchema.parse(filtered),
     };
+
+    if (outgoing.html !== undefined)
+      outgoing.html = renderDocument(parseHtml(outgoing.html));
+
+    if (this.deps.hooks?.has('email.from')) {
+      const domain = transport.from.email.split('@')[1]?.toLowerCase();
+      const from = await this.deps.hooks.applyFilter(
+        'email.from',
+        { name: transport.from.name, address: transport.from.email },
+        (value) => {
+          const parsed = emailFromSchema.safeParse(value);
+
+          return (
+            parsed.success &&
+            parsed.data.address.split('@')[1]?.toLowerCase() === domain
+          );
+        },
+      );
+
+      transport = {
+        ...transport,
+        from: { name: from.name, email: from.address },
+      };
+    }
+
     let allowed = true;
 
     await this.deps.hooks?.applyFilter(

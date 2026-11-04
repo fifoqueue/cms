@@ -33,6 +33,7 @@ import { readable } from '#api/shared/stream';
 import { parseInput } from '#api/shared/validation';
 import { invalidInput, notFound, Errors } from '#api/shared/errors';
 import type { EraserRegistry } from '#api/domain/privacy/eraser-registry';
+import type { ExporterRegistry } from '#api/domain/privacy/exporter-registry';
 
 const view = (row: PrivacyRecord) =>
   privacyRequestSchema.parse({
@@ -51,6 +52,7 @@ export class PrivacyService {
     private readonly deps: {
       hooks?: HookDispatcher;
       erasers?: Pick<EraserRegistry, 'erase'>;
+      exporters?: Pick<ExporterRegistry, 'export'>;
       repository: PrivacyRepository;
       settings: SettingsRepository;
       published: Pick<PublishedContentRepository, 'summariesByIds'>;
@@ -203,6 +205,7 @@ export class PrivacyService {
     const repository = this.deps.repository;
     const clock = this.deps.clock;
     const hooks = this.deps.hooks;
+    const exporters = this.deps.exporters;
 
     async function* chunks() {
       yield `{"email":${JSON.stringify(row.email)}`;
@@ -228,9 +231,10 @@ export class PrivacyService {
       }
 
       const request = view(row);
+      const data = (await exporters?.export(request)) ?? {};
       const extra = (await hooks?.applyFilter(
         'privacy.exportData',
-        { request, data: {} },
+        { request, data },
         (value) => {
           const parsed = privacyExportDataSchema.safeParse(value);
 
@@ -239,7 +243,7 @@ export class PrivacyService {
             JSON.stringify(parsed.data.request) === JSON.stringify(request)
           );
         },
-      )) ?? { request, data: {} };
+      )) ?? { request, data };
 
       yield `,"extensions":${stringifyJson(extra.data)}}`;
       const completedAt = clock.now();

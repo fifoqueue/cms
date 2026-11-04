@@ -11,6 +11,7 @@ import { HookBus } from '#api/plugin-runtime/hook-bus';
 function fixture() {
   const settings = new MemorySettings();
   const secrets = aesSecretBox('email-service-tests');
+  const queue = new MemoryJobQueue();
   const sent: MailTransport[] = [];
   const messages: EmailMessage[] = [];
   const destinations: string[] = [];
@@ -23,7 +24,7 @@ function fixture() {
     hooks,
     settings,
     secrets,
-    sealedJobs: new SealedJobs(new MemoryJobQueue(), secrets),
+    sealedJobs: new SealedJobs(queue, secrets),
     mailer: {
       send: async (transport, message) => {
         if (failure.error) throw failure.error;
@@ -39,6 +40,7 @@ function fixture() {
   return {
     settings,
     secrets,
+    queue,
     sent,
     destinations,
     email,
@@ -84,6 +86,43 @@ test('sensitive mail never reaches body filters while ordinary mail may change t
     text: 'Changed',
   });
 });
+
+test('system mail stays outside body filters without a system handler or explicit sensitive flag', async () => {
+  const { email, hooks, messages, queue } = fixture();
+  const actionUrl = 'https://site.example/admin/password?token=SECRET';
+  const systemMessage: EmailMessage = {
+    ...message,
+    text: `Reset:\n${actionUrl}`,
+    system: {
+      kind: 'reset',
+      actionUrl,
+      context: {
+        user: { id: 'reader', name: 'Reader', email: message.to },
+        site: { title: 'Site', url: 'https://site.example', locale: 'en' },
+      },
+    },
+  };
+  const seen: unknown[] = [];
+
+  await email.update(configured());
+  hooks.registrar('observer').filter('email.beforeSend', (value) => {
+    seen.push(value);
+
+    return value;
+  });
+  await email.queue(systemMessage);
+
+  for (const job of queue.rows.values()) await email.deliver(job.payload);
+  await email.sendNow(systemMessage);
+  expect(seen).toEqual([]);
+  expect(messages).toHaveLength(2);
+
+  for (const sent of messages) {
+    expect(sent.text).toBe(`Reset:\n${actionUrl}`);
+    expect(sent.sensitive).toBe(true);
+  }
+});
+
 test('a later send filter can allow mail an earlier one refused', async () => {
   const { email, hooks, messages } = fixture();
 
@@ -98,4 +137,38 @@ test('a later send filter can allow mail an earlier one refused', async () => {
     .filter('email.sendAllowed', (value) => ({ ...value, allowed: true }));
   await email.deliver(message);
   expect(messages).toEqual([message]);
+});
+
+test('mail filters sanitize HTML and preserve sender domain and envelope boundaries', async () => {
+  const { email, hooks, messages, sent } = fixture();
+
+  await email.update(configured());
+  hooks.registrar('format').filter('email.beforeSend', (value) => ({
+    ...value,
+    html: '<p>Hello</p><script>alert(1)</script>',
+    replyTo: 'support@example.com',
+    headers: { 'X-Priority': '3' },
+  }));
+  hooks.registrar('sender').filter('email.from', () => ({
+    name: 'Support',
+    address: 'support@example.com',
+  }));
+  hooks.registrar('invalid').filter('email.from', () => ({
+    name: 'Attacker',
+    address: 'attacker@example.org',
+  }));
+  hooks.registrar('invalid').filter('email.beforeSend', (value) => ({
+    ...value,
+    headers: { Bcc: 'attacker@example.org' },
+  }));
+  await email.deliver(message);
+  expect(messages[0]?.html).toContain('<p>Hello</p>');
+  expect(messages[0]?.html).not.toContain('<script');
+  expect(messages[0]?.replyTo).toBe('support@example.com');
+  expect(messages[0]?.headers).toEqual({ 'X-Priority': '3' });
+  expect(messages[0]?.text).toBe('Body');
+  expect(sent[0]?.from).toEqual({
+    name: 'Support',
+    email: 'support@example.com',
+  });
 });

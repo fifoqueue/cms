@@ -1,7 +1,8 @@
-import type { Clock } from '#api/domain/ports';
+import type { Clock, HookDispatcher } from '#api/domain/ports';
 import type { TaskLeases } from '#api/domain/jobs/ports';
 import type { Logger } from '#api/shared/logger';
 import { messageOf } from '#api/shared/errors';
+import { z } from 'zod';
 
 export interface RecurringTask {
   /** Unique across processes; plugin tasks are prefixed with their plugin id. */
@@ -11,6 +12,7 @@ export interface RecurringTask {
 }
 
 export interface SchedulerDeps {
+  hooks?: HookDispatcher;
   leases: TaskLeases;
   clock: Clock;
   logger: Logger;
@@ -28,6 +30,7 @@ const RENEW_MS = 60 * 1000;
  */
 export class Scheduler {
   private readonly tasks = new Map<string, RecurringTask>();
+  private readonly intervals = new WeakMap<RecurringTask, Promise<void>>();
   private timer: ReturnType<typeof setInterval> | undefined;
   private running = false;
   private readonly active = new Map<string, { rerun: boolean }>();
@@ -36,6 +39,33 @@ export class Scheduler {
 
   /** Registers `task`; returns a function that unregisters it. */
   add(task: RecurringTask): () => void {
+    task = { ...task };
+    const hooks = this.deps.hooks;
+
+    if (hooks?.has('task.interval')) {
+      const schema = z.object({
+        name: z.literal(task.name),
+        intervalMs: z
+          .number()
+          .int()
+          .min(task.name.startsWith('plugin:') ? 60_000 : task.intervalMs)
+          .max(2_147_483_647),
+      });
+
+      this.intervals.set(
+        task,
+        hooks
+          .applyFilter(
+            'task.interval',
+            { name: task.name, intervalMs: task.intervalMs },
+            (value) => schema.safeParse(value).success,
+          )
+          .then((value) => {
+            task.intervalMs = value.intervalMs;
+          }),
+      );
+    }
+
     this.tasks.set(task.name, task);
 
     return () => {
@@ -77,6 +107,14 @@ export class Scheduler {
   }
 
   private async run(task: RecurringTask, immediate: boolean) {
+    const interval = this.intervals.get(task);
+
+    if (interval) {
+      await interval;
+      this.intervals.delete(task);
+      if (this.tasks.get(task.name) !== task) return;
+    }
+
     const active = this.active.get(task.name);
 
     if (active) {
@@ -122,6 +160,9 @@ export class Scheduler {
     }
 
     let failure: string | null = null;
+    const hooks = this.deps.hooks;
+    const observed = hooks?.has('task.completed') || hooks?.has('task.failed');
+    const started = observed ? performance.now() : 0;
     const renewing = setInterval(
       () =>
         void leases
@@ -143,6 +184,7 @@ export class Scheduler {
       clearInterval(renewing);
     }
 
+    const durationMs = observed ? Math.max(0, performance.now() - started) : 0;
     const next = new Date(clock.now().getTime() + task.intervalMs);
 
     await leases
@@ -152,5 +194,17 @@ export class Scheduler {
           `Task "${task.name}" could not be released: ${messageOf(error)}`,
         ),
       );
+
+    const action = failure === null ? 'task.completed' : 'task.failed';
+
+    if (hooks?.has(action)) {
+      try {
+        await hooks.emit(action, { name: task.name, durationMs });
+      } catch (error) {
+        logger.warn(
+          `Task "${task.name}" notification failed: ${messageOf(error)}`,
+        );
+      }
+    }
   }
 }

@@ -41,6 +41,9 @@ export class MailTransportRegistry implements Mailer {
             to: message.to,
             subject: message.subject,
             text: message.text,
+            ...(message.html !== undefined && { html: message.html }),
+            ...(message.replyTo && { replyTo: message.replyTo }),
+            ...(message.headers && { headers: message.headers }),
             settings: transport.settings,
           });
         },

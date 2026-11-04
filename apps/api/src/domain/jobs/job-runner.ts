@@ -115,12 +115,13 @@ export class JobRunner {
     await Promise.all(
       jobs.map(async (job) => {
         const handler = this.handlers.get(job.kind);
+        let completed = false;
 
         try {
           if (!handler)
             throw new PermanentJobError(Errors.JobKindUnknown(job.kind));
           await handler(job.payload);
-          await queue.complete(job.id, owner);
+          completed = await queue.complete(job.id, owner);
         } catch (error) {
           const attempt = job.attempts + 1;
           const recoverable = error instanceof RecoverableJobError;
@@ -147,6 +148,20 @@ export class JobRunner {
             attempts: attempt,
             retryAt: retry?.toISOString() ?? null,
           });
+        }
+
+        if (completed && this.deps.hooks?.has('job.completed')) {
+          try {
+            await this.deps.hooks.emit('job.completed', {
+              id: job.id,
+              kind: job.kind,
+              attempts: job.attempts + 1,
+            });
+          } catch (error) {
+            logger.warn(
+              `Job ${job.kind} completion notification failed: ${failureSummary(error)}`,
+            );
+          }
         }
       }),
     );

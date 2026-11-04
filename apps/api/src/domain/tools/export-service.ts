@@ -1,5 +1,8 @@
 import { readable } from '#api/shared/stream';
-import { platformWxrItemSchema } from '@cms/sdk/plugin';
+import {
+  platformWxrItemSchema,
+  platformImportItemSchema,
+} from '@cms/sdk/plugin';
 import type { HookDispatcher } from '#api/domain/ports';
 import type { ContentStatus } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
@@ -165,8 +168,17 @@ export class ExportService {
     const names = wxrTermNames(header);
 
     yield wxrHeader(header);
-    for (const pattern of (await this.deps.patterns?.()) ?? [])
-      yield wxrItemStart(patternItem(pattern), header, names) + wxrItemEnd;
+
+    for (const pattern of (await this.deps.patterns?.()) ?? []) {
+      const item = await this.filterItem(patternItem(pattern));
+
+      if (item) {
+        yield wxrItemStart(item, header, names);
+        for (const comment of item.comments)
+          yield wxrComment(toExportComment(comment, moderator));
+        yield wxrItemEnd;
+      }
+    }
 
     let afterContent: string | null = null;
 
@@ -176,6 +188,36 @@ export class ExportService {
       if (!records.length) break;
 
       for (const record of records) {
+        if (this.deps.hooks?.has('export.item')) {
+          const original = toItem(record, header.link);
+          let cursor: string | null = null;
+
+          for (;;) {
+            const comments = await this.deps.comments.exportPage(
+              record.id,
+              cursor,
+              PAGE,
+            );
+
+            original.comments.push(
+              ...comments.map((comment) => toComment(comment, moderator)),
+            );
+            if (comments.length < PAGE) break;
+            cursor = comments.at(-1)!.id;
+          }
+
+          const item = await this.filterItem(original);
+
+          if (item) {
+            yield wxrItemStart(item, header, names);
+            for (const comment of item.comments)
+              yield wxrComment(toExportComment(comment, moderator));
+            yield wxrItemEnd;
+          }
+
+          continue;
+        }
+
         yield wxrItemStart(toItem(record, header.link), header, names);
         let afterComment: string | null = null;
 
@@ -220,4 +262,24 @@ export class ExportService {
     yield wxrFooter;
     void this.deps.hooks?.emit('export.generated', { format: 'wxr' });
   }
+
+  private async filterItem(item: WxrItem): Promise<WxrItem | null> {
+    const hooks = this.deps.hooks;
+
+    if (!hooks?.has('export.item')) return item;
+    const schema = platformImportItemSchema.nullable();
+    const value = await hooks.applyFilter(
+      'export.item',
+      platformImportItemSchema.parse(item),
+      (candidate) => schema.safeParse(candidate).success,
+    );
+    const parsed = schema.parse(value);
+
+    return parsed === null ? null : { ...parsed, password: '' };
+  }
 }
+
+const toExportComment = (
+  { authorIp, authorUserAgent, ...comment }: WxrComment,
+  moderator: boolean,
+) => (moderator ? { ...comment, authorIp, authorUserAgent } : comment);

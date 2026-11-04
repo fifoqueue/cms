@@ -15,6 +15,8 @@ import { RoleRegistry } from '#api/domain/users/role-registry';
 import { ProfileFields } from '#api/domain/users/profile-fields';
 import { CaptchaRegistry } from '#api/domain/security/captcha-registry';
 import { EraserRegistry } from '#api/domain/privacy/eraser-registry';
+import { ExporterRegistry } from '#api/domain/privacy/exporter-registry';
+import { ShortcodeRegistry } from '#api/domain/tools/shortcode-registry';
 import type { MailTransportRegistry } from '#api/domain/email/transport-registry';
 import { StorageDrivers } from '#api/domain/media/storage-drivers';
 import type { UserDirectory } from '@cms/sdk/plugin';
@@ -72,6 +74,8 @@ export interface PluginContextServices {
   profileFields?: ProfileFields;
   captchaProviders?: CaptchaRegistry;
   privacyErasers?: EraserRegistry;
+  privacyExporters?: ExporterRegistry;
+  importShortcodes?: ShortcodeRegistry;
   jobs?: PluginJobs;
   contentTypes?: ContentTypeRegistry;
   permalinkTokens?: PermalinkTokenRegistry;
@@ -140,6 +144,8 @@ export class PluginContextFactory {
     services.profileFields ??= new ProfileFields();
     services.captchaProviders ??= new CaptchaRegistry(options);
     services.privacyErasers ??= new EraserRegistry(options);
+    services.privacyExporters ??= new ExporterRegistry(options.timeoutMs);
+    services.importShortcodes ??= new ShortcodeRegistry(options.timeoutMs);
     services.menuItemTypes ??= new MenuTypeRegistry(options);
     services.themeContributions ??= new ProviderRegistry(
       themeContributionSchema,
@@ -223,6 +229,18 @@ export class PluginContextFactory {
         register: (key, eraser) =>
           scope.track(() =>
             this.services.privacyErasers!.register(id, key, eraser),
+          ),
+      },
+      importShortcodes: {
+        register: (tag, definition) =>
+          scope.track(() =>
+            this.services.importShortcodes!.register(tag, definition),
+          ),
+      },
+      privacyExporters: {
+        register: (key, definition) =>
+          scope.track(() =>
+            this.services.privacyExporters!.register(id, key, definition),
           ),
       },
       taxonomies: {
@@ -422,13 +440,16 @@ export class PluginContextFactory {
               name: `plugin:${id}:${name}`,
               intervalMs: Math.max(MIN_TASK_INTERVAL_MS, intervalMs),
               run: async () => {
+                if (!scope.active) return;
                 const result = await isolate(
                   () => scope.run(task),
                   TASK_TIMEOUT_MS,
                 );
 
-                if (!result.ok)
-                  log.warn(`task "${name}" failed: ${result.error.message}`);
+                if (!result.ok) {
+                  log.warn(`task "${name}" failed: ${Errors.PluginTaskFailed}`);
+                  throw new Error(Errors.PluginTaskFailed);
+                }
               },
             }),
           );

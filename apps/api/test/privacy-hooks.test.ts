@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { PrivacyExportData, PrivacyRequest } from '@cms/sdk';
 import { PrivacyService } from '#api/domain/privacy/privacy-service';
+import { ExporterRegistry } from '#api/domain/privacy/exporter-registry';
 import type {
   PrivacyRecord,
   PrivacyRepository,
@@ -21,6 +22,7 @@ const fixture = () => {
   });
   const clock = fixedClock();
   const rows = new Map<string, PrivacyRecord>();
+  const exporters = new ExporterRegistry(10);
   const repository: PrivacyRepository = {
     insert: async (row) => {
       rows.set(row.id, row);
@@ -38,6 +40,7 @@ const fixture = () => {
     },
   };
   const service = new PrivacyService({
+    exporters,
     hooks,
     repository,
     clock,
@@ -74,8 +77,54 @@ const fixture = () => {
     return request;
   };
 
-  return { hooks, rows, service, create };
+  return { hooks, rows, service, create, exporters };
 };
+
+test('privacy exporters merge validated isolated data and revoke registrations', async () => {
+  const { service, create, exporters } = fixture();
+  const release = exporters.register('test', 'preferences', {
+    export: (user) => {
+      expect(user).toEqual({ email: 'subject@example.com' });
+
+      return { consent: true };
+    },
+  });
+
+  exporters.register('test', 'invalid', {
+    export: () => ({ bad: new Date() }) as never,
+  });
+  exporters.register('test', 'stalled', {
+    export: () => new Promise(() => {}),
+  });
+  const request = await create('export');
+  const data = await new Response(
+    await service.export(request.id, actor),
+  ).json();
+
+  expect(data.profile).toEqual([{ id: 'subject', name: 'Person' }]);
+  expect(data.extensions).toEqual({ 'test:preferences': { consent: true } });
+  release();
+  expect(await exporters.export(request)).toEqual({});
+  const isolated = new ExporterRegistry(100);
+  let finish!: (value: Record<string, boolean>) => void;
+  let started!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const remove = isolated.register('test', 'pending', {
+    export: () =>
+      new Promise((resolve) => {
+        finish = resolve;
+        started();
+      }),
+  });
+  const pending = isolated.export(request);
+
+  await ready;
+  remove();
+  finish({ late: true });
+  expect(await pending).not.toHaveProperty('test:pending');
+});
 
 test('privacy actions project request DTOs after persistence; export adds plugin JSON without replacing core', async () => {
   const { hooks, rows, service, create } = fixture();

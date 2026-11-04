@@ -18,6 +18,7 @@ type ExportDeps = ConstructorParameters<typeof ExportService>[0];
 type Input = Pick<
   ImportDeps,
   | 'hooks'
+  | 'importShortcodes'
   | 'content'
   | 'taxonomy'
   | 'types'
@@ -41,6 +42,7 @@ export const createTools = ({
   media,
   settings,
   hooks,
+  importShortcodes,
   content,
   taxonomy,
   types,
@@ -62,6 +64,7 @@ export const createTools = ({
       settings,
     },
     hooks,
+    importShortcodes,
     parser: fastXmlWxrParser,
     html: tiptapHtmlParser,
     content,

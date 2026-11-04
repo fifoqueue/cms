@@ -218,6 +218,7 @@ export const createContainer = async (
     },
   });
   const tools = createTools({
+    importShortcodes: registries.importShortcodes,
     media: media.media,
     settings: repositories.settingsRepository,
     hooks: registries.hooks,
@@ -249,6 +250,7 @@ export const createContainer = async (
     database: infra.databaseVersion,
   });
   const privacy = createPrivacy({
+    exporters: registries.privacyExporters,
     erasers: registries.privacyErasers,
     hooks: registries.hooks,
     repository: repositories.privacyRepository,

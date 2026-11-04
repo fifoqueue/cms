@@ -565,7 +565,38 @@ DB 직접 경로를 유지합니다.
 
 - `email.beforeSend`는 수신자를 변경할 수 없습니다. 비밀번호 재설정/초대, 복구,
   개인정보 메일은 `sensitive`로 표시되어 `email.beforeSend`에 전달되지 않습니다.
-  제목과 본문에 토큰이 들어 있으므로 필터 없이 발송됩니다.
+  일반 메일 값은 `{ to, subject, text, html?, replyTo?, headers? }`입니다.
+  `text`는 필수이며 HTML은 콘텐츠 가져오기와 같은 파서·렌더러 정책으로 정제합니다.
+  헤더는 `X-Mailer`, `X-Priority`, `Importance`, `References`, `In-Reply-To`만
+  허용합니다(최대 16개, 값 998자, CR/LF/NUL 금지). 수신·발신·MIME·라우팅 헤더는
+  변경할 수 없습니다. SMTP와 HTTP 공급자는 text/html 대안을 함께 전달하며,
+  플러그인 전송 계약도 기존 `text`와 선택적 `html`, `replyTo`, `headers`를 받습니다.
+  사용자 지정 HTTP JSON 템플릿은 `{{html}}`, `{{replyTo}}`, `{{headers}}`를 지원합니다.
+- `email.from`은 `{ name, address }`입니다. 주소는 설정된 발신 도메인과 같아야 하며,
+  이름은 최대 200자이고 CR/LF/NUL을 포함할 수 없습니다.
+- `email.system`은 `{ kind, subject, text, html? }`와 두 번째 인자
+  `{ user: { id, name, email }, site: { title, url, locale } }`를 받습니다.
+  현재 계정 템플릿 종류는 `reset`, `invite`(새 사용자 초대), `recovery`입니다.
+  토큰 URL은 필터에서 `https://cms.invalid/action`으로 표시됩니다.
+  text의 독립된 URL과 HTML의 링크 목적지는 이 값을 그대로 유지해야 합니다.
+  코어는 검증과 HTML 정제 뒤 실제 URL을 변경 없이 복원합니다.
+  링크 제거·변조 또는 잘못된 결과는 무시하고 이전 유효 값(최초에는 코어 메일)을 유지합니다.
+  컨텍스트에는 토큰·해시·전송 비밀 값이 없습니다.
+- HTTP 호출 순서는 `http.requestAllowed` → `http.request` → 기존 egress 정책·SSRF 검사
+  → `http.responded`입니다. 등록된 핸들러가 없으면 투영·복제·시간 측정을 생략합니다.
+  `http.requestAllowed`는 `{ service, host, allowed }`이며 후속 필터가 허용과 거부를
+  모두 뒤집을 수 있습니다. 서비스·호스트는 변경 불가이며 최종 허용도 사설망 허용 목록과
+  SSRF 검사를 우회하지 못합니다.
+- `http.request`는 `{ service, method, url, headers }`입니다. `url`은 자격 증명이
+  경로·쿼리에 포함될 수 있어 원본 URL의 origin만 노출하는 읽기 전용 값입니다.
+  실제 URL·호스트·메서드는 변경되지 않습니다. 헤더는 `Accept`, `Accept-Language`,
+  `Content-Type`, `Cache-Control`, `If-Modified-Since`, `If-None-Match`, `User-Agent`,
+  `Traceparent`, `Tracestate`, `X-Request-Id`만 수정할 수 있습니다(대소문자 무관,
+  최대 32개, 값 4096자, CR/LF/NUL 금지). 인증·쿠키·Proxy 및 기타 자격 증명 헤더는
+  노출하거나 변경하지 않습니다.
+- `http.responded` 액션은 `{ service, host, status: number | null, durationMs }`입니다.
+  매 호출 완료 시 발행되며 거부·DNS·네트워크 실패에는 `status: null`을 사용합니다.
+  본문·헤더는 전달하지 않습니다.
 - `import.item`과 `content.beforeSave`에는 비밀번호가 없습니다. 코어가 필터 전에 항목의
   비밀번호를 제거하고 이후 원래 값을 다시 적용하므로, 필터는 비밀번호를
   읽거나 설정하거나 바꿀 수 없습니다.
@@ -574,7 +605,7 @@ DB 직접 경로를 유지합니다.
   `emit`이 기다립니다. 실패는 코어 오류로 기록되고 `emit`을 거부합니다. 발행자는
   커밋 뒤 기다리지 않고 발행하므로, 커밋된 요청이 실패로 보고되지는 않습니다.
 - `email.sendAllowed`는 `{ to, subject, allowed }`를 받습니다. 거부는
-  되돌릴 수 없으며 작업을 재시도하지 않고 영구 실패로 처리합니다.
+  후속 필터에서 되돌릴 수 있습니다. 최종 거부는 작업을 재시도하지 않고 영구 실패로 처리합니다.
 - `webhook.payload`는 `data`만 필터링하며 코어가 id/event/occurredAt을 유지합니다.
   직렬화된 전달은 64 KiB로 제한됩니다(크기를 넘긴 필터 출력은 무시).
 - `dashboard.data`는 `{ widgets, capabilities }`를 받습니다. 권한이 있고 변경되지 않은 위젯의
@@ -612,10 +643,22 @@ DB 직접 경로를 유지합니다.
 늦은 enqueue 호출은 거부됩니다. 핸들러가 더 이상 등록되어 있지 않은 대기 작업은
 비활성화된 코드를 실행하지 않고 알 수 없는 종류로 실패합니다.
 
+`export.item`은 비밀번호 없는 코어 WXR 항목(패턴·댓글 포함)을 수정하거나 `null`로 제외합니다. 반환값은 WXR 항목 스키마로 다시 검증하며 잘못된 값은 무시합니다. 처리기가 없으면 기존 댓글 스트리밍을 유지합니다. 처리기가 있으면 항목별 댓글을 모아 전달합니다. `export.data`는 기존처럼 추가 항목에만 적용됩니다.
+
+`importShortcodes.register(tag, { convert(attrs, inner) })`는 가져오기 중 코어가 모르는 단축코드를 HTML 문자열로 변환합니다. 태그는 소문자 영문으로 시작하는 영문·숫자·밑줄·하이픈 최대 64자이며 코어 태그는 재정의할 수 없습니다. 속성은 문자열 사전, 내부 내용은 문자열입니다. 반환 HTML은 코어 문서 파서를 거쳐 안전한 블록으로 저장됩니다. 실패·시간 초과·잘못된 반환값이면 원문을 유지합니다. 플러그인 호출은 격리 및 시간 제한을 적용하며 등록 해제 후 진행 중 결과도 폐기합니다.
+
+`privacyExporters.register(key, { export(user) })`의 `user`는 확인된 요청의 `{ email: string }`만 포함합니다. 반환값은 JSON 값 사전이며 전체 추가 데이터는 1MiB 이하로 검증됩니다. 결과는 개인정보 내보내기의 `extensions["소유자:key"]`에 병합하고 기존 `privacy.exportData` 필터에 전달합니다. 코어 개인정보 섹션은 변경하지 않습니다. 실패·시간 초과·해제·잘못된 결과는 제외하며 다른 제공자는 계속 실행합니다. 두 등록소 모두 플러그인·사이트 함수·테마 함수 컨텍스트에 제공하고 소유자 스코프 해제 시 등록을 제거합니다.
+
+작업 액션: `job.completed`는 큐 완료 저장 성공 뒤 `{ id, kind, attempts }`를 전달합니다(시도 횟수는 이번 성공 시도 포함). `task.completed`와 `task.failed`는 실행한 예약 작업의 `{ name, durationMs }`를 전달합니다. 임대를 얻지 못한 작업은 발행하지 않습니다. 실패 액션의 `error?: string`은 선택 사항이며 코어는 자격 증명이 포함될 수 있는 예외 메시지를 전달하지 않습니다. 처리기가 없으면 시간 측정과 페이로드 생성을 생략합니다.
+
+`task.interval` 필터는 등록·재등록 시 `{ name, intervalMs }`를 전달합니다. 이름은 변경할 수 없으며 간격은 정수 밀리초, 최대 2,147,483,647입니다. 플러그인·함수 작업의 최소값은 60,000ms입니다. 코어 작업은 등록 시 선언한 기존 간격을 최소 안전값으로 유지합니다(큐 처리 5,000ms, 유지 관리 3,600,000ms 등). 첫 실행은 필터 완료를 기다리고, 실행 중에는 필터를 재평가하지 않습니다.
+
 | 확장        | API                           | 설명                                                                                                                                                                                                                                                                                                                                                     |
 | ----------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 플랫폼 액션 | `hooks.on(name, handler)`     | `email.sent/failed`(수신 주소만), `email.settingsUpdated`, `job.failed`, `webhook.created/updated/deleted/delivered/failed`, `plugin.installed/activated/deactivated/removed/upgraded`(id·version·status만), `import.completed`, `export.generated`(WXR 스트림 완료), `site.installed`(사이트 정보만), `egress.updated`. 비밀 값 제외, 저장 성공 뒤 발행 |
-| 플랫폼 필터 | `hooks.filter(name, handler)` | `email.beforeSend`(to·subject·text 검증, 민감 메일 제외), `email.sendAllowed`(거부만), `webhook.payload`(JSON 객체), `export.data`(코어 스트림 뒤에 추가할 WXR 항목 배열), `import.item`(항목별, 날짜는 Date, 비밀번호 제외), `dashboard.data`(권한 검사 뒤 위젯 배열). 잘못된 반환값 무시                                                               |
+| 플랫폼 필터 | `hooks.filter(name, handler)` | `email.beforeSend`, `email.from`, `email.system`, `email.sendAllowed`(양방향), `http.request`, `http.requestAllowed`(양방향), `webhook.payload`(JSON 객체), `export.data`(추가 WXR 항목), `import.item`(날짜는 Date, 비밀번호 제외), `dashboard.data`(권한 검사 뒤 위젯). 잘못된 반환값 무시                                                             |
+
+가져오기 액션: `import.started`는 권한·옵션 검증과 WXR 파싱 성공 뒤 `{ source: 'wxr', items: number }`를 전달합니다. `items`는 필터 적용 전 파일의 전체 항목 수입니다. `import.itemImported`는 콘텐츠 저장 성공 직후 `{ sourceId: string, contentId: string, type: string }`를 전달하며 건너뛴 항목에는 호출하지 않습니다. 본문·비밀번호·토큰은 포함하지 않습니다. 처리기가 없으면 페이로드 생성과 호출을 생략합니다. 기존 `import.item` 필터와 `import.completed` 액션은 유지됩니다.
 
 메일 전송기: 기존 `transport: 'smtp' | 'http'`와 제공자는 바뀌지 않습니다. 선택 항목인 `pluginTransport`(입력 `{ id, values, secrets }`, 출력 `{ id, values, secretsConfigured } | null`)가 이를 덮어쓰며, `null`이면 기존 전송기를 선택합니다(웹: 메일 설정 화면에 연동 완료). 코어가 비밀 값을 봉인합니다. 생략된 키는 유지되고 `''`는 해당 키를 제거하며, 전송기 id를 바꾸면 자격 증명을 재사용하지 않습니다. `availableTransports: { id, label, fields }`는 선택지를 나열하고, 필드는 `{ key, label, type: text | number | boolean | secret, required }`입니다. 선택한 플러그인 전송기가 실패하거나 제거되면 발송이 실패하고(평소처럼 재시도) 다른 제공자로 대체되지 않습니다. 플러그인은 `context.mailTransports.register(key, definition)`로 전송기를 등록합니다.
 

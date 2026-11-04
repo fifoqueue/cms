@@ -13,7 +13,11 @@ import type {
 } from '@cms/sdk';
 import type { MenuService } from '#api/domain/appearance/menu-service';
 import type { RedirectWriter } from '#api/domain/permalinks/permalink-repository';
-import { classicHtml } from '#api/domain/tools/classic-content';
+import {
+  classicHtml,
+  customShortcodes,
+} from '#api/domain/tools/classic-content';
+import type { ShortcodeRegistry } from '#api/domain/tools/shortcode-registry';
 import { importMedia, rewriteMedia } from '#api/domain/tools/import-media';
 import type { ImportMediaDeps } from '#api/domain/tools/import-media';
 import type { AdminMedia } from '@cms/sdk';
@@ -169,6 +173,7 @@ export class ImportService {
   constructor(
     private readonly deps: {
       parser: WxrParser;
+      importShortcodes?: ShortcodeRegistry;
       attachments?: ImportMediaDeps;
       hooks?: HookDispatcher;
       html: HtmlParser;
@@ -201,6 +206,12 @@ export class ImportService {
       options,
     );
     const document = this.deps.parser.parse(xml);
+
+    if (this.deps.hooks?.has('import.started'))
+      await this.deps.hooks.emit('import.started', {
+        source: 'wxr',
+        items: document.items.length,
+      });
 
     // Filters get password-free items; the file's password is re-applied afterwards.
     if (this.deps.hooks)
@@ -346,7 +357,10 @@ export class ImportService {
                 document: rewriteMedia(
                   this.deps.html.parse(
                     classicHtml(
-                      fromWordPressHtml(item.html, patterns),
+                      await customShortcodes(
+                        fromWordPressHtml(item.html, patterns),
+                        this.deps.importShortcodes,
+                      ),
                       item.id,
                       library,
                     ),
@@ -404,7 +418,14 @@ export class ImportService {
 
       try {
         document = this.deps.html.parse(
-          classicHtml(fromWordPressHtml(item.html, patterns), item.id, library),
+          classicHtml(
+            await customShortcodes(
+              fromWordPressHtml(item.html, patterns),
+              this.deps.importShortcodes,
+            ),
+            item.id,
+            library,
+          ),
         );
       } catch (error) {
         // A body the schema cannot hold skips that entry only (nothing is written for it).
@@ -450,6 +471,14 @@ export class ImportService {
 
       created.set(item.id, entry.id);
       result.content += 1;
+
+      if (this.deps.hooks?.has('import.itemImported'))
+        await this.deps.hooks.emit('import.itemImported', {
+          sourceId: item.id,
+          contentId: entry.id,
+          type: item.type,
+        });
+
       result.comments += await this.comments(entry.id, item.comments, members);
       const previous = oldPath(item.link, origin);
 

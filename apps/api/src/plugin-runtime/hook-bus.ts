@@ -40,6 +40,18 @@ user.signedOut user.created user.updated user.roleChanged user.deleted role.crea
 );
 
 for (const name of [
+  'email.from',
+  'email.system',
+  'http.request',
+  'http.requestAllowed',
+  'http.responded',
+  'import.started',
+  'export.item',
+  'job.completed',
+  'task.completed',
+  'task.failed',
+  'task.interval',
+  'import.itemImported',
   'media.allowedTypes',
   'media.storageKey',
   'media.url',

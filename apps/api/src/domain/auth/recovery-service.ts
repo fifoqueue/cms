@@ -165,6 +165,13 @@ export class RecoveryService {
       to: user.email,
       sensitive: true,
       subjects: [user.id],
+      system: {
+        kind: 'recovery',
+        context: {
+          user: { id: user.id, name: user.name, email: user.email },
+          site: { title: site.title, locale: site.locale, url: '' },
+        },
+      },
       ...templates(site.locale).recovery(site.title, remaining, used),
     });
   }

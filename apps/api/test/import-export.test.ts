@@ -6,6 +6,7 @@ import { PatternService } from '#api/domain/content/pattern-service';
 import { TaxonomyService } from '#api/domain/taxonomy/taxonomy-service';
 import { ExportService } from '#api/domain/tools/export-service';
 import { ImportService } from '#api/domain/tools/import-service';
+import { ShortcodeRegistry } from '#api/domain/tools/shortcode-registry';
 import type { ImportMediaDeps } from '#api/domain/tools/import-media';
 import { UserService } from '#api/domain/users/user-service';
 import { RoleService } from '#api/domain/users/role-service';
@@ -35,6 +36,7 @@ import { recordingLogger } from '#test/support/memory';
 const site = async (
   accounts?: Pick<UserService, 'create'>,
   attachments?: ImportMediaDeps,
+  importShortcodes?: ShortcodeRegistry,
 ) => {
   const hooks = new HookBus({
     timeoutMs: 50,
@@ -88,6 +90,7 @@ const site = async (
     patterns,
     clock,
     importer: new ImportService({
+      importShortcodes,
       attachments,
       hooks,
       parser: fastXmlWxrParser,
@@ -124,6 +127,125 @@ const site = async (
     }),
   };
 };
+
+test('import lifecycle reports successful content identities without secrets', async () => {
+  const target = await site();
+  const events: unknown[] = [];
+  const hooks = target.hooks.registrar('functions:site', { trusted: true });
+
+  hooks.on('import.started', (value) => {
+    events.push(value);
+  });
+  hooks.on('import.itemImported', (value) => {
+    events.push(value);
+  });
+  hooks.on('import.completed', () => {
+    events.push('completed');
+  });
+
+  const result = await target.importer.importWxr(
+    `<rss xmlns:wp="http://wordpress.org/export/1.2/"><channel>
+<wp:wxr_version>1.2</wp:wxr_version>
+<item><title>Imported</title><wp:post_id>42</wp:post_id><wp:status>draft</wp:status><wp:post_type>post</wp:post_type><wp:post_password>secret</wp:post_password></item>
+</channel></rss>`,
+    ADMIN,
+  );
+
+  expect(result.content).toBe(1);
+  expect(events).toEqual([
+    { source: 'wxr', items: 1 },
+    { sourceId: '42', contentId: expect.any(String), type: 'post' },
+    'completed',
+  ]);
+});
+
+test('import shortcode converters sanitize blocks and fall back after failure or release', async () => {
+  const registry = new ShortcodeRegistry(10);
+  const target = await site(undefined, undefined, registry);
+  const remove = registry.register('custom', {
+    convert: (attrs, inner) =>
+      `<p>${attrs.label} ${inner}</p><script>alert(1)</script>`,
+  });
+  const xml = (
+    id: number,
+  ) => `<rss xmlns:wp="http://wordpress.org/export/1.2/" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel>
+<wp:wxr_version>1.2</wp:wxr_version>
+<item><title>Custom ${id}</title><wp:post_id>${id}</wp:post_id><wp:status>draft</wp:status><wp:post_type>post</wp:post_type><content:encoded><![CDATA[[custom label="Hello"]world[/custom]]]></content:encoded></item>
+</channel></rss>`;
+
+  expect((await target.importer.importWxr(xml(1), ADMIN)).content).toBe(1);
+  const first = fastXmlWxrParser.parse(await target.exporter.exportWxr(ADMIN))
+    .items[0]!;
+
+  expect(first.html).toContain('Hello world');
+  expect(first.html).not.toContain('<script');
+  remove();
+  registry.register('custom', { convert: () => new Promise<string>(() => {}) });
+  expect((await target.importer.importWxr(xml(2), ADMIN)).content).toBe(1);
+  const items = fastXmlWxrParser.parse(
+    await target.exporter.exportWxr(ADMIN),
+  ).items;
+
+  expect(items.find((item) => item.title === 'Custom 2')?.html).toContain(
+    '[custom',
+  );
+  let finish!: (value: string) => void;
+  let started!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const release = registry.register('pending', {
+    convert: () =>
+      new Promise<string>((resolve) => {
+        finish = resolve;
+        started();
+      }),
+  });
+  const pending = registry.convert('pending', {}, '');
+
+  await ready;
+  release();
+  finish('<p>late</p>');
+  expect(await pending).toBeNull();
+});
+
+test('export filters edit or skip password-free core items and reject malformed results', async () => {
+  const target = await site();
+
+  await target.importer.importWxr(
+    `<rss xmlns:wp="http://wordpress.org/export/1.2/"><channel>
+<wp:wxr_version>1.2</wp:wxr_version>
+<item><title>Original</title><wp:post_id>1</wp:post_id><wp:status>draft</wp:status><wp:post_type>post</wp:post_type><wp:post_password>secret</wp:post_password></item>
+</channel></rss>`,
+    ADMIN,
+  );
+  const hooks = target.hooks.registrar('functions:site', { trusted: true });
+  const remove = hooks.filter('export.item', (item) => {
+    expect(item).not.toHaveProperty('password');
+
+    return item ? { ...item, title: 'Changed' } : null;
+  });
+
+  expect(
+    fastXmlWxrParser.parse(await target.exporter.exportWxr(ADMIN)).items[0]
+      ?.title,
+  ).toBe('Changed');
+  remove();
+  const invalid = hooks.filter(
+    'export.item',
+    (item) => ({ ...item, title: 123 }) as never,
+  );
+
+  expect(
+    fastXmlWxrParser.parse(await target.exporter.exportWxr(ADMIN)).items[0]
+      ?.title,
+  ).toBe('Original');
+  invalid();
+  hooks.filter('export.item', () => null);
+  expect(
+    fastXmlWxrParser.parse(await target.exporter.exportWxr(ADMIN)).items,
+  ).toEqual([]);
+});
 
 test('import cannot assign an author role stronger than the importing manager', async () => {
   const target = await site();
