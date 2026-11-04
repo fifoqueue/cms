@@ -1,4 +1,9 @@
 // Plugin authoring API. A plugin may depend on this module and on `@cms/sdk` only.
+import type { I18nFilterHooks } from '#sdk/hooks/i18n';
+import type { TranslationRegistrar } from '#sdk/hooks/i18n';
+
+export type { I18nFilterHooks, TranslationScope } from '#sdk/hooks/i18n';
+
 import type { PermalinkTokenRegistrar } from '#sdk/permalink-contracts';
 import type { CapabilityRegistrar } from '#sdk/capability-contracts';
 import type {
@@ -297,6 +302,7 @@ export type ActionHookMap = CoreActionHooks &
   MediaActionHooks &
   CommentActionHooks;
 export type FilterHookMap = CoreFilterHooks &
+  I18nFilterHooks &
   SettingsFilterHooks &
   PlatformFilterHooks &
   SearchFilterHooks &
@@ -688,6 +694,7 @@ export interface PluginLogger {
  * started work and arbitrary JavaScript cannot be cancelled.
  */
 export interface PluginContext {
+  readonly translations: TranslationRegistrar;
   readonly shortcodes: ShortcodeRegistrar;
   readonly importShortcodes: ImportShortcodeRegistrar;
   readonly privacyExporters: PrivacyExporterRegistrar;

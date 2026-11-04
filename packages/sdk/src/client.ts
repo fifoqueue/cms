@@ -1,4 +1,5 @@
 import { archivePathsStateSchema } from '#sdk/archive-paths';
+import { i18nClient } from '#sdk/clients/i18n';
 import { functionsStatusSchema, functionsSourceSchema } from '#sdk/functions';
 import type { ArchiveBases, ArchivePathsState } from '#sdk/archive-paths';
 import { taxonomyDefinitionSchema } from '#sdk/taxonomy';
@@ -185,6 +186,7 @@ export const createContentClient = (options: ClientOptions, token?: string) => {
 
   return {
     ...captchaClient(request),
+    ...i18nClient(request, 'site'),
     ...publicPrivacyClient(request),
     ...publicTypesClient(request),
     ...publicAppearanceClient(request),
@@ -451,6 +453,7 @@ export const createAdminClient = (
     `/api/v1/admin/themes/${encodeURIComponent(id)}`;
 
   return {
+    ...i18nClient(request, 'admin'),
     functions: {
       read: () =>
         request('GET', '/api/v1/admin/functions', {

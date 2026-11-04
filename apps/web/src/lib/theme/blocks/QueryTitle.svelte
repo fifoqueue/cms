@@ -4,7 +4,7 @@
   import { errorCopy } from '#lib/error-copy.js';
   import { termLabel } from '#lib/seo/head.js';
   import { useI18n } from '#lib/i18n/context.js';
-  import { formatMonth } from '#lib/theme/format.js';
+  import { formatMonth, useDateLocale } from '#lib/theme/format.js';
   import { useScope } from '#lib/theme/scope.js';
 
   /** The heading of an archive, search, posts page or error page. */
@@ -12,6 +12,7 @@
 
   const scope = useScope();
   const i18n = useI18n();
+  const dateLocale = useDateLocale();
   const m = $derived(i18n.m);
   const page = $derived(scope().page);
   const a = $derived(block.attrs);
@@ -52,11 +53,7 @@
           title: page.date.day
             ? `${page.date.year}-${String(page.date.month).padStart(2, '0')}-${String(page.date.day).padStart(2, '0')}`
             : page.date.month
-              ? formatMonth(
-                  page.date.year,
-                  page.date.month,
-                  scope().site.locale,
-                )
+              ? formatMonth(page.date.year, page.date.month, dateLocale())
               : String(page.date.year),
           count: m.themePostCount(page.posts.total),
         };

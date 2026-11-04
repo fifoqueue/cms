@@ -40,6 +40,8 @@ user.signedOut user.created user.updated user.roleChanged user.deleted role.crea
 );
 
 for (const name of [
+  'i18n.messages',
+  'i18n.locale',
   'theme.public',
   'widgets.public',
   'theme.setup',
@@ -168,6 +170,12 @@ export class HookBus implements HookDispatcher {
   private readonly actions = new Map<string, Registration[]>();
   private readonly filters = new Map<string, Registration[]>();
   private sequence = 0;
+  private revision = 0;
+
+  get version() {
+    return this.revision;
+  }
+
   private readonly counts = new Map<string, number>();
   private readonly definitions = new Map<string, Definition>();
   private readonly dispatchContext = new AsyncLocalStorage<DispatchFrame>();
@@ -208,6 +216,7 @@ export class HookBus implements HookDispatcher {
     entries: Registration[],
   ): void {
     this.options.publicCache?.invalidate();
+    this.revision += 1;
     if (entries.length) table.set(name, entries);
     else table.delete(name);
     if (

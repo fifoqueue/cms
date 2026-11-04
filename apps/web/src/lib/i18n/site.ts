@@ -2,6 +2,9 @@ import type { Messages } from '#lib/i18n/messages.js';
 import type { siteFunctions } from '#lib/i18n/site-functions/en.js';
 import { provideCatalog } from '#lib/i18n/context.js';
 import { languageOf } from '#lib/i18n/locale.js';
+import { applyOverrides } from '#lib/i18n/overrides.js';
+import type { Overrides } from '#lib/i18n/overrides.js';
+import { SITE_PARAMS } from '#lib/i18n/site-params.js';
 import type { ApiErrorKey, WebErrorKey } from '#lib/i18n/api-errors.js';
 
 /** Includes the shared form labels used by public sign-in and comment forms. */
@@ -203,9 +206,14 @@ export interface SiteCatalog {
   strings: SiteStrings;
   apiErrors: Partial<Record<ApiErrorKey, string>>;
   webErrors: Partial<Record<WebErrorKey, string>>;
+  /** Registered text for public keys of this locale; applied by `loadSiteMessages`. */
+  overrides: Overrides;
 }
 
-/** Universal load runs before SSR and hydration, awaiting only the selected locale's code. */
+/**
+ * Universal load runs before SSR and hydration, awaiting only the selected locale's code.
+ * Registered text replaces core messages of the same key, on the server and after navigation.
+ */
 export const loadSiteMessages = async (
   catalog: SiteCatalog,
 ): Promise<SiteMessages> => {
@@ -214,7 +222,7 @@ export const loadSiteMessages = async (
       ? await import('#lib/i18n/site-functions/ko.js')
       : await import('#lib/i18n/site-functions/en.js');
 
-  return {
+  const messages: SiteMessages = {
     ...catalog.strings,
     ...siteFunctions,
     apiError: (key) => catalog.apiErrors[key] ?? catalog.strings.errorGeneric,
@@ -223,6 +231,13 @@ export const loadSiteMessages = async (
         ? siteFunctions.bulkTooMany(params)
         : (catalog.webErrors[key] ?? catalog.strings.errorGeneric),
   };
+
+  return applyOverrides(
+    messages,
+    catalog.overrides,
+    SITE_PARAMS,
+    catalog.language,
+  );
 };
 
 export const provideSiteI18n = (

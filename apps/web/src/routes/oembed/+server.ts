@@ -1,5 +1,8 @@
 import { contentApi } from '#lib/server/api.js';
 import { messagesFor } from '#lib/i18n/index.js';
+import { siteTranslation } from '#lib/i18n/overrides.server.js';
+import { applyOverrides } from '#lib/i18n/overrides.js';
+import { SITE_PARAMS } from '#lib/i18n/site-params.js';
 import { absoluteUrl, notFound, xmlText } from '#lib/server/seo-discovery.js';
 import type { RequestHandler } from './$types';
 
@@ -36,12 +39,14 @@ export const GET: RequestHandler = async ({ fetch, url }) => {
   const home = absoluteUrl(settings.siteUrl, '/');
   const summary = content.seo.description || content.excerpt;
   const cardWidth = width(url.searchParams.get('maxwidth'));
+  const { locale, messages } = await siteTranslation(fetch, site.locale);
+  const m = applyOverrides(messagesFor(locale), messages, SITE_PARAMS, locale);
   // `xmlText` escapes markup and drops characters HTML cannot carry either.
   const html = [
     '<blockquote class="cms-oembed">',
     `<p><a href="${xmlText(link)}">${xmlText(content.title)}</a></p>`,
     summary ? `<p>${xmlText(summary)}</p>` : '',
-    `<p><a href="${xmlText(home)}">${xmlText(messagesFor(site.locale).oembedEmbedded(site.title))}</a></p>`,
+    `<p><a href="${xmlText(home)}">${xmlText(m.oembedEmbedded(site.title))}</a></p>`,
     '</blockquote>',
   ].join('');
 

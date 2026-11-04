@@ -4,22 +4,49 @@ import { ko } from '#lib/i18n/ko.js';
 import type { Messages } from '#lib/i18n/messages.js';
 import { provideCatalog } from '#lib/i18n/context.js';
 import { languageOf } from '#lib/i18n/locale.js';
+import { applyOverrides } from '#lib/i18n/overrides.js';
+import type { Overrides } from '#lib/i18n/overrides.js';
+import { ADMIN_PARAMS } from '#lib/i18n/admin-params.js';
 
 const catalogs: Record<AdminLocale, Messages> = { en, ko };
 
 export const messagesFor = (language: string): Messages =>
   catalogs[languageOf(language)];
 
-/** Called by an admin layout; the catalog follows navigation and locale changes. */
-export const provideI18n = (language: () => string) =>
-  provideCatalog({
+const NO_OVERRIDES: Overrides = {};
+
+/**
+ * Called by an admin layout; the catalog follows navigation and locale changes. Registered text
+ * from `overrides` replaces core messages of the same key; the merged catalog is rebuilt only
+ * when the language or the override map changes.
+ */
+export const provideI18n = (
+  language: () => string,
+  overrides: () => Overrides = () => NO_OVERRIDES,
+) => {
+  let built: { tag: string; map: Overrides; messages: Messages } | null = null;
+
+  return provideCatalog({
     get m() {
-      return messagesFor(language());
+      const tag = language();
+      const map = overrides();
+
+      if (built?.tag !== tag || built.map !== map)
+        built = {
+          tag,
+          map,
+          messages: Object.keys(map).length
+            ? applyOverrides(messagesFor(tag), map, ADMIN_PARAMS, tag)
+            : messagesFor(tag),
+        };
+
+      return built.messages;
     },
     get language() {
       return languageOf(language());
     },
   });
+};
 
 export const roleLabel = (m: Messages, role: Role) => {
   const labels: Record<string, string> = {

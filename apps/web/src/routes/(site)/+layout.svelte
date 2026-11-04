@@ -32,11 +32,11 @@
   let { data, children }: LayoutProps = $props();
 
   const i18n = provideSiteI18n(
-    () => data.site.locale,
+    () => data.displayLocale,
     () => data.messages,
   );
   provideDateStyle(() => ({
-    locale: data.site.locale,
+    locale: data.displayLocale,
     dateFormat: data.reading.dateFormat,
     timeZone: data.reading.timeZone,
   }));
@@ -46,6 +46,7 @@
     buildSiteHead({
       messages: i18n.m,
       site: data.site,
+      locale: data.displayLocale,
       settings: data.seo,
       page: sitePage(page.data),
       // Set by the page's server load when a plugin's `seo.meta` filter changed the head.
@@ -129,7 +130,7 @@
   style="{themeStyle(data.theme)}{data.toolbar
     ? '; --cms-admin-bar: 2rem'
     : ''}"
-  lang={data.site.locale}
+  lang={data.displayLocale}
   data-theme={data.theme.id}
 >
   <!-- Inside the site wrapper so it takes the theme's accent, over the admin toolbar too. -->

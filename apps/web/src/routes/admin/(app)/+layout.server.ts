@@ -3,6 +3,7 @@ import { can } from '@cms/sdk/capabilities';
 import { contentApi } from '#lib/server/api.js';
 import { adminFor } from '#lib/server/session.js';
 import { Errors } from '#lib/server/errors.js';
+import { adminTranslation } from '#lib/i18n/overrides.server.js';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async (event) => {
@@ -42,6 +43,7 @@ export const load: LayoutServerLoad = async (event) => {
         : 0,
     ],
   );
+  const translation = await adminTranslation(event, id, locale || site.locale);
 
   return {
     user: { id, email, name, role, capabilities, slug, bio, locale },
@@ -62,7 +64,9 @@ export const load: LayoutServerLoad = async (event) => {
     counts: { comments, plugins },
     siteTitle: site.title,
     loginPath: site.loginPath,
-    /** The user's chosen language, else the site's. */
-    language: locale || site.locale,
+    /** The user's chosen language, else the site's, unless the API chose another. */
+    language: translation.locale,
+    /** Registered text for `language`; the layout merges it into the catalog. */
+    overrides: translation.messages,
   };
 };

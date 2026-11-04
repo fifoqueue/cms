@@ -1,4 +1,17 @@
 import type { EmailMessage } from '#api/domain/email/ports';
+import { translationManifest } from '@cms/sdk/i18n-manifest';
+import type { I18nService } from '#api/domain/i18n/service';
+import { protectedText } from '#api/domain/email/system-mail';
+
+const translation = Symbol('email.translation');
+
+interface Translation {
+  locale: string;
+  name: keyof Templates;
+  args: unknown[];
+}
+
+type Translatable = EmailMessage & { [translation]?: Translation };
 
 type Template = Omit<EmailMessage, 'to'>;
 
@@ -146,5 +159,103 @@ const ko: Templates = {
 };
 
 /** Mail copy in the site's language (English unless it is Korean). */
-export const templates = (locale: string): Templates =>
+const coreTemplates = (locale: string): Templates =>
   locale.toLowerCase().startsWith('ko') ? ko : en;
+
+export const templates = (locale: string): Templates =>
+  Object.fromEntries(
+    Object.entries(coreTemplates(locale)).map(([name, render]) => [
+      name,
+      (...args: unknown[]) => {
+        const result = Reflect.apply(render, undefined, args) as
+          Template | string;
+
+        return typeof result === 'string'
+          ? result
+          : {
+              ...result,
+              [translation]: { locale, name: name as keyof Templates, args },
+            };
+      },
+    ]),
+  ) as unknown as Templates;
+
+/** Template arguments stay in core code and never enter translation filters. */
+export const translateEmail = async (
+  message: Translatable,
+  i18n: I18nService | undefined,
+): Promise<EmailMessage> => {
+  const descriptor = message[translation];
+
+  if (!descriptor) return message;
+
+  const { [translation]: _, ...original } = message;
+
+  if (!i18n?.active) return original;
+
+  const { name, args } = descriptor;
+  const locale = await i18n.locale(
+    descriptor.locale,
+    'email',
+    message.system?.context.user?.id ?? null,
+  );
+  const messages = await i18n.messages(locale, 'email');
+
+  if (
+    coreTemplates(locale) === coreTemplates(descriptor.locale) &&
+    messages[`${name}.subject`] === undefined &&
+    messages[`${name}.text`] === undefined
+  ) {
+    return original;
+  }
+
+  const previous = Reflect.apply(
+    coreTemplates(descriptor.locale)[name],
+    undefined,
+    args,
+  ) as Template;
+  const core = Reflect.apply(
+    coreTemplates(locale)[name],
+    undefined,
+    args,
+  ) as Template;
+  const fallback = {
+    subject:
+      original.subject === previous.subject ? core.subject : original.subject,
+    text: original.text === previous.text ? core.text : original.text,
+  };
+  const manifest: Readonly<Record<string, readonly string[]>> =
+    translationManifest.email;
+  const parameters = manifest[`${name}.text`] ?? [];
+  const values = Object.fromEntries(
+    parameters.map((parameter, index) => [parameter, args[index]]),
+  );
+  const render = (field: 'subject' | 'text') => {
+    if (original[field] !== previous[field]) return original[field];
+
+    const pattern = messages[`${name}.${field}`];
+
+    return pattern === undefined
+      ? fallback[field]
+      : pattern.replace(/\{([^{}]+)\}/g, (_, key: string) => {
+          const value: unknown = values[key];
+
+          return typeof value === 'object'
+            ? JSON.stringify(value)
+            : String(value ?? '');
+        });
+  };
+  const candidate = { subject: render('subject'), text: render('text') };
+  const links = parameters.flatMap((parameter, index) =>
+    (parameter === 'link' || parameter === 'unsubscribe') &&
+    typeof args[index] === 'string' &&
+    args[index]
+      ? [args[index] as string]
+      : [],
+  );
+  const valid =
+    !/[\r\n]/.test(candidate.subject) &&
+    links.every((link) => protectedText(core, candidate, link));
+
+  return { ...original, ...(valid ? candidate : fallback) };
+};

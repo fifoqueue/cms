@@ -1,7 +1,7 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import { monthGrid, weekdayOrder } from '#lib/theme/calendar.js';
-  import { formatMonth } from '#lib/theme/format.js';
+  import { formatMonth, useDateLocale } from '#lib/theme/format.js';
   import { useScope } from '#lib/theme/scope.js';
 
   /**
@@ -10,7 +10,8 @@
    */
   const scope = useScope();
   const calendar = $derived(scope().calendar);
-  const locale = $derived(scope().site.locale);
+  const dateLocale = useDateLocale();
+  const locale = $derived(dateLocale());
 
   const weekStartsOn = $derived(scope().reading.weekStartsOn ?? 0);
   /** Weekday names in the site language, from the configured first day. */

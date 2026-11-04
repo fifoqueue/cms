@@ -13,6 +13,7 @@ import {
 import { siteLayout } from '#lib/server/site-layout.js';
 import { themeCss } from '#lib/server/theme-css.js';
 import { siteCatalog } from '#lib/i18n/site.server.js';
+import { siteTranslation } from '#lib/i18n/overrides.server.js';
 import type { LayoutServerLoad } from './$types';
 
 /**
@@ -38,16 +39,22 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
   const { primary, footer } = menus;
 
   locals.lang = site.locale;
-  const [pages, blocks, linkRoutes] = await Promise.all([
+  const [pages, blocks, linkRoutes, translation] = await Promise.all([
     // Without a primary menu, navigation falls back to the published pages.
     primary ? null : api.list({ type: 'page', pageSize: 20 }),
     // Errors have no load: both templates share their data, fetched in parallel.
     loadErrorData(api, theme, reading.timeZone),
     themeLinks(layout.theme),
+    siteTranslation(fetch, site.locale),
   ]);
 
+  // Copy and `<html lang>` follow the locale the API chose for the site.
+  locals.lang = translation.locale;
+
   return {
-    siteCatalog: siteCatalog(site.locale),
+    siteCatalog: siteCatalog(translation.locale, translation.messages),
+    /** The language tag pages are shown in: the site locale unless the API chose another. */
+    displayLocale: translation.locale,
     linkRoutes,
     privacy: layout.privacy,
     archives: layout.archives,

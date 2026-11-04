@@ -22,7 +22,10 @@
 
   let { data, children }: LayoutProps = $props();
 
-  const i18n = provideI18n(() => data.language);
+  const i18n = provideI18n(
+    () => data.language,
+    () => data.overrides,
+  );
 
   /** The small-screen menu panel. */
   let expanded = $state(false);

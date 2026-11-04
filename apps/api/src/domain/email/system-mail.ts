@@ -13,6 +13,27 @@ export interface SystemMail {
 const marker = 'https://cms.invalid/action';
 const occurrences = (text: string, value: string) =>
   text.split(value).length - 1;
+
+/** Protected URLs retain their standalone text line and never enter the subject. */
+export const protectedText = (
+  original: { text: string },
+  candidate: { subject: string; text: string },
+  url: string,
+) => {
+  if (candidate.subject.includes(url)) return false;
+  if (occurrences(original.text, url) !== occurrences(candidate.text, url))
+    return false;
+
+  const before = original.text.split('\n');
+  const after = candidate.text.split('\n');
+
+  return before.every(
+    (line, index) =>
+      !line.includes(url) ||
+      (line.trim() === url && after[index]?.trim() === url),
+  );
+};
+
 const tokenCount = (text: string) => {
   const tokens = text.split(/\s+/).filter((part) => part.includes(marker));
 

@@ -1,6 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { CONTENT_SLUG } from '@cms/sdk';
 import { contentApi, mediaFiles } from '#lib/server/api.js';
+import { siteTranslation } from '#lib/i18n/overrides.server.js';
 import { filterDiscovery } from '#lib/server/seo-filter.js';
 import {
   feedTypes,
@@ -86,14 +87,19 @@ export const GET: RequestHandler = async (event) => {
 
   if (canonicalPath && `${url.pathname}${url.search}` !== canonicalPath)
     redirect(308, canonicalPath);
-  const items = await loadRecent(
-    api,
-    settings,
-    feedTypes(types),
-    reading?.feedItems,
-    narrowed ? { [narrowed.kind]: narrowed.slug } : {},
-  );
-  const values = feedValues(site, settings, items, followed?.name);
+  const [items, translation] = await Promise.all([
+    loadRecent(
+      api,
+      settings,
+      feedTypes(types),
+      reading?.feedItems,
+      narrowed ? { [narrowed.kind]: narrowed.slug } : {},
+    ),
+    siteTranslation(fetch, site.locale),
+  ]);
+  // The channel language follows the locale the API chose for the site.
+  const shown = { ...site, locale: translation.locale };
+  const values = feedValues(shown, settings, items, followed?.name);
   const [bodies, [channel, filteredItems]] = await Promise.all([
     reading?.feedContent === 'excerpt'
       ? undefined
@@ -104,7 +110,7 @@ export const GET: RequestHandler = async (event) => {
     ]),
   ]);
 
-  return rssFeed(site, settings, items, {
+  return rssFeed(shown, settings, items, {
     self: feedPath(narrowed ?? undefined),
     bodies,
     filtered: { channel, items: filteredItems },

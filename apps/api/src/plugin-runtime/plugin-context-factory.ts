@@ -1,4 +1,5 @@
 import type { ResolvedManifest, ContentDocument } from '@cms/sdk';
+import { Translations } from '#api/domain/i18n/translations';
 import { PermalinkTokenRegistry } from '#api/domain/permalinks/token-registry';
 import { HealthChecks } from '#api/domain/tools/health-checks';
 import type { PluginHealthChecks } from '#api/domain/tools/health-checks';
@@ -68,6 +69,7 @@ import type {
 } from '@cms/sdk/plugin';
 
 export interface PluginContextServices {
+  translations?: Translations;
   patternRenderer?: { render(document: ContentDocument): string };
   /** Plugin registrations only; core checks are registered by `SiteHealthService`. */
   healthChecks?: PluginHealthChecks;
@@ -131,6 +133,7 @@ const checkKey = (key: string) => {
 /** Builds the capabilities handed to `activate`. Every registration is tracked by the scope. */
 export class PluginContextFactory {
   constructor(private readonly services: PluginContextServices) {
+    services.translations ??= new Translations();
     services.storageDrivers ??= new StorageDrivers(services.logger('core'));
     services.contentTypes ??= new ContentTypeRegistry(BUILTIN_TYPES);
     services.permalinkTokens ??= new PermalinkTokenRegistry();
@@ -201,6 +204,12 @@ export class PluginContextFactory {
     );
 
     return Object.freeze({
+      translations: {
+        register: (locale, catalog) =>
+          scope.track(() =>
+            this.services.translations!.register(locale, catalog),
+          ),
+      },
       permalinkTokens: {
         register: (key, resolver) =>
           scope.track(() =>

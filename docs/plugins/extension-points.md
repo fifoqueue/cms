@@ -111,6 +111,39 @@ manifest의 `requires: { cms?: '<semver 범위>', plugins?: { '<id>': '<범위>'
 
 타입 정의: `packages/sdk/src/plugin.ts`. 새 훅/슬롯은 `ActionHookMap`/`FilterHookMap`/`SLOT_NAMES`에 범용 이름으로 추가하고, 코어에서 발행 지점을 만들고, 이 표와 테스트를 갱신합니다.
 
+## 국제화
+
+`translations.register(locale, catalog)`는 `en`, `ko`별 번역을 등록합니다.
+`catalog`에는 `site`, `admin`, `email` 범위별 키와 문자열을 넣습니다.
+나중 등록이 앞선 등록을 덮어쓰며, 등록 해제나 소유자 종료 시 이전 값이
+복원됩니다. 키와 이름 있는 자리표시자는 `@cms/sdk/i18n-manifest`를 따릅니다.
+문자열은 최대 10,000자이며 마크업과 제어 문자를 허용하지 않습니다.
+
+```ts
+ctx.translations.register('ko', {
+  site: { commentCount: '댓글 {count}개' },
+});
+```
+
+`i18n.messages`는 `{ locale, scope, messages }`를 받아 재정의 문자열을
+변경합니다. `locale`, `scope`는 변경할 수 없으며 등록과 같은 검증을 적용합니다.
+`i18n.locale`는 `{ locale, scope, userId }`에서 지원 언어인 `en`, `ko` 중
+하나를 선택합니다. 범위와 사용자 식별자는 변경할 수 없습니다.
+잘못된 결과는 무시하고 직전 유효 값을 유지합니다.
+
+`GET /api/v1/i18n/messages?locale=en&scope=site`는 재정의만 포함한
+`{ locale, messages }`를 반환합니다. `scope=admin`은 로그인한 사용자가
+조회할 수 있으며 익명 요청은 401입니다. `ETag`를 `If-None-Match`로
+보내면 변경이 없는 응답은 304입니다. 등록 및 훅 변경은 공개 캐시를
+무효화합니다. 번역은 HTML이 아닌 일반 텍스트로 렌더링해야 합니다.
+
+이메일 템플릿은 발송 또는 큐 등록 전에 `i18n.locale`로 수신 언어를 결정하고
+`email` 범위 재정의를 적용합니다. 시스템 메일은 수신자 ID를 전달하며
+템플릿 인수와 비밀 링크는 번역 필터에 전달하지 않습니다. 작업 링크의 삭제,
+복제, 제목 이동 또는 본문 줄 위치 변경은 해당 메일 전체를 선택한 언어의
+코어 템플릿으로 되돌립니다. 이후 `email.system`에는 기존처럼 마스킹한
+링크만 전달합니다.
+
 ## Settings
 
 설정 훅의 타입은 `@cms/sdk/plugin`의 `SettingsSection`과

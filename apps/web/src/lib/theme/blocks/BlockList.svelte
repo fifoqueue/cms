@@ -76,6 +76,6 @@
 
 {#if widget}
   <div class="cms-block-{block.name}">
-    <WidgetArea widgets={[widget]} locale={scope().site.locale} />
+    <WidgetArea widgets={[widget]} />
   </div>
 {/if}

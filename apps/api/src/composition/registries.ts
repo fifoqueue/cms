@@ -1,4 +1,6 @@
 import { taxonomyDefinitionSchema, fieldDefinitionSchema } from '@cms/sdk';
+import { Translations } from '#api/domain/i18n/translations';
+import { I18nService } from '#api/domain/i18n/service';
 import { patternContributionSchema } from '@cms/sdk/plugin';
 import type { PatternContributions } from '@cms/sdk/plugin';
 import { createCaptcha } from '#api/composition/security';
@@ -43,6 +45,7 @@ export const createRegistries = ({
   publicCache: ConstructorParameters<typeof HookBus>[0]['publicCache'];
 }) => {
   const hooks = new HookBus({ timeoutMs, logger, publicCache });
+  const translations = new Translations(() => publicCache?.invalidate());
   const healthChecks = new HealthChecks(timeoutMs);
   const slotRegistry = new SlotRegistry({ timeoutMs, logger });
   const widgetRegistry = new WidgetRegistry({ timeoutMs, logger });
@@ -86,6 +89,8 @@ export const createRegistries = ({
 
   return {
     hooks,
+    translations,
+    i18n: new I18nService(translations, hooks),
     roleExists: (key: string) => roleDefaults.has(key),
     healthChecks,
     slotRegistry,

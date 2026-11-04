@@ -52,6 +52,7 @@ test('content text cannot end the JSON-LD script element', () => {
   const head = buildSiteHead({
     messages: messagesFor(site.locale),
     site,
+    locale: site.locale,
     settings: settings(),
     page: entry({ title, seo: { ...seo, authorName: '</SCRIPT>' } }),
   });

@@ -5,22 +5,26 @@
   import { resolve } from '$app/paths';
   import type { WidgetView } from '#lib/server/public-view.js';
   import { useI18n } from '#lib/i18n/context.js';
-  import { formatMonth, useDateFormat } from '#lib/theme/format.js';
+  import {
+    formatMonth,
+    useDateFormat,
+    useDateLocale,
+  } from '#lib/theme/format.js';
   import MenuList from '#lib/theme/MenuList.svelte';
   import { hrefOptions } from '#lib/route-link.js';
 
   interface Props {
     widgets: WidgetView[];
-    locale: string;
     /** Footer widgets sit side by side; sidebar widgets stack. */
     layout?: 'stack' | 'columns';
   }
 
-  let { widgets, locale, layout = 'stack' }: Props = $props();
+  let { widgets, layout = 'stack' }: Props = $props();
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
   const formatDate = useDateFormat();
+  const dateLocale = useDateLocale();
   const scope = useScope();
   const bases = $derived(
     scope?.().archives?.bases ?? { category: '/category', tag: '/tag' },
@@ -127,7 +131,7 @@
                   month: String(month.month).padStart(2, '0'),
                 })}
                 class="hover:underline"
-                >{formatMonth(month.year, month.month, locale)}
+                >{formatMonth(month.year, month.month, dateLocale())}
                 <span class="text-xs text-muted-foreground"
                   >({month.count})</span
                 ></a

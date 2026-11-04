@@ -1,5 +1,6 @@
 import { headMeta, sitePage } from '#lib/seo/head.js';
-import { messagesFor } from '#lib/i18n/admin.js';
+import { loadSiteMessages } from '#lib/i18n/site.js';
+import type { SiteCatalog } from '#lib/i18n/site.js';
 import type { SeoMeta } from '#lib/seo/head.js';
 import type { SeoSettingsView, SiteView } from '#lib/server/public-view.js';
 import { filterDiscovery, filtersAvailable } from '#lib/server/seo-filter.js';
@@ -9,6 +10,8 @@ import type { FilterEvent, FilterInput } from '#lib/server/seo-filter.js';
 export interface HeadLayout {
   site: SiteView;
   seo: SeoSettingsView;
+  siteCatalog: SiteCatalog;
+  displayLocale: string;
 }
 
 /**
@@ -25,12 +28,13 @@ export const withSeoMeta = async <T extends object>(
 
   // Without a frontend proof there is nothing to filter; the layout builds the head as is.
   if (!page || !filtersAvailable()) return { ...data, seoMeta: null };
-  const { site, seo } = await (typeof layout === 'function'
+  const { site, seo, siteCatalog, displayLocale } = await (typeof layout ===
+  'function'
     ? layout()
     : layout);
   const value = headMeta(
-    { site, settings: seo, page },
-    messagesFor(site.locale),
+    { site, locale: displayLocale, settings: seo, page },
+    await loadSiteMessages(siteCatalog),
   );
   const [filtered] = await filterDiscovery(event, [
     { kind: 'seo.meta', value } as FilterInput,

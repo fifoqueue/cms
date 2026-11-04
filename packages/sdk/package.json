@@ -21,6 +21,7 @@
     "./archive-links": "./src/archive-links.ts",
     "./capabilities": "./src/capabilities.ts",
     "./locales": "./src/locales.ts",
+    "./i18n-manifest": "./src/i18n-manifest.ts",
     "./media-paths": "./src/media-paths.ts",
     "./media-headers": "./src/media-headers.ts",
     "./seo-fields": "./src/seo-fields.ts"

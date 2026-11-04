@@ -13,13 +13,14 @@ type Input = Pick<
 > &
   Pick<
     ConstructorParameters<typeof EmailService>[0],
-    'hooks' | 'settings' | 'secrets' | 'sealedJobs' | 'logger'
+    'hooks' | 'settings' | 'secrets' | 'sealedJobs' | 'logger' | 'i18n'
   > & {
     search: Pick<ReturnType<typeof createSecurity>['search'], 'getAdmin'>;
     jobs: Pick<JobRunner, 'handle'>;
   };
 
 export const createEmail = async ({
+  i18n,
   egress,
   access,
   egressFetch,
@@ -43,6 +44,7 @@ export const createEmail = async ({
       outbound.resolveHost(host, port, await access(service)),
   });
   const email = new EmailService({
+    i18n,
     transports: delivery.mailer,
     hooks,
     settings,

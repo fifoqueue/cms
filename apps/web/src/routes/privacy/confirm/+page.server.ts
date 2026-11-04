@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import type { Cookies } from '@sveltejs/kit';
 import { privacyProofsSchema } from '@cms/sdk';
 import { contentApi } from '#lib/server/api.js';
+import { siteTranslation } from '#lib/i18n/overrides.server.js';
 import { allowCaptcha } from '#lib/server/captcha.js';
 import { failFrom, text } from '#lib/server/errors.js';
 import { visitorOf } from '#lib/server/visitor.js';
@@ -67,15 +68,16 @@ export const load: PageServerLoad = async ({
   }
 
   const api = contentApi(fetch);
-  const [site, captcha, privacy] = await Promise.all([
-    api.site(),
+  const [translation, captcha, privacy] = await Promise.all([
+    api.site().then((site) => siteTranslation(fetch, site.locale)),
     api.captcha(),
     api.privacy(),
   ]);
 
   return {
     requestId: requestId(url.searchParams.get('request') ?? ''),
-    language: site.locale,
+    /** The site locale unless the API chose another. */
+    language: translation.locale,
     captcha: allowCaptcha({ locals }, captcha),
     privacyPolicy: privacy.policy,
   };

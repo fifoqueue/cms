@@ -510,6 +510,8 @@ const compact = (node: Record<string, unknown>) =>
 /** What the head is built from. */
 export interface HeadInput {
   site: SiteView;
+  /** The language tag the page is shown in (`og:locale`, `inLanguage`). */
+  locale: string;
   settings: SeoSettingsView;
   page: SitePage | null;
 }
@@ -619,7 +621,7 @@ export const buildSiteHead = ({
 };
 
 const headParts = (
-  { site, settings, page }: HeadInput,
+  { site, locale, settings, page }: HeadInput,
   m: SiteMessages,
 ): HeadParts => {
   const absolute = (path: string) =>
@@ -652,7 +654,7 @@ const headParts = (
   name('msvalidate.01', settings.bingVerification);
   property('og:type', article ? 'article' : 'website');
   property('og:site_name', site.title);
-  property('og:locale', ogLocale(site.locale));
+  property('og:locale', ogLocale(locale));
   property('og:title', facts.socialTitle);
   property('og:description', facts.socialDescription);
   property('og:url', facts.canonical);
@@ -782,7 +784,7 @@ const headParts = (
       url: absolute('/'),
       name: site.title,
       description: site.description,
-      inLanguage: site.locale,
+      inLanguage: locale,
       publisher,
     }),
     identityName
@@ -805,7 +807,7 @@ const headParts = (
           name: facts.name,
           description: facts.description,
           isPartOf: ref(websiteId),
-          inLanguage: site.locale,
+          inLanguage: locale,
           breadcrumb: breadcrumb ? ref(breadcrumbId) : undefined,
           primaryImageOfPage: facts.pageImage
             ? { '@type': 'ImageObject', url: facts.pageImage.url }
@@ -832,7 +834,7 @@ const headParts = (
           mainEntityOfPage: ref(pageId),
           articleSection: article.categories[0]?.name,
           keywords: article.tags.map((tag) => tag.name),
-          inLanguage: site.locale,
+          inLanguage: locale,
         })
       : null,
     breadcrumb,

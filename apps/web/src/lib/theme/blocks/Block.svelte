@@ -133,7 +133,6 @@
     <div class="cms-block-widget-area">
       <WidgetArea
         widgets={scope().widgets[block.attrs.area]}
-        locale={scope().site.locale}
         layout={block.attrs.layout}
       />
     </div>

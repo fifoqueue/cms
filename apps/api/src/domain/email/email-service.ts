@@ -16,7 +16,8 @@ import type {
   Mailer,
 } from '#api/domain/email/ports';
 import type { SealedJobs } from '#api/domain/jobs/sealed-jobs';
-import { templates } from '#api/domain/email/templates';
+import { templates, translateEmail } from '#api/domain/email/templates';
+import type { I18nService } from '#api/domain/i18n/service';
 import { PermanentJobError } from '#api/domain/jobs/job-runner';
 import type { HookDispatcher, SecretBox } from '#api/domain/ports';
 import type { SettingsRepository } from '#api/domain/site/site-service';
@@ -126,6 +127,7 @@ export class EmailService {
       transports?: MailTransportRegistry;
       sealedJobs: SealedJobs;
       hooks?: HookDispatcher;
+      i18n?: I18nService;
       checkDestination?: (settings: Settings) => Promise<void>;
       logger?: Pick<Logger, 'warn'>;
     },
@@ -305,7 +307,7 @@ export class EmailService {
   async queue(message: EmailMessage, expiresAt?: Date): Promise<void> {
     if (!(await this.enabled())) throw invalidInput(Errors.EmailDisabled);
 
-    message = protectSystemMail(message);
+    message = protectSystemMail(await translateEmail(message, this.deps.i18n));
 
     if (this.deps.hooks?.has('email.system') && message.system) {
       const { system, ...core } = message;
@@ -359,7 +361,7 @@ export class EmailService {
   }
 
   private async send(transport: MailTransport, message: EmailMessage) {
-    message = protectSystemMail(message);
+    message = protectSystemMail(await translateEmail(message, this.deps.i18n));
 
     const original = parseInput(outgoingEmailSchema, message);
     const recipient = original.to;

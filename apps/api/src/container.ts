@@ -96,6 +96,7 @@ export const createContainer = async (
   await platform.catchUp();
   content.schedulePermalinks(platform.scheduler);
   const delivery = await createEmail({
+    i18n: registries.i18n,
     egress: security.egress,
     access: security.access,
     egressFetch: security.egressFetch,
@@ -268,6 +269,7 @@ export const createContainer = async (
     leases: repositories.taskLeases,
   });
   const app = await http.assemble({
+    i18n: registries.i18n,
     functionsEditor: functions.functionsEditor,
     ...tools,
     siteHealth,

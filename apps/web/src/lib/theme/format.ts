@@ -58,6 +58,13 @@ const KEY = Symbol('date-style');
 export const provideDateStyle = (style: () => DateStyle) =>
   setContext(KEY, style);
 
+/** The language tag dates and months are shown in; English outside the site layout. */
+export const useDateLocale = () => {
+  const style = getContext<(() => DateStyle) | undefined>(KEY);
+
+  return () => style?.().locale ?? 'en';
+};
+
 /** Formats dates in the site's style; English long dates in UTC outside the site layout. */
 export const useDateFormat = () => {
   const style = getContext<(() => DateStyle) | undefined>(KEY);
