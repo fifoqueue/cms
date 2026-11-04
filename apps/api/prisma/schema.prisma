@@ -87,7 +87,7 @@ model TotpSecret {
 
 /// OpenID Connect identity explicitly linked to a local user. Never matched by email.
 /// Issuer and subject are stored as UTF-8 bytes: binary comparison is exact (no case folding,
-/// no trailing-space padding), unlike the text collations.
+/// no trailing-space padding).
 model UserIdentity {
   /// Immutable; sessions issued through this identity reference it and die with it.
   id        String    @id @db.Char(36)

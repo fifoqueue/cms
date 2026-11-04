@@ -26,7 +26,7 @@ export const COMMENT_STATUSES = [
 ] as const;
 export type CommentStatus = (typeof COMMENT_STATUSES)[number];
 
-/** How new comments are held for review (WordPress "Before a comment appears"). */
+/** How new comments are held for review. */
 export const COMMENT_MODERATION = ['manual', 'known', 'auto'] as const;
 
 /** Stored comment author names are shorter than profile names (191). */
@@ -345,8 +345,7 @@ export const adminCommentSchema = z.object({
   authorEmail: z.string(),
   authorUrl: z.string(),
   /**
-   * The commenter's IP address (WordPress `comment_author_IP`) and browser user agent
-   * (`comment_agent`), as the web server proved them; null when unproven or unknown. Moderators only.
+   * The commenter's IP address and browser user agent, as the web server proved them; null when unproven or unknown. Moderators only.
    */
   authorIp: z.string().nullable().default(null),
   authorUserAgent: z.string().nullable().default(null),
@@ -372,7 +371,7 @@ const commentIdsSchema = z
   .transform((ids) => [...new Set(ids)])
   .pipe(z.array(z.string().min(1).max(36)).min(1).max(100));
 
-/** Without `status`, pending and approved comments are listed (WordPress "All"). */
+/** Without `status`, pending and approved comments are listed. */
 export const commentListQuerySchema = z.object({
   status: z.enum(COMMENT_STATUSES).optional(),
   contentId: z.string().max(36).optional(),

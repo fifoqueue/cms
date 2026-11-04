@@ -57,7 +57,7 @@ export interface PluginPage {
 }
 
 export interface NavContext {
-  /** Content types, each with its own section like wp-admin's Posts and Pages. */
+  /** Content types, each with its own section. */
   types?: readonly { key: string; pluralName: string; builtin: boolean }[];
   /** Custom taxonomies, listed under Posts after Tags. */
   taxonomies?: readonly { key: string; name: string }[];
@@ -65,7 +65,7 @@ export interface NavContext {
   counts?: { comments: number; plugins: number };
 }
 
-/** The settings screens, in wp-admin's order first, then this CMS's own: the tabs and the menu. */
+/** The settings screens in display order: the tabs and the menu. */
 export const settingsTabs = (): NavEntry[] => [
   {
     href: resolve('/admin/(app)/settings'),
@@ -206,7 +206,7 @@ const typeSection = (
   };
 };
 
-/** wp-admin style sections, before checking what the user may open. */
+/** The admin menu's sections, before checking what the user may open. */
 export const adminSections = ({
   types = [],
   taxonomies = [],
@@ -217,7 +217,7 @@ export const adminSections = ({
   const others = types.filter(
     (type) => type.key !== 'post' && type.key !== 'page',
   );
-  // Categories, tags and custom taxonomies sit under Posts, as in wp-admin.
+  // Categories, tags and custom taxonomies sit under Posts.
   const termEntries: NavEntry[] = [
     {
       href: resolve('/admin/(app)/categories'),

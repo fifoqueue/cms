@@ -5,7 +5,7 @@
   import { useI18n } from '#lib/i18n/context.js';
   import { useScope } from '#lib/theme/scope.js';
 
-  /** WordPress post navigation: the older and newer entry of the same type. */
+  /** Post navigation: the older and newer entry of the same type. */
   let { block }: { block: Extract<Block, { name: 'post-navigation' }> } =
     $props();
 

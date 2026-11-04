@@ -11,7 +11,7 @@ import {
 import type { Block } from '#sdk/blocks';
 
 /**
- * Block themes, modelled on WordPress block themes: `theme.json` (settings and styles),
+ * Block themes: `theme.json` (settings and styles),
  * `templates/*.json` and `parts/*.json` (block trees, see `#sdk/blocks`) and an optional
  * `style.css`. A theme is data: blocks are rendered by the core, and the stylesheet is checked
  * so it cannot load anything or reach outside the site (`themeCssSchema`).
@@ -241,7 +241,7 @@ const fontFamiliesSchema = z
   .min(1)
   .max(8);
 
-/** Global styles (WordPress `styles`): which fonts and sizes the site uses. */
+/** Global styles: which fonts and sizes the site uses. */
 export const themeStylesSchema = z.strictObject({
   fontFamily: slug,
   headingFontFamily: slug.or(z.literal('')).default(''),

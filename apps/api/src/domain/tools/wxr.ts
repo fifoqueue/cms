@@ -1,7 +1,7 @@
-// WordPress eXtended RSS (WXR 1.2), the format of WordPress "Tools → Export/Import".
+// WXR 1.2 (eXtended RSS) export files.
 
 export interface WxrAuthor {
-  /** WordPress user id (`wp:author_id`), for comments written by this author. */
+  /** Author id (`wp:author_id`), for comments written by this author. */
   id?: string;
   login: string;
   email: string;
@@ -9,7 +9,7 @@ export interface WxrAuthor {
 }
 
 export interface WxrTerm {
-  /** WordPress term id (`wp:term_id`), for menu items that link to terms. */
+  /** Term id (`wp:term_id`), for menu items that link to terms. */
   id?: string;
   slug: string;
   name: string;
@@ -24,7 +24,7 @@ export interface WxrComment {
   authorName: string;
   authorEmail: string;
   authorUrl: string;
-  /** WordPress user id of a signed-in commenter (`wp:comment_user_id`); `0`/empty for guests. */
+  /** Author id of a signed-in commenter (`wp:comment_user_id`); `0`/empty for guests. */
   userId?: string;
   /**
    * `wp:comment_author_IP` / `wp:comment_agent` as written; empty when unknown. Absent: the tag
@@ -33,7 +33,7 @@ export interface WxrComment {
   authorIp?: string;
   authorUserAgent?: string;
   body: string;
-  /** WordPress `comment_approved`: `1`, `0`, `spam` or `trash`. */
+  /** `wp:comment_approved`: `1`, `0`, `spam` or `trash`. */
   approved: string;
   /** Empty or `comment` for comments; `pingback`/`trackback` otherwise. */
   type: string;
@@ -42,13 +42,13 @@ export interface WxrComment {
 
 export interface WxrItem {
   id: string;
-  /** WordPress post type: `post`, `page`, `attachment`, custom types … */
+  /** `wp:post_type`: `post`, `page`, `attachment`, custom types … */
   type: string;
   title: string;
   slug: string;
   html: string;
   excerpt: string;
-  /** WordPress status: `publish`, `draft`, `pending`, `future`, `private`, `trash` … */
+  /** `wp:status`: `publish`, `draft`, `pending`, `future`, `private`, `trash` … */
   status: string;
   publishedAt: Date | null;
   /** Author login. */
@@ -61,7 +61,7 @@ export interface WxrItem {
   comments: WxrComment[];
   /** The entry's public URL on the old site (`link`). */
   link?: string;
-  /** WordPress id of the parent entry (`wp:post_parent`), `0`/empty for none. */
+  /** Id of the parent entry (`wp:post_parent`), `0`/empty for none. */
   parentId?: string;
   /** `wp:menu_order`. */
   menuOrder?: number;
@@ -104,7 +104,7 @@ const cdata = (value: string) =>
   `<![CDATA[${xmlSafe(value).replace(/\]\]>/g, ']]]]><![CDATA[>')}]]>`;
 
 const pad = (value: number) => String(value).padStart(2, '0');
-/** `YYYY-MM-DD HH:MM:SS` in UTC, as WordPress writes `*_gmt` dates. */
+/** `YYYY-MM-DD HH:MM:SS` in UTC, the format of WXR `*_gmt` dates. */
 const sqlDate = (date: Date | null) =>
   date
     ? `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`
@@ -204,7 +204,7 @@ export const wxrComment = (comment: WxrComment) =>
 export const wxrItemEnd = '</item>\n';
 export const wxrFooter = '</channel>\n</rss>\n';
 
-/** A WXR 1.2 document WordPress (and this CMS) can import. */
+/** A WXR 1.2 document. */
 export const buildWxr = (document: WxrDocument): string => {
   const names = wxrTermNames(document);
 
@@ -219,13 +219,13 @@ export const buildWxr = (document: WxrDocument): string => {
   ].join('');
 };
 
-// Body markers the editor stores, and how WordPress writes the same things.
+// Body markers the editor stores, and their WXR form.
 const MORE = '<div class="cms-more" data-cms-more="true"></div>';
 const NEXT_PAGE = '<div class="cms-nextpage" data-cms-nextpage="true"></div>';
 const PATTERN =
   /<div class="cms-pattern" data-cms-pattern="([A-Za-z0-9-]{1,36})"><\/div>/g;
 
-/** Stored body HTML as WordPress writes it: `<!--more-->`, `<!--nextpage-->`, `wp:block` references. */
+/** Stored body HTML in WXR form: `<!--more-->`, `<!--nextpage-->`, `wp:block` references. */
 export const toWordPressHtml = (html: string) =>
   html
     .replaceAll(MORE, '<!--more-->')
@@ -233,7 +233,7 @@ export const toWordPressHtml = (html: string) =>
     .replace(PATTERN, '<!-- wp:block {"ref":"$1"} /-->');
 
 /**
- * WordPress markers as the editor's elements before the HTML is parsed. Pattern references use
+ * WXR body markers as the editor's elements before the HTML is parsed. Pattern references use
  * the ids the import gave the file's patterns; unknown ones are dropped.
  */
 export const fromWordPressHtml = (

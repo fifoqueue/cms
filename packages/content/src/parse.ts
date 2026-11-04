@@ -15,7 +15,7 @@ import { Errors } from '#content/errors';
 const BLOCK =
   /<(p|div|h[1-6]|ul|ol|blockquote|pre|figure|table|hr|details|video|audio)\b/i;
 
-/** WordPress stores classic posts with blank lines instead of paragraph tags ("autop"). */
+/** HTML without block elements: blank lines separate paragraphs, single newlines are line breaks. */
 const paragraphs = (html: string) =>
   BLOCK.test(html)
     ? html

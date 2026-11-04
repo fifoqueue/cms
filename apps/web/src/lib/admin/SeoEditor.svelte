@@ -68,7 +68,7 @@
 
   const id = (key: string) => `seo-${key}`;
 
-  /** Yoast-style tabs; every field stays in the form, hidden tabs are only not shown. */
+  /** Tabs; every field stays in the form, hidden tabs are only not shown. */
   const TABS = ['search', 'social', 'advanced'] as const;
   let tab = $state<(typeof TABS)[number]>('search');
   const tabLabel = $derived({
@@ -244,7 +244,7 @@
       {/each}
     </div>
 
-    <!-- Search: Google preview, title, description, keyphrase (Yoast's main tab). -->
+    <!-- Search: Google preview, title, description, keyphrase. -->
     <div
       role="tabpanel"
       id={id('panel-search')}
@@ -460,7 +460,7 @@
       {/if}
     </div>
 
-    <!-- Advanced: robots, canonical and structured data (Yoast's "Advanced"). -->
+    <!-- Advanced: robots, canonical and structured data. -->
     <div
       role="tabpanel"
       id={id('panel-advanced')}

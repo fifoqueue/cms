@@ -13,15 +13,15 @@ try {
 
 removeApiSecrets();
 
-// Uploads and WordPress imports need more than the adapter's 512 KB default.
+// Uploads and site imports need more than the adapter's 512 KB default.
 const env = process.env;
 
 env.BODY_SIZE_LIMIT ??= '64M';
 env.PORT = env.WEB_PORT ?? env.PORT ?? '3000';
 env.HOST = env.WEB_HOST ?? env.HOST ?? '127.0.0.1';
-// adapter-node takes every request for https unless a header says otherwise, so plain http
-// form posts failed its cross-site check (403). A reverse proxy sets X-Forwarded-Proto; direct
-// connections get the scheme they actually used.
+// adapter-node takes every request for https unless a header says otherwise, and plain http
+// form posts then fail its cross-site check (403). A reverse proxy sets X-Forwarded-Proto;
+// direct connections get the scheme they actually used.
 env.PROTOCOL_HEADER ??= 'x-forwarded-proto';
 const protocolHeader = env.PROTOCOL_HEADER.toLowerCase();
 

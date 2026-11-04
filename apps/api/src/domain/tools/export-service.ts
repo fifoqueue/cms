@@ -57,7 +57,7 @@ const toItem = (record: ContentRecord, origin: string): WxrItem => ({
   comments: [],
 });
 
-/** A pattern as WordPress stores it: a `wp_block` post, unsynced ones marked in post meta. */
+/** A pattern as a WXR `wp_block` item, unsynced ones marked in post meta. */
 const patternItem = (pattern: {
   id: string;
   title: string;
@@ -100,7 +100,7 @@ const toComment = (comment: CommentRecord, moderator: boolean): WxrComment => ({
   createdAt: comment.createdAt,
 });
 
-/** Streams every non-trashed entry and its comments as WordPress WXR 1.2. */
+/** Streams every non-trashed entry and its comments as WXR 1.2. */
 export class ExportService {
   constructor(
     private readonly deps: {
@@ -110,7 +110,7 @@ export class ExportService {
       comments: Pick<CommentRepository, 'exportPage'>;
       users: Pick<UserDirectory, 'list'>;
       site: () => Promise<{ title: string; siteUrl: string }>;
-      /** Patterns, exported as WordPress `wp_block` items before the entries. */
+      /** Patterns, exported as `wp_block` items before the entries. */
       patterns?: () => Promise<
         {
           id: string;

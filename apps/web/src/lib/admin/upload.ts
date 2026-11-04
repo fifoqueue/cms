@@ -16,8 +16,7 @@ const ownParams = (message: string | undefined, issues: unknown) => {
 
 /**
  * Uploads one file through the admin endpoint; resolves to the stored media or an error message
- * (with the values it leaves out). XHR rather than fetch: only XHR reports upload progress
- * (`onprogress` gets 0–1).
+ * (with the values it leaves out). `onprogress` gets upload progress as 0–1.
  */
 export const uploadFile = (
   file: File,

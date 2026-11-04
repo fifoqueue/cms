@@ -10,7 +10,7 @@ import type {
 import { invalidInput, notFound, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 
-/** How long an entered password keeps an entry unlocked (WordPress: ten days). */
+/** How long an entered password keeps an entry unlocked. */
 const LIFETIME_MS = 10 * 24 * 60 * 60 * 1000;
 
 /** At most this many proofs are examined per request. */

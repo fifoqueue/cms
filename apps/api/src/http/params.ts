@@ -27,8 +27,8 @@ export const revisionParams = {
 };
 
 /**
- * Routes ending in `[...].ts`: the rest of the path in `*`. A record, because Elysia's exact
- * mirror cannot compile an object schema with a `*` key (it warns and falls back on each start).
+ * Routes ending in `[...].ts`: the rest of the path in `*`. Must stay a record: Elysia's exact
+ * mirror cannot compile an object schema with a `*` key.
  */
 export const restParams = { params: t.Record(t.String(), t.String()) };
 

@@ -30,8 +30,8 @@ export class PrismaRateLimitStore implements RateLimitStore {
     const keyHash = hash(key);
 
     return this.db.$transaction(async (tx) => {
-      // ON DUPLICATE KEY takes the row's exclusive lock at once. INSERT IGNORE would take a shared
-      // lock first, and two requests upgrading it for the FOR UPDATE below deadlock each other.
+      // ON DUPLICATE KEY takes the row's exclusive lock at once, so concurrent requests queue on
+      // it and never deadlock upgrading a shared lock for the FOR UPDATE below.
       await tx.$executeRaw`INSERT INTO rate_limit_buckets (key_hash, window_start, hits, expires_at) VALUES (${keyHash}, ${now}, 0, ${now}) ON DUPLICATE KEY UPDATE key_hash = key_hash`;
       const [row] = await tx.$queryRaw<
         { windowStart: Date; hits: number; blockedUntil: Date | null }[]

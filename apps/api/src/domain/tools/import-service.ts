@@ -147,7 +147,7 @@ const oldPath = (link: string | undefined, origin: string | null) => {
 
 const withoutSlash = (path: string) => path.replace(/(.)\/$/, '$1');
 
-/** Menu links WordPress stores as custom URLs; `#` placeholders are not links. */
+/** Custom-URL menu links; `#` placeholders are not links. */
 const menuLink = (url: string | undefined) =>
   url &&
   ((url.startsWith('/') && !url.startsWith('//')) ||
@@ -157,7 +157,7 @@ const menuLink = (url: string | undefined) =>
     : null;
 
 /**
- * Tools → Import: WordPress WXR files, like the WordPress importer. Terms, entries, comments and
+ * Tools → Import: WXR files. Terms, entries, comments and
  * menus are created through the core services (so validation, permalinks and hooks apply).
  * Original slugs are kept, old same-site addresses redirect to the new ones, page parents are
  * kept, and classic-editor shortcodes become content blocks. Authors match users by email or
@@ -244,7 +244,7 @@ export class ImportService {
       actor,
       result,
     );
-    // WordPress user ids of those authors, so their comments stay theirs.
+    // WXR author ids (`wp:author_id`) of those authors, so their comments stay theirs.
     const members = new Map(
       document.authors.flatMap((author) => {
         const id = author.id && authors.get(author.login.trim().toLowerCase());
@@ -556,7 +556,7 @@ export class ImportService {
   }
 
   /**
-   * WordPress navigation menus (`nav_menu_item` entries) as core menus, in menu order and up to
+   * Navigation menus (`nav_menu_item` items) as core menus, in menu order and up to
    * three levels. Items whose target was not imported are left out with their children moved
    * up. The first imported menu takes the primary location when it is free; WXR files do not
    * carry theme locations. A menu whose name already exists is kept as it is, so importing the
@@ -774,7 +774,7 @@ export class ImportService {
         COMMENT_STATUSES[comment.approved as keyof typeof COMMENT_STATUSES];
 
       if (!status || (comment.type && comment.type !== 'comment')) continue;
-      // Comments are plain text here; WordPress allows a little markup.
+      // Comments are stored as plain text: imported markup is stripped.
       const body = comment.body
         .replace(/<[^>]*>/g, '')
         .trim()

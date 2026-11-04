@@ -96,7 +96,7 @@ const raster = (value: string) => {
 };
 
 /**
- * A deliberately small static SVG profile. Unsupported active features are
+ * A small static SVG profile. Unsupported active features are
  * rejected, not repaired. Serialization emits only allowlisted parsed nodes;
  * source bytes, XML declarations and namespace declarations are never copied.
  * No browser DOM, resource loading or external entity resolver is involved.

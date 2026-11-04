@@ -17,7 +17,7 @@ export const alignmentOf = (element: HTMLElement) =>
     element.className,
   )?.[1] ?? 'center';
 
-/** Explicit projection also handles WordPress figures without treating their numeric IDs as local media IDs. */
+/** `mediaId` comes only from `data-media-id`, never from an imported figure's numeric IDs. */
 export const imageAttributes = (element: HTMLElement) => {
   const image = imageOf(element);
   const link = element.querySelector('a');

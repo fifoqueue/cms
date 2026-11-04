@@ -110,7 +110,7 @@ export const actions: Actions = {
           : undefined,
     };
   },
-  /** Deletes every comment in the spam or trash view (WordPress "Empty Spam/Trash"). */
+  /** Deletes every comment in the spam or trash view. */
   empty: async (event) => {
     const form = await event.request.formData();
     const status = text(form, 'status');

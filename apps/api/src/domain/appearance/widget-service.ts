@@ -72,7 +72,7 @@ const ordered = (terms: readonly CountedTermRecord[], flat: boolean) => {
   return result;
 };
 
-/** Sidebar and footer widgets (WordPress "Appearance → Widgets"). */
+/** Sidebar and footer widgets (Appearance → Widgets). */
 export class WidgetService {
   constructor(
     private readonly deps: {
@@ -257,7 +257,7 @@ export class WidgetService {
       }
 
       case 'archives':
-        // Date archives list posts, as in WordPress.
+        // Date archives list posts.
         return {
           ...base,
           kind: 'archives',

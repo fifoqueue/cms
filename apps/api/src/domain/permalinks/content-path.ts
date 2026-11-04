@@ -53,8 +53,8 @@ export const readPermalinkSettings = (stored: unknown): PermalinkSettings => {
 /**
  * The canonical path of `subject` under `settings`. Throws `invalid_input` when the content's
  * values cannot form a usable path (reserved, too long, a `.`/`..` segment, an unencodable title).
- * Keeping `current` unchanged needs a valid structure only, so legacy paths inside a reserved
- * namespace (such as `/api` from before reservations) stay saveable; new claims are checked fully.
+ * Keeping `current` unchanged needs a valid structure only, so existing paths inside a reserved
+ * namespace (such as `/api`) stay saveable; new claims are checked fully.
  */
 export const contentPath = (
   settings: PermalinkSettings,

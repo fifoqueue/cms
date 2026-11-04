@@ -32,7 +32,7 @@
   const m = $derived(i18n.m);
   /**
    * The entry this page shows, when the user may edit it: others' entries need
-   * `content.editOthers`, their own published ones `content.publish` (WordPress).
+   * `content.editOthers`, their own published ones `content.publish`.
    */
   const entry = $derived.by(() => {
     const data = page.data as {
@@ -65,14 +65,14 @@
     'flex h-full items-center gap-1.5 px-2.5 text-white/85 transition hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:outline-none';
 </script>
 
-<!-- The WordPress-style toolbar for signed-in users; theme styles never reach it. -->
+<!-- The toolbar for signed-in users; theme styles never reach it. -->
 <div
   class="cms-admin-bar fixed inset-x-0 top-0 z-50 flex h-8 items-stretch justify-between bg-[#1d2327] font-sans text-[13px] leading-none text-white/85 shadow-sm"
   role="navigation"
   aria-label={m.adminBar}
 >
   <div class="flex min-w-0 items-stretch">
-    <!-- Subscribers have no dashboard; their profile is their admin home (WordPress). -->
+    <!-- Subscribers have no dashboard; their profile is their admin home. -->
     <a
       href={can(user, 'content.create')
         ? resolve('/admin/(app)')

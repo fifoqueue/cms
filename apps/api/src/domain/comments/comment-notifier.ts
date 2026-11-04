@@ -730,8 +730,8 @@ export class CommentNotifier {
   }
 
   /**
-   * The daily check. Web Push has no silent probe, so it invalidates what can be known without
-   * sending: passed `expirationTime`, endpoints outside the allowlist, and registrations not
+   * The daily check. Sends nothing; it invalidates registrations with a passed
+   * `expirationTime`, endpoints outside the allowlist, and registrations not
    * renewed for `PUSH_STALE_DAYS`. Long-invalid rows and finished counters are deleted.
    */
   async validate() {

@@ -51,7 +51,7 @@ export const toolsAdminClient = (request: Request) => {
           { json: input, response: databaseCleanupResultSchema },
         ),
     },
-    /** The whole site as a WordPress export (WXR) document. */
+    /** The whole site as a WXR document. */
     exportWxr: () =>
       request<Response>('GET', '/api/v1/admin/export', { raw: true }),
     importWxr: (xml: string, options: WxrImportOptions = {}) =>

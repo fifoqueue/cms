@@ -1,7 +1,7 @@
 import type { ApiApp } from '#api/http/services';
 import { session } from '#api/http/session';
 
-/** The whole site as a WordPress export file (WXR). */
+/** The whole site as a WXR export file. */
 export const routes = (app: ApiApp) =>
   session(app).get(
     '',

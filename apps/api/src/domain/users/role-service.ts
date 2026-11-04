@@ -151,7 +151,7 @@ export class RoleService {
 
   /**
    * Deletes a custom role after moving its users to `reassignTo`, another existing role. The
-   * settings store has no delete, so the definition is replaced by null, which `list` skips.
+   * definition is replaced by null, which `list` skips.
    */
   async remove(key: string, input: unknown, actor: Actor) {
     authorize(actor, 'users.manage');

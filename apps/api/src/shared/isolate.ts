@@ -5,7 +5,7 @@ export type Isolated<T> = { ok: true; value: T } | { ok: false; error: Error };
 
 /**
  * Runs extension code so that it can neither throw into core nor block it for longer than `timeoutMs`.
- * shortcut: synchronous infinite loops still block the event loop; move plugins to Workers if that matters.
+ * Synchronous infinite loops still block the event loop.
  */
 export const isolate = async <T>(
   task: () => Awaitable<T>,

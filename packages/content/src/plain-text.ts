@@ -52,7 +52,7 @@ export const plainText = (document: ContentDocument): string => {
   return parts.join('').replace(/\s+/g, ' ').trim();
 };
 
-/** The first `words` words of `text` (WordPress-style automatic excerpt), at most 300 characters. */
+/** The first `words` words of `text` (the automatic excerpt), at most 300 characters. */
 export const summarize = (text: string, words = 55): string => {
   const parts = text.split(' ').filter(Boolean);
   const head = parts.slice(0, words).join(' ');
@@ -65,7 +65,7 @@ export const summarize = (text: string, words = 55): string => {
 
 /**
  * The first paragraph, in document order, whose text contains `keyword` ignoring case, at most
- * 300 characters (Rank Math's automatic meta description); empty without a keyword or match.
+ * 300 characters (the automatic meta description); empty without a keyword or match.
  */
 export const keywordParagraph = (
   document: ContentDocument,
@@ -105,7 +105,7 @@ export const keywordParagraph = (
 };
 
 /**
- * The text before a top-level "more" break (WordPress `<!--more-->`), the entry's teaser in
+ * The text before a top-level "more" break, the entry's teaser in
  * lists; null without one. At most 1000 characters.
  */
 export const teaserOf = (document: ContentDocument): string | null => {

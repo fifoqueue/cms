@@ -19,7 +19,7 @@ import type { Logger } from '#api/shared/logger';
 
 type Options = { timeoutMs: number; logger: Logger };
 
-/** Production composition shared with integration tests, not a second test-only wiring. */
+/** Production composition, shared with integration tests. */
 export const createSearchProviders = (
   search: Pick<SearchService, 'find'>,
   options: Options,
@@ -29,7 +29,7 @@ export const createSearchProviders = (
     options,
   );
 
-  // Null selects the direct database path, avoiding a second hydration.
+  // Null selects the direct database path.
   registry.register('core', 'database', () => null, true);
   registry.register('core', 'meilisearch', (query) => search.find(query), true);
   const lookup: Pick<SearchService, 'find'> = {

@@ -1,4 +1,4 @@
--- Custom field values per term (WordPress term meta); existing terms start without values.
+-- Custom field values per term; existing terms start without values.
 -- AlterTable
 ALTER TABLE `taxonomy_terms` ADD COLUMN `fields` LONGTEXT NOT NULL DEFAULT '{}';
 

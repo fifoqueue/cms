@@ -6,7 +6,7 @@ import type { HookDispatcher } from '#api/domain/ports';
 
 const KEY = 'writing';
 
-/** Defaults for new entries (WordPress "Settings → Writing"). */
+/** Defaults for new entries (Settings → Writing). */
 export class WritingService {
   constructor(
     private readonly settings: SettingsRepository,

@@ -96,7 +96,7 @@ export const listPosts = async (
   return listView(posts);
 };
 
-/** Latest entries of `type`; sticky ones lead the first page and are left out of the rest (WordPress). */
+/** Latest entries of `type`; sticky ones lead the first page and are left out of the rest. */
 /**
  * The home list: the requested type, or, without an explicit `?type=`, the first home type
  * with published entries when the default one has none (a site with only articles lists them

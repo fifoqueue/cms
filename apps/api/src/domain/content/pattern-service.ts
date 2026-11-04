@@ -62,7 +62,7 @@ const toAdmin = ({
 });
 
 /**
- * Patterns (WordPress reusable blocks): content saved once and inserted into entries, by
+ * Patterns: content saved once and inserted into entries, by
  * reference when synced. Served bodies get the current published pattern in place of each
  * reference, so editing a synced pattern updates every entry at once.
  */

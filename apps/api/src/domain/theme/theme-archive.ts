@@ -16,7 +16,7 @@ export interface ThemeArchive {
   read(bytes: Uint8Array): ThemeArchiveContents;
 }
 
-/** The optional preview image (WordPress `screenshot.png`). */
+/** The optional preview image (`screenshot.png`). */
 export const isScreenshot = (path: string) =>
   path === 'screenshot.png' || path === 'screenshot.webp';
 

@@ -14,9 +14,9 @@ export interface CommentRecord {
   authorEmail: string;
   /** Empty when none. */
   authorUrl: string;
-  /** Canonical IP address the web server proved (WordPress `comment_author_IP`). Never public. */
+  /** Canonical IP address the web server proved. Never public. */
   authorIp: string | null;
-  /** Browser user agent the web server proved (WordPress `comment_agent`). Never public. */
+  /** Browser user agent the web server proved. Never public. */
   authorUserAgent: string | null;
   /** Plain text. */
   body: string;

@@ -109,7 +109,7 @@ export class StorageDrivers {
     this.core.set(id, driver);
   }
 
-  /** A scoped facade deliberately excludes core registration and lookup. */
+  /** A scoped facade without core registration and lookup. */
   registrar(owner: string) {
     return {
       register: (key: string, driver: MediaStorage) => {

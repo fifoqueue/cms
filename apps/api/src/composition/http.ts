@@ -29,7 +29,7 @@ export const createHttp = ({
   slots: ConstructorParameters<typeof SlotService>[0];
   routes: ConstructorParameters<typeof PluginGateway>[0]['routes'];
 }) => {
-  // Derivation keeps instances in agreement without persisting another secret.
+  // Unconfigured, it is derived from the signing key, so every instance has the same one.
   const frontendSecret =
     config.CMS_FRONTEND_SECRET ??
     config.OIDC_FRONTEND_SECRET ??

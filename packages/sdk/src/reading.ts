@@ -19,7 +19,7 @@ const timeZoneSchema = z
     }
   });
 
-/** What the front page shows and how lists and dates are presented (WordPress "Reading"). */
+/** What the front page shows and how lists and dates are presented. */
 export const readingSettingsSchema = z.object({
   /** `posts`: the latest posts; `page`: a static page, with the posts on `postsPageId`. */
   frontPage: z.enum(['posts', 'page']).default('posts'),
@@ -27,12 +27,12 @@ export const readingSettingsSchema = z.object({
   postsPageId: z.string().max(36).nullable().default(null),
   postsPerPage: z.number().int().min(1).max(100).default(10),
   feedItems: z.number().int().min(1).max(100).default(20),
-  /** What each feed item carries: the full text (WordPress default) or the excerpt only. */
+  /** What each feed item carries: the full text (default) or the excerpt only. */
   feedContent: z.enum(['full', 'excerpt']).default('full'),
   dateFormat: z.enum(DATE_FORMATS).default('long'),
   /** Dates, archives and newly saved permalinks use this zone; stored paths remain until the next save. */
   timeZone: timeZoneSchema.default('UTC'),
-  /** First day of a week in calendars: 0 Sunday … 6 Saturday (WordPress "Week Starts On"). */
+  /** First day of a week in calendars: 0 Sunday … 6 Saturday. */
   weekStartsOn: z.number().int().min(0).max(6).default(1),
   /** Seconds a CDN or proxy may keep public pages for anonymous visitors; 0 turns it off. */
   cacheSeconds: z.number().int().min(0).max(3600).default(0),

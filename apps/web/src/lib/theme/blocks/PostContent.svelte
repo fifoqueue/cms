@@ -86,7 +86,7 @@
       <Footnotes container={prose} html={entry.html} />
       <MediaLightbox container={prose} html={entry.html} />
       {#if entry.pages.total > 1}
-        <!-- Parts of an entry split by page breaks (WordPress "Pages: 1 2 3"). -->
+        <!-- Parts of an entry split by page breaks. -->
         <nav
           aria-label={m.themePages}
           class="flex flex-wrap items-center gap-2 text-sm"

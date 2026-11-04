@@ -417,7 +417,7 @@ const describe = (
 
     case 'content': {
       const { content } = page;
-      // Every part of a split entry is canonical to itself, like WordPress.
+      // Every part of a split entry is canonical to itself.
       const { current, total } = content.pages;
       const partPath = (part: number) =>
         part > 1 ? `${content.path}?page=${part}` : content.path;
@@ -737,7 +737,7 @@ const headParts = (
       title: content.title,
       href: href(markdownPath(content.slug)),
     });
-  // oEmbed discovery, so other sites (WordPress among them) can embed this entry as a card.
+  // oEmbed discovery, so other sites can embed this entry as a card.
   if (content && !content.protected && selfUrl)
     links.push({
       rel: 'alternate',

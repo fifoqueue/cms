@@ -35,8 +35,8 @@ const recordOf = (value: unknown) =>
     : {};
 
 /**
- * Persists theme state as two JSON settings (packages and site-editor changes, so saving a
- * template does not rewrite every package). Whatever is stored is re-validated on read: invalid
+ * Persists theme state as two JSON settings: packages and site-editor changes. Whatever is
+ * stored is re-validated on read: invalid
  * or unknown entries are dropped and an unresolvable active id falls back to the default
  * built-in, so a damaged setting can never break the site or leak through the API.
  */

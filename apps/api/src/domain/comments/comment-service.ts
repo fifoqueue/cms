@@ -69,7 +69,7 @@ const KEY = 'discussion';
 const DAY = 24 * 60 * 60 * 1000;
 const COMMENTER_LIFETIME = 365 * DAY;
 
-/** Spam and trashed comments are deleted after this long (WordPress empties them after 30 days). */
+/** Spam and trashed comments are deleted after this long. */
 export const COMMENT_PURGE_DAYS = 30;
 
 /** What a `comment.beforeSave` filter may return: the draft with a valid body and status. */
@@ -171,7 +171,7 @@ export interface CommentServiceDeps {
   clock: Clock;
 }
 
-/** Comments: visitors' submissions, public threads and moderation (WordPress "Comments"). */
+/** Comments: visitors' submissions, public threads and moderation. */
 export class CommentService {
   private readonly checkers: Pick<CommentCheckers, 'check'>;
   constructor(private readonly deps: CommentServiceDeps) {
@@ -669,7 +669,7 @@ export class CommentService {
     };
 
     await this.deps.repository.insert(record);
-    // Replying approves the comment answered, as in WordPress.
+    // Replying approves the comment answered.
     if (parent.status === 'pending')
       await this.bulk({ ids: [parent.id], action: 'approve' }, actor);
     void this.deps.hooks.emit('comment.created', toPlugin(record));

@@ -23,7 +23,7 @@ export interface OidcChecks {
   codeVerifier: string;
 }
 
-/** The provider-asserted identity. Email or profile claims are deliberately not part of it. */
+/** The provider-asserted identity. Email or profile claims are never part of it. */
 export interface VerifiedIdentity {
   issuer: string;
   subject: string;

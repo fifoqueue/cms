@@ -84,8 +84,7 @@ const literal = (value: string) => value.replace(/[\\%_]/g, '\\$&');
 const THREAD_ITEMS_MAX = 1000;
 
 /**
- * Applies approved-count changes without rescanning a comment history: plain increments on
- * entries the caller already locked.
+ * Applies approved-count changes as plain increments on entries the caller already locked.
  */
 const adjustCounts = async (
   tx: Transaction,
@@ -352,7 +351,7 @@ export class PrismaCommentRepository implements CommentRepository {
       await lockEntries(tx, entries);
       const rows = await lockComments(tx, unique);
 
-      // Comments created after the read above (none in practice: ids are generated) lock late.
+      // Comments created after the read above lock late.
       await lockEntries(
         tx,
         rows

@@ -21,7 +21,7 @@
   import { useI18n } from '#lib/i18n/index.js';
 
   /**
-   * The WordPress-style site editor around the canvas: List View on the left, the canvas in
+   * The site editor around the canvas: List View on the left, the canvas in
    * the middle (`canvas`, given the selection), block settings and the inserter on the right.
    */
   interface Props {

@@ -36,7 +36,7 @@ const counted = (scope: TermCountScope) => ({
   _count: { select: { contents: { where: assigned(scope) } } },
 });
 
-/** LIKE pattern text matching `value` literally (Prisma `contains` does not escape wildcards). */
+/** LIKE pattern text matching `value` literally. */
 const literal = (value: string) => value.replace(/[\\%_]/g, '\\$&');
 
 const matching = (

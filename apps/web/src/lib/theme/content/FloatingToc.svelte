@@ -6,7 +6,7 @@
   import { focusHeading, fragmentTarget } from '#lib/theme/content/toc.js';
 
   /**
-   * A floating button (like tocer's "switch" fixed TOC) that opens the outline of the first
+   * A floating button that opens the outline of the first
    * in-content table of contents inside `container` (the entry's prose). It shows only while
    * that TOC has scrolled out above the sticky-header line (`--cms-toc-offset`, set by
    * `enhanceToc`) and the content's end is still below the middle of the viewport, so it is

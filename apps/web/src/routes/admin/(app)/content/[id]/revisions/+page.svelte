@@ -20,7 +20,7 @@
 
   const date = (value: string) => new Date(value).toLocaleString(i18n.language);
   let pickers = $state<HTMLFormElement>();
-  /** Oldest first, like the WordPress slider. */
+  /** Oldest first. */
   const timeline = $derived([...data.revisions].reverse());
   const position = $derived(
     timeline.findIndex((revision) => revision.id === data.to?.id),

@@ -53,7 +53,7 @@ const str = (value: unknown): string => {
 const list = (value: unknown): Node[] =>
   Array.isArray(value) ? (value as Node[]) : [];
 
-/** WordPress SQL dates (`YYYY-MM-DD HH:MM:SS`), read as UTC; zero dates are none. */
+/** WXR dates (`YYYY-MM-DD HH:MM:SS`), read as UTC; zero dates are none. */
 const date = (value: unknown): Date | null => {
   const match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(
     str(value).trim(),
@@ -86,7 +86,7 @@ const comment = (node: Node): WxrComment => ({
     new Date(0),
 });
 
-/** WordPress stores non-ASCII slugs percent-encoded; malformed escapes stay as written. */
+/** WXR slugs carry non-ASCII characters percent-encoded; malformed escapes stay as written. */
 const decodedSlug = (value: unknown) => {
   const raw = str(value);
 

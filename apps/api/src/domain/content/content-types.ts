@@ -26,7 +26,7 @@ const all = {
   featuredImage: true,
 };
 
-/** The types every site has. Pages have no terms and no comments by default (WordPress). */
+/** The types every site has. Pages have no terms and no comments by default. */
 export const BUILTIN_TYPES: readonly ContentTypeDefinition[] = [
   {
     key: 'post',

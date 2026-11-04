@@ -427,7 +427,7 @@ export const publicContentSummarySchema = publicContentSchema.omit({
 
 export type PublicContentSummary = z.output<typeof publicContentSummarySchema>;
 
-/** The published entries of the same type just before and after one (WordPress post navigation). */
+/** The published entries of the same type just before and after one. */
 export const publicAdjacentSchema = z.strictObject({
   previous: publicContentSummarySchema.nullable(),
   next: publicContentSummarySchema.nullable(),

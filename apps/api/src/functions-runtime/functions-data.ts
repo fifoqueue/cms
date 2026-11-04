@@ -1,7 +1,7 @@
 import type { SettingsRepository } from '#api/domain/site/site-service';
 import type { PluginDataRepository } from '#api/plugin-runtime/ports';
 
-/** Independent keys avoid plugin foreign keys and cross-key lost updates. */
+/** One settings key per value: writes to different keys never overwrite each other. */
 export const functionsData = (
   settings: SettingsRepository,
 ): PluginDataRepository => {

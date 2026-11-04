@@ -134,7 +134,7 @@ export class SsoService {
     const linkUserId = intent === 'link' ? user!.id : null;
     const clientKey = linkUserId ? `user:${linkUserId}` : `client:${client}`;
 
-    // Refused before any provider or database work, so a flood costs nothing downstream.
+    // Refused before any provider or database work.
     if (!this.deps.startLimiter.tryAcquire(clientKey))
       throw rateLimited(Errors.SsoRateLimited);
 

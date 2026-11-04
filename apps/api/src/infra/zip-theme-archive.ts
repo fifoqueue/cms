@@ -12,7 +12,7 @@ const ENTRIES_MAX = 500;
 /** The screenshot may be larger than a text file, but not by much. */
 const SCREENSHOT_MAX_BYTES = 512 * 1024;
 
-/** WordPress-style theme .zip files (fflate). Sizes are checked before anything is inflated. */
+/** Theme .zip files (fflate). Sizes are checked before anything is inflated. */
 export const zipThemeArchive: ThemeArchive = {
   read(bytes) {
     if (bytes.byteLength > THEME_ARCHIVE_MAX_BYTES)

@@ -173,8 +173,7 @@ export type {
 
 /**
  * A stored comment as plugins see it, including the private email address, IP address and
- * user agent (as WordPress passes `comment_author_IP` and `comment_agent`). Never put the
- * private fields in public output.
+ * user agent. Never put the private fields in public output.
  */
 export interface PluginComment {
   id: string;
@@ -248,7 +247,7 @@ interface CoreFilterHooks {
   /** A visitor's comment right before it is stored. */
   'comment.beforeSave': CommentDraft;
   /**
-   * Whether an authenticated user may get a session (WordPress `wp_authenticate_user`). Filters
+   * Whether an authenticated user may get a session. Filters
    * may return either decision; core supplies only the initial value. User and method stay validated.
    */
   'user.signInAllowed': { user: UserProfile; method: string; allowed: boolean };
@@ -404,8 +403,7 @@ export interface BlockRenderContext {
 }
 
 /**
- * A block authors insert in the editor (WordPress `register_block_type` with a render
- * callback). `attributes` are declared like settings, plus `select`; the editor builds the form.
+ * A block authors insert in the editor, rendered by a callback. `attributes` are declared like settings, plus `select`; the editor builds the form.
  */
 export interface BlockDefinition {
   title: string;
@@ -560,7 +558,7 @@ export interface SignInContinuation {
 }
 
 /**
- * A primary way to sign in (WordPress `authenticate`). Core's password, passkey and single
+ * A primary way to sign in. Core's password, passkey and single
  * sign-on use this same contract. A step ends with `user` once the visitor is proven to be that
  * user; core then applies `user.signInAllowed`, the second factor and issues the session.
  * Methods never create users.

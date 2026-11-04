@@ -9,7 +9,7 @@ export const DocumentNode = Node.create({
   content: '(block | break)+',
 });
 
-/** WordPress `<!--more-->`: what comes before it is the entry's teaser in lists. */
+/** A "more" break: what comes before it is the entry's teaser in lists. */
 export const More = Node.create({
   name: 'more',
   group: 'break',
@@ -19,7 +19,7 @@ export const More = Node.create({
   renderHTML: () => ['div', { class: 'cms-more', 'data-cms-more': 'true' }],
 });
 
-/** WordPress `<!--nextpage-->`: the single entry is shown in pages split here. */
+/** A page break: the single entry is shown in pages split here. */
 export const PageBreak = Node.create({
   name: 'pageBreak',
   group: 'break',
@@ -33,7 +33,7 @@ export const PageBreak = Node.create({
 });
 
 /**
- * A synced pattern (WordPress reusable block) by id. Stored and rendered as an empty marked
+ * A synced pattern by id. Stored and rendered as an empty marked
  * element; the API puts the pattern's current published body there when it serves the content.
  */
 export const PatternRef = Node.create({

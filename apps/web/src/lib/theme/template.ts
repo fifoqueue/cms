@@ -44,7 +44,7 @@ export const isFrontPage = (page: ThemePage) =>
 const suffix = (value: string) => [value];
 
 /**
- * WordPress template hierarchy, most specific first. `front` marks the site's front page
+ * Template names to try for `page`, most specific first. `front` marks the site's front page
  * (`/`), which prefers `front-page` whatever it shows.
  */
 export const templateCandidates = (

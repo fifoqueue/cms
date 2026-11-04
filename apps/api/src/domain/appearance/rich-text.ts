@@ -14,7 +14,7 @@ const run = (text: string, marks: Partial<RichRun> = {}): RichRun => ({
 });
 
 /**
- * Widget text with a small, safe formatting subset (WordPress Text widget without HTML):
+ * Widget text with a small, safe formatting subset:
  * paragraphs split at blank lines, `**bold**`, `*italic*` and links whose address passes
  * `LINK`. Nothing becomes markup: the result is plain runs the theme renders as text.
  */

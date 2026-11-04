@@ -130,7 +130,7 @@
   cursor: pointer;
   user-select: none;
 }
-/* A Bigfoot-style pill, like the public refs (footnotes.css). */
+/* A pill, like the public refs (footnotes.css). */
 .tiptap .cms-editor-footnote > sup {
   position: relative;
   display: inline-block;

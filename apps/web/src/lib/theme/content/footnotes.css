@@ -5,7 +5,7 @@
   vertical-align: 0.3em;
   margin-inline: 0.125em;
 }
-/* A Bigfoot-style pill that opens the note in place. `sup >` outranks themes'
+/* A pill that opens the note in place. `sup >` outranks themes'
    `.cms-prose a:not([class])` link underlines. */
 .cms-prose sup > a[data-footnote-ref] {
   position: relative;

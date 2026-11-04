@@ -4,7 +4,7 @@ import { Errors } from '#sdk/errors';
 import { contentTypeKeySchema } from '#sdk/content-types';
 
 /**
- * Configurable, WordPress-style permalinks: one path template per content type. A template is a
+ * Configurable permalinks: one path template per content type. A template is a
  * leading `/` followed by unreserved ASCII literals and `%token%` placeholders, e.g.
  * `/p/%year%%month%%date%` or `/post/%title%`. Expanded paths are canonical: every token value is
  * percent-encoded exactly once (`encodeURIComponent`), literals never need encoding, so stored

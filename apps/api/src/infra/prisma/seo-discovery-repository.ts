@@ -157,8 +157,8 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
     `;
 
     return this.db.$transaction(async (tx) => {
-      // SQL cannot percent-encode slugs, so explicit canonicals (rare) are matched here with the
-      // same encoder as the sitemap path, and the matches filter in SQL before counting/paging.
+      // Explicit canonicals are matched here with the same encoder as the sitemap path, and the
+      // matches filter in SQL before counting/paging.
       const explicit = await tx.taxonomyTerm.findMany({
         where: { taxonomy: { in: keys }, seoCanonicalUrl: { not: '' } },
         select: { id: true, slug: true, taxonomy: true, seoCanonicalUrl: true },

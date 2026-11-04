@@ -10,7 +10,7 @@
   import { queryKey, selectionOf } from '#lib/theme/queries.js';
   import { useScope } from '#lib/theme/scope.js';
 
-  /** The page's main query (WordPress "inherit query"): the posts of this archive, search or home. */
+  /** The page's main query: the posts of this archive, search or home. */
   let { block }: { block: Extract<Block, { name: 'query' }> } = $props();
 
   const scope = useScope();

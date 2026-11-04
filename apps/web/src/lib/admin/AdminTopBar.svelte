@@ -50,7 +50,7 @@
     ].filter((item) => can(user, item.capability as Capability)),
   );
 
-  // Tabs read "Page ‹ Site — CMS" like wp-admin; pages keep setting only their own name.
+  // Tabs read "Page ‹ Site — CMS"; pages set only their own name.
   onMount(() => {
     const suffix = ` ‹ ${siteTitle} — CMS`;
     const apply = () => {

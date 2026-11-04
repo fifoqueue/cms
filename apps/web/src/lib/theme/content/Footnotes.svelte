@@ -6,7 +6,7 @@
   /**
    * Footnotes rendered by `renderWithToc` inside `container` (the entry's prose): localized
    * labels, a subtle heading for each page's list, and a popover with the note's text next to
-   * its reference on hover (mouse), keyboard focus, click or tap. Like Bigfoot, a click or tap
+   * its reference on hover (mouse), keyboard focus, click or tap. A click or tap
    * pins the popover instead of jumping and a second one closes it; the popover's link, or Enter
    * on a focused ref, jumps to the list. Without this, refs and back-links are plain fragment
    * links. `html` re-runs this when the entry changes.

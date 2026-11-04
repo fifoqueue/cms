@@ -118,7 +118,7 @@ export class FsMediaStorage implements MediaStorage {
     await Promise.all(keys.map((key) => rm(this.path(key), { force: true })));
   }
 
-  /** Resolves inside the root only; keys are generated, but stay defensive. */
+  /** Resolves inside the root only. */
   private path(key: string) {
     const path = resolve(join(this.root, key));
 

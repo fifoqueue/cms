@@ -7,7 +7,6 @@ export type ImageLookup = (
 
 const IMAGE = /<img\b([^>]*?)\s*\/?>/g;
 const MEDIA_ID = /\sdata-media-id="([^"]+)"/;
-/** Body images rarely exceed the theme's content width (40–46rem in the built-in themes). */
 const SIZES = '(max-width: 48rem) 100vw, 48rem';
 
 const escapeAttribute = (value: string) =>
@@ -15,8 +14,8 @@ const escapeAttribute = (value: string) =>
 
 /**
  * Makes body images responsive when content is served: `srcset` from the library's WebP sizes,
- * intrinsic dimensions against layout shift, and lazy loading below the first image (often the
- * largest paint). Images that already declare `srcset` or `loading` are left as they are.
+ * intrinsic dimensions, and lazy loading below the first image. Images that already declare
+ * `srcset` or `loading` are left as they are.
  */
 export class ResponsiveImages {
   constructor(private readonly images: ImageLookup) {}

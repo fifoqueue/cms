@@ -1,5 +1,5 @@
 /**
- * Theme blocks, modelled on WordPress block themes: templates and template parts are trees of
+ * Theme blocks: templates and template parts are trees of
  * blocks the core knows how to render (site title, navigation, query loop, post content, …).
  * A block is data — a name, attributes and children — never markup or code. Every attribute is
  * declared here with its type and default, so validation, the public renderer and the site
@@ -46,7 +46,7 @@ export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const LINK =
   /^(?:https?:\/\/[^\s"<>]+|\/[^\s"<>]*|mailto:[^\s"<>]+|#[\w-]*)$/;
 
-/** Services a `social-link` block names (WordPress social icons). */
+/** Services a `social-link` block names. */
 export const SOCIAL_SERVICES = [
   'link',
   'email',
@@ -178,7 +178,7 @@ export const BLOCKS = {
   'post-excerpt': {
     attrs: {
       moreLink: flag(false),
-      /** Words shown before an ellipsis (WordPress `excerptLength`); 0 shows the whole excerpt. */
+      /** Words shown before an ellipsis; 0 shows the whole excerpt. */
       excerptLength: { type: 'number', min: 0, max: 100, default: 0 },
     },
   },
@@ -298,7 +298,7 @@ export const BLOCKS = {
       rounded: flag(false),
     },
   },
-  /** An image with a colour overlay and blocks on top (WordPress Cover). */
+  /** An image with a colour overlay and blocks on top. */
   cover: {
     attrs: {
       src: mediaImage,
@@ -310,7 +310,7 @@ export const BLOCKS = {
     },
     children: 'any',
   },
-  /** An image beside blocks (WordPress Media & Text). */
+  /** An image beside blocks. */
   'media-text': {
     attrs: {
       src: mediaImage,
@@ -367,7 +367,7 @@ export interface BlockInput {
 /** Hard limits that keep a template cheap to validate and render. */
 export const BLOCK_LIMITS = { depth: 16, nodes: 1000 } as const;
 
-/** WordPress template hierarchy names, optionally narrowed by a (Unicode) slug or type (`single-article`, `page-소식`). */
+/** Template names, optionally narrowed by a (Unicode) slug or type (`single-article`, `page-소식`). */
 export const TEMPLATE_NAME = new RegExp(
   `^(index|home|front-page|singular|single|page|archive|taxonomy|category|tag|author|date|search|404)(-${CONTENT_SLUG.source.slice(1, -1)})?$`,
   'u',

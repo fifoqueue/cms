@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { HookDispatcher } from '#api/domain/ports';
 import type { Logger } from '#api/shared/logger';
 
-/** Read side of the capability registry; declarations and role editing arrive in chunk B. */
+/** Read side of the capability registry. */
 export interface CapabilityCatalog {
   has(capability: string): boolean;
 }

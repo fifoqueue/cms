@@ -144,7 +144,7 @@ export const enhanceToc = (element: HTMLElement) => {
   };
 
   const measure = () => {
-    // Computed CSS resolves rem/calc values, unlike parsing custom-property text.
+    // Computed CSS resolves rem/calc values.
     offset =
       Number.parseFloat(view.getComputedStyle(element).scrollMarginTop) || 10;
 

@@ -1,7 +1,7 @@
 import { requireCapability, adminFor } from '#lib/server/session.js';
 import type { RequestHandler } from './$types';
 
-/** Downloads the WordPress export file. */
+/** Downloads the site as a WXR export file. */
 export const GET: RequestHandler = async (event) => {
   requireCapability(event.locals, 'tools.manage');
   const exported = await adminFor(event).exportWxr();

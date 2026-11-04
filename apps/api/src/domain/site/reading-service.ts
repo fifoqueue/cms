@@ -7,7 +7,7 @@ import type { HookDispatcher } from '#api/domain/ports';
 
 const KEY = 'reading';
 
-/** Front page, list sizes and date presentation (WordPress "Settings → Reading"). */
+/** Front page, list sizes and date presentation (Settings → Reading). */
 export class ReadingService {
   constructor(
     private readonly settings: SettingsRepository,

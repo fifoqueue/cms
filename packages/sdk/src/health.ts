@@ -49,7 +49,7 @@ export type SiteHealth = z.output<typeof siteHealthSchema>;
 /** What an import created, and what it left out (with the reason in words). */
 /**
  * Authors of the file without a matching user (by email or login): assigned to the importing
- * administrator, or new accounts with that role (WordPress importer "Assign authors").
+ * administrator, or new accounts with that role.
  */
 export const IMPORT_AUTHOR_MODES = ['me', 'author', 'subscriber'] as const;
 export type ImportAuthorMode = (typeof IMPORT_AUTHOR_MODES)[number];

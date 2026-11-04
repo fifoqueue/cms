@@ -46,7 +46,7 @@ const storedAttrs = (raw: string): Record<string, unknown> => {
 };
 
 /**
- * Dynamic blocks plugins add to the editor (WordPress `register_block_type`). Content stores a
+ * Dynamic blocks plugins add to the editor. Content stores a
  * generic `pluginBlock` node; while the plugin is active its attributes are checked on save and
  * the plugin renders it when content is served. Blocks of inactive plugins stay stored and
  * render nothing.

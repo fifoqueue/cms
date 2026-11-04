@@ -130,7 +130,7 @@ export function projectContent(
   visibility?: Visibility,
   hooks?: HookDispatcher,
 ): Promise<PublishedSummaryRecord[]>;
-/** Fixed public projection, with a separate term batch to avoid JSON aggregate size limits. */
+/** Fixed public projection; terms are read in a separate batch. */
 export async function projectContent(
   db: Database,
   where: Prisma.Sql,

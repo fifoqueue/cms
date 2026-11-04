@@ -1,4 +1,4 @@
-// WordPress classic-editor content: shortcodes and "autop" paragraphs become the HTML the shared
+// Imported classic-editor content: shortcodes and "autop" paragraphs become the HTML the shared
 // content schema parses (figures, galleries, embeds, audio and video). Pure text transforms; the
 // schema still decides what survives, and unknown shortcodes stay as text.
 
@@ -157,10 +157,10 @@ const paragraphs = (html: string) => {
   );
 };
 
-/** Library files the content refers to: attachment URLs by WordPress id, and per parent entry. */
+/** Library files the content refers to: attachment URLs by WXR post id, and per parent entry. */
 export interface ClassicAttachments {
   url(id: string): string | undefined;
-  /** Image URLs attached to the entry with this WordPress id (`[gallery]` without `ids`). */
+  /** Image URLs attached to the entry with this WXR post id (`[gallery]` without `ids`). */
   childImages(parentId: string): string[];
 }
 

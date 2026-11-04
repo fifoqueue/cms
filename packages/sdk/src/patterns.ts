@@ -6,7 +6,7 @@ import { PAGINATION_MAX_PAGE } from '#sdk/common';
 export const PATTERN_STATUSES = ['draft', 'published'] as const;
 export type PatternStatus = (typeof PATTERN_STATUSES)[number];
 
-/** A reusable piece of content (WordPress pattern / reusable block). */
+/** A reusable piece of content (a pattern or synced block). */
 export const patternInputSchema = z.object({
   title: z.string().trim().min(1).max(191),
   document: contentDocumentSchema,

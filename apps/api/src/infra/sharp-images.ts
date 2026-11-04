@@ -8,7 +8,7 @@ const LIMIT = { limitInputPixels: 40_000_000 };
 
 let imageQueue: Promise<unknown> = Promise.resolve();
 
-/** libvips work is memory-heavy; run one transform at a time per API process. */
+/** One transform at a time per API process. */
 const runImage = <T>(task: () => Promise<T>): Promise<T> => {
   const run = imageQueue.then(task, task);
 

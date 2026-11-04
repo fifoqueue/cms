@@ -75,7 +75,7 @@ export interface BlockData {
     year: number;
     month: number;
     days: Record<number, number>;
-    /** The nearest months with posts before and after (WordPress calendar links). */
+    /** The nearest months with posts before and after, for the calendar's links. */
     previous: { year: number; month: number } | null;
     next: { year: number; month: number } | null;
   } | null;

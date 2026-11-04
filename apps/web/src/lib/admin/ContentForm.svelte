@@ -518,7 +518,7 @@
   /**
    * Opens the preview tab at once (popup rules). The text is stored as an autosave first, and
    * only then is the preview requested; the preview request itself writes nothing. A new entry
-   * is saved as a draft instead (WordPress); its editor then loads the preview into the tab.
+   * is saved as a draft instead; its editor then loads the preview into the tab.
    */
   const preview = () => {
     // A save in flight would clear the autosave the preview is about to show.
@@ -720,7 +720,7 @@
 <svelte:window onkeydown={shortcut} />
 
 {#snippet saveButtons(compact: boolean)}
-  <!-- The card shows "Save draft" at its top, like WordPress; the mobile bar needs both. -->
+  <!-- The card shows "Save draft" at its top; the mobile bar needs both. -->
   {#if compact && !isLive}
     <Button
       type="submit"

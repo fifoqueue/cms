@@ -184,8 +184,8 @@ const toAdmin = (
 
 /**
  * Block theme lifecycle (install or upgrade by id, activate, remove) and the site editor, which
- * stores an administrator's template, part and style changes beside the theme instead of
- * editing it, so resetting restores the theme's own files.
+ * stores an administrator's template, part and style changes beside the theme; the theme's own
+ * files never change, so resetting restores them.
  */
 export class ThemeService {
   private readonly state: ThemeStateStore;

@@ -10,7 +10,7 @@
   } from '#lib/components/ui/native-select/index.js';
   import { useI18n } from '#lib/i18n/index.js';
 
-  /** The selected block's attributes (WordPress block settings sidebar). Edits it in place. */
+  /** The selected block's attributes. Edits it in place. */
   interface Props {
     block: Block;
     /** Palette slugs for color settings. */

@@ -14,7 +14,7 @@ import {
 export { taxonomyTypeSchema } from '#sdk/taxonomy-keys';
 export type { TaxonomyType } from '#sdk/taxonomy-keys';
 
-/** Categories are hierarchical, tags are flat (WordPress semantics). */
+/** Categories are hierarchical, tags are flat. */
 export const TAXONOMY_TYPES = ['category', 'tag'] as const;
 
 export const taxonomyDefinitionSchema = z.object({
@@ -110,7 +110,7 @@ export type TaxonomyData = z.output<typeof taxonomyInputSchema>;
 export const TERM_ORDERS = ['name', 'slug', 'count', 'createdAt'] as const;
 
 /**
- * Arguments of a term list (WordPress `get_terms` args). Omitted keys keep the defaults: every
+ * Arguments of a term list. Omitted keys keep the defaults: every
  * term of the taxonomy, empty ones included, by name ascending (ties by id).
  */
 export const termQuerySchema = z.object({

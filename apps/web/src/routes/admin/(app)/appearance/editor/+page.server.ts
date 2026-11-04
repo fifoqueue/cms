@@ -21,7 +21,7 @@ import type { FontFormValues } from '#lib/admin/font-issues.js';
 import { submitAction } from '#lib/server/form-action.js';
 import type { Actions, PageServerLoad } from './$types';
 
-/** Template kinds an administrator can add (WordPress template hierarchy). */
+/** Template kinds an administrator can add. */
 const KINDS = [
   'front-page',
   'home',

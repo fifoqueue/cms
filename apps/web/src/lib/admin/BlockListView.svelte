@@ -8,7 +8,7 @@
   import type { BlockPath } from '#lib/admin/blocks.js';
   import { useI18n } from '#lib/i18n/index.js';
 
-  /** WordPress List View: the block tree with select, move and remove. */
+  /** List View: the block tree with select, move and remove. */
   interface Props {
     blocks: Block[];
     /** Path of `blocks`' container; `[]` at the root. */

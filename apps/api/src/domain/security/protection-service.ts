@@ -31,7 +31,7 @@ const RULES: Record<
     { name: 'passwordResetClient', scope: 'visitor' },
     { name: 'passwordResetAccount', scope: 'account' },
   ],
-  // Anyone can comment, so unproven clients (direct API calls) share one limit instead of none.
+  // Unproven clients (direct API calls) share one limit.
   comment: [{ name: 'commentClient', scope: 'visitor' }],
   contentUnlock: [{ name: 'contentUnlockClient', scope: 'visitor' }],
   privacy: [{ name: 'privacyClient', scope: 'visitor' }],

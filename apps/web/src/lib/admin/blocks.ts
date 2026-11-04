@@ -97,7 +97,7 @@ export const blockAt = (tree: Block[], path: BlockPath) => {
 };
 
 /**
- * Where a new block goes (WordPress inserter): inside the selected block when it may hold
+ * Where a new block goes: inside the selected block when it may hold
  * that block, after it when its container may, otherwise at the end of the tree.
  */
 export const insertionPoint = (

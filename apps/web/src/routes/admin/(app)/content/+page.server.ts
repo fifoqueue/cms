@@ -79,7 +79,7 @@ export const load: PageServerLoad = async (event) => {
     CONTENT_COLUMNS,
     20,
   );
-  // Status view totals follow the type only, like wp-admin.
+  // Status view totals follow the type only.
   const [content, counts] = await Promise.all([
     admin.content.list({
       type,

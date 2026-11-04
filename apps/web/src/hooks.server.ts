@@ -86,8 +86,7 @@ const requestSize: Handle = async ({ event, resolve }) => {
  * Admin responses (sign-in redirects included) and error responses are never indexed. Public
  * entries get their robots meta from the page itself. Admin responses are never framed; public
  * pages only by the site itself (the admin site editor previews them), and pages share no
- * browsing context group with other origins. Headers are copied because a returned response may
- * have immutable headers.
+ * browsing context group with other origins.
  */
 const responseSecurity: Handle = async ({ event, resolve }) => {
   const response = await resolve(event);

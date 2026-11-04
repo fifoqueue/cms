@@ -8,7 +8,7 @@ export const SITEMAP_PATH = '/sitemap.xml';
 export const FEED_PATH = '/feed.xml';
 export const LLMS_TXT_PATH = '/llms.txt';
 
-/** What a narrowed feed follows (WordPress category, tag and author feeds). */
+/** What a narrowed feed follows: a category, tag or author. */
 export interface FeedTarget {
   kind: 'category' | 'tag' | 'author';
   slug: string;

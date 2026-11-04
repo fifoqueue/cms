@@ -40,7 +40,7 @@ export const inertOutside = (root: Element, allowed: Element[]) => {
  * while it is open: the rest of the page becomes inert (so focus and pointer stay in the panel),
  * the page stops scrolling, focus moves to `[data-autofocus]` (else the first control) and goes
  * back where it was when the panel closes; Escape asks it to close. It stays inside the site
- * root, so the theme's colors and container queries still apply (unlike a portalled dialog).
+ * root, so the theme's colors and container queries still apply.
  */
 export const modal: Action<HTMLElement, ModalOptions> = (node, options) => {
   let current = options;

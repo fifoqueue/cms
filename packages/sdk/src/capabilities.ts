@@ -1,5 +1,5 @@
 // Pure role and capability helpers: no runtime schema dependencies, safe for browser bundles.
-/** WordPress-style roles, most privileged first. */
+/** Roles, most privileged first. */
 export const ROLES = [
   'administrator',
   'editor',

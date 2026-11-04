@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** Defaults for new entries (WordPress "Settings → Writing"). */
+/** Defaults for new entries. */
 export const writingSettingsSchema = z.object({
   autoToc: z
     .object({

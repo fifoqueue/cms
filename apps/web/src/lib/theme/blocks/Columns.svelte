@@ -13,7 +13,7 @@
     large: 'gap-10',
   } as const;
 
-  /** A column holding only empty widget areas disappears, like a WordPress sidebar without widgets. */
+  /** A column holding only empty widget areas disappears. */
   const shown = $derived(
     block.children.filter(
       (column) =>

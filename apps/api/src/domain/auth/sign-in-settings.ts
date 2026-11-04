@@ -28,7 +28,10 @@ const legacySchema = z.object({
   settings: z.object({ passwordLogin: z.boolean() }),
 });
 
-/** Preserve old SSO-only installations before an SSO save drops the obsolete field. */
+/**
+ * Creates `signIn` once: SSO-only when the stored `sso` setting disabled password login. Must
+ * run before an SSO save drops that field.
+ */
 export const migrateSignInPolicy = async (store: SettingsRepository) => {
   if ((await store.get('signIn')) != null) return;
   const legacy = legacySchema.safeParse(await store.get('sso'));

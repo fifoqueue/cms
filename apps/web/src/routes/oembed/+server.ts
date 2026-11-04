@@ -8,7 +8,7 @@ const width = (requested: string | null) =>
   Math.min(Math.max(Math.trunc(Number(requested)) || 600, 200), 1200);
 
 /**
- * oEmbed provider (oembed.com), as WordPress sites offer: `?url=<entry address>&format=json`
+ * oEmbed provider (oembed.com): `?url=<entry address>&format=json`
  * answers with a `rich` card of plain links and text (no iframe or script). Only published
  * entries on this site's configured address that are not password-protected are described.
  */

@@ -110,7 +110,7 @@ export const contentAttributeSchemas = {
     .strictObject({
       level: legacy,
       textAlign,
-      /** A fixed fragment id (e.g. an imported Gutenberg "HTML anchor"); generated otherwise. */
+      /** A fixed fragment id (e.g. an imported anchor); generated otherwise. */
       anchor: z
         .string()
         .regex(/^[\p{L}][\p{L}\p{N}\p{M}_:.-]{0,99}$/u)

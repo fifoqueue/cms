@@ -229,7 +229,7 @@
       const { media } = entry;
       const text = altOf(entry);
 
-      // Like WordPress, alt text typed here is also kept in the library for the next use.
+      // Alt text typed here is also kept in the library for the next use.
       if (text === media.alt || !editable(media) || entry.localOnly) continue;
       const failure = await submit(media, 'save', form({ alt: text }));
 

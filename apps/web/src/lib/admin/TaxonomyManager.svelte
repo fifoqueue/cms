@@ -202,7 +202,7 @@
 {/snippet}
 
 {#if target}
-  <!-- WordPress term.php: the edit screen is a page of its own, SEO below the term fields. -->
+  <!-- The edit screen is a page of its own, SEO below the term fields. -->
   <div class="space-y-1">
     <a
       href={taxonomy === 'category'
@@ -261,7 +261,7 @@
 
   <FormMessage {form} />
 
-  <!-- WordPress edit-tags.php: a short add form beside the list. -->
+  <!-- A short add form beside the list. -->
   <div class="grid items-start gap-6 lg:grid-cols-[20rem_1fr]">
     <Card
       class="lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto"

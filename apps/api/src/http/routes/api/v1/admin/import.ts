@@ -3,7 +3,7 @@ import { readText } from '#api/http/request';
 import type { ApiApp } from '#api/http/services';
 import { session } from '#api/http/session';
 
-/** Imports a WordPress export file (WXR), sent as the request body. */
+/** Imports a WXR export file, sent as the request body. */
 export const routes = (app: ApiApp) =>
   session(app).post(
     '',

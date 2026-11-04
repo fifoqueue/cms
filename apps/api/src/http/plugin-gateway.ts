@@ -23,8 +23,8 @@ const BASE = '/api/plugins';
 /**
  * Serves `/api/plugins/<id>/...` from the routes a plugin registered. Inactive plugins have none.
  *
- * Elysia cannot unregister a route, so each plugin's routes are compiled into their own Elysia
- * instance, rebuilt whenever the registry's list for that plugin changes.
+ * Each plugin's routes are compiled into their own Elysia instance, rebuilt whenever the
+ * registry's list for that plugin changes.
  */
 export class PluginGateway {
   private readonly compiled = new WeakMap<readonly PluginRoute[], AnyElysia>();

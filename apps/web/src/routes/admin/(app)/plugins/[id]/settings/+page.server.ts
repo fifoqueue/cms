@@ -20,7 +20,7 @@ const pluginOf = async (event: {
   return plugin;
 };
 
-/** A plugin's settings on their own screen (wp-admin's "Settings" row action). */
+/** A plugin's settings on their own screen. */
 export const load: PageServerLoad = async (event) => {
   requireCapability(event.locals, 'plugins.manage');
   const { id, name, version, status, settings, values } = await pluginOf(event);

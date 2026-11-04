@@ -61,7 +61,7 @@ export const contentRelations = {
   },
 } as const;
 
-/** LIKE pattern text matching `value` literally (Prisma `contains` does not escape wildcards). */
+/** LIKE pattern text matching `value` literally. */
 const literal = (value: string) => value.replace(/[\\%_]/g, '\\$&');
 
 /** Ids of the category and its descendants; empty for unknown slugs. */

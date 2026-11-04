@@ -64,7 +64,7 @@ export interface ContentServiceDeps {
   fields: Pick<FieldService, 'validate' | 'forType'>;
   /** Checks the attributes of active plugins' blocks in a document. */
   blocks?: { check(document: ContentDocument): void };
-  /** Settings → Writing: the existing category a post saved without one gets (WordPress). */
+  /** Settings → Writing: the existing category a post saved without one gets. */
   defaultCategory?: () => Promise<string | null>;
 }
 
@@ -111,7 +111,7 @@ export class ContentService {
     return contentDefaultsSchema.parse(filtered);
   }
 
-  /** Every writer sees every entry (like WordPress); opening one needs edit rights. */
+  /** Every writer sees every entry; opening one needs edit rights. */
   async list(
     query: unknown,
     actor: Actor,

@@ -90,7 +90,7 @@ export const importMedia = async (
         offset += chunk.length;
       }
 
-      // An admin import is not interactive uploading: skip the hourly limit, keep every check.
+      // Imports skip the hourly upload limit; every other upload check applies.
       media = await deps.media.upload(
         bytes,
         new URL(url).pathname.split('/').pop() || 'file',

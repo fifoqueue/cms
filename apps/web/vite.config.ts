@@ -37,7 +37,7 @@ const layerOrder = (): Plugin => ({
 
 /**
  * `virtual:cms/route-kinds`: route IDs (strings only) of endpoints without a page, read from
- * `src/routes` because `$app/manifest` is empty in dev whenever `svelte-kit sync` runs.
+ * `src/routes`.
  */
 const routeKinds = (): Plugin => {
   const id = 'virtual:cms/route-kinds';

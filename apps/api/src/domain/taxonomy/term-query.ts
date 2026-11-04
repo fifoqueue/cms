@@ -3,7 +3,7 @@ import type { TaxonomyType, TermQuery } from '@cms/sdk';
 import type { HookDispatcher } from '#api/domain/ports';
 
 /**
- * Term list arguments after `term.query` (WordPress `get_terms_args`). Results must match the
+ * Term list arguments after `term.query`. Results must match the
  * core schema; another taxonomy must exist (`exists`). Without handlers nothing is validated.
  */
 export const termQuery = async (

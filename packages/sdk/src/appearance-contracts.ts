@@ -25,7 +25,6 @@ export interface MenuItemRegistrar {
   register(key: string, provider: MenuItemProvider): Unsubscribe;
 }
 
-// `.pick()` throws on refined object schemas (zod 4); reuse the field schemas instead.
 export const themeContributionSchema = z.object({
   templates: publicThemeSchema.shape.templates,
   parts: publicThemeSchema.shape.parts,

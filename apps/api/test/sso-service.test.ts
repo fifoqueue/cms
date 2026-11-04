@@ -25,7 +25,7 @@ const ISSUER = 'https://id.example.com';
 const TTL = 10 * 60 * 1000;
 const CLIENT = 'ip:203.0.113.5';
 
-/** Existing single-provider regression cases all select this fixture's default provider. */
+/** Single-provider cases select this fixture's default provider. */
 class FixtureSso extends SsoService {
   override start(
     input: object,
