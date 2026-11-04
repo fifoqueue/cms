@@ -6,9 +6,10 @@
   /**
    * Footnotes rendered by `renderWithToc` inside `container` (the entry's prose): localized
    * labels, a subtle heading for each page's list, and a popover with the note's text next to
-   * its reference on hover (mouse), keyboard focus or tap. A tap opens the popover instead of
-   * jumping; a second tap, or the popover's link, still jumps to the list. Without this, refs
-   * and back-links are plain fragment links. `html` re-runs this when the entry changes.
+   * its reference on hover (mouse), keyboard focus, click or tap. Like Bigfoot, a click or tap
+   * pins the popover instead of jumping and a second one closes it; the popover's link, or Enter
+   * on a focused ref, jumps to the list. Without this, refs and back-links are plain fragment
+   * links. `html` re-runs this when the entry changes.
    *
    * The renderer already grouped named notes: every ref and back-link carries its
    * `data-footnote-label`, and refs of one name point at the same list item, whose direct child
@@ -265,10 +266,11 @@
       if (!link || !element.contains(link)) return;
       const href = link.getAttribute('href')!;
       if (link.matches(REF)) {
-        const touch = via === 'touch' || via === 'pen';
-        if (touch && !(active?.ref === link && active.via === 'tap')) {
+        // A pointer click toggles the pinned popover; a keyboard activation (no pointer) jumps.
+        if (via) {
           event.preventDefault();
-          show(link, 'tap');
+          if (active?.ref === link && active.via === 'tap') hide();
+          else show(link, 'tap');
           return;
         }
         hide();
