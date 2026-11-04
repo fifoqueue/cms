@@ -57,6 +57,7 @@ type Input = Pick<
     | 'taxonomyRegistry'
     | 'embedRegistry'
     | 'blockRegistry'
+    | 'shortcodes'
     | 'patternContributions'
   > & {
     writing: WritingService['get'];
@@ -86,6 +87,7 @@ export const createContent = ({
   taxonomyRegistry,
   embedRegistry,
   blockRegistry,
+  shortcodes,
   patternContributions,
   writing,
   site,
@@ -95,10 +97,14 @@ export const createContent = ({
   publicCache,
 }: Input) => {
   const embedSettings = new EmbedService(settingsRepository, hooks);
-  const embeds = new Embeds(async () => [
-    ...(await embedSettings.providers()),
-    ...embedRegistry.providers(),
-  ]);
+  const embeds = new Embeds(
+    async () => [
+      ...(await embedSettings.providers()),
+      ...embedRegistry.providers(),
+    ],
+    undefined,
+    hooks,
+  );
   const patterns = new PatternService({
     contributions: patternContributions,
     hooks,
@@ -164,7 +170,9 @@ export const createContent = ({
     expand: async (html, context) =>
       responsiveImages.expand(
         await blockRegistry.expand(
-          await embeds.expand(await patterns.expand(html)),
+          await embeds.expand(
+            await shortcodes.expand(await patterns.expand(html), context),
+          ),
           context,
         ),
       ),
@@ -209,6 +217,7 @@ export const createContent = ({
 
       return term && term.taxonomy === 'category' ? term.id : null;
     },
+    registeredBlocks: () => blockRegistry.list().map((block) => block.block),
   });
   const contentRevisions = new RevisionService({
     hooks,

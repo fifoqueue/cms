@@ -4,6 +4,8 @@ import type { PluginScope } from '#api/plugin-runtime/plugin-scope';
 import { FunctionsScope } from '#api/functions-runtime/functions-scope';
 import { serialQueue } from '#api/shared/serial-queue';
 import type { Logger } from '#api/shared/logger';
+import type { HookDispatcher } from '#api/domain/ports';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 export interface FunctionsSource {
   owner: string;
@@ -28,6 +30,8 @@ interface Activation {
 }
 
 export interface FunctionsHostDeps {
+  theme?(): Promise<{ id: string; version: string }>;
+  hooks?: HookDispatcher;
   sources(): Promise<FunctionsSource[]>;
   context(owner: string, scope: PluginScope): PluginContext;
   logger: Logger;
@@ -39,6 +43,12 @@ export class FunctionsHost {
   private readonly exclusive = serialQueue();
   private active: Activation[] = [];
   private statuses: FunctionsStatus[] = [];
+  private theme?: { id: string; version: string };
+  private booted = false;
+  private readonly emissions = serialQueue();
+  private readonly emissionContext = new AsyncLocalStorage<{
+    active: boolean;
+  }>();
 
   constructor(private readonly deps: FunctionsHostDeps) {}
 
@@ -46,11 +56,13 @@ export class FunctionsHost {
     return this.statuses.map((entry) => ({ ...entry }));
   }
 
-  reconcile(): Promise<void> {
-    return this.exclusive(async () => {
+  async reconcile(): Promise<void> {
+    const event = await this.exclusive(async () => {
       let sources: FunctionsSource[];
+      let theme: { id: string; version: string } | undefined;
 
       try {
+        theme = await this.deps.theme?.();
         sources = await this.deps.sources();
       } catch (error) {
         this.deps.logger.error('Functions source reconciliation failed', error);
@@ -59,6 +71,10 @@ export class FunctionsHost {
       }
 
       if (
+        this.booted &&
+        this.statuses.every((status) => status.lastError === null) &&
+        theme?.id === this.theme?.id &&
+        theme?.version === this.theme?.version &&
         sources.length === this.statuses.length &&
         sources.every(
           (source, index) =>
@@ -144,7 +160,44 @@ export class FunctionsHost {
         ...[...previous.values()].map((entry) => entry.source),
       ]);
       this.deps.invalidate();
+      if (this.statuses.some((status) => status.lastError !== null)) return;
+
+      const reason = !this.booted
+        ? ('boot' as const)
+        : theme?.id !== this.theme?.id
+          ? ('switch' as const)
+          : ('reload' as const);
+
+      this.theme = theme;
+      this.booted = true;
+
+      if (theme && this.deps.hooks?.has('theme.setup'))
+        return { theme, reason };
     });
+
+    if (!event) return;
+
+    const emission = this.emissions(async () => {
+      const frame = { active: true };
+
+      try {
+        await this.emissionContext.run(frame, () =>
+          this.deps.hooks!.emit('theme.setup', event),
+        );
+      } finally {
+        frame.active = false;
+      }
+    });
+
+    if (this.emissionContext.getStore()?.active) {
+      void emission.catch((error) =>
+        this.deps.logger.error('Theme setup failed', error),
+      );
+
+      return;
+    }
+
+    await emission;
   }
 
   stop(): Promise<void> {
@@ -154,6 +207,8 @@ export class FunctionsHost {
       this.dispose();
       await this.release(sources);
       this.statuses = [];
+      this.booted = false;
+      this.theme = undefined;
       this.deps.invalidate();
     });
   }

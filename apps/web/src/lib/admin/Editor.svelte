@@ -68,6 +68,7 @@
   import { MediaQuery, SvelteMap } from 'svelte/reactivity';
 
   interface Props {
+    contentType?: string;
     /** Form field that receives the document as JSON. */
     name: string;
     value: ContentDocument;
@@ -75,7 +76,7 @@
     label: string;
   }
 
-  let { name, value = $bindable(), label }: Props = $props();
+  let { name, value = $bindable(), label, contentType }: Props = $props();
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
@@ -720,7 +721,7 @@
     class="max-lg:contents lg:sticky lg:top-0 lg:z-10 lg:rounded-t-md lg:bg-background"
     bind:clientHeight={groupHeight}
   >
-    <BlockInserter {editor} disabled={htmlMode} />
+    <BlockInserter {editor} {contentType} disabled={htmlMode} />
     <div
       class="flex flex-wrap gap-1 border-b bg-background p-1 max-lg:sticky max-lg:top-0 max-lg:z-10"
       bind:clientHeight={toolbarHeight}

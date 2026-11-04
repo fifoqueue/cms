@@ -1,5 +1,6 @@
 import { PublishedContentReader } from '#api/domain/content/public-content';
 import { HealthChecks } from '#api/domain/tools/health-checks';
+import { RuntimeShortcodes } from '#api/domain/content/shortcodes';
 import { MailTransportRegistry } from '#api/domain/email/transport-registry';
 import { PluginJobs } from '#api/domain/jobs/plugin-jobs';
 import { JobRunner } from '#api/domain/jobs/job-runner';
@@ -91,6 +92,7 @@ export const createRuntime = ({
   const settings = new PluginSettings(data);
   const contentTypes = new ContentTypeRegistry(BUILTIN_TYPES);
   const healthChecks = new HealthChecks(timeoutMs);
+  const shortcodes = new RuntimeShortcodes(timeoutMs);
   const mailTransports = new MailTransportRegistry();
   const jobQueue = new MemoryJobQueue();
   const clock = fixedClock();
@@ -106,6 +108,7 @@ export const createRuntime = ({
     clock,
   );
   const contexts = new PluginContextFactory({
+    shortcodes,
     patternRenderer,
     patterns,
     healthChecks,
@@ -146,6 +149,7 @@ export const createRuntime = ({
 
   return {
     host,
+    shortcodes,
     healthChecks,
     mailTransports,
     jobRunner,

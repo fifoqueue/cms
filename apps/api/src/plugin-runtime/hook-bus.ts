@@ -40,6 +40,12 @@ user.signedOut user.created user.updated user.roleChanged user.deleted role.crea
 );
 
 for (const name of [
+  'theme.public',
+  'widgets.public',
+  'theme.setup',
+  'editor.allowedBlocks',
+  'block.html',
+  'embed.html',
   'email.from',
   'email.system',
   'http.request',

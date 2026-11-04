@@ -9,14 +9,13 @@ import type { ShortcodeRegistry } from '#api/domain/tools/shortcode-registry';
 /** Converted HTML is consumed by the importer's sanitizing document parser. */
 export const customShortcodes = async (
   html: string,
-  registry?: ShortcodeRegistry,
+  registry?: Pick<ShortcodeRegistry, 'has' | 'convert'>,
 ): Promise<string> => {
   if (!registry?.has()) return html;
   if (encoder.encode(html).length > MAX_INPUT)
     throw invalidInput(Errors.ImportContentLimit);
   const protectedEnd = htmlTags(html);
-  const lower = html.toLowerCase();
-  const opening = /\[([a-z][a-z0-9_-]*)\b([^\]]*)\]/gi;
+  const opening = /\[([a-z][a-z0-9_-]*)(?=\s|\]|\/\])([^\]]*)\]/gi;
   const parts: string[] = [];
   let offset = 0;
   let count = 0;
@@ -30,7 +29,27 @@ export const customShortcodes = async (
       throw invalidInput(Errors.ImportContentLimit);
     const start = opening.lastIndex;
     const closing = `[/${tag}]`;
-    const end = lower.indexOf(closing, start);
+    const boundary = new RegExp(
+      `\\[(?:${tag}(?=\\s|\\]|/\\])[^\\]]*|(/)${tag})\\]`,
+      'gi',
+    );
+    let depth = 1;
+    let end = -1;
+
+    boundary.lastIndex = start;
+
+    for (let nested; (nested = boundary.exec(html));) {
+      if (protectedEnd(nested.index) !== -1) continue;
+
+      if (nested[1]) depth--;
+      else if (!nested[0].endsWith('/]')) depth++;
+
+      if (depth === 0) {
+        end = nested.index;
+        break;
+      }
+    }
+
     const paired = !match[2]!.trimEnd().endsWith('/') && end !== -1;
     const next = paired ? end + closing.length : start;
     const output = await registry.convert(

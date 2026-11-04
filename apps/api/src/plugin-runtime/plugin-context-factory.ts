@@ -17,6 +17,7 @@ import { CaptchaRegistry } from '#api/domain/security/captcha-registry';
 import { EraserRegistry } from '#api/domain/privacy/eraser-registry';
 import { ExporterRegistry } from '#api/domain/privacy/exporter-registry';
 import { ShortcodeRegistry } from '#api/domain/tools/shortcode-registry';
+import { RuntimeShortcodes } from '#api/domain/content/shortcodes';
 import type { MailTransportRegistry } from '#api/domain/email/transport-registry';
 import { StorageDrivers } from '#api/domain/media/storage-drivers';
 import type { UserDirectory } from '@cms/sdk/plugin';
@@ -76,6 +77,7 @@ export interface PluginContextServices {
   privacyErasers?: EraserRegistry;
   privacyExporters?: ExporterRegistry;
   importShortcodes?: ShortcodeRegistry;
+  shortcodes?: RuntimeShortcodes;
   jobs?: PluginJobs;
   contentTypes?: ContentTypeRegistry;
   permalinkTokens?: PermalinkTokenRegistry;
@@ -146,6 +148,7 @@ export class PluginContextFactory {
     services.privacyErasers ??= new EraserRegistry(options);
     services.privacyExporters ??= new ExporterRegistry(options.timeoutMs);
     services.importShortcodes ??= new ShortcodeRegistry(options.timeoutMs);
+    services.shortcodes ??= new RuntimeShortcodes(options.timeoutMs);
     services.menuItemTypes ??= new MenuTypeRegistry(options);
     services.themeContributions ??= new ProviderRegistry(
       themeContributionSchema,
@@ -235,6 +238,12 @@ export class PluginContextFactory {
         register: (tag, definition) =>
           scope.track(() =>
             this.services.importShortcodes!.register(tag, definition),
+          ),
+      },
+      shortcodes: {
+        register: (tag, definition) =>
+          scope.track(() =>
+            this.services.shortcodes!.register(tag, definition),
           ),
       },
       privacyExporters: {

@@ -24,6 +24,7 @@ import { createThemeContributions } from '#api/plugin-runtime/discovery-provider
 import { EraserRegistry } from '#api/domain/privacy/eraser-registry';
 import { ExporterRegistry } from '#api/domain/privacy/exporter-registry';
 import { ShortcodeRegistry } from '#api/domain/tools/shortcode-registry';
+import { RuntimeShortcodes } from '#api/domain/content/shortcodes';
 import { CommentCheckers } from '#api/domain/comments/comment-checkers';
 import { SignInRegistry } from '#api/plugin-runtime/sign-in-registry';
 import { RoleRegistry } from '#api/domain/users/role-registry';
@@ -54,7 +55,7 @@ export const createRegistries = ({
   const pluginRoutes = new PluginRouteRegistry();
   const embedRegistry = new EmbedRegistry({ timeoutMs, logger });
   const permalinkTokens = new PermalinkTokenRegistry(timeoutMs);
-  const blockRegistry = new BlockRegistry({ timeoutMs, logger });
+  const blockRegistry = new BlockRegistry({ timeoutMs, logger, hooks });
   const patternContributions = new ProviderRegistry<null, PatternContributions>(
     patternContributionSchema,
     { timeoutMs, logger },
@@ -69,6 +70,7 @@ export const createRegistries = ({
   const privacyErasers = new EraserRegistry({ timeoutMs, logger });
   const privacyExporters = new ExporterRegistry(timeoutMs);
   const importShortcodes = new ShortcodeRegistry(timeoutMs);
+  const shortcodes = new RuntimeShortcodes(timeoutMs);
   const menuItemTypes = new MenuTypeRegistry({ timeoutMs, logger });
 
   for (const [key, provider] of Object.entries(coreMenuTypes))
@@ -102,6 +104,7 @@ export const createRegistries = ({
     privacyErasers,
     privacyExporters,
     importShortcodes,
+    shortcodes,
     menuItemTypes,
     themeContributions,
     roleDefaults,

@@ -1,9 +1,13 @@
 import type { Menu, MenusSettings, PublicMenuItem } from '#sdk/menus';
-import type { WidgetsSettings } from '#sdk/widgets';
-import type { AdminTheme, ThemeCustomization } from '#sdk/index';
+import type { PublicWidgets, WidgetsSettings } from '#sdk/widgets';
+import type { AdminTheme, PublicTheme, ThemeCustomization } from '#sdk/index';
 import type { AdminPattern, PatternInput } from '#sdk/index';
 
 export interface AppearanceActionHooks {
+  'theme.setup': {
+    theme: { id: string; version: string };
+    reason: 'boot' | 'switch' | 'reload';
+  };
   'pattern.created': AdminPattern;
   'pattern.updated': AdminPattern;
   'pattern.deleted': AdminPattern;
@@ -23,8 +27,27 @@ export interface AppearanceActionHooks {
 }
 
 export interface AppearanceFilterHooks {
+  'theme.public': PublicTheme;
+  'widgets.public': PublicWidgets;
+  'editor.allowedBlocks': { type: string; userId: string; blocks: string[] };
+  'block.html': {
+    name: string;
+    attrs: Record<string, unknown>;
+    html: string;
+  };
+  'embed.html': {
+    readonly url: string;
+    readonly provider: string;
+    html: string;
+  };
   'pattern.beforeSave': PatternInput;
   'menu.beforeSave': MenusSettings;
   'menu.items': PublicMenuItem[];
   'widgets.beforeSave': WidgetsSettings;
+}
+
+export interface AppearanceFilterArgs {
+  'block.html': [
+    context: { content: { id: string; type: string; slug: string } | null },
+  ];
 }

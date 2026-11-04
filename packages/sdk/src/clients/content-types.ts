@@ -30,6 +30,19 @@ export const contentModelClient = (request: Request) => {
     `/api/v1/admin/fields/${encodeURIComponent(key)}`;
 
   return {
+    editorConfiguration: (type: string) =>
+      request<{ type: string; userId: string; blocks: string[] }>(
+        'GET',
+        '/api/v1/admin/content/editor',
+        {
+          query: { type },
+          response: z.object({
+            type: z.string(),
+            userId: z.string(),
+            blocks: z.array(z.string()),
+          }),
+        },
+      ),
     defaults: (type: string) =>
       request<ContentDefaults>('GET', '/api/v1/admin/content/defaults', {
         query: { type },

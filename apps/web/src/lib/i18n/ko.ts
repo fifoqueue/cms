@@ -26,6 +26,8 @@ const emailFailure = (reason: unknown) => {
 
 /** Text for every SDK error, by its `Errors` key; read through `ko.apiError`. */
 export const apiErrors: ApiErrorCatalog = {
+  EditorBlockDisallowed:
+    '이 문서에 현재 콘텐츠 유형과 사용자에게 허용되지 않은 블록이 포함되어 있습니다.',
   DatabaseCleanupDuplicate: '각 정리 항목은 한 번만 선택하세요.',
   DatabaseCleanupBusy: '데이터베이스 정리가 이미 실행 중입니다.',
   EmbedPattern: '^로 시작하는 올바른 정규식을 입력하세요.',

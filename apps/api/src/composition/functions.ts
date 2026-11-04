@@ -8,12 +8,14 @@ import { SiteEditor } from '#api/infra/functions/site-editor';
 import type { PluginContextFactory } from '#api/plugin-runtime/plugin-context-factory';
 import type { ThemeService } from '#api/domain/theme/theme-service';
 import type { Logger } from '#api/shared/logger';
+import type { HookDispatcher } from '#api/domain/ports';
 
 export const createFunctions = ({
   directory,
   enabled,
   settings,
   themes,
+  hooks,
   contexts,
   invalidate,
   logger,
@@ -21,7 +23,8 @@ export const createFunctions = ({
   directory: string;
   enabled: boolean;
   settings: Parameters<typeof functionsData>[0];
-  themes: Pick<ThemeService, 'activeFunctions'>;
+  themes: Pick<ThemeService, 'activeFunctions' | 'activeIdentity'>;
+  hooks: HookDispatcher;
   contexts: Pick<PluginContextFactory, 'create'>;
   invalidate: () => void;
   logger: Logger;
@@ -29,6 +32,8 @@ export const createFunctions = ({
   const siteSource = new SiteSource(directory);
   const sourceData = functionsData(settings);
   const functionsHost = new FunctionsHost({
+    theme: () => themes.activeIdentity(),
+    hooks,
     sources: async () => {
       const theme = await themes.activeFunctions();
       const source = await siteSource.source();

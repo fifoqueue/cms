@@ -7,6 +7,10 @@ import {
   contentListQuerySchema,
   contentDefaultsSchema,
 } from '@cms/sdk';
+import {
+  allowedBlocks,
+  assertAllowedBlocks,
+} from '#api/domain/content/allowed-blocks';
 import type {
   AdminContentSummary,
   ContentData,
@@ -52,6 +56,7 @@ import { withParams } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 
 export interface ContentServiceDeps {
+  registeredBlocks?: () => string[];
   repository: ContentRepository;
   renderer: DocumentRenderer;
   hooks: HookDispatcher;
@@ -83,6 +88,35 @@ const isUnpublished = (status: ContentRecord['status']) =>
 /** Authoring use cases over every content item, whatever its status. */
 export class ContentService {
   constructor(private readonly deps: ContentServiceDeps) {}
+
+  async checkAllowedBlocks(
+    document: ContentDocument,
+    type: string,
+    actor: Actor,
+  ) {
+    if (!this.deps.hooks.has('editor.allowedBlocks')) return;
+
+    const configuration = await allowedBlocks(
+      this.deps.hooks,
+      type,
+      actor.id,
+      this.deps.registeredBlocks?.() ?? [],
+    );
+
+    assertAllowedBlocks(document, configuration.blocks);
+  }
+
+  async editorConfiguration(type: string, actor: Actor) {
+    authorize(actor, 'content.create');
+    await this.deps.types.require(type);
+
+    return allowedBlocks(
+      this.deps.hooks,
+      type,
+      actor.id,
+      this.deps.registeredBlocks?.() ?? [],
+    );
+  }
 
   async defaults(type: string, actor: Actor) {
     authorize(actor, 'content.create');
@@ -620,6 +654,8 @@ export class ContentService {
           ],
         )
       : data;
+
+    await this.checkAllowedBlocks(filtered.document, filtered.type, actor);
 
     // The password and concurrency check are the client's, never a filter's.
     return {

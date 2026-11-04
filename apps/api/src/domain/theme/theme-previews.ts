@@ -39,7 +39,7 @@ export class ThemePreviews {
       Number(expires) < this.deps.clock.now().getTime()
     )
       return null;
-    const theme = await this.deps.themes.find(id);
+    const theme = await this.deps.themes.find(id, true);
 
     return theme && { ...theme, preview: true };
   }

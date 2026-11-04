@@ -4,6 +4,8 @@
  * a message leaves out travel as `issues[].params` (named in the comment).
  */
 export const Errors = {
+  EditorBlockDisallowed:
+    'This document contains a block that is not allowed for this content type and user.',
   DatabaseCleanupDuplicate: 'Select each cleanup category only once.',
   DatabaseCleanupBusy: 'Database cleanup is already running.',
   EmbedPattern: 'Enter a valid regular expression.',

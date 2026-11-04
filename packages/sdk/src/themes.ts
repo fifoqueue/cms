@@ -172,17 +172,10 @@ export const stackFamilies = (stack: string) =>
     .filter(Boolean);
 
 /** A font the public site loads: only families its styles use are sent. */
-const publicFontSchema = z.strictObject({
-  family: z.string(),
-  stylesheet: z.string(),
-  faces: z.array(
-    z.strictObject({
-      src: z.string(),
-      weight: z.number(),
-      style: z.string(),
-      display: z.enum(FONT_DISPLAYS),
-    }),
-  ),
+export const publicFontSchema = z.strictObject({
+  family: siteFontSchema.shape.family,
+  stylesheet: siteFontSchema.shape.stylesheet,
+  faces: siteFontSchema.shape.faces,
 });
 
 export type PublicFont = z.output<typeof publicFontSchema>;

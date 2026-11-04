@@ -10,6 +10,7 @@
   import { mediaNode } from '#lib/admin/editor/blocks.js';
   import { outsideRender } from '#lib/admin/editor/outside-render.svelte.js';
   import { loadPluginBlocks } from '#lib/admin/editor/plugin-blocks.js';
+  import { patternAllowed } from '#lib/admin/editor/allowed-pattern.js';
   import {
     loadContributedPatterns,
     loadPatterns,
@@ -27,8 +28,10 @@
   let {
     editor,
     disabled = false,
+    contentType,
   }: {
     editor: Editor | null;
+    contentType?: string;
     /** Blocks can be neither inserted nor changed (the editor shows its HTML). */
     disabled?: boolean;
   } = $props();
@@ -36,6 +39,34 @@
   const m = $derived(i18n.m);
   let open = $state(false);
   let search = $state('');
+  let allowed = $state<string[] | null>(null);
+
+  $effect(() => {
+    const type = contentType;
+
+    if (!type) {
+      allowed = null;
+
+      return;
+    }
+
+    const controller = new AbortController();
+
+    allowed = [];
+    void fetch(`/admin/content/editor?type=${encodeURIComponent(type)}`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => (response.ok ? response.json() : null))
+      .then((value) => {
+        if (!controller.signal.aborted && Array.isArray(value?.blocks))
+          allowed = value.blocks.filter(
+            (name: unknown) => typeof name === 'string',
+          );
+      })
+      .catch(() => {});
+
+    return () => controller.abort();
+  });
   let revision = $state(0);
   let picker: ReturnType<typeof MediaPicker>;
   let galleryPicker: ReturnType<typeof MediaPicker>;
@@ -82,7 +113,9 @@
   const name = (type: string) =>
     pluginBlocks.find((entry) => entry.block === type)?.title ??
     m.contentBlockName(type);
-  let library = $state<PatternChoice[]>([]);
+  let library = $state<
+    (PatternChoice & { policyContent?: JSONContent[] | null })[]
+  >([]);
   let patternPage = $state(1);
   let patternTotal = $state(0);
   let patternLoading = $state(false);
@@ -99,6 +132,7 @@
     }
 
     const page = patternPage;
+    const policy = allowed;
     const controller = new AbortController();
 
     patternLoading = true;
@@ -117,7 +151,18 @@
         return;
       }
 
-      library = result.items;
+      const choices =
+        policy === null
+          ? result.items
+          : await Promise.all(
+              result.items.map(async (pattern) => ({
+                ...pattern,
+                policyContent: await patternContent(pattern, true),
+              })),
+            );
+
+      if (controller.signal.aborted) return;
+      library = choices;
       patternTotal = Math.ceil(result.total / result.pageSize);
     }, 200);
 
@@ -137,12 +182,20 @@
       'source' in pattern
         ? (pattern.document.content ?? [])
         : await patternContent(pattern);
+    const policyContent =
+      'source' in pattern || !pattern.synced
+        ? content
+        : allowed === null
+          ? content
+          : await patternContent(pattern, true);
 
     inserting = false;
 
     if (
       !open ||
       !content ||
+      !patternAllowed(content, allowed) ||
+      !patternAllowed(policyContent, allowed) ||
       current.isDestroyed ||
       editor !== current ||
       current.state.doc !== state.doc
@@ -165,10 +218,12 @@
       .run();
   };
   const matches = $derived(
-    [...blocks, ...pluginBlocks.map((entry) => entry.block)].filter((type) =>
-      `${name(type)} ${type}`
-        .toLowerCase()
-        .includes(search.trim().toLowerCase()),
+    [...blocks, ...pluginBlocks.map((entry) => entry.block)].filter(
+      (type) =>
+        (allowed === null || allowed.includes(type)) &&
+        `${name(type)} ${type}`
+          .toLowerCase()
+          .includes(search.trim().toLowerCase()),
     ),
   );
 
@@ -369,7 +424,12 @@
                 <button
                   type="button"
                   class="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
-                  disabled={inserting || patternLoading}
+                  disabled={inserting ||
+                    patternLoading ||
+                    !patternAllowed(pattern.policyContent, allowed) ||
+                    (pattern.synced &&
+                      allowed !== null &&
+                      !allowed.includes('patternRef'))}
                   onclick={() => insertPattern(pattern)}
                   >{pattern.title}{pattern.synced
                     ? ` · ${m.patternSyncedShort}`
@@ -387,7 +447,8 @@
                 <button
                   type="button"
                   class="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
-                  disabled={inserting}
+                  disabled={inserting ||
+                    !patternAllowed(pattern.document.content, allowed)}
                   onclick={() => insertPattern(pattern)}
                   >{pattern.title}
                   <span class="text-xs text-muted-foreground"

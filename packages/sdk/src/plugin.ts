@@ -123,6 +123,7 @@ export type { OutgoingEmail, SystemEmailContext } from '#sdk/hooks/platform';
 import type { UserProfile } from '#sdk/auth';
 import type {
   AppearanceActionHooks,
+  AppearanceFilterArgs,
   AppearanceFilterHooks,
 } from '#sdk/hooks/appearance';
 import type { SearchActionHooks, SearchFilterHooks } from '#sdk/hooks/search';
@@ -331,7 +332,9 @@ export type FilterHandler<K extends string> = (
         ? TaxonomyFilterArgs[K]
         : K extends keyof PlatformFilterArgs
           ? PlatformFilterArgs[K]
-          : readonly unknown[]
+          : K extends keyof AppearanceFilterArgs
+            ? AppearanceFilterArgs[K]
+            : readonly unknown[]
 ) => Awaitable<K extends FilterName ? FilterHookMap[K] : unknown>;
 
 export interface CustomHookDefinition {
@@ -393,6 +396,8 @@ export interface SlotRegistrar {
 export interface WidgetDefinition {
   /** Shown in the Widgets screen. */
   name: string;
+  /** Required for edits to settings through public widget filters. */
+  settingsSchema?: { safeParse(value: unknown): { success: boolean } };
   /** `settings` are the options saved with the placed widget (untrusted JSON). */
   render(settings: Record<string, unknown>): Awaitable<string>;
 }
@@ -444,6 +449,18 @@ export interface BlockDefinition {
 export interface BlockRegistrar {
   /** `key` is kebab-case; the block is stored as `plugin:<plugin id>:<key>`. */
   register(key: string, block: BlockDefinition): Unsubscribe;
+}
+
+export interface ShortcodeDefinition {
+  render(
+    attrs: Record<string, string>,
+    inner: string,
+    context: { content: { id: string; type: string; slug: string } | null },
+  ): Awaitable<string>;
+}
+
+export interface ShortcodeRegistrar {
+  register(tag: string, definition: ShortcodeDefinition): Unsubscribe;
 }
 
 export interface TaskRegistrar {
@@ -671,6 +688,7 @@ export interface PluginLogger {
  * started work and arbitrary JavaScript cannot be cancelled.
  */
 export interface PluginContext {
+  readonly shortcodes: ShortcodeRegistrar;
   readonly importShortcodes: ImportShortcodeRegistrar;
   readonly privacyExporters: PrivacyExporterRegistrar;
   readonly healthChecks: HealthCheckRegistrar;

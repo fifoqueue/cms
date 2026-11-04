@@ -2,6 +2,9 @@ import type { Awaitable } from '@cms/sdk';
 import { compileEmbedPattern } from '@cms/sdk/embed-pattern';
 import { embedPermissions, MAX_EMBED_URL_LENGTH } from '@cms/sdk';
 import type { BlockRenderContext } from '@cms/sdk/plugin';
+import { sanitizeEmbedHtml } from '@cms/content/parse';
+import { z } from 'zod';
+import type { HookDispatcher } from '#api/domain/ports';
 
 /** Turns stored body HTML into what is served (players, plugin blocks, responsive images). */
 export interface HtmlExpander {
@@ -182,6 +185,7 @@ export class Embeds {
       provider: EmbedProvider,
       url: URL,
     ) => Promise<string | null> = async (provider, url) => provider.render(url),
+    private readonly hooks?: HookDispatcher,
   ) {}
 
   async expand(html: string): Promise<string> {
@@ -208,7 +212,35 @@ export class Embeds {
         for (const provider of providers) {
           const player = await this.run(provider, url);
 
-          if (player) return player;
+          if (player) {
+            if (!this.hooks?.has('embed.html')) return player;
+
+            const schema = z.object({
+              url: z.literal(url.href),
+              provider: z.literal(provider.name),
+              html: z.string().max(1024 * 1024),
+            });
+            const sanitized = new Map<string, string>();
+            const filtered = await this.hooks.applyFilter(
+              'embed.html',
+              { url: url.href, provider: provider.name, html: player },
+              (value) => {
+                const parsed = schema.safeParse(value);
+
+                if (!parsed.success) return false;
+
+                if (!sanitized.has(parsed.data.html))
+                  sanitized.set(
+                    parsed.data.html,
+                    sanitizeEmbedHtml(parsed.data.html, player),
+                  );
+
+                return true;
+              },
+            );
+
+            return sanitized.get(filtered.html) ?? player;
+          }
         }
 
         return null;

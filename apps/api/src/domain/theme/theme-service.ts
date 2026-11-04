@@ -228,6 +228,13 @@ export class ThemeService {
     return text === undefined ? null : { owner: `theme:${state.active}`, text };
   }
 
+  async activeIdentity(): Promise<{ id: string; version: string }> {
+    const state = await this.state.load();
+    const { id, version } = this.require(state, state.active).manifest;
+
+    return { id, version };
+  }
+
   /** Replaces the site fonts; styles that chose a removed font fall back to the theme's. */
   async saveFonts(input: unknown): Promise<SiteFont[]> {
     const { fonts } = parseInput(siteFontsInputSchema, input);
@@ -263,12 +270,40 @@ export class ThemeService {
     };
   }
 
-  present(core: Awaited<ReturnType<ThemeService['getCore']>>) {
-    return this.contributed(core.theme, core.custom);
+  async present(core: Awaited<ReturnType<ThemeService['getCore']>>) {
+    const theme = await this.contributed(core.theme, core.custom);
+
+    if (!this.hooks?.has('theme.public')) return theme;
+
+    const identity = JSON.stringify([
+      theme.id,
+      theme.templates,
+      theme.parts,
+      theme.preview,
+    ]);
+    const result = await this.hooks.applyFilter(
+      'theme.public',
+      theme,
+      (candidate) => {
+        const parsed = publicThemeSchema.safeParse(candidate);
+
+        return (
+          parsed.success &&
+          JSON.stringify([
+            parsed.data.id,
+            parsed.data.templates,
+            parsed.data.parts,
+            parsed.data.preview,
+          ]) === identity
+        );
+      },
+    );
+
+    return publicThemeSchema.parse(result);
   }
 
   /** Any installed or built-in theme by id, as the public site would show it. */
-  async find(id: string): Promise<PublicTheme | null> {
+  async find(id: string, preview = false): Promise<PublicTheme | null> {
     const [state, fonts] = await Promise.all([
       this.state.load(),
       this.siteFonts.load(),
@@ -276,10 +311,13 @@ export class ThemeService {
     const theme = findTheme(state, id);
 
     return theme
-      ? this.contributed(
-          toPublic(theme, state.customizations[id], fonts),
-          state.customizations[id],
-        )
+      ? this.present({
+          theme: {
+            ...toPublic(theme, state.customizations[id], fonts),
+            preview,
+          },
+          custom: state.customizations[id],
+        })
       : null;
   }
 

@@ -194,6 +194,7 @@ export const createContainer = async (
     timeoutMs,
   });
   const functions = createFunctions({
+    hooks: registries.hooks,
     directory: config.FUNCTIONS_DIR,
     enabled: config.FUNCTIONS_EDITOR_ENABLED,
     settings: repositories.settingsRepository,

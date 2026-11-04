@@ -32,8 +32,9 @@ export const loadPatterns = async (
 /** Synced insertion needs only the id. Copies must pass the API's current draft-read guard. */
 export const patternContent = async (
   pattern: PatternChoice,
+  expandSynced = false,
 ): Promise<JSONContent[] | null> => {
-  if (pattern.synced)
+  if (pattern.synced && !expandSynced)
     return [{ type: 'patternRef', attrs: { ref: pattern.id } }];
   const response = await fetch(
     `${resolve('/admin/(app)/patterns/api')}?id=${encodeURIComponent(pattern.id)}`,

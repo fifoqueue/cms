@@ -157,6 +157,11 @@ export class RevisionService {
 
     // Rejects documents outside the editor schema, like a save would.
     this.deps.renderer.render(data.document);
+    await this.deps.content.checkAllowedBlocks(
+      data.document,
+      record.type,
+      actor,
+    );
     await this.deps.revisions.autosave({
       ip: origin?.ip ? canonicalAddress(origin.ip) : null,
       userAgent: origin?.userAgent ?? null,

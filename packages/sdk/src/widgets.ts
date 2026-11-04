@@ -43,7 +43,40 @@ export const widgetsSettingsSchema = z.object({
 export type WidgetsSettings = z.output<typeof widgetsSettingsSchema>;
 export type WidgetsSettingsInput = z.input<typeof widgetsSettingsSchema>;
 
-const base = { id: z.string(), title: z.string() };
+const amount = z.number().int().min(1).max(30).optional();
+
+export const coreWidgetSettingsSchemas = {
+  recentPosts: z.object({ count: amount }).strict(),
+  categories: z
+    .object({ showEmpty: z.boolean().optional(), flat: z.boolean().optional() })
+    .strict(),
+  tags: z
+    .object({
+      count: amount,
+      showEmpty: z.boolean().optional(),
+      flat: z.boolean().optional(),
+    })
+    .strict(),
+  search: z.object({}).strict(),
+  text: z.object({ text: z.string().max(100_000).optional() }).strict(),
+  menu: z.object({ menuId: z.string().max(191).optional() }).strict(),
+  archives: z.object({ count: amount }).strict(),
+  recentComments: z.object({ count: amount }).strict(),
+  image: z
+    .object({
+      src: z.string().regex(MEDIA_IMAGE).optional(),
+      alt: z.string().max(300).optional(),
+      link: z.union([z.literal(''), z.string().regex(LINK)]).optional(),
+    })
+    .strict(),
+};
+
+const base = {
+  id: z.string(),
+  title: z.string(),
+  /** Present only during public widget filtering; omitted from HTTP responses. */
+  settings: widgetSchema.shape.settings.optional(),
+};
 
 /** A run of widget text. */
 export const richRunSchema = z.object({

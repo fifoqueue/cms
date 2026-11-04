@@ -10,6 +10,10 @@ import type {
   BlockRenderContext,
 } from '@cms/sdk/plugin';
 import { isolate } from '#api/shared/isolate';
+import { parseHtml } from '@cms/content/parse';
+import { renderDocument } from '@cms/content/render';
+import { z } from 'zod';
+import type { HookDispatcher } from '#api/domain/ports';
 import type { Logger } from '#api/shared/logger';
 import { invalidInput, Errors, withParams } from '#api/shared/errors';
 
@@ -55,7 +59,11 @@ export class BlockRegistry {
   private registrations: Registration[] = [];
 
   constructor(
-    private readonly options: { timeoutMs: number; logger: Logger },
+    private readonly options: {
+      timeoutMs: number;
+      logger: Logger;
+      hooks?: HookDispatcher;
+    },
   ) {}
 
   registrar(owner: string): BlockRegistrar {
@@ -163,16 +171,61 @@ export class BlockRegistry {
               ? registration.definition.render(values, structuredClone(context))
               : '',
           this.options.timeoutMs,
-        ).then((result) => {
-          if (!this.registrations.includes(registration)) return '';
-          if (result.ok && typeof result.value === 'string')
-            return result.value;
-          this.options.logger.warn(
-            `Plugin "${registration.owner}" failed to render block "${registration.block}": ${result.ok ? 'returned a non-string value' : result.error.message}`,
-          );
+        )
+          .then(async (result) => {
+            if (!this.registrations.includes(registration)) return '';
 
-          return '';
-        });
+            if (result.ok && typeof result.value === 'string') {
+              const html = renderDocument(parseHtml(result.value));
+
+              if (!this.options.hooks?.has('block.html')) return html;
+
+              const sanitized = new Map<string, string>();
+              const schema = z.object({
+                name: z.string(),
+                attrs: z.record(z.string(), z.unknown()),
+                html: z.string().max(1024 * 1024),
+              });
+              const filtered = await this.options.hooks.applyFilter(
+                'block.html',
+                { name: registration.block, attrs: values, html },
+                (value) => {
+                  const parsed = schema.safeParse(value);
+
+                  if (!parsed.success) return false;
+
+                  if (!sanitized.has(parsed.data.html))
+                    sanitized.set(
+                      parsed.data.html,
+                      renderDocument(parseHtml(parsed.data.html)),
+                    );
+
+                  return true;
+                },
+                undefined,
+                [
+                  {
+                    content: context.content
+                      ? {
+                          id: context.content.id,
+                          type: context.content.type,
+                          slug: context.content.slug,
+                        }
+                      : null,
+                  },
+                ],
+              );
+
+              return sanitized.get(filtered.html) ?? html;
+            }
+
+            this.options.logger.warn(
+              `Plugin "${registration.owner}" failed to render block "${registration.block}": ${result.ok ? 'returned a non-string value' : result.error.message}`,
+            );
+
+            return '';
+          })
+          .catch(() => '');
         rendered.set(key, output);
       }
 

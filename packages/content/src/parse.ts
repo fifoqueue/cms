@@ -12,6 +12,9 @@ import {
 
 import { Errors } from '#content/errors';
 
+export { sanitizeEmbedHtml } from '#content/embed-html';
+export { mapContentText, sanitizeShortcodeHtml } from '#content/shortcode-html';
+
 const BLOCK =
   /<(p|div|h[1-6]|ul|ol|blockquote|pre|figure|table|hr|details|video|audio)\b/i;
 

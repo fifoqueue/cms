@@ -66,4 +66,25 @@ export class WidgetRegistry implements PluginWidgets {
 
     return null;
   }
+
+  async validateSettings(type: string, settings: Record<string, unknown>) {
+    const registration = this.registrations.find(
+      (entry) => entry.type === type,
+    );
+
+    if (!registration?.widget.settingsSchema) return false;
+
+    const result = await isolate(
+      () =>
+        registration.widget.settingsSchema!.safeParse(structuredClone(settings))
+          .success,
+      this.options.timeoutMs,
+    );
+
+    return (
+      result.ok &&
+      result.value === true &&
+      this.registrations.includes(registration)
+    );
+  }
 }

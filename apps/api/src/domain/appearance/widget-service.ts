@@ -1,10 +1,14 @@
 import type { PublicCache } from '#api/domain/site/public-cache';
+import { parseHtml } from '@cms/content/parse';
+import { renderDocument } from '@cms/content/render';
 import {
   CORE_WIDGETS,
   LINK,
   MEDIA_IMAGE,
   WIDGET_AREAS,
   widgetsSettingsSchema,
+  publicWidgetsSchema,
+  coreWidgetSettingsSchemas,
 } from '@cms/sdk';
 import { richText } from '#api/domain/appearance/rich-text';
 import { readCache } from '#api/domain/appearance/read-cache';
@@ -39,6 +43,10 @@ export interface RecentComments {
 
 /** Widgets contributed by plugins, rendered to HTML. */
 export interface PluginWidgets {
+  validateSettings?(
+    type: string,
+    settings: Record<string, unknown>,
+  ): Promise<boolean>;
   types(): { type: string; name: string }[];
   render(
     type: string,
@@ -160,7 +168,107 @@ export class WidgetService {
       ),
     );
 
-    return { sidebar: sidebar!, footer: footer! };
+    const value = { sidebar: sidebar!, footer: footer! };
+
+    if (!this.deps.hooks?.has('widgets.public')) return value;
+
+    const sources = new Map(
+      [...settings.sidebar, ...settings.footer].map((widget) => [
+        widget.id,
+        widget,
+      ]),
+    );
+
+    for (const area of WIDGET_AREAS)
+      value[area] = value[area].map((widget) => ({
+        ...widget,
+        settings: structuredClone(sources.get(widget.id)!.settings),
+      }));
+
+    const kinds = new Map(
+      [...value.sidebar, ...value.footer].map((widget) => [
+        widget.id,
+        widget.kind,
+      ]),
+    );
+    const originals = new Map(
+      [...value.sidebar, ...value.footer]
+        .filter((widget) => widget.kind === 'html')
+        .map((widget) => [widget.id, widget.html]),
+    );
+    const filtered = await this.deps.hooks.applyFilter(
+      'widgets.public',
+      value,
+      async (candidate) => {
+        const parsed = publicWidgetsSchema.safeParse(candidate);
+
+        if (!parsed.success) return false;
+
+        const widgets = [...parsed.data.sidebar, ...parsed.data.footer];
+
+        for (const widget of widgets) {
+          const source = sources.get(widget.id);
+
+          if (!source) return false;
+          if (widget.settings === undefined) continue;
+          if (
+            JSON.stringify(widget.settings) === JSON.stringify(source.settings)
+          )
+            continue;
+
+          const schema =
+            coreWidgetSettingsSchemas[
+              source.type as keyof typeof coreWidgetSettingsSchemas
+            ];
+          const valid = schema
+            ? schema.safeParse(widget.settings).success
+            : await this.deps.plugins.validateSettings?.(
+                source.type,
+                widget.settings,
+              );
+
+          if (!valid) return false;
+        }
+
+        return (
+          new Set(widgets.map((widget) => widget.id)).size === widgets.length &&
+          widgets.every((widget) => kinds.get(widget.id) === widget.kind)
+        );
+      },
+    );
+
+    const result = publicWidgetsSchema.parse(filtered);
+
+    for (const area of WIDGET_AREAS) {
+      const rendered: PublicWidget[] = [];
+
+      for (const widget of result[area]) {
+        const source = sources.get(widget.id)!;
+        const changed =
+          widget.settings !== undefined &&
+          JSON.stringify(widget.settings) !== JSON.stringify(source.settings);
+        const next = changed
+          ? await this.present(
+              { ...source, title: widget.title, settings: widget.settings! },
+              once,
+            )
+          : widget;
+
+        if (next) {
+          delete next.settings;
+          rendered.push(next);
+        }
+      }
+
+      result[area] = rendered;
+    }
+
+    for (const area of WIDGET_AREAS)
+      for (const widget of result[area])
+        if (widget.kind === 'html' && widget.html !== originals.get(widget.id))
+          widget.html = renderDocument(parseHtml(widget.html));
+
+    return result;
   }
 
   private async present(

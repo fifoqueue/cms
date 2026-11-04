@@ -1,4 +1,5 @@
 import type { PublicFont } from '@cms/sdk';
+import { publicFontSchema } from '@cms/sdk';
 import type { ThemeView } from '#lib/server/public-view.js';
 
 const SIZE = { small: '15px', medium: '16px', large: '17.5px' } as const;
@@ -214,6 +215,11 @@ export const schemeScript = (theme: Pick<ThemeView, 'settings'>) => {
  */
 export const fontFaceCss = (fonts: readonly PublicFont[]) =>
   fonts
+    .flatMap((font) => {
+      const parsed = publicFontSchema.safeParse(font);
+
+      return parsed.success ? [parsed.data] : [];
+    })
     .flatMap((font) =>
       font.faces.map((face) => {
         const format = /\.woff2$/i.test(face.src)
@@ -224,7 +230,14 @@ export const fontFaceCss = (fonts: readonly PublicFont[]) =>
               ? 'opentype'
               : 'truetype';
 
-        return `@font-face { font-family: "${font.family}"; src: url("${face.src}") format("${format}"); font-weight: ${face.weight}; font-style: ${face.style}; font-display: ${face.display}; }`;
+        const quote = (value: string) =>
+          Array.from(value, (character) =>
+            character.charCodeAt(0) <= 32 || /[\\"<>{}@;]/.test(character)
+              ? `\\${character.charCodeAt(0).toString(16)} `
+              : character,
+          ).join('');
+
+        return `@font-face { font-family: "${quote(font.family)}"; src: url("${quote(face.src)}") format("${format}"); font-weight: ${face.weight}; font-style: ${face.style}; font-display: ${face.display}; }`;
       }),
     )
     .join('\n');

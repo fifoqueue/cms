@@ -843,7 +843,12 @@
     <div class="grid gap-2">
       <Label>{m.fieldBody}</Label>
       {#key editorKey}
-        <Editor name="document" label={m.fieldBody} bind:value={body} />
+        <Editor
+          name="document"
+          label={m.fieldBody}
+          bind:value={body}
+          {contentType}
+        />
       {/key}
       <p class="flex flex-wrap gap-x-4 text-xs text-muted-foreground">
         <span>{m.wordCount(words)}</span>
