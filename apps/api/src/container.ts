@@ -207,6 +207,8 @@ export const createContainer = async (
 
   late.functions.set(functions.functionsHost);
   const http = createHttp({
+    assets: registries.assets,
+    hooks: registries.hooks,
     config,
     signer: keys.signer,
     logger,
@@ -271,6 +273,7 @@ export const createContainer = async (
   const app = await http.assemble({
     i18n: registries.i18n,
     functionsEditor: functions.functionsEditor,
+    functionsDirectory: config.FUNCTIONS_DIR,
     ...tools,
     siteHealth,
     privacy,

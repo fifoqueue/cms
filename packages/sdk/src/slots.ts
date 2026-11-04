@@ -6,6 +6,8 @@ import { z } from 'zod';
  */
 export const SLOT_NAMES = [
   'head',
+  'body.open',
+  'body.close',
   'site.header',
   'site.footer',
   'content.before',
@@ -22,6 +24,8 @@ export type SlotMap = Record<SlotName, string[]>;
 
 export const slotMapSchema = z.object({
   head: z.array(z.string()),
+  'body.open': z.array(z.string()),
+  'body.close': z.array(z.string()),
   'site.header': z.array(z.string()),
   'site.footer': z.array(z.string()),
   'content.before': z.array(z.string()),

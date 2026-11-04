@@ -9,6 +9,7 @@ import { methodView } from '#lib/server/sign-in-view.js';
 import { clearPending } from '#lib/server/sso-cookie.js';
 import { allowCaptcha } from '#lib/server/captcha.js';
 import { visitorOf } from '#lib/server/visitor.js';
+import { emptySlots } from '#lib/server/slots.js';
 
 const loginPath = async (event: RequestEvent) => {
   const path = (await contentApi(event.fetch).site()).loginPath;
@@ -44,6 +45,7 @@ export const loginPage = async (
 
   return {
     kind: 'login' as const,
+    slots: emptySlots(),
     signIn: {
       methods: info.methods.map(methodView),
       passwordReset: info.passwordReset,

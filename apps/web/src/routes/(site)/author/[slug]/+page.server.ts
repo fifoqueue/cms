@@ -11,7 +11,11 @@ import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = async (event) => {
   const { fetch, url, params, parent } = event;
   const api = contentApi(fetch);
-  const slots = loadSlots(api, { path: url.pathname });
+  const slots = loadSlots(api, {
+    path: url.pathname,
+    kind: 'author',
+    slug: params.slug,
+  });
   const posts = listPosts(
     api,
     url,

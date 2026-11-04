@@ -6,6 +6,7 @@ import { errorResponse, toErrorResponse } from '#api/http/respond';
 import { withApiServices, withInstallerServices } from '#api/http/services';
 import type { ApiServices, InstallerServices } from '#api/http/services';
 import { Errors } from '#api/shared/errors';
+import { apiHooks } from '#api/http/api-hooks';
 
 const routesDirectory = (name: string) =>
   fileURLToPath(new URL(`./routes/${name}`, import.meta.url));
@@ -38,6 +39,7 @@ export const createApiApp = async ({ services, logger }: ApiAppDeps) =>
   new Elysia()
     .use(apiErrors(logger))
     .use(withApiServices(services))
+    .use(apiHooks(services))
     .use(await loadRoutes('api', '/api'));
 
 export interface InstallerAppDeps {

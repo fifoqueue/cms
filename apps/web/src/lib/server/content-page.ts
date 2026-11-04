@@ -13,6 +13,7 @@ import type { BlockData } from '#lib/server/theme-queries.js';
 import type { ThemePage } from '#lib/theme/template.js';
 import { withSeoMeta } from '#lib/server/page-meta.js';
 import type { HeadLayout } from '#lib/server/page-meta.js';
+import { filterPageData } from '#lib/server/page-data.js';
 
 /** Form actions of every page that can show an entry: unlocking, commenting, moderating. */
 export const entryActions = {
@@ -56,7 +57,10 @@ export const entryPage = async (
     pages: { current, total: parts.length },
   };
   const captcha = api.captcha().catch(() => null);
-  const page = { kind: 'content' as const, content: view };
+  const page = await filterPageData(
+    { kind: 'content' as const, content: view },
+    event.url.pathname,
+  );
   const [definitions, comments, unlockCaptcha, blocks, loadedSlots, meta] =
     await Promise.all([
       types,
@@ -72,7 +76,7 @@ export const entryPage = async (
 
   return {
     kind: 'content' as const,
-    content: view,
+    content: page.content,
     /** Labels of the entry's public fields, in their defined order. */
     fieldLabels: (
       definitions.find((type) => type.key === content.type)?.fields ?? []

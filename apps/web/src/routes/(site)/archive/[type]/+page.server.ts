@@ -10,7 +10,11 @@ import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = async (event) => {
   const { fetch, url, params, parent } = event;
   const api = contentApi(fetch);
-  const slots = loadSlots(api, { path: url.pathname });
+  const slots = loadSlots(api, {
+    path: url.pathname,
+    kind: 'archive',
+    type: params.type,
+  });
   const pageSize = (await parent()).reading.postsPerPage;
   const type = (await api.contentTypes()).find(
     (option) => option.key === params.type && option.archive,

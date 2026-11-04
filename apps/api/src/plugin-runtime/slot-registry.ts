@@ -1,4 +1,5 @@
 import { SLOT_NAMES } from '@cms/sdk';
+import { sanitizeShortcodeHtml } from '@cms/content/parse';
 import type { SlotMap, SlotName } from '@cms/sdk';
 import type { SlotContext, SlotRegistrar, SlotRenderer } from '@cms/sdk/plugin';
 import { isolate } from '#api/shared/isolate';
@@ -73,8 +74,12 @@ export class SlotRegistry {
       if (!this.contributions.includes(entry)) continue;
       const { owner, slot } = entry;
 
-      if (result.ok && typeof result.value === 'string') {
-        if (result.value) slots[slot].push(result.value);
+      if (
+        result.ok &&
+        typeof result.value === 'string' &&
+        result.value.length <= 1_000_000
+      ) {
+        if (result.value) slots[slot].push(sanitizeShortcodeHtml(result.value));
       } else {
         const reason = result.ok
           ? 'returned a non-string value'

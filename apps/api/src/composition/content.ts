@@ -52,6 +52,7 @@ type Input = Pick<
   Pick<
     ReturnType<typeof createRegistries>,
     | 'hooks'
+    | 'redirects'
     | 'contentTypeRegistry'
     | 'fieldRegistry'
     | 'taxonomyRegistry'
@@ -82,6 +83,7 @@ export const createContent = ({
   revisions,
   archiveStore,
   hooks,
+  redirects,
   contentTypeRegistry,
   fieldRegistry,
   taxonomyRegistry,
@@ -199,6 +201,8 @@ export const createContent = ({
   const permalinkResolver = new PermalinkResolver(
     permalinkRepository,
     publicContent,
+    redirects,
+    hooks,
   );
   const content = new ContentService({
     repository: contentRepository,

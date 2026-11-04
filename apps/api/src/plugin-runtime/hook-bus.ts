@@ -40,6 +40,12 @@ user.signedOut user.created user.updated user.roleChanged user.deleted role.crea
 );
 
 for (const name of [
+  'template.candidates',
+  'page.bodyClasses',
+  'response.headers',
+  'request.notFound',
+  'api.requestAllowed',
+  'api.responseHeaders',
   'i18n.messages',
   'i18n.locale',
   'theme.public',
@@ -600,10 +606,14 @@ export class HookBus implements HookDispatcher {
 
           if (!this.filters.get(name)?.includes(entry)) continue;
 
-          if (await accept(next)) {
+          const accepted = await snapshot(next, accept);
+
+          if (accepted) {
             if (!this.filters.get(name)?.includes(entry)) continue;
-            observe?.(owner, current, next as FilterHookMap[K]);
-            current = next as FilterHookMap[K];
+            const result = accepted.value as FilterHookMap[K];
+
+            observe?.(owner, current, result);
+            current = result;
           } else {
             this.options.logger.warn(
               `Functions "${owner}" returned an invalid value for "${name}"; ignored`,

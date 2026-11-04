@@ -2,7 +2,8 @@ import { contentApi } from '#lib/server/api.js';
 import { siteLayout } from '#lib/server/site-layout.js';
 import { sessionToken } from '#lib/server/session-cookie.js';
 import { entryActions, entryPage } from '#lib/server/content-page.js';
-import { notFoundFrom } from '#lib/server/errors.js';
+import { Errors, notFoundFrom } from '#lib/server/errors.js';
+import { error } from '@sveltejs/kit';
 import { homePosts, listPosts } from '#lib/server/archive.js';
 import { homeTypeParam, pageParam } from '#lib/server/public-view.js';
 import { loadSlots } from '#lib/server/slots.js';
@@ -25,7 +26,9 @@ export const load: PageServerLoad = async (event) => {
   const publicApi = contentApi(fetch);
   const page = pageParam(url);
   const search = url.searchParams.has('q');
-  const slots = search ? loadSlots(api, { path: url.pathname }) : null;
+  const slots = search
+    ? loadSlots(api, { path: url.pathname, kind: 'search' })
+    : null;
   // The request's shared layout: reading settings without waiting for the whole parent load
   // (error-page data, toolbar); loadTemplateData reuses this same promise.
   const theme = siteLayout(event);
@@ -57,12 +60,20 @@ export const load: PageServerLoad = async (event) => {
       theme,
     ]);
 
+    if (!content) error(404, Errors.NotFound);
+
     return entryPage(
       api,
       event,
       content,
       types,
-      loadSlots(api, { path: '/', contentId: content.id }),
+      loadSlots(api, {
+        path: '/',
+        contentId: content.id,
+        kind: 'content',
+        type: content.type,
+        slug: content.slug,
+      }),
       async (page) => loadTemplateData(publicApi, await parent(), page),
       '/',
     );
@@ -76,7 +87,7 @@ export const load: PageServerLoad = async (event) => {
       page,
       pageSize,
     ),
-    loadSlots(api, { path: url.pathname }),
+    loadSlots(api, { path: url.pathname, kind: 'home' }),
     theme,
   ]);
 

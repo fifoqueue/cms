@@ -5,6 +5,41 @@ import { HookBus } from '#api/plugin-runtime/hook-bus';
 import { recordingLogger } from '#test/support/memory';
 
 describe('HookBus', () => {
+  test('trusted filter snapshots survive queued mutations without copying arguments', async () => {
+    const bus = new HookBus({
+      timeoutMs: 100,
+      logger: recordingLogger().logger,
+    });
+    const hooks = bus.registrar('functions:site', { trusted: true });
+    const retained = { user: {} as never, method: 'password', allowed: true };
+    const context = { bytes: new Uint8Array([1]), callback: () => undefined };
+    const observed: boolean[] = [];
+
+    hooks.filter('user.signInAllowed', (_value, arg) => {
+      expect(arg).toBe(context);
+      queueMicrotask(() =>
+        queueMicrotask(() => {
+          retained.allowed = false;
+        }),
+      );
+
+      return retained;
+    });
+    const result = await bus.applyFilter(
+      'user.signInAllowed',
+      retained,
+      (value) => (value as typeof retained).allowed,
+      (_owner, _previous, next) => {
+        observed.push(next.allowed);
+      },
+      [context],
+    );
+
+    expect(retained.allowed).toBe(false);
+    expect(result.allowed).toBe(true);
+    expect(observed).toEqual([true]);
+  });
+
   test('rejected trusted mutations restore values without cloning context bytes', async () => {
     for (const throws of [false, true]) {
       const bus = new HookBus({

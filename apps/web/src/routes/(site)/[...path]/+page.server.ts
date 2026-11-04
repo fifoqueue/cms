@@ -6,7 +6,7 @@ import { entryActions, entryPage } from '#lib/server/content-page.js';
 import { Errors, notFoundFrom } from '#lib/server/errors.js';
 import { latestPosts, loadTermArchive } from '#lib/server/archive.js';
 import { pageParam } from '#lib/server/public-view.js';
-import { isInternalPath } from '#lib/server/permalink.js';
+import { isInternalPath, isRedirectTarget } from '#lib/server/permalink.js';
 import {
   loginPage,
   loginRecoverAction,
@@ -29,12 +29,10 @@ import type { Actions, PageServerLoad } from './$types';
 export const load: PageServerLoad = async (event) => {
   const { fetch, url, cookies, parent } = event;
   const api = contentApi(fetch, sessionToken(cookies, url));
-  // The lookup and the slots start with the layout instead of waiting for it; archive paths
-  // discard the lookup and reuse the slots.
+  // Content lookup and layout loading run concurrently.
   const resolving = api.resolvePath(url.pathname, unlockProofs(cookies));
 
   resolving.catch(() => undefined);
-  const slots = loadSlots(api, { path: url.pathname });
   const layout = parent();
   const layoutData = await layout;
   const { archives, reading, site } = layoutData;
@@ -51,12 +49,36 @@ export const load: PageServerLoad = async (event) => {
       archive.taxonomy,
       archive.slug,
       layout,
-      slots,
+      loadSlots(api, {
+        path: url.pathname,
+        kind: 'term',
+        type: archive.taxonomy,
+        slug: archive.slug,
+      }),
     );
   }
 
   const types = api.contentTypes().catch(() => []);
-  const { content, redirect: moved } = await resolving.catch(notFoundFrom);
+  const resolved = await resolving.catch(notFoundFrom);
+
+  if ('destination' in resolved) {
+    if (!isRedirectTarget(resolved.destination.to, url))
+      error(502, Errors.InvalidContentPath);
+    redirect(resolved.destination.status, resolved.destination.to, {
+      external: true,
+    });
+  }
+
+  const { content, redirect: moved } = resolved;
+
+  if (!content) error(404, Errors.NotFound);
+  const slots = loadSlots(api, {
+    path: url.pathname,
+    kind: reading.postsPagePath === content.path ? 'home' : 'content',
+    contentId: content.id,
+    type: content.type,
+    slug: content.slug,
+  });
 
   if (moved) {
     if (!isInternalPath(content.path)) error(502, Errors.InvalidContentPath);

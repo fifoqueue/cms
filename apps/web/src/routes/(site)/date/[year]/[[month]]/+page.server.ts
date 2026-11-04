@@ -19,7 +19,7 @@ export const load: PageServerLoad = async (event) => {
 
   if (!(year >= 1970) || Number.isNaN(month)) error(404, Errors.NotFound);
   const api = contentApi(fetch);
-  const slots = loadSlots(api, { path: url.pathname });
+  const slots = loadSlots(api, { path: url.pathname, kind: 'date' });
   const posts = await listPosts(
     api,
     url,

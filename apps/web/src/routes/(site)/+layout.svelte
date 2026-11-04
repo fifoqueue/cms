@@ -3,7 +3,7 @@
   import { routeLink } from '#lib/route-link.js';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
-  import type { SlotMap } from '@cms/sdk';
+  import type { PageSlots } from '#lib/theme/presentation.js';
   import { buildSiteHead, sitePage } from '#lib/seo/head.js';
   import type { SeoMeta } from '#lib/seo/head.js';
   import SeoHead from '#lib/seo/SeoHead.svelte';
@@ -84,7 +84,14 @@
   onMount(resyncPush);
 
   // Every page loads its own slots; error pages have none.
-  const slots = $derived(page.data.slots as SlotMap | undefined);
+  const slots = $derived(page.data.slots as PageSlots | undefined);
+  $effect(() => {
+    const classes = slots?.presentation?.render.bodyClasses ?? [];
+
+    document.body.classList.add(...classes);
+
+    return () => document.body.classList.remove(...classes);
+  });
 </script>
 
 <SeoHead {head} />
@@ -95,6 +102,7 @@
     <link rel="apple-touch-icon" href={data.site.icon.url} />
   {/if}
   <SlotOutlet fragments={slots?.head ?? []} />
+  <SlotOutlet fragments={[slots?.presentation?.headHtml ?? '']} />
   {#if schemeStyle}
     <!-- eslint-disable-next-line svelte/no-at-html-tags -- generated from schema-checked palette colors -->
     {@html `<style>${schemeStyle}</style>`}
@@ -109,6 +117,7 @@
   />
 </svelte:head>
 <SiteFonts fonts={data.theme.fonts} />
+<SlotOutlet fragments={slots?.['body.open'] ?? []} />
 
 <a
   href="#main"
@@ -153,3 +162,5 @@
     {@render children()}
   </Toasts>
 </div>
+<SlotOutlet fragments={slots?.['body.close'] ?? []} />
+<SlotOutlet fragments={[slots?.presentation?.footerHtml ?? '']} />

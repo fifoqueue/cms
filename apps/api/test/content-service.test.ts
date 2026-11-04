@@ -325,8 +325,8 @@ describe('ContentService', () => {
       capabilities: ['content.readPrivate'],
     });
 
-    expect(resolved.content.html).toContain('Body');
-    expect(resolved.content.seo.noIndex).toBe(true);
+    expect(resolved.content?.html).toContain('Body');
+    expect(resolved.content?.seo.noIndex).toBe(true);
     for (const key of ['document', 'authorId', 'status', 'passwordHash'])
       expect(resolved.content).not.toHaveProperty(key);
     expect((await publicContent.list({})).items).toEqual([]);
@@ -754,8 +754,8 @@ describe('ContentService', () => {
     const redirect = await resolver.resolve({ path: '/p/20260101' });
 
     expect(redirect.redirect).toBe(true);
-    expect(redirect.content.path).toBe('/post/Changed');
-    expect(redirect.content.title).toBe('Filtered title');
+    expect(redirect.content?.path).toBe('/post/Changed');
+    expect(redirect.content?.title).toBe('Filtered title');
     const draft = await service.update(
       first.id,
       input({ title: 'Changed' }),
@@ -779,7 +779,7 @@ describe('ContentService', () => {
 
     expect(republished.publishedAt).toBe('2026-01-01T00:00:00.000Z');
     expect(republished.path).toBe('/story/hello-world');
-    expect((await resolver.resolve({ path: changed.path })).content.path).toBe(
+    expect((await resolver.resolve({ path: changed.path })).content?.path).toBe(
       republished.path,
     );
     await service.remove(first.id, ADMIN);

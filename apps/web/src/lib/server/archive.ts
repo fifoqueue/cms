@@ -17,6 +17,7 @@ import type { LayoutBlockData } from '#lib/server/theme-queries.js';
 import { withSeoMeta } from '#lib/server/page-meta.js';
 import type { HeadLayout } from '#lib/server/page-meta.js';
 import type { FilterEvent } from '#lib/server/seo-filter.js';
+import { filterPageData } from '#lib/server/page-data.js';
 import { HOME_LIST_TYPES } from '#lib/theme/pagination.js';
 import type { HomeListType } from '#lib/theme/pagination.js';
 
@@ -33,7 +34,12 @@ export const loadTermArchive = async (
       }
   >,
   /** Already requested by a caller that learned late that the path is an archive. */
-  slots = loadSlots(contentApi(event.fetch), { path: event.url.pathname }),
+  slots = loadSlots(contentApi(event.fetch), {
+    path: event.url.pathname,
+    kind: 'term',
+    type: taxonomy,
+    slug,
+  }),
 ) => {
   const { url } = event;
   const api = contentApi(event.fetch);
@@ -68,11 +74,14 @@ export const loadTermArchive = async (
   const posts = await (term.slug === slug ? guess : list(term.slug));
 
   requirePage(posts);
-  const page = {
-    kind: 'term' as const,
-    term: { ...termArchiveView(term), path: canonicalPath },
-    posts: listView(posts),
-  };
+  const page = await filterPageData(
+    {
+      kind: 'term' as const,
+      term: { ...termArchiveView(term), path: canonicalPath },
+      posts: listView(posts),
+    },
+    url.pathname,
+  );
   const [blocks, loadedSlots, meta] = await Promise.all([
     loadTemplateData(api, loaded, page),
     slots,

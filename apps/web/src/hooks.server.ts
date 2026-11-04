@@ -14,6 +14,54 @@ import { RETURN_PARAM } from '#lib/server/return-path.js';
 import { endSession, sessionToken } from '#lib/server/session-cookie.js';
 import { clearPending } from '#lib/server/sso-cookie.js';
 import { withWidgetOrigins } from '#lib/server/captcha.js';
+import { startWebFunctions } from '#lib/server/web-functions.js';
+import { webHooks } from '#lib/server/web-functions.js';
+import { renderRequest } from '#lib/server/render-request.js';
+import {
+  renderHeaders,
+  withAssetOrigins,
+} from '#lib/server/render-security.js';
+
+export const init = startWebFunctions;
+
+const publicRender: Handle = ({ event, resolve }) => {
+  if (!event.route.id?.startsWith('/(site)')) return resolve(event);
+
+  return renderRequest.run({ bus: webHooks }, async () => {
+    const state = renderRequest.getStore()!;
+    const response = await resolve(event, {
+      transformPageChunk: async ({ html }) => {
+        const result = await state.pending;
+
+        return result
+          ? html.replace(
+              '<body ',
+              `<body class="${result.render.bodyClasses.join(' ')}" `,
+            )
+          : html;
+      },
+    });
+    const result = await state.pending;
+
+    if (!result) return response;
+    const headers = new Headers(response.headers);
+
+    renderHeaders(headers, result.render.headers);
+    const policy = headers.get('content-security-policy');
+
+    if (policy)
+      headers.set(
+        'content-security-policy',
+        withAssetOrigins(policy, result.render.assets, event.url),
+      );
+
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  });
+};
 
 const OPEN_ADMIN_PATHS = [
   '/admin/register',
@@ -323,5 +371,6 @@ export const handle = sequence(
   publicCache,
   responseSecurity,
   guardAdmin,
+  publicRender,
   documentLanguage,
 );

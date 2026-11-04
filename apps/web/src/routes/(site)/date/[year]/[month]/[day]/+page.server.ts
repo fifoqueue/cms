@@ -3,7 +3,7 @@ import { contentApi } from '#lib/server/api.js';
 import { listPosts } from '#lib/server/archive.js';
 import { Errors } from '#lib/server/errors.js';
 import { loadSlots } from '#lib/server/slots.js';
-import { withSeoMeta } from '#lib/server/page-meta.js';
+import { withTemplateData } from '#lib/server/theme-queries.js';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
@@ -28,10 +28,10 @@ export const load: PageServerLoad = async (event) => {
     (await parent()).reading.postsPerPage,
   );
 
-  return withSeoMeta(event, parent, {
+  return withTemplateData(api, event, {
     kind: 'date' as const,
     date: { year, month, day },
     posts,
-    slots: await loadSlots(api, { path: url.pathname }),
+    slots: await loadSlots(api, { path: url.pathname, kind: 'date' }),
   });
 };

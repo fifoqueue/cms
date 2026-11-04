@@ -17,6 +17,10 @@
 추가 인수 타입은 읽기 전용 배열이며 플러그인에는 복사본을 전달합니다.
 신뢰된 functions 핸들러에는 원본을 전달하므로 컨텍스트를 변경하지 않아야 합니다.
 
+신뢰된 필터의 반환값도 검증 전에 구조화 복사한 스냅샷으로 고정하며, 검증한
+스냅샷만 다음 핸들러와 코어 관찰자에게 전달합니다. 추가 인수는 복사하지 않으며
+핸들러가 없으면 스냅샷을 만들지 않습니다.
+
 허용/거부 필터는 단조 규칙을 사용하지 않습니다. 코어 판단은 초기값일 뿐이며,
 플러그인과 functions의 모든 핸들러가 `true` 또는 `false`를 반환할 수 있습니다.
 `content.publishAllowed`, `content.deleteAllowed`, `media.uploadAllowed`,
@@ -94,7 +98,7 @@
 | --------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 액션 훅   | `hooks.on(name, handler)`                                                            | `content.created/updated/published/trashed/restored/deleted`, `media.uploaded/deleted`, `comment.created/statusChanged`, `site.updated`. 결과에 영향 없음                                                                                                                                                                                                                                                    |
 | 필터 훅   | `hooks.filter(name, handler, prio?)`                                                 | `content.beforeSave`(저장 직전, 비밀번호 제외·변경 불가), `content.public`(공개 API 단건 응답 직전, 본문 포함), `content.publicSummary`(공개 목록 항목 응답 직전, 본문 없음), `comment.beforeSave`(방문자 댓글 저장 직전; `body`·`status`만 반영). 낮은 prio 먼저                                                                                                                                            |
-| 슬롯      | `slots.provide(slot, renderer)`                                                      | `head`, `site.header`, `site.footer`, `content.before`, `content.after`, `comments.before`, `comments.after` 에 HTML 주입                                                                                                                                                                                                                                                                                    |
+| 슬롯      | `slots.provide(slot, renderer)`                                                      | `head`, `body.open`, `body.close`, `site.header`, `site.footer`, `content.before`, `content.after`, `comments.before`, `comments.after`에 정제된 HTML 주입. `body.open`은 본문 시작, `body.close`는 본문 끝                                                                                                                                                                                                  |
 | 위젯      | `widgets.provide(key, { name, render })`                                             | 위젯 유형 `plugin:<id>:<key>`. 관리자가 사이드바/푸터 영역에 배치하고 `render(settings)`의 HTML이 표시됩니다(실패 시 해당 위젯만 빠짐)                                                                                                                                                                                                                                                                       |
 | 임베드    | `embeds.register({ name, render })`                                                  | 에디터 임베드 블록의 주소를 플레이어 HTML로 바꿉니다. 설정 → 임베드에서 관리하는 활성 코어 제공자를 목록 순서대로 먼저 확인하고 플러그인 제공자를 확인합니다. 기본값은 YouTube·Vimeo·X·Instagram이며 관리자가 추가·비활성화·정렬할 수 있습니다. 일치하지 않는 주소는 링크로 남습니다.                                                                                                                        |
 | 블록      | `blocks.register(key, { title, description?, attributes?, render(attrs, context) })` | 편집기에 넣는 동적 블록(`plugin:<id>:<key>`, WordPress `register_block_type`). 속성은 설정 필드(text/number/boolean)와 `select`로 선언하고, 콘텐츠에는 범용 `pluginBlock` 노드로 저장됩니다. 플러그인이 켜져 있으면 저장 시 선언으로 검증하고, 제공할 때 격리 실행해 HTML을 넣습니다(요청 안에서만 캐시, 실패·시간 초과·비활성은 빈 출력). 꺼진 플러그인의 블록은 그대로 보존되며 편집기에 안내가 표시됩니다 |
@@ -110,6 +114,35 @@
 manifest의 `requires: { cms?: '<semver 범위>', plugins?: { '<id>': '<범위>' } }`가 맞지 않으면 활성화 대신 `failed`와 이유(코어 문구)를 보여 줍니다. 부팅 시 필요한 플러그인이 먼저 활성화됩니다. `updateUrl`(https, `{ "version", "download" }` 응답)을 적으면 관리자 화면에서 새 버전을 확인할 수 있습니다(자동 설치 없음).
 
 타입 정의: `packages/sdk/src/plugin.ts`. 새 훅/슬롯은 `ActionHookMap`/`FilterHookMap`/`SLOT_NAMES`에 범용 이름으로 추가하고, 코어에서 발행 지점을 만들고, 이 표와 테스트를 갱신합니다.
+
+### 페이지 렌더링과 라우팅
+
+공개 SDK `createContentClient(...).pageRender(query)`는
+`GET /api/v1/page-render`를 호출합니다. 응답은
+`{ slots, bodyClasses, assets, headers, templateCandidates }`이며 `slots`는
+`body.open`·`body.close`를 포함한 모든 슬롯의 합친 HTML 문자열입니다.
+기존 `/api/v1/slots`는 슬롯별 문자열 배열을 유지합니다. 같은 요청 객체와
+정규화된 쿼리의 렌더링 작업만 공유하며 요청 간에는 결과를 재사용하지 않습니다.
+
+| 종류 | API / 훅                                                       | 계약                                                                                                                                            |
+| ---- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 필터 | `template.candidates`                                          | `{ page, candidates }`. 활성 테마의 템플릿 이름만 최대 64개 허용하며 순서 변경·추가·제거 가능                                                   |
+| 필터 | `page.bodyClasses`                                             | `{ page, classes }`. 최대 128개, 토큰당 128자. 영문·`_`로 시작하고 영문·숫자·`_`·`-`만 허용                                                     |
+| 등록 | `assets.register(key, { kind, src, placement, attrs, when? })` | `script`/`style`, `head`/`footer`. HTTPS 또는 같은 출처 플러그인 경로, 검증된 SRI·허용 속성만 전달. `when(page)` 격리 실행, 스코프 해제 시 제거 |
+| 필터 | `response.headers`                                             | `{ page, status, headers }`. 일반 헤더 추가만 허용하며 기존 값·CSP·쿠키·보안 정책은 변경 불가                                                   |
+| 등록 | `redirects.register(key, { resolve(path) })`                   | `{ to, status: 301\|302\|307\|308 }` 또는 `null`. 같은 출처 경로나 코어가 허용한 HTTPS 출처만 허용. 격리 실행·스코프 해제 적용                  |
+| 액션 | `request.notFound`                                             | `{ path }`. 등록 리디렉션과 공개 콘텐츠가 모두 없는 경우 404 직전에 발행                                                                        |
+| 필터 | `api.requestAllowed`                                           | `{ method, path, userId, client, allowed }`. `allowed`만 양방향 변경 가능하며 이후 라우트 인증·권한 검사는 생략하지 않음                        |
+| 필터 | `api.responseHeaders`                                          | `{ method, path, status, headers }`. 일반 헤더 추가만 허용. 비공개 응답 캐시 정책과 보안 헤더 잠금 유지                                         |
+
+`page`는 `{ kind, type?, slug?, status? }`이며 필터에서 문맥을 바꿀 수 없습니다.
+등록 API는 플러그인과 사이트·테마 functions의 공통 컨텍스트에 있습니다.
+자산 출처는 프런트엔드의 CSP 자산 목록에만 반영하며 헤더 필터로 CSP를 바꿀 수 없습니다.
+자격 증명·세션·복구 코드·콘텐츠 열람 증명·미리보기 토큰·서명 비밀 값 응답은
+필터 실행 전에 `private, no-store`로 표시합니다. 개인정보 확인 응답도 `no-store`입니다.
+API 필터는 실제 상태 확인 경로 `/api/health`와 `/api/v1/auth/**`,
+`/api/v1/install/**`에서 실행하지 않습니다. 핸들러가 없으면 사용자 조회·헤더 변환을 생략합니다.
+세부 입력과 리디렉션 응답 형태는 [HTTP 라우트](../api/routes.md)를 봅니다.
 
 ## 국제화
 

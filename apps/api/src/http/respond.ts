@@ -20,6 +20,13 @@ const STATUS: Record<ErrorCode, number> = {
 export const json = (data: unknown, status = 200) =>
   Response.json(data, { status });
 
+/** Credential-bearing responses are private before response filters run. */
+export const privateJson = (data: unknown, status = 200) =>
+  Response.json(data, {
+    status,
+    headers: { 'cache-control': 'private, no-store' },
+  });
+
 export const noContent = () => new Response(null, { status: 204 });
 
 export const errorResponse = (

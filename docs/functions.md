@@ -16,7 +16,7 @@ export const functions = defineFunctions({
 });
 ```
 
-`api`만 실행합니다. 소유자는 `functions:site`입니다. 컨텍스트는 플러그인과 같으며
+API 서버는 `api`, 웹 서버는 `web`을 실행합니다. 소유자는 `functions:site`입니다. API 컨텍스트는 플러그인과 같으며
 훅은 trusted registrar를 사용합니다. 신뢰하는 서버 코드만 넣으세요. 임의 코드 실행이며
 동기 무한 루프나 임의의 파일 접근을 차단하지 않습니다. 자체 타이머 같은 외부 자원은
 만들지 마세요. 등록은 재로딩 때 scope가 해제합니다.
@@ -82,7 +82,7 @@ export const functions = defineFunctions({
 관리자가 설치하는 테마 ZIP 루트에 선택 파일 `functions.ts`를 넣습니다. 하나의
 최상위 폴더로 감싼 ZIP도 지원합니다. UTF-8 256KiB 이하이며 설치 전에 TypeScript
 transpile 문법 검사를 합니다. 위와 같은 `export const functions = defineFunctions(...)`
-계약을 사용하며 현재 `api`만 실행합니다. 별도 manifest 필드는 없습니다.
+계약을 사용하며 API 서버에서 `api`, 웹 서버에서 `web`을 실행합니다. 별도 manifest 필드는 없습니다.
 보조 모듈 파일은 추출하지 않으므로 자체 코드가 하나의 파일에 들어 있어야 합니다.
 
 선언형 테마는 기존 `appearance.manage` 권한을 사용합니다. 함수가 있는 아카이브의
@@ -106,3 +106,95 @@ transpile 문법 검사를 합니다. 위와 같은 `export const functions = de
 동기적으로 교체합니다. 실패한 업그레이드는 같은 소유자의 기존 성공 scope를 그대로 유지하며 상태 API의
 `sources`에 실패를 표시합니다. 다른 테마로 전환하면 이전 테마의 scope와 복구 후보를
 해제합니다. 사이트와 같은 trusted registrar 및 버전 정리 규칙을 사용합니다.
+
+## 웹 함수
+
+```ts
+import { defineFunctions } from '@cms/sdk/functions';
+
+export const functions = defineFunctions({
+  web(ctx) {
+    ctx.hooks.filter('page.bodyClasses', (classes) => [...classes, 'my-site']);
+    ctx.hooks.filter('response.headers', (headers) => ({
+      ...headers,
+      'x-site-render': 'enabled',
+    }));
+    ctx.slots.provide('body.open', () => '<p>환영합니다</p>');
+    ctx.assets.register({
+      key: 'site-style',
+      kind: 'style',
+      src: '/site.css',
+      placement: 'head',
+      attrs: {},
+    });
+  },
+});
+```
+
+웹 서버의 시작 훅이 로더를 시작합니다. 활성 테마 다음 사이트 순서로 활성화하며,
+등록은 성공한 scope만 공개합니다. 모듈 import 또는 활성화 실패 시 기존 scope를
+유지합니다. 훅 예외와 잘못된 반환값은 서버 로그에 기록하고 이전 값을 사용합니다.
+`ctx.page`는 렌더 작업 안에서만 읽을 수 있는 요청별 컨텍스트이며, 활성화 시에는
+`undefined`입니다. 콜백의 두 번째 인자에도 읽기 전용 페이지 컨텍스트를 전달합니다.
+라우트 등록 기능은 없습니다.
+
+| 훅                    | 필터 값                                                     |
+| --------------------- | ----------------------------------------------------------- |
+| `template.candidates` | 템플릿 후보 이름 배열                                       |
+| `page.bodyClasses`    | CSS 클래스 배열                                             |
+| `page.data`           | `filterPageData`가 경로별 DTO 스키마로 검증하는 공개 데이터 |
+| `page.head`           | 허용된 속성만 가진 `meta`/`link` 객체 배열                  |
+| `response.headers`    | 응답 헤더 객체                                              |
+| `assets`              | 스크립트/스타일 자산 배열                                   |
+
+`hooks.filter(name, callback, priority?)`와 `hooks.on(name, callback, priority?)`는
+해제 함수를 반환합니다. 기본 우선순위는 10이며 작은 값부터 실행합니다.
+`on`은 검증된 최종 값을 관찰하며 반환값은 사용하지 않습니다.
+공개 페이지의 슬롯 로딩은 표현 훅을 적용합니다. `page.data`는 `filterPageData`에서
+템플릿과 SEO를 계산하기 전에 적용합니다. 이 함수는 페이지 종류에 맞는
+`webPageDataSchemas`의 스키마로 공개 DTO를 투영하고 반환값을 다시 검증합니다.
+스키마는 기존 API DTO의 필드에서 파생하며 호출자가 임의 스키마를 제공하지 않습니다.
+슬롯·세션·폼 상태는 변경할 수 없으며
+반환값을 같은 DTO 스키마로 다시 검증합니다. 잘못된 값은 경고를 기록하고 이전 값을
+유지합니다. 핸들러가 없으면 DTO 복제나 스키마 검증을 수행하지 않습니다.
+
+### 전달과 재로딩
+
+`GET /api/v1/internal/functions`는 `SSO_FRONTEND_SECRET_HEADER`의 프런트엔드
+비밀로 인증합니다. 일반 공개 클라이언트에 소스를 노출하지 않습니다.
+응답은 `{ version, sources: [{ owner, hash, code }] }`이며 테마가 먼저입니다.
+전체 모듈을 전달하지만 웹 로더는 `web`만 실행합니다. 해시는 SHA-256입니다.
+응답의 ETag는 따옴표로 감싼 version이며 `If-None-Match`가 같으면 인증 후 304를
+반환합니다. 캐시 정책은 `private, no-store`입니다.
+
+웹은 10초마다 조건부 요청하며 HTTP 요청 제한 시간은 5초입니다.
+소스는 웹 작업 디렉터리의 `data/functions/.versions` 아래 해시 접두사와 고유 이름을
+가진 스냅샷 디렉터리에 저장하고 `@cms/sdk/*`를 해석하여 번들링합니다.
+유지 중인 해시는 한 번만 import합니다. 성공적으로 교체하면 현재 버전과 직전 성공
+버전의 파일만 유지하고 더 오래된 스냅샷은 import가 끝난 뒤 정리합니다.
+로더는 자신이 생성한 고유 디렉터리만 삭제하므로 다른 웹 인스턴스나 진행 중인 다른
+import의 파일을 삭제하지 않습니다. 로더의 `stop()`은 자신의 스냅샷을 모두 정리합니다.
+실패한 import는 캐시에서 제거하고 자신의 파일을 정리합니다. 같은 해시도 다음
+재검사에서 고유 경로로 다시 시도하므로 일시적인 파일 오류에서 복구할 수 있습니다.
+활성화 실패 시 마지막 성공 scope는 유지됩니다. 프로세스 재시작 후에는 이 메모리
+상태가 사라집니다. 이전 구현이나 비정상 종료가 남긴 파일은 자동 삭제하지 않습니다.
+
+### 출력과 제한
+
+공개 요청의 page-render RPC는 요청 안에서 공유하며 실패하면 빈 슬롯·클래스·자산·
+헤더·후보 목록으로 계속 렌더링합니다. 웹 표현 훅은 API 결과 뒤에 실행합니다.
+동일 키 자산은 웹 등록이 우선합니다. 자산 URL은 HTTP(S) 또는 같은 사이트의
+절대 경로를 사용합니다. 속성은 이스케이프하며 제공된 SRI와 crossorigin을 보존합니다.
+CSP에는 자산 종류의 출처만 추가하며 다른 지시문은 넓히지 않습니다.
+캐시·쿠키·인증·보안 정책 헤더는 표현 훅이 덮어쓸 수 없습니다.
+
+소스는 256KiB 이하, 자산과 head 항목은 각각 최대 128개입니다.
+슬롯 HTML은 실행 가능한 태그·이벤트 속성·위험한 URL을 제거합니다.
+head 슬롯은 meta/link만 허용하며 스타일시트와 스크립트는 자산 등록을 사용합니다.
+meta는 description·author·keywords·generator·application-name·theme-color·color-scheme과
+og:/twitter: 정보만 허용합니다. referrer·robots·http-equiv 정책은 변경할 수 없습니다.
+콘텐츠 미리보기도 page-render를 한 번 조회하여 슬롯과 표현 훅을 적용하며
+캐시 금지·검색 제외·리퍼러 차단 정책을 유지합니다. 설정된 공개 로그인 경로는
+자격 증명 화면이므로 예외입니다. page-render와 웹 표현 훅을 실행하지 않고
+모든 슬롯을 명시적으로 비웁니다.
+신뢰하는 코드를 직접 실행하므로 무한 루프, 파일 접근, 자체 타이머를 격리하지 않습니다.

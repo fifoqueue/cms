@@ -722,6 +722,8 @@ export interface PluginContext {
   readonly pluginId: string;
   readonly hooks: HookRegistrar;
   readonly slots: SlotRegistrar;
+  readonly assets: AssetRegistrar;
+  readonly redirects: RedirectRegistrar;
   readonly widgets: WidgetRegistrar;
   readonly embeds: EmbedRegistrar;
   readonly blocks: BlockRegistrar;
@@ -734,6 +736,9 @@ export interface PluginContext {
   readonly content: ContentReader;
   readonly logger: PluginLogger;
 }
+
+import type { AssetRegistrar } from '#sdk/render';
+import type { RedirectRegistrar } from '#sdk/redirects';
 
 export interface PluginDefinition {
   manifest: PluginManifest;

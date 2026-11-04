@@ -1,5 +1,8 @@
 import { canonicalPermalinkPath, resolvePathQuerySchema } from '@cms/sdk';
 import type { PublicContent } from '@cms/sdk';
+import type { PageRedirect } from '@cms/sdk';
+import type { RedirectRegistry } from '#api/domain/permalinks/redirect-registry';
+import type { HookDispatcher } from '#api/domain/ports';
 import type { Actor } from '#api/domain/auth/authorization';
 import type { PathLookup } from '#api/domain/permalinks/permalink-repository';
 import { notFound, Errors } from '#api/shared/errors';
@@ -31,14 +34,25 @@ export class PermalinkResolver {
   constructor(
     private readonly paths: PathLookup,
     private readonly content: PublicContentById,
+    private readonly redirects?: RedirectRegistry,
+    private readonly hooks?: HookDispatcher,
   ) {}
 
   async resolve(
     query: unknown,
     proofs: readonly string[] = [],
     actor: Actor | null = null,
-  ): Promise<ResolvedPath> {
+  ): Promise<
+    ResolvedPath | { content: null; redirect: true; destination: PageRedirect }
+  > {
     const { path, context } = parseInput(resolvePathQuerySchema, query);
+
+    if (this.redirects && !this.redirects.empty) {
+      const destination = await this.redirects.resolve(path);
+
+      if (destination) return { content: null, redirect: true, destination };
+    }
+
     const canonical = canonicalPermalinkPath(path);
     const owner =
       canonical &&
@@ -50,7 +64,12 @@ export class PermalinkResolver {
       owner &&
       (await this.content.getById(owner.contentId, proofs, actor, context));
 
-    if (!owner || !content) throw notFound(Errors.ContentNotFound);
+    if (!owner || !content) {
+      if (this.hooks?.has('request.notFound'))
+        await this.hooks.emit('request.notFound', { path });
+
+      throw notFound(Errors.ContentNotFound);
+    }
 
     return { content, redirect: content.path !== path };
   }

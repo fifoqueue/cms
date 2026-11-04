@@ -29,6 +29,8 @@ import type { ThemePage } from '#lib/theme/template.js';
 import { HOME_LIST_TYPES } from '#lib/theme/pagination.js';
 import type { HomeListType } from '#lib/theme/pagination.js';
 import { withSeoMeta } from '#lib/server/page-meta.js';
+import { renderRequest } from '#lib/server/render-request.js';
+import { filterPageData } from '#lib/server/page-data.js';
 import type { HeadLayout } from '#lib/server/page-meta.js';
 import type { FilterEvent } from '#lib/server/seo-filter.js';
 
@@ -523,10 +525,11 @@ export const loadTemplateData = async (
       ? (layout.theme as ThemeView)
       : (await siteLayout((await import('$app/server')).getRequestEvent()))
           .theme;
-  const template = pickTemplate(
-    theme.templates,
-    templateCandidates(page, isFrontPage(page)),
-  );
+  const template = pickTemplate(theme.templates, [
+    ...((await renderRequest.getStore()?.pending)?.render.templateCandidates ??
+      []),
+    ...templateCandidates(page, isFrontPage(page)),
+  ]);
   const parts = includedParts(template, theme.parts);
   const data = await loadBlockData(
     api,
@@ -545,11 +548,15 @@ export const loadTemplateData = async (
 export const withTemplateData = async <P extends ThemePage>(
   api: Api,
   event: FilterEvent & {
+    url: URL;
     parent: () => Promise<LayoutBlockData & HeadLayout>;
   },
   page: P,
 ) => {
   const layout = await event.parent();
+
+  page = await filterPageData(page, event.url.pathname);
+
   const [blocks, seoMeta] = await Promise.all([
     loadTemplateData(api, layout, page),
     withSeoMeta(event, layout, page).then((data) => data.seoMeta),

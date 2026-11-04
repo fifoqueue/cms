@@ -135,6 +135,10 @@ import {
   siteSettingsSchema,
 } from '#sdk/site';
 import type { SlotMap, SlotQuery } from '#sdk/slots';
+import { pageRenderSchema } from '#sdk/render';
+import type { PageRender, PageRenderQuery } from '#sdk/render';
+import { redirectSchema } from '#sdk/redirects';
+import type { PageRedirect } from '#sdk/redirects';
 import { slotMapSchema } from '#sdk/slots';
 import type {
   AdminTaxonomyTerm,
@@ -198,18 +202,24 @@ export const createContentClient = (options: ClientOptions, token?: string) => {
       proofs?: readonly string[],
       context?: 'single' | 'feed',
     ) =>
-      request<{ content: PublicContent; redirect: boolean }>(
-        'GET',
-        '/api/v1/resolve',
-        {
-          query: { path, context },
-          headers: unlockHeaders(proofs),
-          response: z.strictObject({
+      request<
+        | { content: PublicContent; redirect: boolean }
+        | { content: null; redirect: true; destination: PageRedirect }
+      >('GET', '/api/v1/resolve', {
+        query: { path, context },
+        headers: unlockHeaders(proofs),
+        response: z.union([
+          z.strictObject({
             content: publicContentSchema,
             redirect: z.boolean(),
           }),
-        },
-      ),
+          z.strictObject({
+            content: z.null(),
+            redirect: z.literal(true),
+            destination: redirectSchema,
+          }),
+        ]),
+      }),
     archivePaths: {
       get: () =>
         request<ArchivePathsState>('GET', '/api/v1/permalinks/archives', {
@@ -322,6 +332,11 @@ export const createContentClient = (options: ClientOptions, token?: string) => {
       request<SlotMap>('GET', '/api/v1/slots', {
         query,
         response: slotMapSchema,
+      }),
+    pageRender: (query: PageRenderQuery = {}) =>
+      request<PageRender>('GET', '/api/v1/page-render', {
+        query,
+        response: pageRenderSchema,
       }),
   };
 };

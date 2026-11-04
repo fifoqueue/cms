@@ -2,6 +2,10 @@
 // serialize to the browser. Sentinel values must never appear in returned data.
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { with_request_store } from '@sveltejs/kit/internal/server';
+import { defineFunctions } from '@cms/sdk/functions';
+import { WebHookBus } from '#lib/server/web-hooks.js';
+import { renderRequest } from '#lib/server/render-request.js';
+import { filterPageData } from '#lib/server/page-data.js';
 import {
   DEFAULT_ENTRY_SEO,
   SEO_SETTINGS_DEFAULTS,
@@ -44,6 +48,8 @@ const { load: loadSiteLayout } =
   await import('#web/routes/(site)/+layout.server.js');
 const { handle: handleRequest } = await import('#web/hooks.server.js');
 const { load: loadHome } = await import('#web/routes/(site)/+page.server.js');
+const { load: loadPreview } =
+  await import('#web/routes/(site)/preview/[token]/+page.server.js');
 const { load: loadEntry } =
   await import('#web/routes/(site)/[slug]/+page.server.js');
 const { load: loadCategory } =
@@ -258,15 +264,23 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         })),
         fields: [],
       });
-    case '/api/v1/slots':
+    case '/api/v1/page-render':
       return json({
-        head: [],
-        'site.header': [],
-        'site.footer': [],
-        'content.before': [],
-        'content.after': [],
-        'comments.before': [],
-        'comments.after': [],
+        slots: {
+          head: '',
+          'body.open': '',
+          'body.close': '',
+          'site.header': '',
+          'site.footer': '',
+          'content.before': '',
+          'content.after': '',
+          'comments.before': '',
+          'comments.after': '',
+        },
+        bodyClasses: [],
+        assets: [],
+        headers: {},
+        templateCandidates: [],
       });
     case '/api/v1/taxonomies/category':
       return json([
@@ -388,6 +402,78 @@ beforeEach(() => {
 });
 
 describe('public page data', () => {
+  test('web page.data filters public route DTOs and rejects invalid changes without leaking fields', async () => {
+    const warnings: unknown[] = [];
+    const bus = new WebHookBus({
+      info() {},
+      warn: (...args) => {
+        warnings.push(args);
+      },
+      error() {},
+    });
+    const scope = bus.scope('functions:site');
+    let invalid = false;
+    const functions = defineFunctions({
+      web(ctx) {
+        ctx.hooks.filter('page.data', (data) => {
+          if (data.kind === 'content') {
+            const entry = data.content as Record<string, unknown>;
+
+            entry.title = invalid ? 42 : 'From web functions';
+            entry.html = '<p>Filtered public body</p>';
+          }
+
+          if (data.kind === 'home') data.title = 'Filtered home';
+          if (data.kind === 'search') data.query = 'Filtered search';
+
+          if (data.kind === 'term') {
+            (data.term as Record<string, unknown>).name = 'Filtered term';
+          }
+
+          return data;
+        });
+      },
+    });
+
+    await functions.web!(scope.context);
+    scope.commit();
+    const entry = () =>
+      renderRequest.run({ bus }, () =>
+        loadEntry(publicEvent('/hello', { slug: 'hello' })),
+      );
+
+    expect(await entry()).toMatchObject({
+      content: {
+        title: 'From web functions',
+        html: '<p>Filtered public body</p>',
+      },
+    });
+    invalid = true;
+    expect(await entry()).toMatchObject({
+      content: { title: 'Title hello', html: '<p>Body</p>' },
+    });
+    expect(warnings).toHaveLength(1);
+    expect(
+      await renderRequest.run({ bus }, () => loadHome(publicEvent('/'))),
+    ).toMatchObject({ title: 'Filtered home' });
+    expect(
+      await renderRequest.run({ bus }, () =>
+        loadHome(publicEvent('/?q=hello')),
+      ),
+    ).toMatchObject({ query: 'Filtered search' });
+    expect(
+      await renderRequest.run({ bus }, () =>
+        loadCategory(publicEvent('/category/news', { slug: 'news' })),
+      ),
+    ).toMatchObject({ term: { name: 'Filtered term' } });
+    scope.dispose();
+    const untouched = { kind: 'search' as const, query: 'hello', posts: null };
+
+    expect(
+      await renderRequest.run({ bus }, () => filterPageData(untouched, '/')),
+    ).toBe(untouched);
+  });
+
   test('the web runtime drops API-only secrets', () => {
     const env = {
       DATABASE_URL: 'mysql://secret',
@@ -439,7 +525,7 @@ describe('public page data', () => {
 
     expect(
       calls
-        .filter(({ url }) => url.pathname === '/api/v1/slots')
+        .filter(({ url }) => url.pathname === '/api/v1/page-render')
         .map(({ url }) => ({
           path: url.searchParams.get('path'),
           contentId: url.searchParams.get('contentId'),
@@ -461,18 +547,12 @@ describe('public page data', () => {
     ];
 
     expect(pages[0]).toMatchObject({ errorFallback: null });
-    // Each page requests its own slots once; the layout requests none.
+    // Each page requests its presentation once; the layout requests none.
     expect(
       calls
-        .filter(({ url }) => url.pathname === '/api/v1/slots')
-        .map(({ url }) => url.search),
-    ).toEqual([
-      '?path=%2F',
-      '?path=%2Fhello',
-      '?path=%2F',
-      '?path=%2Fcategory%2Fnews',
-      '?path=%2Fsearch',
-    ]);
+        .filter(({ url }) => url.pathname === '/api/v1/page-render')
+        .map(({ url }) => url.searchParams.get('path')),
+    ).toEqual(['/', '/hello', '/', '/category/news', '/search']);
     expect(pages[1]).toMatchObject({
       slots: {
         head: [],
@@ -536,6 +616,42 @@ describe('public page data', () => {
     ).toMatchObject({ status: 502 });
   });
 
+  test('registered redirects preserve validated destinations and status without trusting unsafe URLs', async () => {
+    for (const [to, status] of [
+      ['/new?x=1', 307],
+      ['https://other.test/new', 302],
+    ] as const) {
+      override = ({ url }) =>
+        url.pathname === '/api/v1/resolve'
+          ? json({ content: null, redirect: true, destination: { to, status } })
+          : undefined;
+      expect(
+        await loadEntry(publicEvent('/old?tracking=x')).catch(
+          (thrown: unknown) => thrown,
+        ),
+      ).toMatchObject({ status, location: to });
+    }
+
+    for (const to of [
+      '//evil.test',
+      'javascript:alert(1)',
+      'https://user:secret@evil.test/',
+      '/\\evil.test',
+    ]) {
+      override = ({ url }) =>
+        url.pathname === '/api/v1/resolve'
+          ? json({
+              content: null,
+              redirect: true,
+              destination: { to, status: 301 },
+            })
+          : undefined;
+      expect(
+        await loadEntry(publicEvent('/old')).catch((thrown: unknown) => thrown),
+      ).toMatchObject({ status: 502 });
+    }
+  });
+
   test('registration page receives the effective policy even while membership is disabled', async () => {
     override = ({ url }) =>
       url.pathname === '/api/v1/auth/register'
@@ -544,6 +660,50 @@ describe('public page data', () => {
     expect(await loadRegister(publicEvent('/admin/register'))).toMatchObject({
       membership: { enabled: false, registrationOpen: true },
     });
+  });
+
+  test('preview loads body slots once and preserves private presentation policy', async () => {
+    const headers: Record<string, string> = {};
+    const bus = new WebHookBus({ info() {}, warn() {}, error() {} });
+    const scope = bus.scope('functions:site');
+
+    scope.context.slots.provide('body.open', () => '<p>Preview open</p>');
+    scope.context.slots.provide('body.close', () => '<p>Preview close</p>');
+    scope.commit();
+    override = ({ url }) =>
+      url.pathname === '/api/v1/preview/test-token'
+        ? json(content('hello'))
+        : undefined;
+    const event = {
+      ...(publicEvent('/preview/test-token', {
+        token: 'test-token',
+      }) as object),
+      setHeaders: (values: Record<string, string>) =>
+        Object.assign(headers, values),
+    };
+    const data = await renderRequest.run({ bus }, () =>
+      loadPreview(event as never),
+    );
+
+    expect(data).toMatchObject({
+      kind: 'preview',
+      slots: {
+        'body.open': ['<p>Preview open</p>'],
+        'body.close': ['<p>Preview close</p>'],
+      },
+    });
+    expect(headers).toMatchObject({
+      'cache-control': 'no-store',
+      'x-robots-tag': 'noindex, nofollow',
+      'referrer-policy': 'no-referrer',
+    });
+    const presentationCalls = calls.filter(
+      ({ url }) => url.pathname === '/api/v1/page-render',
+    );
+
+    expect(presentationCalls).toHaveLength(1);
+    expect(presentationCalls[0]!.url.searchParams.get('kind')).toBe('preview');
+    scope.dispose();
   });
 
   test('the configured public login path renders there with a safe return path', async () => {
@@ -560,6 +720,17 @@ describe('public page data', () => {
     expect(JSON.stringify(data)).not.toContain(SECRET);
     expect(data).toMatchObject({
       kind: 'login',
+      slots: {
+        head: [],
+        'body.open': [],
+        'body.close': [],
+        'site.header': [],
+        'site.footer': [],
+        'content.before': [],
+        'content.after': [],
+        'comments.before': [],
+        'comments.after': [],
+      },
       back: '/hello',
       signIn: {
         methods: [
@@ -573,6 +744,9 @@ describe('public page data', () => {
       },
       captcha: { provider: 'none' },
     });
+    expect(
+      calls.filter(({ url }) => url.pathname === '/api/v1/page-render'),
+    ).toHaveLength(0);
   });
 });
 

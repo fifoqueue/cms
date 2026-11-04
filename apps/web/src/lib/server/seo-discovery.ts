@@ -270,7 +270,7 @@ export const loadBodies = async (
       items.filter((item) => !item.protected),
       async (item) => {
         const html = await api.resolvePath(item.path, undefined, 'feed').then(
-          ({ content }) => content.html,
+          ({ content }) => content?.html ?? '',
           () => '',
         );
 

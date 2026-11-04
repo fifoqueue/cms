@@ -6,6 +6,7 @@
   import { provideBlockPath, provideScope } from '#lib/theme/scope.js';
   import type { ScopeData } from '#lib/theme/scope.js';
   import type { ThemePage } from '#lib/theme/template.js';
+  import type { PageSlots } from '#lib/theme/presentation.js';
   import {
     isFrontPage,
     pickTemplate,
@@ -58,10 +59,11 @@
     previewBlocks ??
       data.template ??
       (data.theme.templates
-        ? pickTemplate(
-            data.theme.templates,
-            templateCandidates(page, isFrontPage(page)),
-          )
+        ? pickTemplate(data.theme.templates, [
+            ...((data.slots as PageSlots | undefined)?.presentation?.render
+              .templateCandidates ?? []),
+            ...templateCandidates(page, isFrontPage(page)),
+          ])
         : []),
   );
   const parts = $derived(data.parts ?? data.theme.parts ?? []);

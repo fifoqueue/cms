@@ -1,7 +1,7 @@
 import { contentApi } from '#lib/server/api.js';
 import { notFoundFrom } from '#lib/server/errors.js';
 import { contentView } from '#lib/server/public-view.js';
-import { emptySlots } from '#lib/server/slots.js';
+import { loadSlots } from '#lib/server/slots.js';
 import { withTemplateData } from '#lib/server/theme-queries.js';
 import type { PageServerLoad } from './$types';
 
@@ -20,6 +20,12 @@ export const load: PageServerLoad = async (event) => {
   return withTemplateData(api, event, {
     kind: 'preview' as const,
     content: contentView(content),
-    slots: emptySlots(),
+    slots: await loadSlots(api, {
+      path: event.url.pathname,
+      kind: 'preview',
+      contentId: content.id,
+      type: content.type,
+      slug: content.slug,
+    }),
   });
 };

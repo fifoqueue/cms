@@ -1,4 +1,6 @@
 import type { ResolvedManifest, ContentDocument } from '@cms/sdk';
+import { AssetRegistry } from '#api/plugin-runtime/asset-registry';
+import { RedirectRegistry } from '#api/domain/permalinks/redirect-registry';
 import { Translations } from '#api/domain/i18n/translations';
 import { PermalinkTokenRegistry } from '#api/domain/permalinks/token-registry';
 import { HealthChecks } from '#api/domain/tools/health-checks';
@@ -69,6 +71,8 @@ import type {
 } from '@cms/sdk/plugin';
 
 export interface PluginContextServices {
+  assets?: AssetRegistry;
+  redirects?: RedirectRegistry;
   translations?: Translations;
   patternRenderer?: { render(document: ContentDocument): string };
   /** Plugin registrations only; core checks are registered by `SiteHealthService`. */
@@ -145,6 +149,9 @@ export class PluginContextFactory {
     services.capabilities ??= new CapabilityRegistry();
     const options = { timeoutMs: 3000, logger: services.logger('core') };
 
+    services.assets ??= new AssetRegistry(options.timeoutMs);
+    services.redirects ??= new RedirectRegistry(options.timeoutMs);
+
     services.roles ??= new RoleRegistry();
     services.profileFields ??= new ProfileFields();
     services.captchaProviders ??= new CaptchaRegistry(options);
@@ -204,6 +211,18 @@ export class PluginContextFactory {
     );
 
     return Object.freeze({
+      redirects: {
+        register: (key, definition) =>
+          scope.track(() =>
+            this.services.redirects!.register(id, key, definition),
+          ),
+      },
+      assets: {
+        register: (key, definition) =>
+          scope.track(() =>
+            this.services.assets!.register(id, key, definition),
+          ),
+      },
       translations: {
         register: (locale, catalog) =>
           scope.track(() =>

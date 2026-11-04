@@ -1,4 +1,6 @@
 import type { AppConfig } from '#api/config';
+import type { HookDispatcher } from '#api/domain/ports';
+import type { AssetRegistry } from '#api/plugin-runtime/asset-registry';
 import type { createSecrets } from '#api/composition/persistence';
 import { createApiApp } from '#api/http/app';
 import { ClientResolver } from '#api/http/client-identity';
@@ -21,6 +23,8 @@ export const createHttp = ({
   timeoutMs,
   slots,
   routes,
+  hooks,
+  assets,
 }: {
   config: Pick<AppConfig, 'CMS_FRONTEND_SECRET' | 'OIDC_FRONTEND_SECRET'>;
   signer: Pick<ReturnType<typeof createSecrets>['signer'], 'sign'>;
@@ -28,6 +32,8 @@ export const createHttp = ({
   timeoutMs: number;
   slots: ConstructorParameters<typeof SlotService>[0];
   routes: ConstructorParameters<typeof PluginGateway>[0]['routes'];
+  hooks: HookDispatcher;
+  assets: AssetRegistry;
 }) => {
   // Unconfigured, it is derived from the signing key, so every instance has the same one.
   const frontendSecret =
@@ -40,6 +46,8 @@ export const createHttp = ({
       logger,
       services: {
         ...services,
+        renderHooks: hooks,
+        assets,
         clients,
         frontendSecret,
         seoFilter: new SeoFilterGateway(

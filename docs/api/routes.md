@@ -1,5 +1,93 @@
 # HTTP API 라우트
 
+## 공개 페이지 렌더링
+
+- 같은 HTTP 요청 객체와 정규화된 쿼리의 렌더링은 진행 중인 작업까지 공유합니다.
+  다른 요청에는 결과를 재사용하지 않습니다. 슬롯 출력은 콘텐츠 HTML 정책으로
+  정제하며 인라인 스크립트·이벤트 속성을 허용하지 않습니다. 자산은 등록 API로
+  제공합니다.
+
+### 라우팅 확장
+
+- `redirects.register(key, { resolve(path) })`는 `{ to, status }` 또는 `null`을
+  반환합니다. 상태는 `301`, `302`, `307`, `308`만 허용합니다. 등록은 스코프와
+  함께 해제되며 콜백 오류·시간 초과·잘못된 목적지는 무시합니다.
+- 기본 정책은 `/`로 시작하는 같은 출처 경로만 허용합니다. 프로토콜 상대 URL,
+  역슬래시, 제어 문자, 사용자 정보, 위험한 중첩 인코딩은 거부합니다. 코어가
+  `RedirectRegistry`에 HTTPS 출처 허용 목록을 전달하면 해당 출처의 절대 HTTPS
+  주소도 허용됩니다. 플러그인은 이 목록을 변경할 수 없습니다.
+- 등록 리디렉션은 콘텐츠 경로 조회보다 먼저 적용합니다.
+  `GET /api/v1/resolve`와 SDK `resolvePath()`의 추가 응답 형태는
+  `{ content: null, redirect: true, destination: { to, status } }`입니다.
+  프런트엔드는 `content`를 읽기 전에 `destination`을 처리해야 합니다.
+  기존 콘텐츠·이전 고유주소 응답 형태는 유지합니다.
+- 리디렉션도 콘텐츠도 없을 때 `request.notFound { path }`를 보내고 404를 반환합니다.
+
+### API 요청과 응답
+
+- `api.requestAllowed`는 `{ method, path, userId, client, allowed }`를 받습니다.
+  신원이 확인되지 않으면 식별자는 `null`입니다. `allowed`만 변경할 수 있고
+  후속 핸들러는 앞선 거부를 다시 허용할 수 있습니다. 허용 후에도 각 라우트의
+  인증·권한 검사를 그대로 수행합니다.
+- `api.responseHeaders`는 `{ method, path, status, headers }`를 받습니다.
+  문맥은 고정이며 기존 헤더는 제거·교체할 수 없습니다. 공개 응답과 같은
+  보안 헤더 잠금을 적용하며 비공개 응답의 캐시 정책도 변경할 수 없습니다.
+- 설치·인증·로그인·SSO·상태 확인 경로는 두 API 필터에서 제외합니다.
+  핸들러가 없으면 사용자 조회와 헤더 변환을 하지 않습니다.
+
+- `GET /api/v1/page-render?path=/&kind=home&type=&slug=&status=200&contentId=`:
+  공개 페이지의 렌더링 데이터를 반환합니다. `path` 기본값은 `/`, `kind` 기본값은
+  `content`입니다. `type`, `slug`, `status`, `contentId`는 선택 입력입니다.
+- 응답은 `200 { slots, bodyClasses, assets, headers, templateCandidates }`입니다.
+  `slots`는 모든 슬롯 이름을 키로 가지며 각 값은 등록 순서로 합친 HTML 문자열입니다.
+  핸들러가 없으면 `bodyClasses`, `assets`, `templateCandidates`는 빈 배열이고
+  `headers`는 빈 객체입니다.
+- SDK 메서드는 `createContentClient(...).pageRender(query)`입니다.
+  `@cms/sdk`에서 `PageRenderQuery`, `PageRender`, `pageRenderSchema`를 제공합니다.
+- 기존 `GET /api/v1/slots`는 계속 슬롯별 문자열 배열을 반환합니다.
+  두 경로 모두 `body.open`, `body.close` 슬롯을 포함합니다.
+
+### 페이지 자산
+
+- `assets.register(key, { kind, src, placement, attrs, when? })`로 외부 자산을
+  등록합니다. `kind`는 `script` 또는 `style`, `placement`는 `head` 또는
+  `footer`입니다. 같은 키의 활성 자산은 마지막 등록이 선택됩니다.
+- `src`는 자격 증명이 없는 절대 HTTPS URL 또는 `/api/plugins/` 아래의
+  같은 출처 경로입니다. 프로토콜 상대 주소, 경로 이탈, 제어 문자와 HTML
+  구분자는 거부합니다.
+- `attrs`는 `defer`, `async`, `module`, `integrity`, `crossorigin`만 허용합니다.
+  무결성 해시는 SHA-256/384/512의 SRI 형식이어야 합니다. 인라인 코드와 이벤트
+  속성은 지원하지 않습니다.
+- `when(page)`가 있으면 격리하여 실행하며 정확히 `true`를 반환한 자산만
+  포함합니다. 오류·시간 초과는 해당 자산을 제외합니다. 반환된 해제 함수를
+  호출하거나 플러그인·함수 스코프를 해제하면 등록이 제거됩니다.
+- 플러그인과 사이트·테마 함수의 공통 컨텍스트에서 사용할 수 있으며
+  `pageRender(query).assets`로 전달됩니다. 등록이 없으면 조건 실행을 하지 않습니다.
+
+### 공개 응답 헤더
+
+- `response.headers`는 `{ page, status, headers }`를 받습니다. 페이지 문맥과
+  상태는 고정이며 일반 헤더만 추가할 수 있습니다. 앞선 핸들러가 추가한 값을
+  제거하거나 교체할 수 없습니다. 대소문자가 다른 같은 헤더도 중복으로 봅니다.
+- CSP, 프레임·HSTS·쿠키·CORS·권한·교차 출처 정책과 전송 헤더는 코어 소유입니다.
+  `Location`, `Refresh`도 허용하지 않습니다. 자산 출처는 헤더 필터가 아니라
+  자산 등록 계약으로 전달합니다.
+- 헤더 이름·값은 길이가 제한되며 개행·제어 문자를 거부합니다. 잘못된 결과는
+  이전 값을 유지합니다. 결과는 `pageRender(query).headers`에 포함됩니다.
+- 공유 헤더 검증기는 비공개 응답의 캐시 제어 헤더 추가도 거부합니다.
+
+### 클래스와 템플릿 필터
+
+- `page.bodyClasses`: `{ page: { kind, type?, slug?, status? }, classes }`를
+  받아 클래스 목록을 추가·교체·제거합니다. 최대 128개이며 각 토큰은 128자 이하,
+  첫 글자는 영문 또는 `_`, 나머지는 영문·숫자·`_`·`-`만 허용합니다.
+- `template.candidates`: `{ page, candidates }`의 템플릿 후보 순서를 변경합니다.
+  최대 64개이며 활성 테마의 템플릿 이름만 허용합니다. 빈 목록도 유효합니다.
+  핸들러가 없으면 템플릿 검증을 위한 테마 조회를 하지 않습니다.
+- 두 필터 모두 `page`의 문맥을 바꿀 수 없습니다. 잘못된 반환값은 무시하고
+  이전 유효 값을 유지합니다. 반환된 클래스와 템플릿 목록은 페이지 렌더링 응답에
+  포함되며 기존 슬롯 API의 형식은 바꾸지 않습니다.
+
 ## Database cleanup
 
 - `GET /api/v1/admin/database-cleanup?keepLatest=N`: `tools.manage`; read-only
