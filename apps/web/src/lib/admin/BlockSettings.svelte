@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { BLOCKS, MEDIA_IMAGE } from '@cms/sdk';
+  import { BLOCKS, MEDIA_IMAGE, linkRels } from '@cms/sdk';
   import type { Block, BlockAttr } from '@cms/sdk';
+  import LinkOptions from '#lib/admin/LinkOptions.svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import { Button } from '#lib/components/ui/button/index.js';
   import { Input } from '#lib/components/ui/input/index.js';
@@ -23,8 +24,13 @@
 
   const i18n = useI18n();
   const m = $derived(i18n.m);
+  const spec = $derived(BLOCKS[block.name].attrs);
+  /** Links with both options edit them together, as every admin link editor does. */
+  const linkOptions = $derived('newTab' in spec && 'rel' in spec);
   const attrs = $derived(
-    Object.entries(BLOCKS[block.name].attrs) as [string, BlockAttr][],
+    (Object.entries(spec) as [string, BlockAttr][]).filter(
+      ([key]) => !linkOptions || key !== 'rel',
+    ),
   );
   const values = $derived(block.attrs as Record<string, unknown>);
   const id = $props.id();
@@ -41,7 +47,17 @@
 {#if attrs.length}
   <div class="grid gap-3">
     {#each attrs as [key, attr] (key)}
-      {#if attr.type === 'boolean'}
+      {#if linkOptions && key === 'newTab'}
+        <LinkOptions
+          class="text-sm"
+          newTab={values.newTab === true}
+          rel={linkRels(values.rel)}
+          onchange={({ newTab, rel }) => {
+            set('newTab', newTab);
+            set('rel', rel.join(' '));
+          }}
+        />
+      {:else if attr.type === 'boolean'}
         <label class="flex items-center gap-2 text-sm">
           <input
             type="checkbox"

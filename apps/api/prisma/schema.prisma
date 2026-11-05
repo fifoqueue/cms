@@ -246,6 +246,9 @@ model Content {
   seoCanonicalUrl      String            @default("") @map("seo_canonical_url") @db.Text
   seoNoIndex           Boolean           @default(false) @map("seo_no_index")
   seoNoFollow          Boolean           @default(false) @map("seo_no_follow")
+  seoNoSnippet         Boolean           @default(false) @map("seo_no_snippet")
+  seoMaxSnippet        Int?              @map("seo_max_snippet")
+  seoMaxImagePreview   String?           @map("seo_max_image_preview") @db.VarChar(16)
   seoImageUrl          String            @default("") @map("seo_image_url") @db.Text
   seoImageAlt          String            @default("") @map("seo_image_alt") @db.Text
   seoSocialTitle       String            @default("") @map("seo_social_title") @db.Text
@@ -271,6 +274,8 @@ model Content {
 model ContentPath {
   pathHash   Bytes    @id @map("path_hash") @db.Binary(32)
   path       Bytes    @db.VarBinary(4096)
+  wasPublic Boolean @default(false) @map("was_public")
+  foldedHash Bytes    @default(dbgenerated("(unhex(sha2(lcase(convert(`path` using ascii)),256)))")) @map("folded_hash") @db.Binary(32)
   contentId  String   @map("content_id") @db.Char(36)
   currentFor String?  @unique @map("current_for") @db.Char(36)
   /// `ON UPDATE RESTRICT` (ids never change): MariaDB rejects CHECK constraints on columns with
@@ -279,7 +284,18 @@ model ContentPath {
   current    Content? @relation("CurrentContentPath", fields: [currentFor], references: [id], onDelete: Cascade, onUpdate: Restrict)
 
   @@index([contentId])
+  @@index([foldedHash])
   @@map("content_paths")
+}
+
+/// Public path history retained after permanent deletion; no private content or author data.
+model ContentTombstone {
+  pathHash Bytes @id @map("path_hash") @db.Binary(32)
+  path Bytes @db.VarBinary(4096)
+  wasPublic Boolean @default(false) @map("was_public")
+  removedAt DateTime @default(now()) @map("removed_at") @db.DateTime(3)
+
+  @@map("content_tombstones")
 }
 
 /// Category (hierarchical) or tag (flat). The taxonomy never changes after creation.
@@ -302,6 +318,9 @@ model TaxonomyTerm {
   seoCanonicalUrl      String         @default("") @map("seo_canonical_url") @db.Text
   seoNoIndex           Boolean        @default(false) @map("seo_no_index")
   seoNoFollow          Boolean        @default(false) @map("seo_no_follow")
+  seoNoSnippet         Boolean        @default(false) @map("seo_no_snippet")
+  seoMaxSnippet        Int?           @map("seo_max_snippet")
+  seoMaxImagePreview   String?        @map("seo_max_image_preview") @db.VarChar(16)
   seoImageUrl          String         @default("") @map("seo_image_url") @db.Text
   seoImageAlt          String         @default("") @map("seo_image_alt") @db.Text
   seoSocialTitle       String         @default("") @map("seo_social_title") @db.Text
@@ -491,6 +510,7 @@ model Media {
   @@index([createdAt])
   @@index([uploaderId])
   @@index([mime])
+  @@index([publicUrl(length: 191)])
   @@map("media")
 }
 

@@ -8,6 +8,9 @@ export const toSeoColumns = (seo: AdminEntrySeo) => ({
   seoCanonicalUrl: seo.canonicalUrl,
   seoNoIndex: seo.noIndex,
   seoNoFollow: seo.noFollow,
+  seoNoSnippet: seo.noSnippet,
+  seoMaxSnippet: seo.maxSnippet,
+  seoMaxImagePreview: seo.maxImagePreview,
   seoImageUrl: seo.imageUrl,
   seoImageAlt: seo.imageAlt,
   seoSocialTitle: seo.socialTitle,
@@ -18,8 +21,12 @@ export const toSeoColumns = (seo: AdminEntrySeo) => ({
   seoFocusKeyword: seo.focusKeyword,
 });
 
-type SeoColumns = Omit<ReturnType<typeof toSeoColumns>, 'seoSchemaType'> & {
+type SeoColumns = Omit<
+  ReturnType<typeof toSeoColumns>,
+  'seoSchemaType' | 'seoMaxImagePreview'
+> & {
   seoSchemaType: string;
+  seoMaxImagePreview: string | null;
 };
 
 const publicFields = (row: Omit<SeoColumns, 'seoFocusKeyword'>) => ({
@@ -28,6 +35,9 @@ const publicFields = (row: Omit<SeoColumns, 'seoFocusKeyword'>) => ({
   canonicalUrl: row.seoCanonicalUrl,
   noIndex: row.seoNoIndex,
   noFollow: row.seoNoFollow,
+  noSnippet: row.seoNoSnippet,
+  maxSnippet: row.seoMaxSnippet,
+  maxImagePreview: row.seoMaxImagePreview,
   imageUrl: row.seoImageUrl,
   imageAlt: row.seoImageAlt,
   socialTitle: row.seoSocialTitle,

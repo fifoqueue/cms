@@ -3,7 +3,8 @@
 import { Node, getSchema } from '@tiptap/core';
 import { TableKit } from '@tiptap/extension-table';
 import { StarterKit } from '@tiptap/starter-kit';
-import { safeHttpsUrl, safeLinkHref } from '#content/urls';
+import { safeHttpsUrl } from '#content/urls';
+import { ContentLink } from '#content/link';
 import { contentDocumentSchema, contentAttributeSchemas } from '@cms/sdk';
 import { Audio, ContentImage, Video, File, Gallery } from '#content/media';
 import { Footnote } from '#content/footnote';
@@ -73,13 +74,10 @@ export const contentExtensions = [
     document: false,
     codeBlock: false,
     heading: { levels: [...HEADING_LEVELS] },
-    link: {
-      openOnClick: false,
-      defaultProtocol: 'https',
-      isAllowedUri: (url) => safeLinkHref(url) !== null,
-    },
+    link: false,
     horizontalRule: { HTMLAttributes: { class: 'cms-separator' } },
   }),
+  ContentLink,
   EnhancedCodeBlock,
   ContentImage,
   Audio,

@@ -43,6 +43,86 @@ Prisma가 실패 상태를 기록했다면 실제 테이블 정의를 확인한 
 
 상위 문서: [AGENTS.md](../AGENTS.md)
 
+## 공개 HTML 압축과 캐시
+
+리버스 프록시에서 HTML에 gzip 또는 Brotli를 적용하세요. 응답에
+`Content-Encoding: gzip` 또는 `br`와 `Vary: Accept-Encoding`이 있어야 합니다.
+Nginx에서는 `gzip on; gzip_vary on;`으로 HTML 압축을 켤 수 있습니다.
+`gzip_types text/css application/javascript application/json application/xml;`은
+추가 형식을 지정하며 HTML은 기본 대상입니다. Brotli는 해당 모듈을 설치한
+프록시에서 설정하세요. 이미 압축된 이미지·폰트를 다시 압축하지 마세요.
+
+공개 HTML은 기본적으로 `public, max-age=0, must-revalidate`이며 전체 렌더링
+결과의 약한 ETag와 Last-Modified를 보냅니다. 일치하는 If-None-Match는 GET과
+HEAD 모두 본문 없는 304를 반환합니다. Last-Modified는 프로세스의 제한된
+관측 기록이며 템플릿·플러그인 전체의 권위 있는 수정 시각은 아니므로
+If-Modified-Since만 있는 요청은 다시 렌더링한 200을 받습니다.
+검증자를 계산하기 위해 HTML 응답은 완성 후 전송합니다.
+
+읽기 설정 `cacheSeconds`를 0보다 크게 설정하기 **전에**, CDN/프록시에서
+다음 쿠키가 있는 요청의 캐시 조회와 저장을 모두 우회해야 합니다:
+`cms_session`, `__Host-cms_session`, `cms_sso`, `__Host-cms_sso`,
+`cms_signed_out`, `__Host-cms_signed_out`, `cms_theme_preview`,
+`cms_commenter`, `cms_commenter_proof`, `cms_unlock_*`, `cms_pending_*`.
+Authorization 헤더가 있는 요청도 우회하고 Set-Cookie 및 private/no-store
+응답을 저장하지 마세요. 원본 서버에서 개인화 요청을 no-store로 처리하는 것만으로는
+이미 CDN에 저장된 익명 응답의 재사용을 막을 수 없습니다. 분석 쿠키는 우회
+목록에 넣지 않습니다. HTTP Vary는 개별 쿠키 이름을 지원하지 않으므로
+공개 HTML에 `Vary: Cookie`를 추가하지 않습니다.
+이 우회 정책을 적용할 수 없으면 `cacheSeconds=0`을 유지하세요.
+
+읽기 설정의 `canonicalOrigin`은 기본 false입니다. 관리자 설정 → 읽기의
+“사이트 주소로 이동”을 켜면 공개 GET/HEAD가 SEO의 `siteUrl` 출처로 301 이동합니다.
+관리자·설치·미리보기·로그인·상태 확인 경로는 대상이 아닙니다.
+경로와 쿼리는 그대로 유지합니다. 훅은 임의의 X-Forwarded-* 헤더를 신뢰하지
+않고 SvelteKit 어댑터가 해석한 요청 출처만 사용합니다. 어댑터의
+PROTOCOL_HEADER/HOST_HEADER를 사용하는 배포에서는 신뢰할 프록시만 서버에
+접속할 수 있게 하고 프록시가 전달 헤더를 덮어쓰게 하세요.
+공개 origin을 제대로 전달하지 않으면 HTTPS 리디렉션 루프가 생길 수 있습니다.
+
+### 공개 경로 및 이미지 메타데이터 마이그레이션
+
+`20261127000000_public_paths_images`는 `content_paths.folded_hash`와 색인,
+`content_tombstones` 테이블, 미디어 public_url 접두사 색인을 추가합니다.
+새 API를 시작하기 전에 일반 `db:migrate` 절차로 적용하세요.
+경로를 바꾸거나 콘텐츠를 삭제하지 않습니다. folded_hash의 DB 기본 식은 기존
+경로를 채우고 이 필드를 모르는 작성자의 새 행도 계산합니다. 경로 행은 주소 변경 때
+새로 삽입되므로 오래된 folded_hash를 재사용하지 않습니다.
+큰 경로/미디어 테이블의 색인 생성에는 유지보수 시간과 디스크 여유를 확보하세요.
+이전 API로 되돌리면 조회는 가능하지만 그 버전의 삭제에는 tombstone 기록이 없으므로
+복구 기간에는 영구 삭제를 중지하세요. 백업에 새 테이블도 포함합니다.
+
+`20261128000000_path_publication`은 경로와 tombstone 각각에 공개 이력 표식을
+추가합니다. 기존 스키마는 초안 중에 만든 주소와 실제 공개 주소를 구별할 수 없으므로,
+현재 발행 상태이고 휴지통에 없는 글의 경로만 검증합니다. 기존 초안/휴지통 경로 및
+이전 tombstone은 삭제하지 않지만 공개 이력이 불확실하므로 410 대신 404를 반환합니다.
+향후 공개 쓰기에서 검증된 주소는 다시 410 이력을 남길 수 있습니다.
+이 마이그레이션과 새 API를 함께 배포하고, 공개 여부를 글 단위로 추측하던 이전
+API 프로세스에는 트래픽을 보내지 마세요.
+
+이전 공개 이력 복구에는 검증된 공개 URL 목록이나 당시 DB 백업/변경 로그가 필요합니다.
+현재 `content_revisions`는 제목·요약·문서만 기록하며 당시 상태나 고유주소를 기록하지
+않습니다. 이전 `content_paths`에는 생성/공개 시각이 없고, tombstone에는 소유자나
+삭제 당시 상태가 없습니다. 따라서 현재 초안/휴지통 상태나 최초 발행 시각만으로
+이전 모든 주소를 공개로 표시하면 초안 주소를 다시 노출할 수 있습니다.
+확인되지 않은 주소를 일괄 410으로 바꾸지 마세요.
+
+### 잠금 해제 응답의 캐시
+
+잠금 해제 쿠키가 있는 요청은 HTML뿐 아니라 `__data.json`과 기타 응답도
+`private, no-store`이며 `Vary: Cookie`를 포함합니다. proof 헤더를 직접 받으면
+그 헤더도 Vary에 포함합니다. API의 proof 지원 콘텐츠 읽기는
+`Vary: x-cms-unlock`(주소 해석은 Authorization도 포함)을 보내며, proof 요청에는
+응답 형식과 플러그인 헤더 기여에 관계없이 `private, no-store`를 강제합니다.
+이전에 공개 캐시가 적용되었을 수 있는 페이지 데이터와 API 응답은 배포 때
+CDN/리버스 프록시에서 제거하세요. 기존에 저장된 사본은 원본 헤더 수정만으로
+즉시 회수할 수 없습니다.
+`__data.json` 자체도 익명 여부와 관계없이 공유 캐시에서 제외합니다.
+자격 증명이 있는 GET/HEAD는 If-None-Match와 If-Modified-Since를 내부 처리기에
+전달하지 않습니다. 비공개 응답은 확장 헤더 처리 뒤 ETag와 Last-Modified를 제거하며
+304를 반환하지 않습니다. 내부 처리기가 조건 없이 304를 반환하면 본문을 복구할 수
+없으므로 빈 성공 응답으로 바꾸지 않고 캐시 불가능한 500으로 거부합니다.
+
 ## 공개 페이지의 Content-Security-Policy
 
 앱은 공개 페이지에서 `script-src`, `style-src`, `font-src`를 보내지 않습니다. HTML 응답에는 `frame-ancestors`(관리자와 로그인은 `'none'`, 공개 페이지는 사이트 편집기 미리보기를 위해 `'self'`)와 같은 뜻의 `X-Frame-Options`, 그리고 `Cross-Origin-Opener-Policy: same-origin`만 보냅니다. 리버스 프록시가 이런 정책을 추가한다면 다음을 허용하세요.

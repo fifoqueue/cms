@@ -37,6 +37,7 @@ import {
   decodePath,
   deleteEntries,
   lockPermalinks,
+  publishPaths,
 } from '#api/infra/prisma/permalink-repository';
 
 type Row = Content & {
@@ -374,13 +375,15 @@ export class PrismaContentRepository implements ContentRepository {
       'modifiedIp' | 'modifiedUserAgent' | 'modifiedById'
     >,
   ) {
-    await this.db.$transaction([
-      this.db.content.update({
+    await this.db.$transaction(async (tx) => {
+      await lockPermalinks(tx, false, Prisma.sql`id = ${id}`);
+      await tx.content.update({
         where: { id },
         data: { trashedAt: at, ...origin },
-      }),
-      this.db.searchOutbox.create({ data: { contentId: id } }),
-    ]);
+      });
+      if (at === null) await publishPaths(tx, [id]);
+      await tx.searchOutbox.create({ data: { contentId: id } });
+    });
   }
 
   async typeInUse(type: string) {
@@ -434,6 +437,7 @@ export class PrismaContentRepository implements ContentRepository {
                 : new Date(current.updatedAt.getTime() + 1),
           },
         });
+        await publishPaths(tx, [id]);
         await tx.searchOutbox.create({ data: { contentId: id } });
 
         return true;

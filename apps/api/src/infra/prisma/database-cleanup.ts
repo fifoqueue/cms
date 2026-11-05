@@ -24,6 +24,7 @@ const TABLES = [
   'sessions',
   'contents',
   'content_paths',
+  'content_tombstones',
   'taxonomy_terms',
   'content_terms',
   'settings',

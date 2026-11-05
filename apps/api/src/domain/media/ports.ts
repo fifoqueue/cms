@@ -61,6 +61,8 @@ export interface MediaCriteria {
 
 export interface MediaRepository {
   getByKey(key: string): Promise<MediaRecord | null>;
+  /** Exact original public URL; never fetches an external address. */
+  getByUrl(url: string): Promise<MediaRecord | null>;
   /** Atomically reserve all keys forever, including after failed writes/cleanup. */
   reserveKeys(uploadId: string, keys: readonly string[]): Promise<boolean>;
   insert(media: MediaWrite): Promise<void>;

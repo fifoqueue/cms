@@ -1,6 +1,8 @@
 import {
   CONTENT_SLUG,
   canonicalPermalinkPath,
+  linkRelValue,
+  opensNewTab,
   wxrImportOptionsSchema,
 } from '@cms/sdk';
 import type {
@@ -636,7 +638,9 @@ export class ImportService {
       const meta = item.meta ?? {};
       const base = {
         label: item.title.trim().slice(0, 191),
-        newTab: meta._menu_item_target === '_blank',
+        newTab: opensNewTab(meta._menu_item_target),
+        // WordPress keeps a menu item's `rel` as its XFN field.
+        rel: linkRelValue(meta._menu_item_xfn) ?? '',
       };
       const objectId = meta._menu_item_object_id ?? '';
 

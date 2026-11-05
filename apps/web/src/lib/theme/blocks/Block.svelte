@@ -158,9 +158,28 @@
   <CommentsBlock />
 {:else if block.name === 'post-navigation'}
   <PostNavigation {block} />
+{:else if block.name === 'related-posts'}
+  {@const posts =
+    scope().related?.[`${block.attrs.taxonomy}:${block.attrs.count}`] ?? []}
+  {#if posts.length}
+    <section class="cms-block-related-posts">
+      <h2 class="cms-heading text-xl font-semibold">
+        {i18n.m.themeRelatedPosts}
+      </h2>
+      <ul class="mt-4 space-y-2">
+        {#each posts as post (post.path)}
+          <li>
+            <a href={resolve(post.path as Path)} class="underline"
+              >{post.title}</a
+            >
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
 {:else if block.name === 'breadcrumbs'}
   {@const page = scope().page}
-  {#if page.kind === 'content' || page.kind === 'term'}
+  {#if page.kind === 'content' || page.kind === 'term' || page.kind === 'author' || page.kind === 'archive' || page.kind === 'date'}
     <Breadcrumbs items={crumbs(page as SitePage, i18n.m)} />
   {/if}
 {:else if block.name === 'query'}

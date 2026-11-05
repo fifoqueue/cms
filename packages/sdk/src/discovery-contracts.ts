@@ -13,6 +13,8 @@ export const sitemapPageSchema = z.object({
   total: z.number().int().nonnegative(),
 });
 export interface SitemapRequest {
+  /** Core content supports modified order; core terms support protected-filtered popularity. */
+  sort?: 'stable' | 'modified' | 'popular';
   page: number;
   pageSize: number;
   siteUrl: string;

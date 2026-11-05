@@ -93,7 +93,8 @@ page-render 조회와 웹 표현 훅을 실행하지 않으며 모든 슬롯을 
 
 ## 공개·관리자 DTO 경계
 
-- 공개 레이아웃의 `theme`은 템플릿/파트를 직렬화하지 않습니다. 페이지는 요청별 `siteLayout` 캐시에서 템플릿을 선택하고 `template`과 전이적으로 참조하는 `parts`만 반환합니다. 별도 load가 없는 오류 페이지를 위해 레이아웃에는 오류 템플릿과 블록 데이터를 유지합니다. 사이트 편집기는 자체 전체 테마와 `previewBlocks`를 사용합니다.
+- 공개 레이아웃의 `theme`은 템플릿/파트를 직렬화하지 않습니다. 페이지는 요청별 `siteLayout` 캐시에서 템플릿을 선택하고 `template`과 전이적으로 참조하는 `parts`만 반환합니다. 오류 템플릿/파트/블록 데이터는 Kit 3의 서버 `handleError`에서 요청한 상태에 대해서만 읽고 `App.Error.themeError`로 전달합니다. 정상 레이아웃에는 오류 데이터를 싣지 않습니다. 사이트 편집기는 자체 전체 테마와 `previewBlocks`를 사용합니다.
+- 공개 본문 HTML의 SDK 계약은 문자열입니다. 웹의 최종 페이지 데이터만 `HtmlBody` transport로 감싸며, `PostContent`가 SSR 본문을 출력한 경우 hydration은 `data-cms-html` DOM을 재사용합니다. 렌더링하지 않은 본문과 데이터 이동은 문자열 원문을 전송합니다. 에디터 문서를 보내거나 클라이언트에서 다시 렌더링하지 않습니다.
 
 - `PublicContent`와 `PublicContentListQuery`는 `ContentEntry`, `ContentListQuery`와 별개의 계약입니다. 공개 응답은 에디터 문서, 작성자 ID, 초안 상태, 생성 시각을 제외합니다. 공개 목록은 추가 쿼리 파라미터가 주어져도 항상 발행된 콘텐츠만 선택합니다. 로그인한 상태의 정식 단일 항목 읽기는 `authorize(actor, 'content.readPrivate')` 이후에 비공개 콘텐츠도 반환할 수 있으며, 이때도 같은 공개 프로젝션과 `private, no-store` 캐시 정책을 씁니다.
 - 목록에는 본문을 싣지 않습니다. `GET /api/v1/content`는 본문을 가져오지 않는 프로젝션으로 읽은 `PublicContentSummary`(`html`이 없는 `PublicContent`)를 반환하며 `content.publicSummary` 필터를 거칩니다. 관리자 목록은 `AdminContentSummary`(`document`/`html` 없음)를 반환합니다. 단일 읽기는 전체 DTO를 유지합니다. 플러그인 `content.list`는 여전히 `html`이 있는 `PublicContent`를 반환합니다.

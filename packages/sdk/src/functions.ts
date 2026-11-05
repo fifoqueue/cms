@@ -2,6 +2,7 @@ import type { Awaitable } from '#sdk/common';
 import type { PluginContext, PluginLogger } from '#sdk/plugin';
 import type { SlotName } from '#sdk/slots';
 import { publicContentSchema } from '#sdk/content';
+import { publicEntrySeoSchema } from '#sdk/seo';
 import { publicTaxonomyTermSchema } from '#sdk/taxonomy';
 import {
   pageAssetSchema,
@@ -91,6 +92,7 @@ const webSummarySchema = publicContentSchema.omit({
   updatedAt: true,
   seo: true,
   parentId: true,
+  parents: true,
 });
 const webListSchema = z.object({
   items: z.array(webSummarySchema),
@@ -98,14 +100,15 @@ const webListSchema = z.object({
   page: z.number().int().positive(),
   pageSize: z.number().int().positive(),
 });
-const webContentViewSchema = publicContentSchema
-  .omit({ meta: true, parentId: true })
-  .extend({
-    pages: z.object({
-      current: z.number().int().positive(),
-      total: z.number().int().positive(),
-    }),
-  });
+const webContentViewSchema = publicContentSchema.omit({ meta: true }).extend({
+  categoryParents: z
+    .array(z.object({ name: z.string(), slug: z.string() }))
+    .default([]),
+  pages: z.object({
+    current: z.number().int().positive(),
+    total: z.number().int().positive(),
+  }),
+});
 
 /** Public route projections reuse the API DTO fields and exclude transport and UI state. */
 export const webPageDataSchemas = {
@@ -123,6 +126,12 @@ export const webPageDataSchemas = {
     posts: webListSchema,
     path: z.string().optional(),
     title: z.string().optional(),
+    explicitType: z.boolean().optional(),
+    seo: publicEntrySeoSchema.optional(),
+    description: z.string().optional(),
+    passwordProtected: z.boolean().optional(),
+    protected: z.boolean().optional(),
+    featuredImage: publicContentSchema.shape.featuredImage.optional(),
   }),
   search: z.object({
     kind: z.literal('search'),
@@ -131,14 +140,22 @@ export const webPageDataSchemas = {
   }),
   term: z.object({
     kind: z.literal('term'),
-    term: publicTaxonomyTermSchema
-      .omit({ fields: true })
-      .extend({ path: z.string().optional() }),
+    term: publicTaxonomyTermSchema.omit({ fields: true }).extend({
+      path: z.string().optional(),
+      parents: z
+        .array(z.object({ name: z.string(), slug: z.string() }))
+        .optional(),
+    }),
     posts: webListSchema,
   }),
   author: z.object({
     kind: z.literal('author'),
-    author: z.object({ name: z.string(), slug: z.string(), bio: z.string() }),
+    author: z.object({
+      name: z.string(),
+      slug: z.string(),
+      bio: z.string(),
+      avatarUrl: z.string().nullable().optional(),
+    }),
     posts: webListSchema,
   }),
   date: z.object({

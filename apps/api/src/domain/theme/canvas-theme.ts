@@ -104,6 +104,18 @@ const page = (main: BlockInput[], width: 'content' | 'wide') => [
   part('footer'),
 ];
 
+const entry = (blocks: BlockInput[]) =>
+  page(
+    [
+      block(
+        'group',
+        { tagName: 'article', layout: 'stack', align: 'stretch', gap: 'large' },
+        blocks,
+      ),
+    ],
+    'content',
+  );
+
 const templates: Record<string, BlockInput[]> = {
   index: page([block('query-title'), loop], 'wide'),
   home: page([block('query-title'), block('content-type-nav'), loop], 'wide'),
@@ -111,35 +123,30 @@ const templates: Record<string, BlockInput[]> = {
     [block('query-title'), block('search', { showLabel: true }), loop],
     'wide',
   ),
-  single: page(
-    [
-      block('breadcrumbs'),
-      block('group', { layout: 'stack', gap: 'small', align: 'start' }, [
-        block('post-terms'),
-        block('post-title', { level: 1, size: 'xlarge' }),
-        block('post-meta', { showUpdated: true }),
-      ]),
-      block('post-featured-image', { link: false }),
-      block('post-content'),
-      block('post-fields'),
-      block('post-terms', { taxonomy: 'tag' }),
-      block('post-author'),
-      block('post-navigation'),
-      block('comments'),
-    ],
-    'content',
-  ),
-  page: page(
-    [
-      block('breadcrumbs'),
+  single: entry([
+    block('breadcrumbs'),
+    block('group', { layout: 'stack', gap: 'small', align: 'start' }, [
+      block('post-terms'),
       block('post-title', { level: 1, size: 'xlarge' }),
-      block('post-featured-image', { link: false }),
-      block('post-content'),
-      block('post-fields'),
-      block('comments'),
-    ],
-    'content',
-  ),
+      block('post-meta', { showUpdated: true }),
+    ]),
+    block('post-featured-image', { link: false }),
+    block('post-content'),
+    block('post-fields'),
+    block('post-terms', { taxonomy: 'tag' }),
+    block('post-author'),
+    block('post-navigation'),
+    block('related-posts'),
+    block('comments'),
+  ]),
+  page: entry([
+    block('breadcrumbs'),
+    block('post-title', { level: 1, size: 'xlarge' }),
+    block('post-featured-image', { link: false }),
+    block('post-content'),
+    block('post-fields'),
+    block('comments'),
+  ]),
   404: page(
     [block('query-title'), block('search', { showLabel: true })],
     'content',

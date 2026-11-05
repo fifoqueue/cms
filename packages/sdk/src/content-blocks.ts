@@ -18,6 +18,8 @@ const url = z.string().max(2048).nullable();
 const mediaId = z.string().min(1).max(36).nullable();
 const align = z.enum(CONTENT_ALIGNMENTS);
 const textAlign = z.enum(TEXT_ALIGNMENTS).nullable();
+/** Space-separated `rel` tokens; the renderer keeps only the allowed ones. */
+const linkRel = z.string().max(200).nullable();
 /**
  * Attributes that existed before the block library. Tiptap parses HTML attribute text into
  * strings, numbers or booleans, and stored documents keep whatever it produced (`c#`,
@@ -61,6 +63,7 @@ export const contentAttributeSchemas = {
       align,
       href: url,
       newTab: z.boolean(),
+      rel: linkRel,
     })
     .partial(),
   audio: z.strictObject({ src: legacy, mediaId: legacy }).partial(),
@@ -94,6 +97,7 @@ export const contentAttributeSchemas = {
       href: url,
       variant: z.enum(['fill', 'outline']),
       newTab: z.boolean(),
+      rel: linkRel,
     })
     .partial(),
   details: z.strictObject({ open: z.boolean() }).partial(),

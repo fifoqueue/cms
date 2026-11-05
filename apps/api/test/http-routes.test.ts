@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { CONTENT_UNLOCK_HEADER } from '@cms/sdk';
 import { DatabaseCleanupService } from '#api/domain/tools/database-cleanup';
 import { MemoryDatabaseCleanupStore } from '#test/support/memory-database-cleanup';
 import { MemoryTaskLeases } from '#test/support/memory-jobs';
@@ -149,10 +150,15 @@ const app = await createApiApp({
     } as unknown as ApiServices['themes'],
     publicContent: {
       list: record('public.list'),
-      getBySlug: async (slug: string) => {
+      getBySlug: async (slug: string, proofs: readonly string[] = []) => {
         if (slug === 'taken') throw conflict('slug taken');
 
         if (slug === 'boom') throw new Error('secret failure');
+        if (slug === 'protected')
+          return {
+            slug,
+            html: proofs.includes('entry.proof') ? 'API-UNLOCKED-SENTINEL' : '',
+          };
 
         return { slug };
       },
@@ -291,6 +297,26 @@ const call = (
   );
 
 describe('API route compatibility', () => {
+  test('unlocked API bodies are never shared-cacheable and vary on their proof', async () => {
+    const url = 'http://localhost/api/v1/content/protected';
+    const locked = await app.fetch(new Request(url));
+    const unlocked = await app.fetch(
+      new Request(url, {
+        headers: { [CONTENT_UNLOCK_HEADER]: 'entry.proof' },
+      }),
+    );
+
+    expect((await locked.json()).html).toBe('');
+    expect((await unlocked.json()).html).toBe('API-UNLOCKED-SENTINEL');
+    expect(unlocked.headers.get('cache-control')).toBe('private, no-store');
+    expect(locked.headers.get('vary')?.toLowerCase()).toContain(
+      CONTENT_UNLOCK_HEADER,
+    );
+    expect(unlocked.headers.get('vary')?.toLowerCase()).toContain(
+      CONTENT_UNLOCK_HEADER,
+    );
+  });
+
   test('content writes accept origin only from the frontend proof', async () => {
     for (const secret of ['forged', 'content-proof']) {
       for (const method of ['POST', 'PUT']) {

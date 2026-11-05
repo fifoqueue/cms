@@ -12,15 +12,23 @@ import type {
   PublicSiteDto,
   SeoSitemapEntry,
 } from '@cms/sdk';
-import { MEDIA_PATH, SEO_SITEMAP_PAGE_SIZE } from '@cms/sdk';
+import {
+  MEDIA_PATH,
+  SEO_ROBOTS_DISALLOW_PATHS,
+  SEO_SITEMAP_PAGE_SIZE,
+} from '@cms/sdk';
 import type { ContentClient } from '@cms/sdk/client';
+import { createHash } from 'node:crypto';
 import { mapLimit } from '#lib/server/bounded.js';
 import { Errors } from '#lib/server/errors.js';
 import { contentMarkdown, markdownInline } from '#lib/server/markdown.js';
 import { FEED_PATH, markdownPath } from '#lib/seo/paths.js';
 
-/** sitemaps.org limit on sitemaps per index; each chunk holds one API page (≤ 1,000 URLs). */
-const SITEMAP_INDEX_LIMIT = 50_000;
+/** sitemaps.org limit on sitemaps per index, including byte-split parts of API pages. */
+export const SITEMAP_INDEX_LIMIT = 50_000;
+const SITEMAP_MAX_BYTES = 50 * 1024 * 1024;
+const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>\n';
+const encoder = new TextEncoder();
 
 /** Entries listed by the feed and llms.txt: a recent selection, not the full corpus. */
 export const RECENT_LIMIT = 20;
@@ -37,10 +45,42 @@ export const feedTypes = (types: readonly PublicContentType[] | null) =>
 
 /** Never crawled. Each permitted group repeats these, since a named group replaces `*`. */
 const PRIVATE_RULES = [
-  'Disallow: /admin$',
-  'Disallow: /admin/',
-  'Disallow: /api/',
+  ...SEO_ROBOTS_DISALLOW_PATHS.map((path) => `Disallow: ${path}`),
+  'Allow: /preview/theme/',
 ];
+
+/** Robots product tokens; user-triggered fetching follows the AI-search preference. */
+export const AI_BOTS = {
+  training: [
+    'GPTBot',
+    'ClaudeBot',
+    'anthropic-ai',
+    'CCBot',
+    'Google-Extended',
+    'Applebot-Extended',
+    'Meta-ExternalAgent',
+    'Bytespider',
+    'cohere-ai',
+    'Amazonbot',
+    'AI2Bot',
+    'Diffbot',
+    'omgili',
+    'omgilibot',
+  ],
+  search: [
+    'OAI-SearchBot',
+    'Claude-SearchBot',
+    'PerplexityBot',
+    'YouBot',
+    'DuckAssistBot',
+  ],
+  fetch: [
+    'ChatGPT-User',
+    'Claude-User',
+    'Perplexity-User',
+    'Meta-ExternalFetcher',
+  ],
+} as const;
 
 /** A sitemap provider key as the API registers them (core or plugin). */
 export const isSitemapKind = (value: string) =>
@@ -55,13 +95,14 @@ export const isDiscoverable = (
   settings: PublicSeoSettings,
 ) =>
   settings.indexingEnabled &&
+  !content.protected &&
   !content.seo.noIndex &&
   (!content.seo.canonicalUrl ||
     content.seo.canonicalUrl === absoluteUrl(settings.siteUrl, content.path));
 
 /**
- * The newest discoverable entries. Each type is listed separately with its own latest
- * `limit`, so a busy type cannot hide another; all types when `types` is omitted.
+ * The newest discoverable entries, filtering before the final limit. Each type scans at
+ * most twenty 100-entry batches, so locked/noindex entries cannot consume the first batch.
  */
 export const loadRecent = async (
   api: ContentClient,
@@ -70,13 +111,30 @@ export const loadRecent = async (
   limit = RECENT_LIMIT,
   filter: PublicContentListQuery = {},
 ) => {
-  const lists = await mapLimit(types ?? [undefined], (type) =>
-    api.list({ ...filter, type, pageSize: limit }),
-  );
+  const lists = await mapLimit(types ?? [undefined], async (type) => {
+    const items: PublicContentSummary[] = [];
+
+    for (let page = 1; page <= 20 && items.length < limit; page++) {
+      const result = await api.list({
+        orderby: 'date',
+        order: 'desc',
+        ...filter,
+        type: type ?? filter.type,
+        page,
+        pageSize: 100,
+      });
+
+      items.push(
+        ...result.items.filter((content) => isDiscoverable(content, settings)),
+      );
+      if (page * 100 >= result.total) break;
+    }
+
+    return items.slice(0, limit);
+  });
 
   return lists
-    .flatMap((list) => list.items)
-    .filter((content) => isDiscoverable(content, settings))
+    .flat()
     .sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt))
     .slice(0, limit);
 };
@@ -103,6 +161,45 @@ const isoDate = (value: string) => {
 
 const CACHE = 'public, max-age=300';
 
+/** Only body ETags validate dynamic output; content dates are not monotonic representation versions. */
+export const conditionalResponse = async (
+  request: Request,
+  response: Response,
+  modified?: string,
+) => {
+  if (response.status !== 200) return response;
+  const body = await response.text();
+  const headers = new Headers(response.headers);
+  const tag = `W/"${createHash('sha256').update(body).digest('hex')}"`;
+
+  headers.set('etag', tag);
+  const date = modified && isoDate(modified);
+
+  if (date) headers.set('last-modified', new Date(date).toUTCString());
+  const candidates = request.headers.get('if-none-match');
+  const unchanged =
+    candidates !== null &&
+    candidates
+      .split(',')
+      .some(
+        (candidate) =>
+          candidate.trim() === '*' ||
+          candidate.trim().replace(/^W\//, '') === tag.slice(2),
+      );
+
+  return new Response(unchanged ? null : body, {
+    status: unchanged ? 304 : 200,
+    headers,
+  });
+};
+
+export const newestDate = (dates: readonly string[]) =>
+  dates
+    .map(isoDate)
+    .filter((date): date is string => Boolean(date))
+    .sort()
+    .at(-1);
+
 const textResponse = (body: string, type: string, status = 200) =>
   new Response(body, {
     status,
@@ -123,7 +220,7 @@ export const missingSiteUrl = (resource: string) =>
 export const notFound = () => textResponse('Not found\n', 'text/plain', 404);
 
 const xmlResponse = (body: string, type = 'application/xml') =>
-  textResponse(`<?xml version="1.0" encoding="UTF-8"?>\n${body}\n`, type);
+  textResponse(`${XML_DECLARATION}${body}\n`, type);
 
 /**
  * Crawl preferences. Search crawlers may fetch every public page, including noindex ones, so
@@ -137,18 +234,85 @@ export const robotsTxt = (
   text = robotsText(settings),
 ) => textResponse(text, 'text/plain');
 
+const extraRobotGroups = (text: string) => {
+  const groups: string[] = [];
+  let agents = ['User-agent: *'];
+  let rules: string[] = [];
+  let explicit = false;
+  const flush = () => {
+    groups.push([...agents, ...PRIVATE_RULES, ...rules].join('\n'));
+    rules = [];
+  };
+
+  for (const line of text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)) {
+    if (/^User-agent:/i.test(line)) {
+      if (!explicit || rules.some((rule) => !rule.startsWith('#'))) {
+        if (explicit || rules.length) flush();
+        agents = [line];
+      } else agents.push(line);
+      explicit = true;
+    } else rules.push(line);
+  }
+
+  if (explicit || rules.length) flush();
+
+  return groups;
+};
+
 export const robotsText = (settings: PublicSeoSettings) => {
   const group = (agent: string, allowed: boolean) =>
     [
       `User-agent: ${agent}`,
-      ...(allowed ? [...PRIVATE_RULES, 'Allow: /'] : ['Disallow: /']),
+      ...(allowed
+        ? [...PRIVATE_RULES, 'Allow: /']
+        : ['Disallow: /', 'Allow: /preview/theme/']),
     ].join('\n');
   const sections = [
     '# Crawl preferences for compliant crawlers; this file does not restrict access.',
-    group('*', true),
-    group('OAI-SearchBot', settings.indexingEnabled && settings.allowAiSearch),
-    group('GPTBot', settings.indexingEnabled && settings.allowAiTraining),
+    group('*', settings.indexingEnabled),
   ];
+  const overrides = new Map(
+    settings.aiBotOverrides
+      .split(/\r?\n/)
+      .filter((line) => line.trim())
+      .map((line) => {
+        const [agent, rule] = line.split(':');
+
+        return [
+          agent!.trim().toLowerCase(),
+          {
+            agent: agent!.trim(),
+            allowed: rule!.trim().toLowerCase() === 'allow',
+          },
+        ] as const;
+      }),
+  );
+
+  for (const [kind, agents] of Object.entries(AI_BOTS))
+    for (const agent of agents) {
+      const override = overrides.get(agent.toLowerCase());
+
+      sections.push(
+        group(
+          agent,
+          settings.indexingEnabled &&
+            (override?.allowed ??
+              (kind === 'training'
+                ? settings.allowAiTraining
+                : settings.allowAiSearch)),
+        ),
+      );
+      overrides.delete(agent.toLowerCase());
+    }
+
+  for (const { agent, allowed } of overrides.values())
+    sections.push(group(agent, settings.indexingEnabled && allowed));
+  // An indexing-off policy cannot be weakened by administrator-supplied groups.
+  if (settings.indexingEnabled && settings.extraRobotsRules.trim())
+    sections.push(...extraRobotGroups(settings.extraRobotsRules));
 
   if (settings.indexingEnabled && settings.siteUrl)
     sections.push(`Sitemap: ${absoluteUrl(settings.siteUrl, '/sitemap.xml')}`);
@@ -169,62 +333,144 @@ export const sitemapChunkCount = (kind: string, total: number) =>
  */
 export const sitemapIndex = (
   origin: string,
-  totals: Readonly<Record<string, number>>,
+  entries: readonly { path: string; updatedAt?: string }[],
 ) => {
-  const kinds = Object.keys(totals);
-  const counts = kinds.map((kind) => sitemapChunkCount(kind, totals[kind]!));
-
-  // Checked before any list is allocated; a non-numeric count fails the same way.
-  if (!(counts.reduce((sum, count) => sum + count, 0) <= SITEMAP_INDEX_LIMIT))
+  if (entries.length > SITEMAP_INDEX_LIMIT)
     throw new Error(Errors.SitemapIndexTooLarge, {
       cause: { limit: SITEMAP_INDEX_LIMIT },
     });
-  const chunks = kinds.flatMap((kind, index) =>
-    Array.from(
-      { length: counts[index] ?? 0 },
-      (_, page) => `/sitemaps/${kind}/${page + 1}.xml`,
-    ),
+  const items = entries.map(
+    ({ path, updatedAt }) =>
+      `  <sitemap><loc>${xmlText(absoluteUrl(origin, path))}</loc>${updatedAt ? `<lastmod>${isoDate(updatedAt) ?? ''}</lastmod>` : ''}</sitemap>`,
   );
-  const items = chunks.map(
-    (path) =>
-      `  <sitemap><loc>${xmlText(absoluteUrl(origin, path))}</loc></sitemap>`,
-  );
+  const body = [
+    '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ...items,
+    '</sitemapindex>',
+  ].join('\n');
 
-  return xmlResponse(
-    [
-      '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-      ...items,
-      '</sitemapindex>',
-    ].join('\n'),
-  );
+  if (
+    encoder.encode(`${XML_DECLARATION}${body}\n`).byteLength > SITEMAP_MAX_BYTES
+  )
+    throw new Error(Errors.SitemapIndexTooLarge);
+
+  return xmlResponse(body);
 };
 
-/** One sitemap chunk. The home page, which has no entry date, is listed without lastmod. */
+type SitemapUrl = Pick<
+  SeoSitemapEntry,
+  'path' | 'updatedAt' | 'images' | 'alternates'
+>;
+const SITEMAP_OPEN =
+  '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:xhtml="http://www.w3.org/1999/xhtml">';
+const SITEMAP_CLOSE = '</urlset>';
+const SITEMAP_ENVELOPE_BYTES = encoder.encode(
+  `${XML_DECLARATION}${SITEMAP_OPEN}\n${SITEMAP_CLOSE}\n`,
+).byteLength;
+
+const sitemapUrl = (
+  origin: string,
+  { path, updatedAt, images, alternates }: SitemapUrl,
+) => {
+  const lastmod = isoDate(updatedAt);
+
+  return `  <url><loc>${xmlText(absoluteUrl(origin, path))}</loc>${
+    lastmod ? `<lastmod>${lastmod}</lastmod>` : ''
+  }${(images ?? []).map((image) => `<image:image><image:loc>${xmlText(image.url)}</image:loc>${image.title ? `<image:title>${xmlText(image.title)}</image:title>` : ''}${image.caption ? `<image:caption>${xmlText(image.caption)}</image:caption>` : ''}</image:image>`).join('')}${(alternates ?? []).map((alternate) => `<xhtml:link rel="alternate" hreflang="${xmlText(alternate.lang)}" href="${xmlText(alternate.url)}"/>`).join('')}</url>`;
+};
+
+/** Split an API page on exact UTF-8 XML bytes, preserving whole URL/image groups. */
+export function* sitemapParts(
+  origin: string,
+  entries: readonly SitemapUrl[],
+  includeHome: boolean,
+  homeDate?: string,
+  omitPath?: string | null,
+) {
+  let urls: string[] = [];
+  let bytes = SITEMAP_ENVELOPE_BYTES;
+  let updatedAt: string | undefined;
+  const visible = entries.filter((entry) => entry.path !== omitPath);
+  const locations = includeHome
+    ? [{ path: '/', updatedAt: homeDate ?? '' }, ...visible]
+    : visible;
+
+  for (const entry of locations) {
+    const url = sitemapUrl(origin, entry);
+    const size = encoder.encode(`${url}\n`).byteLength;
+
+    if (SITEMAP_ENVELOPE_BYTES + size > SITEMAP_MAX_BYTES)
+      throw new Error(Errors.SitemapEntryTooLarge);
+
+    if (
+      urls.length &&
+      (bytes + size > SITEMAP_MAX_BYTES || urls.length === 50_000)
+    ) {
+      yield {
+        body: [SITEMAP_OPEN, ...urls, SITEMAP_CLOSE].join('\n'),
+        updatedAt,
+      };
+      urls = [];
+      bytes = SITEMAP_ENVELOPE_BYTES;
+      updatedAt = undefined;
+    }
+
+    urls.push(url);
+    bytes += size;
+    const date = isoDate(entry.updatedAt);
+
+    if (date && (!updatedAt || date > updatedAt)) updatedAt = date;
+  }
+
+  yield { body: [SITEMAP_OPEN, ...urls, SITEMAP_CLOSE].join('\n'), updatedAt };
+}
+
+/** Static homes have no inferred date; other homes use the newest discoverable entry. */
+export const sitemapHomeDate = async (
+  api: ContentClient,
+  frontPage: 'posts' | 'page',
+) =>
+  frontPage === 'page'
+    ? undefined
+    : (
+        await api.seo.sitemap({
+          kind: 'content',
+          pageSize: 1,
+          sort: 'modified',
+        })
+      ).items[0]?.updatedAt;
+
+/** Part one retains the existing URL; subsequent byte-bounded parts use `?part=N`. */
 export const sitemapChunk = (
   origin: string,
-  entries: readonly Pick<SeoSitemapEntry, 'path' | 'updatedAt'>[],
+  entries: readonly SitemapUrl[],
   includeHome: boolean,
+  homeDate?: string,
+  omitPath?: string | null,
+  part = 1,
 ) => {
-  const urls = entries.map(({ path, updatedAt }) => {
-    const lastmod = isoDate(updatedAt);
+  let number = 0;
 
-    return `  <url><loc>${xmlText(absoluteUrl(origin, path))}</loc>${
-      lastmod ? `<lastmod>${lastmod}</lastmod>` : ''
-    }</url>`;
-  });
+  for (const chunk of sitemapParts(
+    origin,
+    entries,
+    includeHome,
+    homeDate,
+    omitPath,
+  )) {
+    if (++number !== part) continue;
+    const response = xmlResponse(chunk.body);
 
-  if (includeHome)
-    urls.unshift(
-      `  <url><loc>${xmlText(absoluteUrl(origin, '/'))}</loc></url>`,
-    );
+    if (chunk.updatedAt)
+      response.headers.set(
+        'last-modified',
+        new Date(chunk.updatedAt).toUTCString(),
+      );
 
-  return xmlResponse(
-    [
-      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-      ...urls,
-      '</urlset>',
-    ].join('\n'),
-  );
+    return response;
+  }
+
+  return notFound();
 };
 
 const AUDIO_TYPES: Record<string, string> = {
@@ -270,7 +516,7 @@ export const loadBodies = async (
       items.filter((item) => !item.protected),
       async (item) => {
         const html = await api.resolvePath(item.path, undefined, 'feed').then(
-          ({ content }) => content?.html ?? '',
+          ({ content }) => (content && !content.protected ? content.html : ''),
           () => '',
         );
 
@@ -299,6 +545,7 @@ export interface FeedItem {
   link: string;
   description: string;
   publishedAt: string;
+  updatedAt?: string;
   author?: string;
 }
 
@@ -341,6 +588,7 @@ export const feedValues = (
     link: absoluteUrl(settings.siteUrl, content.path),
     description: content.seo.description || content.excerpt,
     publishedAt: content.publishedAt,
+    updatedAt: content.updatedAt,
     ...(content.author && { author: content.author.name }),
   })),
 });
@@ -378,8 +626,11 @@ export const rssFeed = (
       '    <item>',
       `      ${element('title', item.title)}`,
       `      ${element('link', item.link)}`,
-      `      <guid isPermaLink="true">${xmlText(item.link)}</guid>`,
+      `      <guid isPermaLink="false">urn:uuid:${xmlText(item.id)}</guid>`,
       ...pubDate(item.publishedAt).map((line) => `      ${line}`),
+      ...(item.updatedAt && isoDate(item.updatedAt)
+        ? [`      ${element('atom:updated', isoDate(item.updatedAt)!)}`]
+        : []),
       ...(item.author ? [`      ${element('dc:creator', item.author)}`] : []),
       ...[...(content?.categories ?? []), ...(content?.tags ?? [])].map(
         (term) => `      ${element('category', term.name)}`,
@@ -410,6 +661,21 @@ export const rssFeed = (
         ? [`    ${element('language', channel.language)}`]
         : []),
       `    <atom:link href="${xmlText(absoluteUrl(origin, self))}" rel="self" type="application/rss+xml"/>`,
+      ...(settings.webSubHub && self === FEED_PATH
+        ? [`    <atom:link href="${xmlText(settings.webSubHub)}" rel="hub"/>`]
+        : []),
+      ...(newestDate(values.map((item) => item.updatedAt || item.publishedAt))
+        ? [
+            element(
+              'lastBuildDate',
+              new Date(
+                newestDate(
+                  values.map((item) => item.updatedAt || item.publishedAt),
+                )!,
+              ).toUTCString(),
+            ),
+          ]
+        : []),
       ...entries,
       '  </channel>',
       '</rss>',
@@ -419,18 +685,22 @@ export const rssFeed = (
 };
 
 /** RSS 2.0 of approved comments; values are the (filtered) `feed.channel`/`feed.items`. */
-export const commentFeed = (channel: FeedChannel, items: readonly FeedItem[]) =>
+export const commentFeed = (
+  channel: FeedChannel,
+  items: readonly FeedItem[],
+  self = `${channel.link.replace(/\/$/, '')}/comments/feed.xml`,
+) =>
   new Response(
-    `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel>${element('title', channel.title)}${element('link', channel.link)}${element('description', channel.description)}${channel.language ? element('language', channel.language) : ''}${items
+    `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel>${element('title', channel.title)}${element('link', channel.link)}${element('description', channel.description)}${channel.language ? element('language', channel.language) : ''}<atom:link rel="self" type="application/rss+xml" href="${xmlText(self)}"/>${items
       .map(
         (item) =>
-          `<item>${element('title', item.title)}${element('link', item.link)}<guid isPermaLink="true">${xmlText(item.link)}</guid>${item.author ? element('dc:creator', item.author) : ''}${element('description', item.description)}${pubDate(item.publishedAt).join('')}</item>`,
+          `<item>${element('title', item.title)}${element('link', item.link)}<guid isPermaLink="false">urn:uuid:${xmlText(item.id)}</guid>${item.author ? element('dc:creator', item.author) : ''}${element('description', item.description)}${pubDate(item.publishedAt).join('')}</item>`,
       )
       .join('')}</channel></rss>`,
     {
       headers: {
         'content-type': 'application/rss+xml; charset=utf-8',
-        'cache-control': 'no-store',
+        'cache-control': 'public, max-age=60',
         'x-content-type-options': 'nosniff',
       },
     },
@@ -456,28 +726,42 @@ export const llmsText = (
   site: PublicSiteDto,
   settings: PublicSeoSettings,
   items: readonly PublicContentSummary[],
+  topics: readonly Pick<
+    SeoSitemapEntry,
+    'path' | 'title' | 'description'
+  >[] = [],
 ) => {
   const origin = settings.siteUrl;
   const intro = markdownInline(
-    settings.llmsIntro || settings.homeDescription || site.description,
+    settings.llmsIntro ||
+      settings.homeDescription ||
+      site.description ||
+      site.title,
   ).trim();
   // Encoded slugs hold nothing that could end a Markdown destination.
-  const links = items.map((content) => {
+  const link = (content: PublicContentSummary) => {
     const url = absoluteUrl(origin, markdownPath(content.slug));
     const summary = markdownInline(
       content.seo.description || content.excerpt,
     ).trim();
 
     return `- [${markdownInline(content.title).trim()}](${url})${summary ? `: ${summary}` : ''}`;
-  });
+  };
   const sitemap = absoluteUrl(origin, '/sitemap.xml');
 
   return `${[
     `# ${markdownInline(site.title).trim()}`,
     intro && `> ${intro}`,
-    `## Recent\n\nThe ${RECENT_LIMIT} most recent entries at most, newest first, as Markdown.`,
-    links.join('\n'),
-    `## Complete index\n\n- [Sitemap](${sitemap}): every indexable page`,
+    `## Pages\n\n${items
+      .filter((item) => item.type === 'page')
+      .map(link)
+      .join('\n')}`,
+    `## Recent posts\n\n${items
+      .filter((item) => item.type !== 'page')
+      .map(link)
+      .join('\n')}`,
+    `## Topics\n\n${topics.map((topic) => `- [${markdownInline(topic.title)}](${absoluteUrl(origin, topic.path)}): ${markdownInline(topic.description)}`).join('\n')}`,
+    `## Optional\n\n- [Sitemap](${sitemap}): every indexable page\n- [Full text](${origin}/llms-full.txt): bounded Markdown collection${settings.feedsEnabled ? `\n- [RSS feed](${origin}/feed.xml): recent entries` : ''}`,
   ]
     .filter(Boolean)
     .join('\n\n')}\n`;

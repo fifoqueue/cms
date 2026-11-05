@@ -36,6 +36,7 @@
   import Editor from '#lib/admin/Editor.svelte';
   import MediaPicker from '#lib/admin/MediaPicker.svelte';
   import SeoEditor from '#lib/admin/SeoEditor.svelte';
+  import { sharingImage } from '#lib/seo/head.js';
   import type { SeoPreviewContext } from '#lib/admin/seo.js';
   import { documentText, seoFormValues } from '#lib/admin/seo.js';
   import { flattenTree } from '#lib/admin/taxonomy-tree.js';
@@ -249,7 +250,7 @@
 
       return {
         id,
-        url: image ? (image.sizes[0]?.url ?? image.url) : '',
+        url: image ? (sharingImage(image, seo.siteUrl)?.url ?? image.url) : '',
         alt: image?.alt ?? '',
       };
     }),
@@ -882,6 +883,7 @@
       initial={initial.seo}
       context={seo}
       source={{
+        featuredImage: featured,
         title,
         description: excerpt.trim() || summary,
         // Protected entries publish no keyword paragraph (see `ContentService`).
@@ -1175,8 +1177,19 @@
             featured = {
               id: media.id,
               url:
-                media.variants.find((variant) => variant.name === 'medium')
-                  ?.url ?? media.url,
+                sharingImage(
+                  {
+                    url: media.url,
+                    alt: choice.alt,
+                    width: media.width,
+                    height: media.height,
+                    sizes: media.variants.map(({ url, width }) => ({
+                      url,
+                      width,
+                    })),
+                  },
+                  seo.siteUrl,
+                )?.url ?? media.url,
               alt: choice.alt,
             };
             touch();

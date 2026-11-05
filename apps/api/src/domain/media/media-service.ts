@@ -3,6 +3,7 @@ import {
   MEDIA_TYPES,
   mediaListQuerySchema,
   mediaUpdateSchema,
+  publicImageLookupSchema,
 } from '@cms/sdk';
 import type {
   AdminMedia,
@@ -12,12 +13,17 @@ import type {
   MediaContext,
   MediaType,
   Paginated,
+  PublicImage,
 } from '@cms/sdk';
 import { can } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
 import { authorize } from '#api/domain/auth/authorization';
 import { authorizeObject } from '#api/domain/auth/object-authorization';
-import { toAdminMedia, projectMedia } from '#api/domain/media/media-mapper';
+import {
+  toAdminMedia,
+  toPublicImage,
+  projectMedia,
+} from '#api/domain/media/media-mapper';
 import type {
   ImageProcessor,
   MediaWrite,
@@ -154,6 +160,31 @@ export class MediaService {
     const media = await this.readable(id, actor);
 
     return toAdminMedia(await projectMedia(media, this.deps.hooks));
+  }
+
+  async publicImages(input: unknown): Promise<Record<string, PublicImage>> {
+    const { urls } = parseInput(publicImageLookupSchema, input);
+    const result: Record<string, PublicImage> = {};
+
+    await Promise.all(
+      [...new Set(urls)].map(async (url) => {
+        const key = url.startsWith('/media/')
+          ? url.slice('/media/'.length)
+          : null;
+        const media =
+          key !== null
+            ? safeMediaKey(key)
+              ? await this.deps.repository.getByKey(key)
+              : null
+            : await this.deps.repository.getByUrl(url);
+
+        if (!media || !media.mime.startsWith('image/') || media.missingAt)
+          return;
+        result[url] = toPublicImage(await projectMedia(media, this.deps.hooks));
+      }),
+    );
+
+    return result;
   }
 
   /** Previous/next files for the details screen and the entries that show this one. */

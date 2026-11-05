@@ -20,6 +20,7 @@ import type { FilterEvent } from '#lib/server/seo-filter.js';
 import { filterPageData } from '#lib/server/page-data.js';
 import { HOME_LIST_TYPES } from '#lib/theme/pagination.js';
 import type { HomeListType } from '#lib/theme/pagination.js';
+import { termParents } from '#lib/seo/breadcrumbs.js';
 
 /** A category or tag archive: the term (404 when unknown) and all assigned published content. */
 export const loadTermArchive = async (
@@ -77,16 +78,22 @@ export const loadTermArchive = async (
   const page = await filterPageData(
     {
       kind: 'term' as const,
-      term: { ...termArchiveView(term), path: canonicalPath },
+      term: {
+        ...termArchiveView(term),
+        path: canonicalPath,
+        parents: term.parentId
+          ? termParents(await api.taxonomy.list(taxonomy), term.slug)
+          : [],
+      },
       posts: listView(posts),
     },
     url.pathname,
   );
-  const [blocks, loadedSlots, meta] = await Promise.all([
+  const [blocks, loadedSlots] = await Promise.all([
     loadTemplateData(api, loaded, page),
     slots,
-    withSeoMeta(event, loaded, page),
   ]);
+  const meta = await withSeoMeta(event, loaded, { ...page, ...blocks });
 
   return { ...page, slots: loadedSlots, seoMeta: meta.seoMeta, ...blocks };
 };

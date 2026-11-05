@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { linkHtmlAttributes, linkRels } from '@cms/sdk';
   import type { Block } from '@cms/sdk';
   import { linkOptions } from '#lib/route-link.js';
   import { useScope } from '#lib/theme/scope.js';
@@ -27,8 +28,10 @@
       <a
         href={button.attrs.url}
         {...linkOptions(scope().linkRoutes[button.attrs.url])}
-        target={button.attrs.newTab ? '_blank' : undefined}
-        rel={button.attrs.newTab ? 'noopener' : undefined}
+        {...linkHtmlAttributes({
+          newTab: button.attrs.newTab,
+          rel: linkRels(button.attrs.rel),
+        })}
         class="cms-block-button inline-flex items-center rounded-[var(--radius)] px-4 py-2 text-sm font-medium transition {STYLE[
           button.attrs.style
         ]}">{button.attrs.text}</a

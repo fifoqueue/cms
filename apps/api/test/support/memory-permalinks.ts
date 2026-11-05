@@ -14,6 +14,9 @@ import type {
 } from '#api/domain/permalinks/permalink-repository';
 import { permalinkPathIssue } from '@cms/sdk';
 
+type PublicationSubject = PermalinkSubject & { status?: string };
+type PublishedPath = StoredPath & { wasPublic?: boolean };
+
 /**
  * Same contract as `PrismaPermalinkRepository`; `assign` and `remove` mirror `assignContentPath`
  * and the ON DELETE CASCADE. Plans are checked before any mutation, so failures change nothing.
@@ -21,11 +24,23 @@ import { permalinkPathIssue } from '@cms/sdk';
 export class MemoryPermalinkRepository
   implements PermalinkRepository, RedirectWriter
 {
-  readonly paths = new Map<string, StoredPath>();
+  readonly paths = new Map<string, PublishedPath>();
+  readonly deleted = new Set<string>();
   private stored: string | undefined;
 
   /** `sources` lists every content item, as the content table would. */
-  constructor(private readonly sources: () => Iterable<PermalinkSubject>) {}
+  constructor(
+    private readonly sources: () => Iterable<PublicationSubject>,
+    private readonly isTrashed: (id: string) => boolean = () => false,
+  ) {}
+
+  private owner(row: PublishedPath) {
+    return {
+      contentId: row.contentId,
+      current: row.current,
+      ...(row.wasPublic && this.isTrashed(row.contentId) ? { gone: true } : {}),
+    };
+  }
 
   async readSettings() {
     return readPermalinkSettings(
@@ -36,12 +51,21 @@ export class MemoryPermalinkRepository
   async findByPath(path: string) {
     const row = this.paths.get(path);
 
-    return row ? { contentId: row.contentId, current: row.current } : null;
+    return row ? this.owner(row) : null;
+  }
+
+  async findCaseInsensitive(path: string) {
+    const rows = [...this.paths.values()].filter(
+      (row) => row.path.toLowerCase() === path.toLowerCase(),
+    );
+
+    return rows.length === 1 ? this.owner(rows[0]!) : null;
   }
 
   async addRedirect(contentId: string, path: string) {
     if (permalinkPathIssue(path) || this.paths.has(path)) return false;
     this.paths.set(path, { path, contentId, current: false });
+    this.publish([contentId]);
 
     return true;
   }
@@ -52,11 +76,12 @@ export class MemoryPermalinkRepository
     );
 
     this.apply(await resolvePathChanges(settings, entries));
+    this.publish([...this.sources()].map((source) => source.id));
     this.stored = JSON.stringify(settings);
   }
 
   /** Call before storing the content write, so a failure leaves the content unchanged. */
-  async assign(subject: PermalinkSubject, retainPrevious: boolean) {
+  async assign(subject: PublicationSubject, retainPrevious: boolean) {
     const settings = await this.readSettings();
     const current = this.current(subject.id);
     const sources = [...this.sources()].filter(
@@ -79,6 +104,10 @@ export class MemoryPermalinkRepository
     const changes = await resolvePathChanges(settings, entries);
 
     this.apply(changes);
+    this.publish(
+      sources.map((source) => source.id),
+      sources,
+    );
 
     return (
       changes.find((change) => change.contentId === subject.id)?.to ?? current!
@@ -87,7 +116,30 @@ export class MemoryPermalinkRepository
 
   remove(contentId: string) {
     for (const [path, row] of this.paths)
-      if (row.contentId === contentId) this.paths.delete(path);
+      if (row.contentId === contentId) {
+        if (row.wasPublic) this.deleted.add(path);
+        this.paths.delete(path);
+      }
+  }
+
+  async wasDeleted(path: string) {
+    return this.deleted.has(path);
+  }
+
+  publish(ids: readonly string[], sources = [...this.sources()]) {
+    const publicIds = new Set(
+      sources
+        .filter(
+          (source) =>
+            ids.includes(source.id) &&
+            source.status === 'published' &&
+            !this.isTrashed(source.id),
+        )
+        .map((source) => source.id),
+    );
+
+    for (const row of this.paths.values())
+      if (publicIds.has(row.contentId)) row.wasPublic = true;
   }
 
   current(contentId: string): string | null {

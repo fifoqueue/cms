@@ -33,7 +33,7 @@ type Row = Pick<
 > &
   Omit<
     Parameters<typeof fromPublicSeoColumns>[0],
-    'seoNoIndex' | 'seoNoFollow'
+    'seoNoIndex' | 'seoNoFollow' | 'seoNoSnippet'
   > & {
     path: Uint8Array | null;
     parentId: string | null;
@@ -50,6 +50,7 @@ type Row = Pick<
     protected: number;
     seoNoIndex: number;
     seoNoFollow: number;
+    seoNoSnippet: number;
     html?: string;
     fields?: string;
   };
@@ -105,6 +106,9 @@ const summary = async (
       seoCanonicalUrl: row.seoCanonicalUrl,
       seoNoIndex: Boolean(row.seoNoIndex),
       seoNoFollow: Boolean(row.seoNoFollow),
+      seoNoSnippet: Boolean(row.seoNoSnippet),
+      seoMaxSnippet: row.seoMaxSnippet,
+      seoMaxImagePreview: row.seoMaxImagePreview,
       seoImageUrl: row.seoImageUrl,
       seoImageAlt: row.seoImageAlt,
       seoSocialTitle: row.seoSocialTitle,
@@ -151,6 +155,8 @@ export async function projectContent(
       c.seo_title AS seoTitle, c.seo_description AS seoDescription,
       c.seo_canonical_url AS seoCanonicalUrl, c.seo_no_index AS seoNoIndex,
       c.seo_no_follow AS seoNoFollow, c.seo_image_url AS seoImageUrl,
+      c.seo_no_snippet AS seoNoSnippet, c.seo_max_snippet AS seoMaxSnippet,
+      c.seo_max_image_preview AS seoMaxImagePreview,
       c.seo_image_alt AS seoImageAlt, c.seo_social_title AS seoSocialTitle,
       c.seo_social_description AS seoSocialDescription, c.seo_schema_type AS seoSchemaType,
       c.seo_author_name AS seoAuthorName, c.seo_author_url AS seoAuthorUrl

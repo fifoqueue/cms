@@ -3,7 +3,12 @@ import { messagesFor } from '#lib/i18n/index.js';
 import { siteTranslation } from '#lib/i18n/overrides.server.js';
 import { applyOverrides } from '#lib/i18n/overrides.js';
 import { SITE_PARAMS } from '#lib/i18n/site-params.js';
-import { absoluteUrl, notFound, xmlText } from '#lib/server/seo-discovery.js';
+import {
+  absoluteUrl,
+  conditionalResponse,
+  notFound,
+  xmlText,
+} from '#lib/server/seo-discovery.js';
 import type { RequestHandler } from './$types';
 
 /** Widths a consumer may ask for (`maxwidth`); the card is text, so height follows width. */
@@ -15,7 +20,7 @@ const width = (requested: string | null) =>
  * answers with a `rich` card of plain links and text (no iframe or script). Only published
  * entries on this site's configured address that are not password-protected are described.
  */
-export const GET: RequestHandler = async ({ fetch, url }) => {
+export const GET: RequestHandler = async ({ fetch, url, request }) => {
   if ((url.searchParams.get('format') ?? 'json') !== 'json')
     return new Response(null, { status: 501 });
   const api = contentApi(fetch);
@@ -50,36 +55,43 @@ export const GET: RequestHandler = async ({ fetch, url }) => {
     '</blockquote>',
   ].join('');
 
-  return Response.json(
-    {
-      version: '1.0',
-      type: 'rich',
-      provider_name: site.title,
-      provider_url: home,
-      title: content.title,
-      ...(content.author && {
-        author_name: content.author.name,
-        author_url: absoluteUrl(
-          settings.siteUrl,
-          `/author/${encodeURIComponent(content.author.slug)}`,
-        ),
-      }),
-      ...(content.featuredImage && {
-        thumbnail_url: absoluteUrl(settings.siteUrl, content.featuredImage.url),
-        ...(content.featuredImage.width && {
-          thumbnail_width: content.featuredImage.width,
-          thumbnail_height: content.featuredImage.height,
+  return conditionalResponse(
+    request,
+    Response.json(
+      {
+        version: '1.0',
+        type: 'rich',
+        provider_name: site.title,
+        provider_url: home,
+        title: content.title,
+        ...(content.author && {
+          author_name: content.author.name,
+          author_url: absoluteUrl(
+            settings.siteUrl,
+            `/author/${encodeURIComponent(content.author.slug)}`,
+          ),
         }),
-      }),
-      html,
-      width: cardWidth,
-      height: Math.round(cardWidth / 3),
-    },
-    {
-      headers: {
-        'cache-control': 'public, max-age=300',
-        'access-control-allow-origin': '*',
+        ...(content.featuredImage && {
+          thumbnail_url: absoluteUrl(
+            settings.siteUrl,
+            content.featuredImage.url,
+          ),
+          ...(content.featuredImage.width && {
+            thumbnail_width: content.featuredImage.width,
+            thumbnail_height: content.featuredImage.height,
+          }),
+        }),
+        html,
+        width: cardWidth,
+        height: Math.round(cardWidth / 3),
       },
-    },
+      {
+        headers: {
+          'cache-control': 'public, max-age=300',
+          'access-control-allow-origin': '*',
+        },
+      },
+    ),
+    content.updatedAt,
   );
 };

@@ -32,6 +32,8 @@
     privacy: data.privacy,
     archives: data.archives,
     queries: data.queries,
+    related: data.related,
+    images: data.images,
     terms: data.terms ?? { category: null, tag: null },
     months: data.months ?? null,
     adjacent: data.adjacent ?? null,

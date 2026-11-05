@@ -13,12 +13,13 @@ import { ThemePreviews } from '#api/domain/theme/theme-previews';
 import { createSitemapProviders } from '#api/plugin-runtime/discovery-providers';
 import { zipThemeArchive } from '#api/infra/zip-theme-archive';
 import { sharpImages } from '#api/infra/sharp-images';
-import { systemClock } from '#api/infra/system';
+import { systemClock, randomTokenIssuer } from '#api/infra/system';
 import type { Logger } from '#api/shared/logger';
 
 type Input = Pick<
   Awaited<ReturnType<typeof createRepositories>>,
   | 'settingsRepository'
+  | 'patternTransactions'
   | 'mediaRepository'
   | 'siteWriter'
   | 'taxonomyRepository'
@@ -30,7 +31,7 @@ type Input = Pick<
   > &
   Pick<
     ReturnType<typeof createContent>,
-    'publishedRepository' | 'taxonomyTypes'
+    'publishedRepository' | 'taxonomyTypes' | 'contentTypes'
   > & {
     archivePaths: ConstructorParameters<typeof MenuService>[0]['archives'];
     signer: ConstructorParameters<typeof ThemePreviews>[0]['signer'];
@@ -41,6 +42,7 @@ type Input = Pick<
 
 export const createSite = ({
   settingsRepository,
+  patternTransactions,
   mediaRepository,
   siteWriter,
   taxonomyRepository,
@@ -50,6 +52,7 @@ export const createSite = ({
   themeContributions,
   publishedRepository,
   taxonomyTypes,
+  contentTypes,
   archivePaths,
   signer,
   reconcileFunctions,
@@ -80,11 +83,19 @@ export const createSite = ({
     published: publishedRepository,
     terms: taxonomyRepository,
   });
-  const seo = new SeoSettingsService(settingsRepository, hooks);
-  const sitemaps = createSitemapProviders(discoveryRepository, {
-    timeoutMs,
-    logger,
+  const seo = new SeoSettingsService(settingsRepository, hooks, {
+    transactions: patternTransactions,
+    generate: () =>
+      randomTokenIssuer.digest(randomTokenIssuer.issue()).slice(0, 32),
   });
+  const sitemaps = createSitemapProviders(
+    discoveryRepository,
+    {
+      timeoutMs,
+      logger,
+    },
+    async () => (await contentTypes.list()).filter((type) => type.archive),
+  );
   const seoDiscovery = new SeoDiscoveryService(
     discoveryRepository,
     seo,

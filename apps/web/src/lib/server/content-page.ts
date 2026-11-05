@@ -14,6 +14,8 @@ import type { ThemePage } from '#lib/theme/template.js';
 import { withSeoMeta } from '#lib/server/page-meta.js';
 import type { HeadLayout } from '#lib/server/page-meta.js';
 import { filterPageData } from '#lib/server/page-data.js';
+import { HtmlBody } from '#lib/theme/html-body.js';
+import { termParents } from '#lib/seo/breadcrumbs.js';
 
 /** Form actions of every page that can show an entry: unlocking, commenting, moderating. */
 export const entryActions = {
@@ -55,28 +57,49 @@ export const entryPage = async (
     path,
     html: parts[current - 1]!,
     pages: { current, total: parts.length },
+    categoryParents: content.categories[0]
+      ? termParents(
+          await api.taxonomy.list('category'),
+          content.categories[0].slug,
+        )
+      : [],
   };
   const captcha = api.captcha().catch(() => null);
   const page = await filterPageData(
     { kind: 'content' as const, content: view },
     event.url.pathname,
   );
-  const [definitions, comments, unlockCaptcha, blocks, loadedSlots, meta] =
+  const [definitions, comments, unlockCaptcha, blocks, loadedSlots] =
     await Promise.all([
       types,
       content.protected ? null : loadComments(api, content.id, event, captcha),
       content.protected ? captcha : null,
       templateData(page),
       slots,
-      withSeoMeta(event, () => event.parent(), page),
     ]);
+  const meta = await withSeoMeta(event, () => event.parent(), {
+    ...page,
+    ...blocks,
+  });
 
   // The comment form or the unlock form may render the captcha widget.
   allowCaptcha(event, comments?.captcha ?? unlockCaptcha);
+  event.locals.markdownEntry = {
+    slug: page.content.slug,
+    path: page.content.path,
+    protected: page.content.protected,
+    seo: {
+      noIndex: page.content.seo.noIndex,
+      canonicalUrl: page.content.seo.canonicalUrl,
+    },
+  };
 
   return {
     kind: 'content' as const,
-    content: page.content,
+    content: {
+      ...page.content,
+      html: new HtmlBody(page.content.html, `${content.id}:${current}`),
+    },
     /** Labels of the entry's public fields, in their defined order. */
     fieldLabels: (
       definitions.find((type) => type.key === content.type)?.fields ?? []

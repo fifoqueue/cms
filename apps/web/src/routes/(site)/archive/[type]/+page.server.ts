@@ -6,6 +6,8 @@ import { loadSlots } from '#lib/server/slots.js';
 import { withTemplateData } from '#lib/server/theme-queries.js';
 import type { PageServerLoad } from './$types';
 
+export const trailingSlash = 'never';
+
 /** The list of a content type that publishes an archive. */
 export const load: PageServerLoad = async (event) => {
   const { fetch, url, params, parent } = event;

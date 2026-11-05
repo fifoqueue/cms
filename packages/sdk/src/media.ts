@@ -144,6 +144,22 @@ export const publicImageSchema = z.strictObject({
 
 export type PublicImage = z.output<typeof publicImageSchema>;
 
+/** Known public URLs only; this lookup never fetches remote resources. */
+export const publicImageLookupSchema = z.object({
+  urls: z
+    .array(
+      z.union([
+        z
+          .string()
+          .max(2048)
+          .regex(/^\/media\/(?!.*\.\.)[\w./-]+$/),
+        z.url({ protocol: /^https?$/ }).max(2048),
+      ]),
+    )
+    .max(32),
+});
+export const publicImageMapSchema = z.record(z.string(), publicImageSchema);
+
 export { MEDIA_FILENAME_HEADER } from '#sdk/media-headers';
 
 /** Pixel crop applies before rotation and flips. Editing produces a new media item. */

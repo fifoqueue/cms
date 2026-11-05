@@ -51,7 +51,8 @@ describe('renderDocument', () => {
     });
 
     expect(html).toContain('class="language-c#"');
-    expect(html).toContain('target="report"');
+    // Link targets and rels render normalized to the allowed values.
+    expect(html).toContain('<a href="/r" rel="ugc">report</a>');
     expect(html).toContain('alt="2024"');
     // Unknown attributes are dropped, never rendered.
     expect(html).not.toContain('onerror');

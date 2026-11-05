@@ -1,8 +1,9 @@
-import type { Handle } from '@sveltejs/kit/hooks';
+import type { Handle, HandleServerError } from '@sveltejs/kit/hooks';
 import type { RequestEvent } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
 import { CmsApiError } from '@cms/sdk/client';
 import { can } from '@cms/sdk/capabilities';
+import { CONTENT_UNLOCK_HEADER } from '@cms/sdk';
 import {
   adminApi,
   authApi,
@@ -19,6 +20,10 @@ import { withWidgetOrigins } from '#lib/server/captcha.js';
 import { startWebFunctions } from '#lib/server/web-functions.js';
 import { webHooks } from '#lib/server/web-functions.js';
 import { renderRequest } from '#lib/server/render-request.js';
+import { revalidateHtml } from '#lib/server/html-revalidation.js';
+import { siteLayout } from '#lib/server/site-layout.js';
+import { loadErrorData } from '#lib/server/theme-queries.js';
+import { entryRepresentations } from '#lib/server/entry-representations.js';
 import {
   keyedAssetHtml,
   renderHeaders,
@@ -26,6 +31,38 @@ import {
 } from '#lib/server/render-security.js';
 
 export const init = startWebFunctions;
+
+/** Kit 3 calls this for expected and unexpected errors, including data navigations. */
+export const handleError: HandleServerError = async ({
+  event,
+  kind,
+  error,
+}) => {
+  if (kind === 'unknown') console.error('Unhandled web error', error);
+  if (!event.route.id?.startsWith('/(site)')) return;
+  const status =
+    kind === 'unknown'
+      ? error instanceof CmsApiError
+        ? error.status
+        : 500
+      : error.status;
+
+  try {
+    const { theme, reading } = await siteLayout(event);
+
+    return {
+      status,
+      themeError: await loadErrorData(
+        contentApi(event.fetch),
+        theme,
+        reading.timeZone,
+        status,
+      ),
+    };
+  } catch {
+    return { status };
+  }
+};
 
 const publicRender: Handle = ({ event, resolve }) => {
   if (!event.route.id?.startsWith('/(site)')) return resolve(event);
@@ -172,15 +209,29 @@ const responseSecurity: Handle = async ({ event, resolve }) => {
   const admin = isAdmin(event.url.pathname);
   const origins = event.locals.captchaOrigins;
   const page = response.headers.get('content-type')?.startsWith('text/html');
+  const internal =
+    event.isDataRequest ||
+    event.url.pathname.endsWith('/__data.json') ||
+    event.url.pathname.startsWith('/_app/') ||
+    event.url.pathname.startsWith('/api/') ||
+    event.url.pathname.startsWith('/preview/');
+  const feed = /^application\/(?:(?:rss|atom)\+xml|feed\+json)(?:;|$)/i.test(
+    response.headers.get('content-type') ?? '',
+  );
 
   if (
     !admin &&
+    !internal &&
+    !feed &&
     !page &&
     response.status < 400 &&
     !(origins && response.headers.has('content-security-policy'))
   )
     return response;
   const headers = new Headers(response.headers);
+
+  if (internal) headers.set('x-robots-tag', 'noindex, nofollow');
+  if (feed) headers.set('x-robots-tag', 'noindex, follow');
 
   if (admin || response.status >= 400) {
     headers.set('x-robots-tag', 'noindex, nofollow');
@@ -228,7 +279,7 @@ const responseSecurity: Handle = async ({ event, resolve }) => {
 
 /** Cookies that make a public page differ per visitor (sessions, unlocked entries, previews). */
 const PERSONAL_COOKIE =
-  /^(?:__Host-cms_session|cms_session|cms_unlock_|cms_theme_preview|cms_pending_|cms_commenter)/;
+  /^(?:(?:__Host-)?cms_(?:session|sso|signed_out|theme_preview|commenter|commenter_proof)$|cms_(?:unlock_|pending_))/;
 
 /** Settings → Reading `cacheSeconds`, re-read at most once a minute. */
 let caching = { seconds: 0, until: 0 };
@@ -249,21 +300,76 @@ const cacheSeconds = async (fetch: typeof globalThis.fetch) => {
 
 /**
  * Lets a CDN or reverse proxy keep public pages briefly (Settings → Reading). Only plain
- * anonymous GETs qualify: no visitor cookies, no cookies set, and no caching rules of their own.
+ * anonymous HTML GETs qualify: no personal cookies, no cookies set, and no caching rules of their own.
  * Credential-less endpoints are never cached and never have their cookies read.
  */
 const publicCache: Handle = async ({ event, resolve }) => {
   if (isCredentialLess(event)) return resolve(event);
-  const response = await resolve(event);
+  const personal = event.cookies
+    .getAll()
+    .some(({ name }) => PERSONAL_COOKIE.test(name));
+  const privateRequest =
+    event.isDataRequest ||
+    event.url.pathname.endsWith('/__data.json') ||
+    personal ||
+    event.request.headers.has('authorization') ||
+    event.request.headers.has(CONTENT_UNLOCK_HEADER) ||
+    isAdmin(event.url.pathname) ||
+    event.route.id === '/(site)/preview/[token]';
 
-  if (event.cookies.getAll().some(({ name }) => PERSONAL_COOKIE.test(name))) {
+  let resolved = event;
+
+  if (privateRequest && ['GET', 'HEAD'].includes(event.request.method)) {
+    const headers = new Headers(event.request.headers);
+
+    headers.delete('if-none-match');
+    headers.delete('if-modified-since');
+    // Bun keeps the source request's headers when `init.headers` is passed with a Request input.
+    resolved = {
+      ...event,
+      request: new Request(event.request.url, {
+        method: event.request.method,
+        headers,
+        signal: event.request.signal,
+      }),
+    };
+  }
+
+  const response = await resolve(resolved);
+
+  if (
+    privateRequest ||
+    response.headers.has('set-cookie') ||
+    /\b(?:private|no-store)\b/i.test(
+      response.headers.get('cache-control') ?? '',
+    ) ||
+    event.cookies.getAll().some(({ name }) => PERSONAL_COOKIE.test(name))
+  ) {
     const headers = new Headers(response.headers);
 
     headers.set('cache-control', 'private, no-store');
+    headers.delete('etag');
+    headers.delete('last-modified');
+    const status = response.status === 304 ? 500 : response.status;
+
+    if (status !== response.status) headers.delete('content-length');
+    const vary = new Set(
+      (headers.get('vary') ?? '')
+        .split(',')
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean),
+    );
+
+    if (!vary.has('*')) {
+      if (!vary.has('cookie')) headers.append('vary', 'Cookie');
+      for (const name of ['Authorization', CONTENT_UNLOCK_HEADER])
+        if (event.request.headers.has(name) && !vary.has(name.toLowerCase()))
+          headers.append('vary', name);
+    }
 
     return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
+      status,
+      statusText: status === response.status ? response.statusText : undefined,
       headers,
     });
   }
@@ -271,28 +377,49 @@ const publicCache: Handle = async ({ event, resolve }) => {
   if (
     (event.request.method !== 'GET' && event.request.method !== 'HEAD') ||
     isAdmin(event.url.pathname) ||
+    !event.route.id?.startsWith('/(site)') ||
+    event.isDataRequest ||
+    !response.headers.get('content-type')?.startsWith('text/html') ||
     response.status !== 200 ||
     response.headers.has('set-cookie') ||
-    response.headers.has('cache-control') ||
-    event.cookies.getAll().some(({ name }) => PERSONAL_COOKIE.test(name))
+    response.headers.has('cache-control')
   )
     return response;
   const seconds = await cacheSeconds(event.fetch);
 
-  if (!seconds) return response;
-  const headers = new Headers(response.headers);
+  return revalidateHtml(event.request, response, seconds);
+};
 
-  headers.set(
-    'cache-control',
-    `public, max-age=0, s-maxage=${seconds}, stale-while-revalidate=${seconds * 10}`,
-  );
-  headers.append('vary', 'cookie');
+/** Uses the adapter's trusted request origin, never raw forwarding headers from the caller. */
+const canonicalOrigin: Handle = async ({ event, resolve }) => {
+  if (
+    !['GET', 'HEAD'].includes(event.request.method) ||
+    !event.route.id?.startsWith('/(site)') ||
+    isAdmin(event.url.pathname) ||
+    event.url.pathname.startsWith('/preview/') ||
+    ['/health', '/healthz'].includes(event.url.pathname)
+  )
+    return resolve(event);
+  const { reading, seo, site } = await siteLayout(event);
 
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
+  if (
+    reading.canonicalOrigin &&
+    seo.siteUrl &&
+    event.url.pathname !== site.loginPath
+  ) {
+    const origin = new URL(seo.siteUrl).origin;
+
+    if (event.url.origin !== origin)
+      return new Response(null, {
+        status: 301,
+        headers: {
+          location: `${origin}${event.url.pathname}${event.url.search}`,
+          'cache-control': 'private, no-store',
+        },
+      });
+  }
+
+  return resolve(event);
 };
 
 /** Setup cannot become required again once completed (reinstalling is blocked), so stop asking. */
@@ -420,6 +547,8 @@ export const handle = sequence(
   publicCache,
   responseSecurity,
   guardAdmin,
+  canonicalOrigin,
+  entryRepresentations,
   publicRender,
   adminScripts,
   documentLanguage,

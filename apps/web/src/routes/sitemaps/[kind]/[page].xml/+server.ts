@@ -6,15 +6,22 @@ import {
   notFound,
   sitemapChunk,
   sitemapChunkCount,
+  conditionalResponse,
+  sitemapHomeDate,
 } from '#lib/server/seo-discovery.js';
 import { notFoundFrom } from '#lib/server/errors.js';
 import type { RequestHandler } from './$types';
 
 /** `/sitemaps/<kind>/<page>.xml`: one API page of sitemap entries. */
-export const GET: RequestHandler = async ({ fetch, params }) => {
+export const GET: RequestHandler = async ({ fetch, params, request, url }) => {
   const { kind } = params;
+  const part = url.searchParams.get('part') ?? '1';
 
-  if (!isSitemapKind(kind) || !/^[1-9]\d{0,6}$/.test(params.page))
+  if (
+    !isSitemapKind(kind) ||
+    !/^[1-9]\d{0,6}$/.test(params.page) ||
+    !/^[1-9]\d{0,6}$/.test(part)
+  )
     return notFound();
   const page = Number(params.page);
   const api = contentApi(fetch);
@@ -24,7 +31,7 @@ export const GET: RequestHandler = async ({ fetch, params }) => {
     api.seo
       .sitemap({ kind, page, pageSize: SEO_SITEMAP_PAGE_SIZE })
       .catch(notFoundFrom),
-    api.reading().catch(() => null),
+    api.reading(),
   ]);
 
   if (
@@ -34,12 +41,18 @@ export const GET: RequestHandler = async ({ fetch, params }) => {
     return notFound();
   if (!settings.siteUrl) return missingSiteUrl('The sitemap');
 
-  return sitemapChunk(
+  const homeDate =
+    kind === 'content' && page === 1
+      ? await sitemapHomeDate(api, reading.frontPage)
+      : undefined;
+  const response = sitemapChunk(
     settings.siteUrl,
-    // A static front page is listed as the home page, which redirects it.
-    entries.items.filter(
-      (entry) => kind !== 'content' || entry.path !== reading?.frontPagePath,
-    ),
+    entries.items,
     kind === 'content' && page === 1,
+    homeDate,
+    kind === 'content' ? reading.frontPagePath : undefined,
+    Number(part),
   );
+
+  return conditionalResponse(request, response);
 };

@@ -98,7 +98,7 @@ export const templateCandidates = (
           'archive',
         ];
       case 'error':
-        return page.status === 404 ? ['404'] : [];
+        return page.status === 404 || page.status === 410 ? ['404'] : ['500'];
     }
   })();
 

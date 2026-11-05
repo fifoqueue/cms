@@ -50,7 +50,12 @@
       case 'author':
         return { kind: 'author', slug: page.author.slug };
       case 'date':
-        return { kind: 'date', year: page.date.year, month: page.date.month };
+        return {
+          kind: 'date',
+          year: page.date.year,
+          month: page.date.month,
+          day: page.date.day,
+        };
       case 'archive':
         return { kind: 'archive', slug: page.archive.key };
       default:
@@ -76,12 +81,14 @@
                   ? 'flex flex-col gap-3 overflow-hidden rounded-[var(--radius)] border bg-card p-5 text-card-foreground shadow-xs transition hover:shadow-md'
                   : `flex flex-col gap-3 ${a.divider ? 'py-8 first:pt-0 last:pb-0' : ''}`}
               >
-                <PostScope
-                  {post}
-                  blocks={child.children}
-                  within={index}
-                  lead={!!block.attrs.inherit && position === 0}
-                />
+                <article class="contents">
+                  <PostScope
+                    {post}
+                    blocks={child.children}
+                    within={index}
+                    lead={!!block.attrs.inherit && position === 0}
+                  />
+                </article>
               </li>
             {/each}
           </ul>

@@ -11,6 +11,7 @@ import { PermalinkResolver } from '#api/domain/permalinks/permalink-resolver';
 import { PermalinkService } from '#api/domain/permalinks/permalink-service';
 import { DomainError } from '#api/shared/errors';
 import { MemoryPermalinkRepository } from '#test/support/memory-permalinks';
+import { toErrorResponse } from '#api/http/respond';
 
 const codeOf = async (task: () => Promise<unknown>) => {
   try {
@@ -22,6 +23,119 @@ const codeOf = async (task: () => Promise<unknown>) => {
 
   return 'ok';
 };
+
+test('draft-only addresses of a previously published entry stay private after trash and deletion', async () => {
+  let entry = {
+    id: 'entry',
+    type: 'post',
+    slug: 'published-address',
+    title: 'Entry',
+    status: 'published',
+    publishedAt: new Date('2026-01-01T00:00:00Z'),
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+  };
+  let trashed = false;
+  const paths = new MemoryPermalinkRepository(
+    () => [entry],
+    () => trashed,
+  );
+  const resolver = new PermalinkResolver(paths, {
+    getById: async () =>
+      entry.status === 'published' && !trashed
+        ? ({ id: entry.id, path: paths.current(entry.id)! } as PublicContent)
+        : null,
+  });
+
+  await paths.assign(entry, false);
+  entry = { ...entry, status: 'draft', slug: 'unpublished-address' };
+  await paths.assign(entry, true);
+  trashed = true;
+  expect(
+    await codeOf(() => resolver.resolve({ path: '/unpublished-address' })),
+  ).toBe('not_found');
+  expect(
+    await codeOf(() => resolver.resolve({ path: '/published-address' })),
+  ).toBe('gone');
+  paths.remove(entry.id);
+  expect(
+    await codeOf(() => resolver.resolve({ path: '/unpublished-address' })),
+  ).toBe('not_found');
+  expect(
+    await codeOf(() => resolver.resolve({ path: '/published-address' })),
+  ).toBe('gone');
+});
+
+test('public trash and deletion return 410, restoration and reused paths work, and private drafts stay 404', async () => {
+  const published: PermalinkSubject & { status: string } = {
+    id: 'published',
+    type: 'post',
+    slug: 'public',
+    title: 'Public',
+    status: 'published',
+    publishedAt: new Date('2026-01-01T00:00:00Z'),
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+  };
+  const draft = {
+    ...published,
+    id: 'draft',
+    slug: 'private',
+    status: 'draft',
+    publishedAt: null,
+  };
+  const contents = new Map<string, PermalinkSubject>([
+    ['published', published],
+    ['draft', draft],
+  ]);
+  const trash = new Set<string>();
+  const paths = new MemoryPermalinkRepository(
+    () => contents.values(),
+    (id) => trash.has(id),
+  );
+  const resolver = new PermalinkResolver(paths, {
+    getById: async (id) =>
+      contents.get(id)?.publishedAt && !trash.has(id)
+        ? ({ id, path: paths.current(id)! } as PublicContent)
+        : null,
+  });
+
+  await paths.assign(published, false);
+  await paths.assign(draft, false);
+  trash.add('published');
+  const response = await resolver
+    .resolve({ path: '/public' })
+    .catch((caught) =>
+      toErrorResponse(caught, { info() {}, warn() {}, error() {} }),
+    );
+
+  expect(response).toBeInstanceOf(Response);
+  expect((response as Response).status).toBe(410);
+  trash.delete('published');
+  expect(await resolver.resolve({ path: '/PUBLIC' })).toMatchObject({
+    redirect: true,
+  });
+  paths.remove('published');
+  contents.delete('published');
+  expect(await codeOf(() => resolver.resolve({ path: '/public/' }))).toBe(
+    'gone',
+  );
+  trash.add('draft');
+  expect(await codeOf(() => resolver.resolve({ path: '/private' }))).toBe(
+    'not_found',
+  );
+  paths.remove('draft');
+  contents.delete('draft');
+  expect(await codeOf(() => resolver.resolve({ path: '/private' }))).toBe(
+    'not_found',
+  );
+  const replacement = { ...published, id: 'replacement' };
+
+  await paths.assign(replacement, false);
+  contents.set(replacement.id, replacement);
+  expect(await resolver.resolve({ path: '/public' })).toMatchObject({
+    content: { id: 'replacement' },
+    redirect: false,
+  });
+});
 
 test('permalink workflow: templates, atomic regeneration, redirects, drafts and exact encoding', async () => {
   type Item = PermalinkSubject & { status: 'draft' | 'published' };
@@ -128,7 +242,20 @@ test('permalink workflow: templates, atomic regeneration, redirects, drafts and 
     content: { id: 'b' },
     redirect: true,
   });
+  expect(await resolve('/post/hello')).toMatchObject({
+    content: { id: 'a', path: '/post/Hello' },
+    redirect: true,
+  });
+  await paths.addRedirect('b', '/post/HELLO');
   expect(await codeOf(() => resolve('/post/hello'))).toBe('not_found');
+  expect(await resolve('/post/Hello')).toMatchObject({
+    content: { id: 'a' },
+    redirect: false,
+  });
+  expect(await resolve('/post/HELLO')).toMatchObject({
+    content: { id: 'b' },
+    redirect: true,
+  });
   expect(await codeOf(() => resolve('/post/Café/Ünï Ä'))).toBe('not_found');
   expect(await codeOf(() => resolve('/post/%2E%2E'))).toBe('not_found');
   for (const unsafe of [

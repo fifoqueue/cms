@@ -8,7 +8,8 @@ import { contentTypeKeySchema } from '#sdk/content-types';
  * leading `/` followed by unreserved ASCII literals and `%token%` placeholders, e.g.
  * `/p/%year%%month%%date%` or `/post/%title%`. Expanded paths are canonical: every token value is
  * percent-encoded exactly once (`encodeURIComponent`), literals never need encoding, so stored
- * paths compare byte for byte (no case or accent folding).
+ * paths compare byte for byte. Resolution may redirect an unambiguous ASCII-case variant
+ * after exact lookup fails; stored ownership and accent distinctions remain unchanged.
  */
 
 export const PERMALINK_CONTENT_TYPES = ['post', 'article', 'page'] as const;
@@ -139,7 +140,8 @@ export const permalinkPathSchema = z
 /**
  * Why `path` cannot be a new content URL, or `undefined` when it can: it must pass
  * `permalinkPathSchema` and stay outside reserved routes. Reservation ignores case, so no
- * spelling of a reserved route can be claimed; matching content paths never folds case.
+ * spelling of a reserved route can be claimed. Ownership stays byte-exact; request resolution
+ * may redirect an unambiguous ASCII-case variant after exact lookup fails.
  */
 export const permalinkPathIssue = (path: string): string | undefined => {
   const issue = structureIssue(path);

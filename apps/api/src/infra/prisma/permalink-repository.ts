@@ -179,6 +179,11 @@ export const deleteEntries = async (
   if (!ids.length) return;
   const list = Prisma.join([...ids]);
 
+  await tx.$executeRaw`INSERT INTO content_tombstones (path_hash, path, removed_at, was_public)
+    SELECT p.path_hash, p.path, CURRENT_TIMESTAMP(3), TRUE
+    FROM content_paths p
+    WHERE p.content_id IN (${list}) AND p.was_public = TRUE
+    ON DUPLICATE KEY UPDATE removed_at = VALUES(removed_at), was_public = TRUE`;
   await tx.$executeRaw`UPDATE comments SET parent_id = NULL WHERE content_id IN (${list}) AND parent_id IS NOT NULL`;
   await tx.$executeRaw`DELETE FROM comments WHERE content_id IN (${list})`;
   await tx.$executeRaw`DELETE FROM contents WHERE id IN (${list})`;
@@ -239,6 +244,7 @@ const applyPlan = async (tx: Transaction, plan: PathPlan) => {
         tx.contentPath.createMany({
           data: batch.map(({ path, contentId }) => ({
             pathHash: pathHash(path),
+            foldedHash: pathHash(path.toLowerCase()),
             path: encoder.encode(path),
             contentId,
             currentFor: contentId,
@@ -258,7 +264,7 @@ const applyChanges = async (tx: Transaction, changes: PathChange[]) => {
     changes.map((change) => change.to),
   );
 
-  return applyPlan(
+  await applyPlan(
     tx,
     planPathChanges(
       changes,
@@ -268,6 +274,22 @@ const applyChanges = async (tx: Transaction, changes: PathChange[]) => {
       ),
     ),
   );
+  await publishPaths(tx, [
+    ...new Set(changes.map(({ contentId }) => contentId)),
+  ]);
+};
+
+/** Call in the content/path write transaction, after visibility and addresses are written. */
+export const publishPaths = async (tx: Transaction, ids: readonly string[]) => {
+  if (!ids.length) return;
+  await tx.contentPath.updateMany({
+    where: {
+      contentId: { in: [...ids] },
+      wasPublic: false,
+      content: { status: 'published', trashedAt: null },
+    },
+    data: { wasPublic: true },
+  });
 };
 
 /**
@@ -402,6 +424,10 @@ export const assignContentPath = async (
     tx,
     await resolvePathChanges(settings, entries, await siteTimeZone(tx), tokens),
   );
+  await publishPaths(
+    tx,
+    entries.map((entry) => entry.subject.id),
+  );
   const current = await tx.contentPath.findUnique({
     where: { currentFor: subject.id },
     select: { path: true },
@@ -437,11 +463,13 @@ export class PrismaPermalinkRepository
       await tx.contentPath.create({
         data: {
           pathHash: pathHash(path),
+          foldedHash: pathHash(path.toLowerCase()),
           path: encoder.encode(path),
           contentId,
           currentFor: null,
         },
       });
+      await publishPaths(tx, [contentId]);
 
       return true;
     });
@@ -463,12 +491,56 @@ export class PrismaPermalinkRepository
   async findByPath(path: string) {
     const row = await this.db.contentPath.findUnique({
       where: { pathHash: pathHash(path) },
-      select: { path: true, contentId: true, currentFor: true },
+      select: {
+        path: true,
+        contentId: true,
+        currentFor: true,
+        wasPublic: true,
+        content: { select: { trashedAt: true } },
+      },
     });
 
     return row && decodePath(row.path) === path
-      ? { contentId: row.contentId, current: row.currentFor !== null }
+      ? {
+          contentId: row.contentId,
+          current: row.currentFor !== null,
+          ...(row.content.trashedAt && row.wasPublic ? { gone: true } : {}),
+        }
       : null;
+  }
+
+  async findCaseInsensitive(path: string) {
+    const rows = await this.db.contentPath.findMany({
+      where: { foldedHash: pathHash(path.toLowerCase()) },
+      select: {
+        path: true,
+        contentId: true,
+        currentFor: true,
+        wasPublic: true,
+        content: { select: { trashedAt: true } },
+      },
+      take: 2,
+    });
+
+    return rows.length === 1 &&
+      decodePath(rows[0]!.path).toLowerCase() === path.toLowerCase()
+      ? {
+          contentId: rows[0]!.contentId,
+          current: rows[0]!.currentFor !== null,
+          ...(rows[0]!.content.trashedAt && rows[0]!.wasPublic
+            ? { gone: true }
+            : {}),
+        }
+      : null;
+  }
+
+  async wasDeleted(path: string) {
+    const row = await this.db.contentTombstone.findUnique({
+      where: { pathHash: pathHash(path) },
+      select: { path: true, wasPublic: true },
+    });
+
+    return !!row?.wasPublic && decodePath(row.path) === path;
   }
 
   async resume() {

@@ -21,7 +21,7 @@ import type { SeoFilterHooks } from '#sdk/hooks/seo';
 import { publicPrivacyClient, privacyAdminClient } from '#sdk/clients/privacy';
 import { createTransport, pageSchema } from '#sdk/transport';
 import { profileClient, usersClient } from '#sdk/clients/users';
-import { mediaAdminClient } from '#sdk/clients/media';
+import { mediaAdminClient, publicMediaClient } from '#sdk/clients/media';
 import { searchAdminClient } from '#sdk/clients/search';
 import { toolsAdminClient } from '#sdk/clients/tools';
 import {
@@ -199,6 +199,7 @@ export const createContentClient = (options: ClientOptions, token?: string) => {
     ...publicAppearanceClient(request),
     ...publicCommentsClient(request),
     ...publicEntriesClient(request),
+    ...publicMediaClient(request),
     /** `proofs` unlock password-protected entries the visitor opened. */
     resolvePath: (
       path: string,
@@ -242,6 +243,12 @@ export const createContentClient = (options: ClientOptions, token?: string) => {
           [K in keyof typeof discoveryFilterSchemas]: {
             kind: K;
             value: SeoFilterHooks[K];
+            context?: {
+              id?: string;
+              slug?: string;
+              path: string;
+              type?: string;
+            };
           };
         }[keyof typeof discoveryFilterSchemas][],
         proof: ClientProof,

@@ -28,6 +28,7 @@
           label: page.title,
           url: page.path,
           newTab: false,
+          rel: '',
           children: [],
         }))
       : [];

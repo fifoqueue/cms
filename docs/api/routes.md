@@ -125,6 +125,12 @@
 
 ## 미디어 저장소
 
+`POST /api/v1/media/images`는 공개 이미지 URL 목록 `{ urls: string[] }`(최대 32개)를
+받아 URL별 `PublicImage`를 반환합니다. 로컬 `/media/…` 키와 저장된 원본 공개 URL을
+조회할 뿐 외부 파일을 가져오지 않습니다. 누락된 파일·비이미지는 생략하며 업로더,
+사용 횟수, 저장소 자격 증명과 관리자 필드는 반환하지 않습니다.
+SDK의 공개 클라이언트 `images(urls)`가 응답을 엄격히 검증합니다.
+
 재동기화 응답에는 `cleanupNeedsAttention: number`(자동 디스패치 횟수를 모두 소진한 정리용 삭제 표시 수)도 들어갑니다.
 연결 테스트는 작은 `<prefix>/.cms-probe` 객체 하나를 덮어쓴 뒤 연결 테스트가 끝나기 전에 동기적으로 삭제합니다. 정리용 삭제 표시를 만들지 않고, 후보 자격 증명도 보관하지 않습니다. 삭제에 실패하면 400 `invalid_input`을 고정 SDK 문구 `Errors.MediaStorageProbeCleanup`(`"The connection test file could not be removed."`)과 `issues: [{ path: "probe", message: Errors.MediaStorageProbeCleanup, params: { bucket, key } }]`와 함께 반환합니다. `key`에는 설정된 접두사가 포함되고, 플러그인 probe는 `bucket`에 드라이버 id를 씁니다. SDK 오류 파싱은 `probe` 이슈에서 이 두 개의 길이 제한 문자열만 허용하고 그 밖의 임의 필드는 제거합니다.
 

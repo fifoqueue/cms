@@ -5,11 +5,15 @@
  * a message leaves out travel as `issues[].params` on an issue with an empty path.
  */
 export const Errors = {
+  /** A broken hydration document; never an expected visitor error. */
+  HtmlPayloadMissing: 'Rendered content is missing from the document',
   NotFound: 'Not found',
   Forbidden: 'You do not have permission to view this page',
   InvalidContentPath: 'Invalid content path',
   /** Thrown into the server log only. */
   SitemapIndexTooLarge: 'The sitemap index would exceed the sitemap limit',
+  SitemapEntryTooLarge:
+    'A sitemap entry exceeds the uncompressed sitemap size limit',
   FormInvalid: 'Please fix the fields below',
   PermalinkPatternsInvalid: 'Please fix the permalink patterns',
   PasswordMismatch: 'Passwords do not match.',

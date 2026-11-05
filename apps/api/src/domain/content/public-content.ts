@@ -250,8 +250,26 @@ export class PublishedContentReader implements ContentReader {
       record = { ...record, html: bodies.get(record.id) ?? record.html };
     }
 
+    const parents: { id: string; title: string; path: string }[] = [];
+    const seen = new Set([record.id]);
+    let parentId = record.parentId;
+
+    while (parentId && !seen.has(parentId)) {
+      seen.add(parentId);
+      const [parent] = await this.repository.summariesByIds([parentId]);
+
+      if (!parent || parent.protected) break;
+      parents.unshift({
+        id: parent.id,
+        title: parent.title,
+        path: parent.path,
+      });
+      parentId = parent.parentId;
+    }
+
     return {
       ...toPublic(record, record.protected && open),
+      parents,
       fields: open ? await fields(record.type, record.fields) : {},
     };
   }
@@ -569,6 +587,7 @@ export class PublicContentService {
       slug: content.slug,
       path: content.path,
       parentId: content.parentId,
+      passwordProtected: content.passwordProtected,
       seo: content.seo,
     });
   }
@@ -594,6 +613,7 @@ export class PublicContentService {
       slug: content.slug,
       path: content.path,
       parentId: content.parentId,
+      passwordProtected: content.passwordProtected,
       seo: content.seo,
     });
   }

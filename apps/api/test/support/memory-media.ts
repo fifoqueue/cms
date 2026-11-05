@@ -11,6 +11,12 @@ import type {
 
 /** Same contract as `PrismaMediaRepository`; `usages` stands in for `content_media`. */
 export class MemoryMediaRepository implements MediaRepository {
+  async getByUrl(url: string) {
+    const row = [...this.rows.values()].find((item) => item.publicUrl === url);
+
+    return row ? this.toRecord(row) : null;
+  }
+
   private readonly reserved = new Map<string, string>();
   private readonly owners = new Map<string, string>();
   async getByKey(key: string) {

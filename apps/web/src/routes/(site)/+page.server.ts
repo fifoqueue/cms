@@ -93,6 +93,7 @@ export const load: PageServerLoad = async (event) => {
 
   return withTemplateData(publicApi, event, {
     kind: 'home' as const,
+    explicitType: url.searchParams.has('type'),
     type,
     posts,
     slots: loaded,

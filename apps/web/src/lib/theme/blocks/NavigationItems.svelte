@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { default as ChevronDown } from '@lucide/svelte/icons/chevron-down';
+  import { linkHtmlAttributes, linkRels } from '@cms/sdk';
   import type { MenuItemView } from '#lib/server/public-view.js';
   import { hrefOptions } from '#lib/route-link.js';
   import NavigationItems from '#lib/theme/blocks/NavigationItems.svelte';
@@ -34,8 +35,10 @@
       <a
         href={item.url}
         {...hrefOptions(item.url)}
-        target={item.newTab ? '_blank' : undefined}
-        rel={item.newTab ? 'noopener' : undefined}
+        {...linkHtmlAttributes({
+          newTab: item.newTab,
+          rel: linkRels(item.rel),
+        })}
         aria-current={item.url === page.url.pathname ? 'page' : undefined}
         aria-haspopup={orientation === 'horizontal' && item.children.length
           ? 'true'

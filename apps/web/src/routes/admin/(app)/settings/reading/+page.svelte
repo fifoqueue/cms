@@ -145,6 +145,19 @@
           <p class="text-xs text-muted-foreground">{m.readingCacheHelp}</p>
         </div>
       </div>
+      <div class="grid gap-2">
+        <label class="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="canonicalOrigin"
+            checked={data.reading.canonicalOrigin}
+          />
+          {m.readingCanonicalOrigin}
+        </label>
+        <p class="text-xs text-muted-foreground">
+          {m.readingCanonicalOriginHelp}
+        </p>
+      </div>
       <div><Button type="submit">{m.save}</Button></div>
     </SettingsForm>
   </CardContent>

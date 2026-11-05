@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { Editor } from '@tiptap/core';
   import { HEADING_LEVELS } from '@cms/content/toc';
+  import { linkRels, linkRelValue } from '@cms/content/link';
+  import LinkOptions from '#lib/admin/LinkOptions.svelte';
   import type { AdminMedia, MediaKind, PluginBlockInfo } from '@cms/sdk';
   import { loadPluginBlocks } from '#lib/admin/editor/plugin-blocks.js';
   import { Popover } from 'bits-ui';
@@ -257,14 +259,12 @@
                 update(target, { href: event.currentTarget.value || null })}
             /></label
           >
-          <label class="flex items-center gap-2"
-            ><input
-              type="checkbox"
-              checked={target.node.attrs.newTab === true}
-              onchange={(event) =>
-                update(target, { newTab: event.currentTarget.checked })}
-            />{m.contentNewTab}</label
-          >
+          <LinkOptions
+            newTab={target.node.attrs.newTab === true}
+            rel={linkRels(target.node.attrs.rel)}
+            onchange={({ newTab, rel }) =>
+              update(target, { newTab, rel: linkRelValue(rel) })}
+          />
         {/if}
         {#if type === 'gallery'}
           <label class="grid gap-1"

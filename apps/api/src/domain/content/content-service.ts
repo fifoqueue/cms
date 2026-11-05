@@ -461,13 +461,11 @@ export class ContentService {
       document: data.document,
       html: this.deps.renderer.render(data.document),
       searchText: locked ? '' : text,
-      summary: locked ? '' : (teaserOf(data.document) ?? summarize(text)),
-      keywordSummary: locked
-        ? ''
-        : keywordParagraph(
-            data.document,
-            (data.seo ?? current?.seo)?.focusKeyword ?? '',
-          ),
+      summary: teaserOf(data.document) ?? summarize(text),
+      keywordSummary: keywordParagraph(
+        data.document,
+        (data.seo ?? current?.seo)?.focusKeyword ?? '',
+      ),
       status: data.status,
       sticky: data.sticky,
       allowComments: data.allowComments,

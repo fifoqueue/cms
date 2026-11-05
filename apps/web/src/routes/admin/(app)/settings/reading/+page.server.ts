@@ -29,6 +29,7 @@ export const actions: Actions = {
     // Dates and the time zone are edited in General settings and kept here.
     const input: ReadingSettingsInput = {
       ...current,
+      canonicalOrigin: form.has('canonicalOrigin'),
       frontPage: text(form, 'frontPage') === 'page' ? 'page' : 'posts',
       frontPageId: text(form, 'frontPageId') || null,
       postsPageId: text(form, 'postsPageId') || null,

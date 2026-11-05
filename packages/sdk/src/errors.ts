@@ -78,6 +78,7 @@ export const Errors = {
     'Templates for posts, articles and pages are required',
   MenuLinkInvalid: 'Use a web address (https://…) or a path on this site (/…)',
   MenuTargetMissing: 'Choose what the menu item links to',
+  LinkRelInvalid: 'Link rel may only hold nofollow, sponsored and ugc',
   LoginPathInvalid:
     'Use an available site path such as /login, without a query or reserved route',
   FieldOptionsRequired: 'Add at least one choice',

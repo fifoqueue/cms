@@ -4,7 +4,7 @@
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import type { PageSlots } from '#lib/theme/presentation.js';
-  import { buildSiteHead, sitePage } from '#lib/seo/head.js';
+  import { buildSiteHead, hasBreadcrumbs, sitePage } from '#lib/seo/head.js';
   import type { SeoMeta } from '#lib/seo/head.js';
   import SeoHead from '#lib/seo/SeoHead.svelte';
   import Toasts from '#lib/components/Toasts.svelte';
@@ -48,9 +48,17 @@
       site: data.site,
       locale: data.displayLocale,
       settings: data.seo,
-      page: sitePage(page.data),
+      page: page.error
+        ? { kind: 'error', status: page.status }
+        : sitePage(page.data),
+      archiveBases: data.archives.bases,
+      breadcrumbsVisible:
+        !page.error && hasBreadcrumbs(page.data.template, page.data.parts),
+      images: page.data.images,
       // Set by the page's server load when a plugin's `seo.meta` filter changed the head.
-      filtered: page.data.seoMeta as SeoMeta | null | undefined,
+      filtered: page.error
+        ? null
+        : (page.data.seoMeta as SeoMeta | null | undefined),
     }),
   );
 

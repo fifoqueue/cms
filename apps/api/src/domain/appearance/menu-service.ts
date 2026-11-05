@@ -253,6 +253,7 @@ export class MenuService {
         label: item.label || link.title,
         url: link.url,
         newTab: item.newTab,
+        rel: item.rel,
         children: (await Promise.all(item.children.map(resolve))).filter(
           (child) => child !== null,
         ),

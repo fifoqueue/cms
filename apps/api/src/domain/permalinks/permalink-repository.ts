@@ -4,12 +4,18 @@ export interface PathOwner {
   contentId: string;
   /** False for a permanent redirect left by an earlier path. */
   current: boolean;
+  /** Only this path's recorded public availability may disclose its removal. */
+  gone?: boolean;
 }
 
-/** Exact path lookup: byte-equal, never case-, accent- or encoding-folded. */
+/** Stored ownership is byte-exact; request resolution has an explicit ASCII-case fallback. */
 export interface PathLookup {
   /** Owner of the current path or redirect `path`, whatever the content's status. */
   findByPath(path: string): Promise<PathOwner | null>;
+  /** ASCII-case fallback only; ambiguous spellings return null. Exact lookup always wins. */
+  findCaseInsensitive(path: string): Promise<PathOwner | null>;
+  /** A once-public path retained after permanent deletion. Live owners take precedence. */
+  wasDeleted(path: string): Promise<boolean>;
 }
 
 /** Adds old addresses of imported content as permanent redirects. */

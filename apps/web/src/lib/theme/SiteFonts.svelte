@@ -10,9 +10,23 @@
   let { fonts }: { fonts: readonly PublicFont[] } = $props();
 
   const faces = $derived(fontFaceCss(fonts));
+  const origins = $derived([
+    ...new Set(
+      fonts
+        .flatMap((font) => [
+          font.stylesheet,
+          ...font.faces.map((face) => face.src),
+        ])
+        .filter((url) => url.startsWith('https://'))
+        .map((url) => new URL(url).origin),
+    ),
+  ]);
 </script>
 
 <svelte:head>
+  {#each origins as origin (origin)}
+    <link rel="preconnect" href={origin} crossorigin="anonymous" />
+  {/each}
   {#each fonts as font (font.family)}
     {#if font.stylesheet}
       <link rel="stylesheet" href={font.stylesheet} />

@@ -34,7 +34,11 @@ test('redirects reject open destinations, isolate failures, release and announce
     resolve: () => ({ to: '/target', status: 307 }),
   });
   const resolver = new PermalinkResolver(
-    { findByPath: async () => null },
+    {
+      findByPath: async () => null,
+      findCaseInsensitive: async () => null,
+      wasDeleted: async () => false,
+    },
     { getById: async () => null },
     registry,
     hooks,

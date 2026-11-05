@@ -696,8 +696,8 @@ llms.txt, `.md` 보기, 모든 공개 페이지의 meta/JSON-LD는
 코어 등록소 제공자는 격리나 시간 제한이 없으며, 오류는 그대로 전파됩니다.
 
 `sitemaps.register(key, provider)`는 페이지 단위 제공자를 추가하거나 교체합니다.
-코어 `content`, `category`, `tag`, `author`, `taxonomy` 제공자도
-이 계약으로 등록됩니다. 제공자는 `{ page, pageSize, siteUrl }`을 받아
+코어 `content`, `category`, `tag`, `author`, `taxonomy`, `archive` 제공자도
+이 계약으로 등록됩니다. 제공자는 `{ page, pageSize, siteUrl, sort? }`을 받아
 `{ items, total }`을 반환하며, 항목은 `seoSitemapEntrySchema`를 따릅니다. 키는
 `GET /api/v1/seo/providers`로 나열하고 페이지는 `GET /api/v1/seo/sitemap?kind=key`로 가져옵니다.
 `sitemap.entries`는 반환된 각 페이지에 한 번 적용됩니다.
@@ -708,9 +708,59 @@ llms.txt, `.md` 보기, 모든 공개 페이지의 meta/JSON-LD는
 | `sitemap.entries`, `feed.items/channel`, `robots.txt`, `llms.txt`, `seo.meta` | 검증된 탐색 출력                             |
 | `seo.markdown`                                                                | 신뢰된 프런트엔드 RPC를 통한 Markdown 문자열 |
 
+`seo.meta` carries `{ title, description, canonicalUrl, og, jsonLd, robots?, links? }`.
+`og` values are strings for a single property or arrays for repeated properties;
+all occurrences survive filtering and serialization. Existing single-value handlers
+remain valid. `links` contains noncanonical `{ rel, href, type?, title? }` tags;
+`canonicalUrl` owns the canonical tag (`/` is the no-canonical sentinel when the
+original page has no canonical). Omitting optional robots/links preserves core values.
+HTTP(S) or root-relative link targets are validated before HTML escaping, including
+every repeated OpenGraph URL. Invalid output uses the existing isolated fallback.
+Title/description changes update unchanged OpenGraph counterparts; final OpenGraph
+title/description/image values also update Twitter cards. When image URLs change,
+unchanged `og:image:*` values are treated as inherited and removed, including the
+Twitter alt text. Filters must supply replacement metadata that differs from the
+original values; scalar and one-element array values compare equivalently.
+This generic contract
+supports translation alternates, crawler-policy and social-card plugins without
+plugin-specific branches. Breadcrumb schema is provided only for visible trails.
+
 Markdown 보기는 렌더링된 공개 Markdown 문자열을 `{ kind: 'seo.markdown', value }`로
 신뢰된 프런트엔드 필터 RPC에 제출한 뒤 `.md` 응답을 반환합니다.
 같은 검증/대체 규칙이 적용됩니다.
+
+`seo.markdown` and `llms.txt` handlers receive a second, read-only context
+argument. Frontend batches submit `{ kind, value, context }`; Markdown includes
+`{ id, slug, path, type }`, while llms documents include their root `path`
+(`/llms.txt` or `/llms-full.txt`). The filtered value remains a string, preserving
+existing handlers. Legacy callers may omit context. `feed.items` also preserves
+optional `updatedAt`; RSS emits it as `atom:updated`, JSON Feed as `date_modified`.
+
+Sitemap entries may contain `images: [{ url, title?, caption? }]` (maximum 1,000)
+and `alternates: [{ lang, url }]` (maximum 100). URLs must be absolute, safe HTTP(S)
+URLs. The web serializer escapes these into `image:image` and `xhtml:link`.
+`sort: 'stable' | 'modified' | 'popular'` defaults to stable; core content supports
+modified order for dynamic-home timestamps, and core terms support popularity by
+distinct published, unprotected assignments. Replacement providers should honour
+these orders. Chunk dates are computed from actual filtered entries; byte-heavy
+pages split into whole-entry parts of at most 50 MiB of uncompressed UTF-8 XML.
+The index lists extra parts as `/sitemaps/<kind>/<page>.xml?part=N`.
+
+### Root discovery documents
+
+`discovery.document` is a generic nullable filter, usable by verification-token
+providers and machine-readable catalogue/export providers, not tied to any named
+plugin. The web serves `/<name>.txt`, `/<name>.json` and `/<name>.xml` through the
+same bounded filter RPC. Names match `[A-Za-z0-9][A-Za-z0-9_-]{0,99}`; static core
+routes (robots, llms, feeds and the IndexNow key) take precedence.
+
+Handlers receive `null` (unclaimed) and `{ path }`, returning
+`{ body: string, updatedAt?: ISO datetime }` or the unchanged value. Bodies are
+limited to 512,000 UTF-8 bytes; format determines MIME type, with nosniff/noindex
+headers and conditional caching. Plugins must serialize valid JSON/XML themselves.
+No registration, disabled plugins, exceptions, invalid output or unavailable
+frontend proof leave a 404 rather than affecting core documents. Standard hook
+scope disposal removes the contribution.
 
 피드 유형 등록소는 제공하지 않습니다. 최종 피드 라우팅과 직렬화는
 웹 앱에 있으므로, API 전용 등록소는 웹이 제공할 수 없는 유형을 알리게 됩니다.

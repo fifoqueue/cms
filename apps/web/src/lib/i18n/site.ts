@@ -173,6 +173,7 @@ export const SITE_STRINGS = [
   'themePreviewExit',
   'themePreviousPost',
   'themeReadMore',
+  'themeRelatedPosts',
   'themeSchemeDark',
   'themeSchemeLight',
   'themeSearch',

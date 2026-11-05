@@ -33,7 +33,7 @@ content.revisionSaved content.autosaved content.termsChanged contentType.created
 content.publicQuery content.publicResults content.statusChanged content.trashAllowed content.html content.title content.slug content.revisionsToKeep contentType.definition content.defaults content.excerpt
 media.updated media.beforeSave media.filename media.uploadAllowed export.data import.item dashboard.data webhook.payload email.beforeSend email.sendAllowed import.completed export.generated site.installed egress.updated webhook.created webhook.updated webhook.deleted webhook.delivered webhook.failed plugin.installed plugin.upgraded plugin.activated plugin.deactivated plugin.removed email.sent email.failed email.settingsUpdated job.failed
 avatar.url role.assignable capability.check user.sessionAllowed user.sessionLifetime user.loginRedirect user.passwordResetRequested user.passwordResetAllowed user.passwordReset user.passwordChanged
-search.query search.results search.document search.indexed sitemap.entries feed.items feed.channel robots.txt llms.txt seo.markdown seo.meta seo.updated seo.beforeSave seo.public
+search.query search.results search.document search.indexed sitemap.entries feed.items feed.channel robots.txt llms.txt seo.markdown seo.meta seo.updated seo.beforeSave seo.public discovery.document
 user.signedOut user.created user.updated user.roleChanged user.deleted role.created role.updated role.deleted security.updated privacy.requested privacy.exported privacy.erased protection.blocked user.beforeSave user.query user.capabilities privacy.exportData user.public user.registrationAllowed`.split(
     /\s+/,
   ),

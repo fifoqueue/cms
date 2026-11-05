@@ -3,13 +3,15 @@
   import { resolve } from '$app/paths';
   import type { Block } from '@cms/sdk';
   import ResponsiveImage from '#lib/theme/ResponsiveImage.svelte';
-  import { useCurrentPost, useLeadPost } from '#lib/theme/scope.js';
+  import { useCurrentPost, useLeadPost, useScope } from '#lib/theme/scope.js';
+  import { themeImage } from '#lib/theme/image.js';
 
   let { block }: { block: Extract<Block, { name: 'post-featured-image' }> } =
     $props();
 
   const current = useCurrentPost();
   const lead = useLeadPost();
+  const scope = useScope();
   const ASPECT = {
     auto: 'h-auto',
     wide: 'aspect-video object-cover',
@@ -49,9 +51,10 @@
     {/if}
   </figure>
 {:else if entry?.seo.imageUrl}
-  <img
-    src={entry.seo.imageUrl}
-    alt={entry.seo.imageAlt}
+  <ResponsiveImage
+    image={themeImage(scope().images, entry.seo.imageUrl, entry.seo.imageAlt)}
+    eager
+    sizes="(min-width: 64rem) 64rem, 100vw"
     class="cms-block-post-featured-image {classes}"
   />
 {/if}

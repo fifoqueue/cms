@@ -438,7 +438,15 @@ describe('ContentService', () => {
   test('a protected body stays hidden, unsearchable and unlockable only with its current password', async () => {
     const { service, publicContent, protectedActions, repository } = setup();
     const entry = await service.create(
-      input({ status: 'published', password: 'open-sesame' }),
+      input({
+        status: 'published',
+        password: 'open-sesame',
+        seo: {
+          description: 'Private search description',
+          socialDescription: 'Private social description',
+          focusKeyword: 'Body',
+        },
+      }),
       ADMIN,
     );
 
@@ -451,6 +459,14 @@ describe('ContentService', () => {
       html: '',
       excerpt: '',
       commentCount: 0,
+      metaDescription: '',
+      seo: { noIndex: true, description: '', socialDescription: '' },
+    });
+    const summary = (await publicContent.list({})).items[0]!;
+
+    expect(summary.seo).toMatchObject({
+      description: '',
+      socialDescription: '',
     });
     expect((await publicContent.list({})).items[0]!.commentCount).toBe(0);
     expect((await publicContent.list({ search: 'Body' })).total).toBe(0);
@@ -467,6 +483,22 @@ describe('ContentService', () => {
 
     expect(unlocked.html).toContain('Body');
     expect(unlocked.commentCount).toBe(2);
+    expect(unlocked.seo.noIndex).toBe(true);
+    expect(unlocked.seo).toMatchObject({
+      description: 'Private search description',
+      socialDescription: 'Private social description',
+    });
+    expect(unlocked.metaDescription).toBe('Body');
+    expect(await publicContent.getBySlug('hello-world')).toMatchObject({
+      protected: true,
+      metaDescription: '',
+      seo: { description: '', socialDescription: '', noIndex: true },
+    });
+    expect((await publicContent.list({})).items[0]!.seo).toMatchObject({
+      description: '',
+      socialDescription: '',
+      noIndex: true,
+    });
     // Proofs are bound to the entry: another entry's id never matches.
     expect(
       (await publicContent.getBySlug('hello-world', [`other.${token}`])).html,

@@ -8,10 +8,15 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
   const admin = adminFor(event);
-  const [settings, site] = await Promise.all([
+  const api = contentApi(event.fetch);
+  const [settings, site, reading] = await Promise.all([
     admin.seo.settings(),
-    contentApi(event.fetch).site(),
+    api.site(),
+    api.reading(),
   ]);
+  const front = reading.frontPagePath
+    ? (await api.resolvePath(reading.frontPagePath)).content
+    : null;
 
   return {
     settings: seoSettingsFormValues(settings),
@@ -21,6 +26,15 @@ export const load: PageServerLoad = async (event) => {
       llms: llmsEnabled(settings) && Boolean(settings.siteUrl),
     },
     siteTitle: site.title,
+    homeTitleFallback: front ? front.seo.title || front.title : site.title,
+    homeDescriptionFallback: front
+      ? front.passwordProtected || front.protected
+        ? ''
+        : front.seo.description ||
+          front.metaDescription ||
+          front.excerpt ||
+          site.description
+      : site.description,
   };
 };
 

@@ -9,6 +9,7 @@ import { createAdminUiAccess } from '#api/composition/admin-ui';
 import { createRepositories } from '#api/composition/repositories';
 import { createContent } from '#api/composition/content';
 import { createSite } from '#api/composition/site';
+import { registerDiscoveryPush } from '#api/composition/discovery';
 import { createJobs } from '#api/composition/jobs';
 import { createEmail } from '#api/composition/email';
 import { createWebhooks } from '#api/composition/webhooks';
@@ -79,6 +80,12 @@ export const createContainer = async (
   });
 
   late.writing.set(site.writing);
+  registerDiscoveryPush(
+    registries.hooks,
+    site.seo,
+    security.egressFetch,
+    logger,
+  );
   late.site.set(site.site);
   const platform = createJobs({
     jobQueue: repositories.jobQueue,

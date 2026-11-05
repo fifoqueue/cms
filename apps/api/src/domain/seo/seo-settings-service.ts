@@ -6,6 +6,7 @@ import {
 } from '@cms/sdk';
 import type { AdminSeoSettings, PublicSeoSettings } from '@cms/sdk';
 import type { SettingsRepository } from '#api/domain/site/site-service';
+import type { SettingsTransactions } from '#api/domain/site/settings-transactions';
 import { parseInput } from '#api/shared/validation';
 import type { HookDispatcher } from '#api/domain/ports';
 import {
@@ -35,13 +36,18 @@ const toPublicSettings = (settings: AdminSeoSettings): PublicSeoSettings =>
 export class SeoSettingsService {
   /** Structured frontend output, filtered before the frontend escapes/serializes it. */
   async filterOutput(input: unknown) {
-    const { kind, value } = parseInput(discoveryFilterInputSchema, input);
+    const { kind, value, context } = parseInput(
+      discoveryFilterInputSchema,
+      input,
+    );
     const schema = discoveryFilterSchemas[kind];
     const initial = parseInput(schema, value);
     const filtered = await this.hooks?.applyFilter(
       kind,
       initial,
       (result) => schema.safeParse(result).success,
+      undefined,
+      context ? [context] : [],
     );
 
     return schema.parse(filtered ?? initial);
@@ -50,6 +56,10 @@ export class SeoSettingsService {
   constructor(
     private readonly settings: SettingsRepository,
     private readonly hooks?: HookDispatcher,
+    private readonly keys?: {
+      generate(): string;
+      transactions: SettingsTransactions;
+    },
   ) {}
 
   async getPublic(): Promise<PublicSeoSettings> {
@@ -114,9 +124,26 @@ export class SeoSettingsService {
       seoSettingsSchema.parse(filtered ?? initial),
       projection,
     );
-    const dto = seoSettingsSchema.parse(toPublicSettings(settings));
+    const save = async (store: SettingsRepository) => {
+      const stored = seoSettingsSchema.safeParse(await store.get(SEO_KEY));
+      const key = stored.success ? stored.data.indexNowKey : '';
+      const dto = seoSettingsSchema.parse(
+        toPublicSettings({
+          ...settings,
+          indexNowKey:
+            key ||
+            (settings.indexNowEnabled ? (this.keys?.generate() ?? '') : ''),
+        }),
+      );
 
-    await this.settings.set(SEO_KEY, dto);
+      await store.set(SEO_KEY, dto);
+
+      return dto;
+    };
+    const dto = this.keys
+      ? await this.keys.transactions.run('seo', save)
+      : await save(this.settings);
+
     settingsUpdated(this.hooks, dto, projection);
     void this.hooks?.emit('seo.updated', dto);
 

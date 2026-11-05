@@ -176,19 +176,26 @@ const entryHeader = (single: boolean) =>
 /** Entry content beside the sidebar widget area, which disappears while it is empty. */
 const entry = (single: boolean) =>
   page('entry', [
-    entryHeader(single),
-    block('columns', { gap: 'large' }, [
-      block('column', {}, [
-        hook('entry-body', [
-          block('post-content'),
-          block('post-fields'),
-          ...(single ? [block('post-terms', { taxonomy: 'tag' })] : []),
+    group(
+      { tagName: 'article', layout: 'stack', align: 'stretch', gap: 'none' },
+      [
+        entryHeader(single),
+        block('columns', { gap: 'large' }, [
+          block('column', {}, [
+            hook('entry-body', [
+              block('post-content'),
+              block('post-fields'),
+              ...(single ? [block('post-terms', { taxonomy: 'tag' })] : []),
+            ]),
+            ...(single
+              ? [block('post-navigation'), block('related-posts')]
+              : []),
+            block('comments'),
+          ]),
+          block('column', {}, [block('widget-area')]),
         ]),
-        ...(single ? [block('post-navigation')] : []),
-        block('comments'),
-      ]),
-      block('column', {}, [block('widget-area')]),
-    ]),
+      ],
+    ),
   ]);
 
 const TEMPLATES: Record<string, BlockInput[]> = {

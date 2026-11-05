@@ -72,10 +72,13 @@ export const failFrom = <Extra extends object = Record<never, never>>(
   throw caught;
 };
 
-/** Rethrows an API 404 as a page 404. */
+/** Preserves missing and permanently removed public content statuses. */
 export const notFoundFrom = (caught: unknown): never => {
-  if (caught instanceof CmsApiError && caught.status === 404)
-    error(404, Errors.NotFound);
+  if (
+    caught instanceof CmsApiError &&
+    (caught.status === 404 || caught.status === 410)
+  )
+    error(caught.status, Errors.NotFound);
   throw caught;
 };
 

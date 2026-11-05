@@ -9,13 +9,14 @@ import type {
   Block,
   PublicContentSummary,
   PublicTaxonomyTerm,
+  PublicImage,
   TaxonomyType,
 } from '@cms/sdk';
 import { childrenOf } from '@cms/sdk/tree';
 import type { contentApi } from '#lib/server/api.js';
 import { Errors } from '@cms/sdk/errors';
 import { Errors as WebErrors } from '#lib/server/errors.js';
-import { listView } from '#lib/server/public-view.js';
+import { imageView, listView } from '#lib/server/public-view.js';
 import { mapLimit } from '#lib/server/bounded.js';
 import type { PostList, ThemeView } from '#lib/server/public-view.js';
 import { queryKey, selectionOf } from '#lib/theme/queries.js';
@@ -33,6 +34,7 @@ import { renderRequest } from '#lib/server/render-request.js';
 import { filterPageData } from '#lib/server/page-data.js';
 import type { HeadLayout } from '#lib/server/page-meta.js';
 import type { FilterEvent } from '#lib/server/seo-filter.js';
+import { HtmlBody } from '#lib/theme/html-body.js';
 
 type Api = ReturnType<typeof contentApi>;
 
@@ -51,6 +53,8 @@ export interface EntryLink {
 
 /** What the data blocks of a template show; only what the template uses is loaded. */
 export interface BlockData {
+  images: Record<string, PublicImage>;
+  related: Record<string, EntryLink[]>;
   /** Independent `query` and `latest-posts` results by `queryKey`. */
   queries: Record<string, PostList>;
   terms: { category: TermItem[] | null; tag: TermItem[] | null };
@@ -85,9 +89,17 @@ export interface BlockData {
 
 /** What the page shows, for blocks whose data depends on it. */
 export interface BlockContext {
+  imageUrl?: string;
+  siteUrl?: string;
   timeZone?: string;
   /** The single entry (post navigation, post author). */
-  entry: { id: string; author: string | null } | null;
+  entry: {
+    id: string;
+    author: string | null;
+    type?: string;
+    categories?: { slug: string }[];
+    tags?: { slug: string }[];
+  } | null;
   /** The month a calendar shows; the current site month by default. */
   month: { year: number; month: number } | null;
   /** Authors of the page's own posts (archives, home), for post-author blocks in loops. */
@@ -124,9 +136,19 @@ const listAll = async (
 
 /** The block context of a page. */
 export const contextOf = (page: ThemePage): BlockContext => ({
+  imageUrl:
+    page.kind === 'content' || page.kind === 'preview'
+      ? page.content.seo.imageUrl
+      : undefined,
   entry:
     page.kind === 'content'
-      ? { id: page.content.id, author: page.content.author?.slug ?? null }
+      ? {
+          id: page.content.id,
+          author: page.content.author?.slug ?? null,
+          type: page.content.type,
+          categories: page.content.categories,
+          tags: page.content.tags,
+        }
       : null,
   month:
     page.kind === 'date' && page.date.month
@@ -212,6 +234,7 @@ type Shared = Partial<
 
 /** What the site layout already loaded (for error pages); pages reuse it instead of asking again. */
 export type LayoutBlockData = {
+  seo?: { siteUrl: string };
   theme: Omit<ThemeView, 'templates' | 'parts' | 'css'> &
     Partial<Pick<ThemeView, 'templates' | 'parts'>>;
   reading?: { timeZone: string };
@@ -263,6 +286,10 @@ export const blockNeeds = (blocks: Block[]) => {
 
   return {
     queries,
+    related: all.filter(
+      (block): block is Extract<Block, { name: 'related-posts' }> =>
+        block.name === 'related-posts',
+    ),
     // The search panel lists the categories, like the categories block.
     category:
       has('categories') ||
@@ -311,6 +338,50 @@ export const loadBlockData = async (
   known: Shared = {},
 ): Promise<BlockData> => {
   const needs = blockNeeds(blocks);
+  const urls = [
+    ...new Set([
+      ...[...walkBlocks(blocks)].flatMap((block) =>
+        block.name === 'image' ||
+        block.name === 'cover' ||
+        block.name === 'media-text'
+          ? block.attrs.src
+            ? [block.attrs.src]
+            : []
+          : [],
+      ),
+      ...(context.imageUrl ? [context.imageUrl] : []),
+    ]),
+  ];
+  const normalized = new Map(
+    urls.map((url) => {
+      if (!context.siteUrl || !url.startsWith('http')) return [url, url];
+      const image = new URL(url);
+
+      return [
+        url,
+        image.origin === new URL(context.siteUrl).origin &&
+        image.pathname.startsWith('/media/')
+          ? image.pathname
+          : url,
+      ];
+    }),
+  );
+  const imageData = Object.assign(
+    {},
+    ...(await mapLimit(
+      Array.from({ length: Math.ceil(urls.length / 32) }, (_, index) =>
+        urls.slice(index * 32, index * 32 + 32),
+      ),
+      (batch) => api.images(batch.map((url) => normalized.get(url)!)),
+    )),
+  ) as Record<string, PublicImage>;
+  const images = Object.fromEntries(
+    urls.flatMap((url) => {
+      const image = imageData[normalized.get(url)!];
+
+      return image ? [[url, imageView(image)]] : [];
+    }),
+  );
 
   if (needs.queries.size > 32) error(400, Errors.ThemeQueriesLimit);
   const missing = [...needs.queries].filter(([key]) => !known.queries?.[key]);
@@ -451,8 +522,46 @@ export const loadBlockData = async (
         ),
       )
     : null;
+  const related: BlockData['related'] = {};
+
+  for (const block of needs.related) {
+    const { taxonomy, count } = block.attrs;
+    const key = `${taxonomy}:${count}`;
+
+    if (!entry || related[key]) continue;
+    const slugs =
+      (taxonomy === 'category' ? entry.categories : entry.tags)?.map(
+        (term) => term.slug,
+      ) ?? [];
+    const lists = await mapLimit([...new Set(slugs)], (slug) =>
+      api.list({
+        type: entry.type,
+        [taxonomy]: slug,
+        exclude: [entry.id],
+        pageSize: count,
+      }),
+    );
+    const posts = new Map(
+      lists.flatMap((list) =>
+        list.items
+          .filter((post) => post.id !== entry.id && !post.protected)
+          .map((post) => [post.id, post] as const),
+      ),
+    );
+
+    related[key] = [...posts.values()]
+      .sort(
+        (a, b) =>
+          b.publishedAt.localeCompare(a.publishedAt) ||
+          a.id.localeCompare(b.id),
+      )
+      .slice(0, count)
+      .map(({ title, path }) => ({ title, path }));
+  }
 
   return {
+    images,
+    related,
     queries,
     terms: { category, tag },
     months,
@@ -479,11 +588,12 @@ export const loadBlockData = async (
   };
 };
 
-/** Error templates share one union of data needs, loaded in parallel without duplicate calls. */
+/** Only the requested error template and its transitive parts are loaded. */
 export const loadErrorData = async (
   api: Api,
   theme: ThemeView,
   timeZone: string,
+  status: number,
 ) => {
   const select = (status: number) =>
     pickTemplate(
@@ -494,23 +604,17 @@ export const loadErrorData = async (
         message: WebErrors.NotFound,
       }),
     );
-  const template = select(404);
-  const fallback = select(500);
+  const template = select(status);
   const parts = includedParts(template, theme.parts);
-  const shared = template === fallback;
-  const data = await loadBlockData(
-    api,
-    withParts(shared ? template : [...template, ...fallback], theme.parts),
-    { ...NO_CONTEXT, timeZone },
-  );
+  const data = await loadBlockData(api, withParts(template, theme.parts), {
+    ...NO_CONTEXT,
+    timeZone,
+  });
 
   return {
     ...data,
     template,
     parts,
-    errorFallback: shared
-      ? null
-      : { template: fallback, parts: includedParts(fallback, theme.parts) },
   };
 };
 
@@ -534,7 +638,11 @@ export const loadTemplateData = async (
   const data = await loadBlockData(
     api,
     [...template, ...parts.flatMap((part) => part.blocks)],
-    { ...contextOf(page), timeZone: layout.reading?.timeZone },
+    {
+      ...contextOf(page),
+      timeZone: layout.reading?.timeZone,
+      siteUrl: layout.seo?.siteUrl,
+    },
     layout,
   );
 
@@ -557,10 +665,14 @@ export const withTemplateData = async <P extends ThemePage>(
 
   page = await filterPageData(page, event.url.pathname);
 
-  const [blocks, seoMeta] = await Promise.all([
-    loadTemplateData(api, layout, page),
-    withSeoMeta(event, layout, page).then((data) => data.seoMeta),
-  ]);
+  const blocks = await loadTemplateData(api, layout, page);
+  const { seoMeta } = await withSeoMeta(event, layout, { ...page, ...blocks });
+
+  if (page.kind === 'content' || page.kind === 'preview')
+    page.content.html = new HtmlBody(
+      String(page.content.html),
+      `${page.content.id}:${page.content.pages.current}`,
+    );
 
   return { ...page, ...blocks, seoMeta };
 };

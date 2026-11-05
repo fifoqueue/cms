@@ -23,6 +23,8 @@ export interface SiteScope {
   };
   archives?: ArchivePathsState;
   queries?: Record<string, PostList>;
+  related?: BlockData['related'];
+  images?: BlockData['images'];
   terms: BlockData['terms'];
   months: BlockData['months'];
   /** Previous and next entry of a single entry page. */
@@ -56,6 +58,8 @@ export type ScopeData = Pick<
   | 'privacy'
   | 'archives'
   | 'queries'
+  | 'related'
+  | 'images'
   | 'theme'
   | 'site'
   | 'reading'

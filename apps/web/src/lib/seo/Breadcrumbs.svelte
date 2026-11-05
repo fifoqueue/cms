@@ -2,6 +2,10 @@
   import type { Path } from '$app/types';
   import { resolve } from '$app/paths';
   import type { Crumb } from '#lib/seo/head.js';
+  import { crumbPath } from '#lib/seo/paths.js';
+  import { useScope } from '#lib/theme/scope.js';
+
+  const scope = useScope();
 
   /** Visible trail matching the page's BreadcrumbList; the last step is the current page. */
   let { items }: { items: Crumb[] } = $props();
@@ -18,22 +22,9 @@
           {:else}
             <a
               class="hover:text-foreground"
-              href={item.target.kind === 'home'
-                ? resolve('/(site)')
-                : item.target.kind === 'content'
-                  ? resolve(item.target.path as Path)
-                  : item.target.kind === 'taxonomy'
-                    ? resolve('/(site)/taxonomy/[taxonomy]/[slug]', {
-                        taxonomy: item.target.taxonomy,
-                        slug: item.target.slug,
-                      })
-                    : item.target.kind === 'category'
-                      ? resolve('/(site)/category/[slug]', {
-                          slug: item.target.slug,
-                        })
-                      : resolve('/(site)/tag/[slug]', {
-                          slug: item.target.slug,
-                        })}>{item.name}</a
+              href={resolve(
+                crumbPath(item.target, scope().archives?.bases) as Path,
+              )}>{item.name}</a
             >
           {/if}
         </li>

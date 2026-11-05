@@ -1,4 +1,8 @@
-import { COMMENTER_PROOF_HEADER, COMMENT_PENDING_HEADER } from '@cms/sdk';
+import {
+  COMMENTER_PROOF_HEADER,
+  COMMENT_PENDING_HEADER,
+  CONTENT_UNLOCK_HEADER,
+} from '@cms/sdk';
 import { currentUser, unlockProofs } from '#api/http/request';
 import { t } from 'elysia';
 import { readJson, SMALL_BODY_BYTES } from '#api/http/request';
@@ -12,6 +16,7 @@ export const routes = (app: ApiApp) =>
       '',
       async ({ comments, query, auth, request, set }) => {
         set.headers['cache-control'] = 'private, no-store';
+        set.headers.vary = `Authorization, ${CONTENT_UNLOCK_HEADER}, ${COMMENT_PENDING_HEADER}`;
 
         return json(
           await comments.publicPage(
@@ -32,6 +37,7 @@ export const routes = (app: ApiApp) =>
     )
     .post('', async ({ comments, clients, auth, request, set }) => {
       set.headers['cache-control'] = 'private, no-store';
+      set.headers.vary = `Authorization, ${CONTENT_UNLOCK_HEADER}, ${COMMENTER_PROOF_HEADER}`;
 
       return json(
         await comments.submit(

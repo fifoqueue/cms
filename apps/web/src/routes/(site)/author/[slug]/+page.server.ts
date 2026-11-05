@@ -33,7 +33,12 @@ export const load: PageServerLoad = async (event) => {
 
   return withTemplateData(api, event, {
     kind: 'author' as const,
-    author: { name: author.name, slug: author.slug, bio: author.bio },
+    author: {
+      name: author.name,
+      slug: author.slug,
+      bio: author.bio,
+      avatarUrl: author.avatarUrl,
+    },
     posts: listed,
     slots: await slots,
   });

@@ -5,7 +5,7 @@ import type { RedirectRegistry } from '#api/domain/permalinks/redirect-registry'
 import type { HookDispatcher } from '#api/domain/ports';
 import type { Actor } from '#api/domain/auth/authorization';
 import type { PathLookup } from '#api/domain/permalinks/permalink-repository';
-import { notFound, Errors } from '#api/shared/errors';
+import { notFound, gone, Errors } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
 
 /** Published content by id as the public API serves it (after `content.public`); `null` otherwise. */
@@ -26,7 +26,7 @@ export interface ResolvedPath {
 }
 
 /**
- * Maps a request path to published content with one exact indexed lookup. Drafts and removed
+ * Maps a request path to published content, preferring exact indexed lookup. Drafts and removed
  * content are never found, through current paths or redirects alike. `redirect` comes from the
  * ownership-validated selected path and the request's own spelling.
  */
@@ -54,17 +54,34 @@ export class PermalinkResolver {
     }
 
     const canonical = canonicalPermalinkPath(path);
-    const owner =
-      canonical &&
-      ((await this.paths.findByPath(canonical)) ??
+    const owner = canonical
+      ? ((await this.paths.findByPath(canonical)) ??
         (await this.paths.findByPath(
           canonical.endsWith('/') ? canonical.slice(0, -1) : `${canonical}/`,
-        )));
+        )) ??
+        (await this.paths.findCaseInsensitive(canonical)) ??
+        (await this.paths.findCaseInsensitive(
+          canonical.endsWith('/') ? canonical.slice(0, -1) : `${canonical}/`,
+        )))
+      : null;
     const content =
       owner &&
+      !owner.gone &&
       (await this.content.getById(owner.contentId, proofs, actor, context));
 
     if (!owner || !content) {
+      if (
+        owner?.gone ||
+        (!owner &&
+          canonical &&
+          ((await this.paths.wasDeleted(canonical)) ||
+            (await this.paths.wasDeleted(
+              canonical.endsWith('/')
+                ? canonical.slice(0, -1)
+                : `${canonical}/`,
+            ))))
+      )
+        throw gone(Errors.ContentNotFound);
       if (this.hooks?.has('request.notFound'))
         await this.hooks.emit('request.notFound', { path });
 

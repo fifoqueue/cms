@@ -5,7 +5,7 @@ import { sessionToken } from '#lib/server/session-cookie.js';
 import { entryActions, entryPage } from '#lib/server/content-page.js';
 import { Errors, notFoundFrom } from '#lib/server/errors.js';
 import { latestPosts, loadTermArchive } from '#lib/server/archive.js';
-import { pageParam } from '#lib/server/public-view.js';
+import { entrySeoView, imageView, pageParam } from '#lib/server/public-view.js';
 import { isInternalPath, isRedirectTarget } from '#lib/server/permalink.js';
 import {
   loginPage,
@@ -95,6 +95,19 @@ export const load: PageServerLoad = async (event) => {
       type: 'post' as const,
       path: content.path,
       title: content.title,
+      protected: content.protected,
+      passwordProtected: Boolean(
+        content.passwordProtected || content.protected,
+      ),
+      seo: entrySeoView(
+        content.seo,
+        content.passwordProtected || content.protected,
+        !content.protected,
+      ),
+      description: content.protected
+        ? ''
+        : content.metaDescription || content.excerpt,
+      featuredImage: content.featuredImage && imageView(content.featuredImage),
       posts: await latestPosts(
         api,
         'post',

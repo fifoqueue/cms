@@ -36,6 +36,7 @@ export * from '#sdk/dashboard';
 export * from '#sdk/patterns';
 export * from '#sdk/layout';
 export * from '#sdk/menus';
+export * from '#sdk/links';
 export * from '#sdk/widgets';
 export * from '#sdk/comments';
 export * from '#sdk/search';

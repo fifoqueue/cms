@@ -5,6 +5,8 @@
   import { useScope } from '#lib/theme/scope.js';
   import { useI18n } from '#lib/i18n/context.js';
   import Lightbox from '#lib/theme/Lightbox.svelte';
+  import ResponsiveImage from '#lib/theme/ResponsiveImage.svelte';
+  import { themeImage } from '#lib/theme/image.js';
 
   /** Image, Cover and Media & Text: media-library images only (`MEDIA_IMAGE`). */
   let {
@@ -12,6 +14,14 @@
   }: { block: Extract<Block, { name: 'image' | 'cover' | 'media-text' }> } =
     $props();
   const scope = useScope();
+  const media = $derived(
+    themeImage(
+      scope().images,
+      block.attrs.src,
+      'alt' in block.attrs ? block.attrs.alt : '',
+      block.name === 'cover',
+    ),
+  );
   const i18n = useI18n();
   const m = $derived(i18n.m);
   /** Image and Media & Text pictures open in a lightbox unless the Image block has a link. */
@@ -19,8 +29,8 @@
   const zoom = $derived(
     block.name !== 'cover' && block.attrs.src
       ? {
-          src: block.attrs.src,
-          alt: block.attrs.alt,
+          src: media.url,
+          alt: media.alt,
           caption: block.name === 'image' ? block.attrs.caption : '',
         }
       : null,
@@ -53,11 +63,11 @@
       style:width={a.width ? `${a.width}px` : undefined}
     >
       {#snippet image()}
-        <img
-          src={a.src}
-          alt={a.alt}
-          loading="lazy"
-          decoding="async"
+        <ResponsiveImage
+          image={media}
+          sizes={a.width
+            ? `(max-width: ${a.width}px) 100vw, ${a.width}px`
+            : '(min-width: 64rem) 48rem, 100vw'}
           class="h-auto w-full {a.rounded ? 'rounded-[var(--radius)]' : ''}"
         />
       {/snippet}
@@ -91,11 +101,10 @@
     style:color={a.overlayColor ? 'var(--cms-color-base)' : undefined}
   >
     {#if a.src}
-      <img
-        src={a.src}
-        alt=""
-        loading="lazy"
-        decoding="async"
+      <ResponsiveImage
+        image={media}
+        eager
+        sizes="100vw"
         class="absolute inset-0 size-full object-cover"
       />
     {/if}
@@ -127,11 +136,9 @@
           aria-haspopup="dialog"
           aria-label={a.alt ? undefined : m.themeLightboxOpen}
           onclick={() => (zoomed = true)}
-          ><img
-            src={a.src}
-            alt={a.alt}
-            loading="lazy"
-            decoding="async"
+          ><ResponsiveImage
+            image={media}
+            sizes={`(min-width: 48rem) ${a.mediaWidth}vw, 100vw`}
             class="h-auto w-full rounded-[var(--radius)]"
           /></button
         >

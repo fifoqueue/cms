@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Errors } from '#sdk/errors';
+import { linkRelSchema } from '#sdk/links';
 
 /** Where themes place menus. */
 export const MENU_LOCATIONS = ['primary', 'footer'] as const;
@@ -44,6 +45,8 @@ export interface MenuItem {
   provider?: string;
   objectId?: string;
   newTab: boolean;
+  /** Chosen `rel` tokens (`LINK_RELS`) separated by spaces; `''` for none. */
+  rel: string;
   children: MenuItem[];
 }
 
@@ -68,6 +71,7 @@ const itemSchema = (depth: number): z.ZodType<MenuItem> =>
         .optional(),
       objectId: z.string().min(1).max(191).optional(),
       newTab: z.boolean().default(false),
+      rel: linkRelSchema,
       children:
         depth > 1
           ? z
@@ -115,6 +119,7 @@ export interface PublicMenuItem {
   label: string;
   url: string;
   newTab: boolean;
+  rel: string;
   children: PublicMenuItem[];
 }
 
@@ -122,6 +127,7 @@ export const publicMenuItemSchema: z.ZodType<PublicMenuItem> = z.object({
   label: z.string(),
   url: linkSchema,
   newTab: z.boolean(),
+  rel: linkRelSchema,
   children: z.array(z.lazy(() => publicMenuItemSchema)),
 });
 

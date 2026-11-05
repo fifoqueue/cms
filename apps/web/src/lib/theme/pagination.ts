@@ -22,7 +22,7 @@ export const pageQuery = (target: ListingTarget, page: number) => {
   if (target.kind === 'search') params.set('q', target.query);
   if (target.kind === 'home' && target.type !== 'post')
     params.set('type', target.type);
-  params.set('page', String(page));
+  if (page > 1) params.set('page', String(page));
 
   return params.toString();
 };

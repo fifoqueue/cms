@@ -4,6 +4,13 @@
   import type { EditorView } from '@tiptap/pm/view';
   import { CONTENT_ALIGNMENTS, IMAGE_SIZES } from '@cms/sdk';
   import type { AdminMedia, ContentDocument, PluginBlockInfo } from '@cms/sdk';
+  import {
+    linkMarkAttributes,
+    linkMarkSettings,
+    linkRels,
+    linkRelValue,
+  } from '@cms/content/link';
+  import type { LinkSettings } from '@cms/content/link';
   import { default as Bold } from '@lucide/svelte/icons/bold';
   import { default as Code } from '@lucide/svelte/icons/code';
   import { default as FileCode } from '@lucide/svelte/icons/file-code';
@@ -25,6 +32,7 @@
   import { default as Shapes } from '@lucide/svelte/icons/shapes';
   import { default as Superscript } from '@lucide/svelte/icons/superscript';
   import { catalogMessage } from '#lib/admin/form-errors.js';
+  import LinkOptions from '#lib/admin/LinkOptions.svelte';
   import BlockInserter from '#lib/admin/editor/BlockInserter.svelte';
   import { blockLabels } from '#lib/admin/editor/block-labels.js';
   import { codeBlockView } from '#lib/admin/editor/CodeBlockView.js';
@@ -86,6 +94,7 @@
   let replacePicker: ReturnType<typeof MediaPicker>;
   let linkDialog: HTMLDialogElement;
   let linkUrl = $state('');
+  let linkSettings = $state<LinkSettings>({ newTab: false, rel: [] });
   let uploading = $state(0);
   let uploadErrors = $state<string[]>([]);
   /** Footnotes whose text (from HTML mode or a paste) was cut to the 2000-character limit. */
@@ -401,7 +410,10 @@
     revision >= 0 && (editor?.isActive(type, attributes) ?? false);
 
   const editLink = () => {
-    linkUrl = (editor?.getAttributes('link').href as string | undefined) ?? '';
+    const attributes = editor?.getAttributes('link') ?? {};
+
+    linkUrl = (attributes.href as string | undefined) ?? '';
+    linkSettings = linkMarkSettings(attributes);
     linkDialog.showModal();
   };
 
@@ -409,7 +421,9 @@
     linkDialog.close();
     run((chain) =>
       href
-        ? chain.extendMarkRange('link').setLink({ href })
+        ? chain
+            .extendMarkRange('link')
+            .setLink({ href, ...linkMarkAttributes(linkSettings) })
         : chain.extendMarkRange('link').unsetLink(),
     );
   };
@@ -856,14 +870,13 @@
             onkeydown={returnToText}
           />
         </label>
-        <label class="flex h-8 items-center gap-2">
-          <input
-            type="checkbox"
-            checked={image.newTab === true}
-            onchange={(event) =>
-              setImage({ newTab: event.currentTarget.checked })}
-          />{m.contentNewTab}
-        </label>
+        <LinkOptions
+          class="min-h-8"
+          newTab={image.newTab === true}
+          rel={linkRels(image.rel)}
+          onchange={({ newTab, rel }) =>
+            setImage({ newTab, rel: linkRelValue(rel) })}
+        />
         <Button
           type="button"
           size="sm"
@@ -941,6 +954,11 @@
         }}
       />
     </label>
+    <LinkOptions
+      class="text-sm"
+      bind:newTab={linkSettings.newTab}
+      bind:rel={linkSettings.rel}
+    />
     <div class="flex flex-wrap justify-end gap-2">
       {#if isActive('link')}
         <Button

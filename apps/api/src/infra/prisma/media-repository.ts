@@ -67,6 +67,16 @@ export class PrismaMediaRepository implements MediaRepository {
     private readonly hooks?: HookDispatcher,
   ) {}
 
+  async getByUrl(url: string) {
+    const rows = await this.db.media.findMany({
+      where: { publicUrl: url },
+      include: relations,
+    });
+    const row = rows.find((item) => item.publicUrl === url);
+
+    return row ? toRecord(row) : null;
+  }
+
   async getByKey(key: string) {
     const row = await this.db.mediaStorageKey.findUnique({
       where: { key: new TextEncoder().encode(key) },

@@ -6,6 +6,7 @@ import {
   mediaContextSchema,
   mediaStorageSettingsSchema,
   mediaResyncSchema,
+  publicImageMapSchema,
 } from '#sdk/media';
 import type {
   AdminMedia,
@@ -18,6 +19,14 @@ import type {
   MediaResync,
 } from '#sdk/media';
 import type { Paginated } from '#sdk/common';
+
+export const publicMediaClient = (request: Request) => ({
+  images: (urls: string[]) =>
+    request('POST', '/api/v1/media/images', {
+      json: { urls },
+      response: publicImageMapSchema,
+    }),
+});
 
 /** The media library (`media.upload`; changing others' files needs `media.manage`). */
 export const mediaAdminClient = (request: Request) => {

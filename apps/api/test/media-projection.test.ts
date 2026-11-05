@@ -51,6 +51,36 @@ const bytes = new Uint8Array([
 ]);
 const actor = { id: 'a', role: 'author' };
 
+test('public image metadata follows library edits without exposing uploader or usage data', async () => {
+  const { media, repository } = setup();
+  const uploaded = await media.upload(bytes, 'public.png', actor);
+  const row = (await repository.get(uploaded.id))!;
+  const url = `/media/${row.storageKey}`;
+
+  await media.update(uploaded.id, { alt: 'Current library text' }, actor);
+  const result = await media.publicImages({
+    urls: [url, 'https://unknown.test/not-fetched.png'],
+  });
+
+  expect(Object.keys(result)).toEqual([url]);
+  expect(result[url]).toMatchObject({
+    width: 2000,
+    height: 1000,
+    alt: 'Current library text',
+  });
+  expect(Object.keys(result[url]!).sort()).toEqual([
+    'alt',
+    'height',
+    'sizes',
+    'url',
+    'width',
+  ]);
+  await media.update(uploaded.id, { alt: 'Edited later' }, actor);
+  expect((await media.publicImages({ urls: [url] }))[url]!.alt).toBe(
+    'Edited later',
+  );
+});
+
 test('invalid storage keys fall back, and plugin storage receives the accepted key', async () => {
   const { hooks, repository, storage, media } = setup();
   const site = hooks.registrar('functions:site', { trusted: true });
@@ -104,15 +134,22 @@ test('shared URL projection rewrites admin, public and responsive images safely'
   expect((await media.get(uploaded.id, actor)).url).toBe(uploaded.url);
   const image = toPublicImage(await projectMedia(row, hooks));
 
+  image.alt = 'Library "caption"';
+
   expect(image.url).toBe(uploaded.url);
   expect(
     image.sizes.every((size) => size.url.startsWith('https://cdn.example/')),
   ).toBe(true);
   const html = await new ResponsiveImages(
     async () => new Map([[row.id, image]]),
-  ).expand(`<img data-media-id="${row.id}" src="/old.png" loading="lazy">`);
+  ).expand(
+    `<img data-media-id="${row.id}" src="/old.png" alt="" width="80" loading="lazy">`,
+  );
 
   expect(html).toContain(`src="${image.url}"`);
+  expect(html).toContain('alt="Library &quot;caption&quot;"');
+  expect(html).toContain('width="80"');
+  expect(html).toContain(`height="${image.height}"`);
   expect(html).toContain('srcset="https://cdn.example/');
   expect(seen.every((driver) => driver === 'plugin:test:storage')).toBe(true);
   const initial = {

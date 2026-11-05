@@ -67,6 +67,7 @@
 - `20261115000000_comment_notifications`는 `comments.notified_at`(승인된 댓글은 `updated_at`으로 채워 기존 댓글이 다시 알림되지 않게 함)과 `comments.reply_mail`을 추가하고, `push_subscriptions`(방문자/사용자 브라우저 등록, 댓글/사용자와 함께 연쇄 삭제, SHA-256 엔드포인트 식별)와 `notice_windows`(SHA-256을 키로 하는 수신자별 알림 폭주 카운터)도 추가합니다. 추가형입니다. [댓글](../../docs/features/comments.md#알림-이메일-및-브라우저-푸시)을 참고하세요.
 - `20261116000000_notice_dispatches`는 `notice_dispatches`(이미 큐에 넣은 댓글 알림 팬아웃)를 추가합니다. 추가형입니다. 적용된 마이그레이션은 수정하지 않습니다. 마이그레이션이 어느 DB에든 반영된 뒤의 변경은 새 마이그레이션에 넣습니다.
 - `20261117000000_comment_author_meta`는 null을 허용하는 `comments.author_ip`(`VARCHAR(45)`)와 `comments.author_user_agent`(`VARCHAR(255)`)를 추가하며, 기존 댓글은 null로 남습니다. 추가형입니다. [댓글](../../docs/features/comments.md#작성자-ip-주소와-사용자-에이전트)을 참고하세요.
+- 문서 데이터 이전은 SQL 마이그레이션이 아니라 `apps/api/scripts/`의 일회성 스크립트로 합니다(Prisma 마이그레이션은 문서를 렌더링할 수 없습니다). 로직은 테스트할 수 있도록 `src/infra/prisma/`에 두고, 스크립트는 연결과 출력만 맡습니다. `scripts/migrate-link-defaults.ts`는 링크 마크의 `target`/`rel`이 정확히 이전 Tiptap 기본값(`_blank` + `noopener noreferrer nofollow`)인 경우 일반 링크로 바꿉니다. 대상은 `contents.document`, `content_revisions.document`(자동 저장 포함), `pattern.<id>` 설정이며, 글과 패턴의 저장된 `html`은 저장할 때와 같은 방식(`renderDocument`)으로 다시 렌더링합니다. 기본 키 순서로 200개씩 처리하고, 각 쓰기는 읽은 값이 바이트 단위로 그대로일 때만 적용하므로(`CAST(… AS BINARY)` 비교, `utf8mb4_unicode_ci`의 `=`는 대소문자를 무시합니다) 그사이 저장된 행은 덮어쓰지 않고 건너뛴 행으로 보고합니다. `updatedAt`/`textSavedAt`은 바꾸지 않습니다. 다시 실행해도 안전합니다. 먼저 `cd apps/api && bun --env-file=../../.env scripts/migrate-link-defaults.ts --dry-run`으로 개수를 확인한 뒤 `--dry-run` 없이 실행합니다. 공개 읽기 캐시는 30초 안에 새 HTML을 반영합니다. 건너뛴 행이 있으면 다시 실행합니다.
 - `20261107100000_session_created_at`은 `sessions.created_at`을 추가합니다(기존 세션은 마이그레이션 시각). 데이터는 지우지 않습니다.
 - `20261028000000_users_roles`부터 `20261103000000_search_outbox`까지는 역할·사용자 프로필, 작업·속도 제한·토큰, 콘텐츠 워크플로, 미디어, 필드, 댓글, 검색 아웃박스를 추가합니다. `20261104000000_content_fulltext`는 MariaDB 폴백 검색용 복합 FULLTEXT 인덱스를 추가합니다.
 - 반복 작업은 `scheduled_tasks` 임대로 인스턴스 하나에서만 돌며 실행 중 임대를 갱신합니다. 잡은 `SELECT … FOR UPDATE SKIP LOCKED`로 네 개씩 가져와 병렬 처리하고, 완료·실패·임대 해제는 현재 소유자만 할 수 있습니다. 속도 제한은 행 잠금 트랜잭션에서 시도를 예약합니다.
@@ -74,6 +75,16 @@
 - 플러그인을 위한 테이블/컬럼 추가 금지. 플러그인 데이터는 `plugin_data`(settings/kv)만 씁니다.
 
 ## Public read cache
+
+`20261127000000_public_paths_images` adds an indexed ASCII-folded path hash, public-path
+deletion tombstones and a media public-URL prefix index. Path ownership remains byte-exact.
+`deleteEntries` records only previously published paths within the deletion transaction.
+`20261128000000_path_publication` records public availability per path, not per entry.
+Draft-only addresses of once-published entries remain 404 after trash or deletion.
+Publication, scheduled publication, restoration and path writes update the marker atomically;
+legacy tombstones without verifiable path-level evidence remain retained but answer 404.
+Unknown and never-published paths remain 404; known removed public paths resolve as `gone`
+(HTTP 410). The public image lookup returns only the strict `PublicImage` projection.
 
 `MemoryPublicCache` implements the domain `PublicCache` port, wired only in
 the composition root (`container.ts` + `composition/**`). Core layout, site and reading data are cached in-process for

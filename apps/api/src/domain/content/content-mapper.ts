@@ -11,6 +11,7 @@ import {
   publicContentSchema,
   publicContentSummarySchema,
   toPublicEntrySeo,
+  publicEntrySeoFields,
   can,
 } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
@@ -106,6 +107,7 @@ const publicFields = (record: PublishedSummaryRecord, unlocked: boolean) => ({
   commentCount: record.protected && !unlocked ? 0 : record.commentCount,
   featuredImage: record.featuredImage,
   protected: record.protected && !unlocked,
+  passwordProtected: record.protected,
   publishedAt: (record.publishedAt ?? record.updatedAt).toISOString(),
   updatedAt: record.updatedAt.toISOString(),
   extraTerms: (record.extraTerms ?? []).map(({ id, name, slug, taxonomy }) => ({
@@ -116,7 +118,9 @@ const publicFields = (record: PublishedSummaryRecord, unlocked: boolean) => ({
   })),
   categories: record.categories.map(toTerm),
   tags: record.tags.map(toTerm),
-  seo: toPublicEntrySeo(record.seo),
+  seo: toPublicEntrySeo(
+    publicEntrySeoFields(record.seo, record.protected, unlocked),
+  ),
   meta: {},
 });
 

@@ -16,11 +16,18 @@ const feedItem = z.object({
   link,
   description: text,
   publishedAt: z.string().max(100),
+  updatedAt: z.string().max(100).optional(),
   author: text.optional(),
 });
 
 /** Web servers submit structured data before escaping XML/HTML, not rendered markup. */
 export const discoveryFilterSchemas = {
+  'discovery.document': z
+    .object({
+      body: z.string().max(512000),
+      updatedAt: z.iso.datetime().optional(),
+    })
+    .nullable(),
   'sitemap.entries': z.array(seoSitemapEntrySchema),
   'feed.items': z.array(feedItem).max(1000),
   'feed.channel': z.object({
@@ -37,7 +44,7 @@ export const discoveryFilterSchemas = {
     description: text,
     canonicalUrl: link,
     og: z
-      .record(z.string().max(100), text)
+      .record(z.string().max(100), z.union([text, z.array(text).max(100)]))
       .refine(
         (values) =>
           Object.keys(values).length <= 100 &&
@@ -45,9 +52,27 @@ export const discoveryFilterSchemas = {
             ([key, value]) =>
               !/(?:^|:)(?:url|image|video|audio)(?::(?:url|secure_url))?$/.test(
                 key,
-              ) || link.safeParse(value).success,
+              ) ||
+              (Array.isArray(value) ? value : [value]).every(
+                (item) => link.safeParse(item).success,
+              ),
           ),
       ),
+    robots: text.optional(),
+    links: z
+      .array(
+        z.object({
+          rel: z
+            .string()
+            .regex(/^[a-zA-Z][a-zA-Z -]*$/)
+            .max(100),
+          href: link,
+          type: z.string().max(100).optional(),
+          title: text.optional(),
+        }),
+      )
+      .max(100)
+      .optional(),
     jsonLd: z
       .array(z.json())
       .max(100)
@@ -57,6 +82,7 @@ export const discoveryFilterSchemas = {
 
 export const discoveryFilterInputSchema = z.object({
   kind: z.enum([
+    'discovery.document',
     'sitemap.entries',
     'feed.items',
     'feed.channel',
@@ -66,7 +92,25 @@ export const discoveryFilterInputSchema = z.object({
     'seo.meta',
   ]),
   value: z.unknown(),
+  context: z
+    .strictObject({
+      id: z.string().max(36).optional(),
+      slug: z.string().max(191).optional(),
+      path: z.string().max(2048),
+      type: z.string().max(136).optional(),
+    })
+    .optional(),
 });
+
+export type DiscoveryContext = NonNullable<
+  z.output<typeof discoveryFilterInputSchema>['context']
+>;
+
+export interface SeoFilterArgs {
+  'discovery.document': [context: Readonly<DiscoveryContext>];
+  'seo.markdown': [context: Readonly<DiscoveryContext>];
+  'llms.txt': [context: Readonly<DiscoveryContext>];
+}
 
 type DiscoveryFilterHooks = {
   [K in keyof typeof discoveryFilterSchemas]: z.output<

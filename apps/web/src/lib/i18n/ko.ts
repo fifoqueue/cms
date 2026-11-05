@@ -104,6 +104,7 @@ export const apiErrors: ApiErrorCatalog = {
   PermalinkBuiltinsRequired: '글, 아티클, 페이지의 고유주소 형식이 필요합니다.',
   MenuLinkInvalid: '웹 주소(https://…)나 이 사이트의 경로(/…)를 입력하세요.',
   MenuTargetMissing: '메뉴 항목이 연결할 대상을 선택하세요.',
+  LinkRelInvalid: '링크 rel에는 nofollow, sponsored, ugc만 넣을 수 있습니다.',
   LoginPathInvalid:
     '/login처럼 쿼리가 없고 예약되지 않은, 사용할 수 있는 사이트 경로를 입력하세요.',
   FieldOptionsRequired: '선택지를 하나 이상 추가하세요.',
@@ -437,10 +438,13 @@ export const apiErrors: ApiErrorCatalog = {
 
 /** Text for every web server error, by its `Errors` key in `#lib/errors.js`. */
 export const webErrors: WebErrorCatalog = {
+  HtmlPayloadMissing: '페이지를 복원하지 못했습니다. 새로고침해 주세요.',
   NotFound: '페이지를 찾을 수 없습니다.',
   Forbidden: '이 페이지를 볼 권한이 없습니다.',
   InvalidContentPath: '콘텐츠 주소가 올바르지 않습니다.',
   SitemapIndexTooLarge: '사이트맵 색인이 사이트맵 개수 한도를 넘습니다.',
+  SitemapEntryTooLarge:
+    '사이트맵 항목이 압축 전 사이트맵 크기 한도를 넘습니다.',
   FormInvalid: '아래 항목을 고쳐 주세요.',
   PermalinkPatternsInvalid: '고유주소 형식을 고쳐 주세요.',
   PasswordMismatch: '비밀번호가 일치하지 않습니다.',
@@ -951,7 +955,6 @@ export const ko: Messages = {
   menuDelete: '메뉴 삭제',
   menuLabel: '메뉴 이름표',
   menuUrl: 'URL',
-  menuNewTab: '새 탭',
   menuIndent: '하위 항목으로',
   menuOutdent: '상위로 꺼내기',
   menuEmpty: '아직 메뉴 항목이 없습니다.',
@@ -1317,6 +1320,18 @@ export const ko: Messages = {
   seoTitleTemplateHelp: (example: string) =>
     `{title}(필수)과 {site}를 사용하세요. 예: “${example}”`,
   seoHomeTitle: '홈페이지 제목',
+  seoHomeHelp:
+    '정적 첫 페이지를 포함하여 /에 적용됩니다. 제목 템플릿 없이 표시됩니다. 글 목록 페이지는 해당 페이지의 SEO 설정을 사용합니다.',
+  seoAlternateName: '사이트 대체 이름',
+  seoCreator: '기본 작성자 X(트위터) 핸들',
+  seoNoSnippet: '검색 스니펫 숨기기',
+  seoInherit: '사이트 설정 사용',
+  seoArchiveOverrides: '보관함 SEO 설정',
+  seoArchiveKey: '작성자 슬러그 또는 콘텐츠 유형 키',
+  seoArchiveHelp:
+    '작성자 또는 콘텐츠 유형 보관함을 선택하고 슬러그나 키를 입력하세요. 빈 필드는 보관함 기본값을 사용합니다.',
+  seoOriginWarning:
+    '표준 링크, og:url, 대표 공유 이미지를 게시하려면 사이트 URL을 설정하세요. 설정하지 않으면 직접 지정한 공유 이미지 URL만 사용합니다.',
   seoShownAs: (title: string) => `표시되는 제목: “${title}”`,
   seoHomeDescription: '홈페이지 설명',
   seoEntityType: '사이트의 주체',
@@ -1358,6 +1373,11 @@ export const ko: Messages = {
   seoLlmsToggle: 'llms.txt 게시',
   seoLlmsToggleHelp: 'AI 도구를 위한 일반 텍스트 사이트 안내입니다.',
   seoLlmsIntro: 'llms.txt 소개 문구',
+  seoBotOverrides: '봇별 규칙 (한 줄에 Bot: allow 또는 Bot: disallow)',
+  seoExtraRobots: '추가 robots.txt 규칙',
+  seoFeedsEnabled: '검색 색인과 별도로 피드 게시',
+  seoIndexNow: 'IndexNow로 검색 엔진에 변경 알림',
+  seoWebSubHub: 'WebSub 허브 URL',
   seoSave: 'SEO 설정 저장',
   permalinksTitle: '고유주소',
   permalinksHelp:
@@ -1513,6 +1533,9 @@ export const ko: Messages = {
 
   // Settings: page caching and single sign-on
   readingCacheSeconds: '페이지 캐시 (초)',
+  readingCanonicalOrigin: '사이트 주소로 이동',
+  readingCanonicalOriginHelp:
+    '공개 페이지 방문을 SEO 설정에 지정한 웹사이트 주소로 보냅니다.',
   readingCacheHelp:
     '로그인하지 않은 방문자에게 CDN이나 프록시가 공개 페이지를 보관해 보여 줄 시간입니다. 0이면 끕니다.',
   settingsSso: '싱글 사인온',
@@ -1553,6 +1576,7 @@ export const ko: Messages = {
   themeSchemeDark: '다크 모드로 전환',
   themeSearchPanel: '무엇을 찾고 계신가요?',
   themeSearchClose: '검색 닫기',
+  themeRelatedPosts: '관련 글',
   themeNotFoundHelp: '찾으시는 페이지가 없거나 옮겨졌습니다. 검색해 보세요.',
   adminBar: '도구 모음',
   adminBarCustomize: '사이트 편집',
@@ -1597,6 +1621,7 @@ export const ko: Messages = {
         copyright: '저작권 표시',
         'site-logo': '사이트 로고',
         'post-navigation': '이전·다음 글',
+        'related-posts': '관련 글',
         buttons: '버튼 묶음',
         button: '버튼',
         'social-links': '소셜 링크 묶음',
@@ -1891,6 +1916,15 @@ export const ko: Messages = {
   editorUploading: (count: number) => `파일 ${count}개 업로드 중…`,
   linkUrl: '링크 주소',
   linkRemove: '링크 삭제',
+  linkRel: '링크 관계',
+  linkRelName: (rel: string) =>
+    (
+      ({
+        nofollow: '따라가지 않음 (nofollow)',
+        sponsored: '광고·협찬 (sponsored)',
+        ugc: '사용자 작성 (ugc)',
+      }) as Record<string, string>
+    )[rel] ?? rel,
   imageSize: '크기',
   sizeThumbnail: '썸네일',
   sizeMedium: '중간',

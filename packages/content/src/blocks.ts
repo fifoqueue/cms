@@ -3,6 +3,12 @@ import { Table } from '@tiptap/extension-table';
 import { DOMParser, Fragment } from '@tiptap/pm/model';
 import type { DOMOutputSpec, Schema } from '@tiptap/pm/model';
 import { safeLinkHref } from '#content/urls';
+import {
+  linkHtmlAttributes,
+  linkRels,
+  linkRelValue,
+  opensNewTab,
+} from '#content/link';
 
 export const TextAlignment = Extension.create({
   name: 'textAlignment',
@@ -120,8 +126,18 @@ export const ButtonLink = Node.create({
       newTab: {
         default: false,
         parseHTML: (element) =>
-          (element.getAttribute('target') ??
-            element.querySelector('a')?.getAttribute('target')) === '_blank',
+          opensNewTab(
+            element.getAttribute('target') ??
+              element.querySelector('a')?.getAttribute('target'),
+          ),
+      },
+      rel: {
+        default: null,
+        parseHTML: (element) =>
+          linkRelValue(
+            element.getAttribute('rel') ??
+              element.querySelector('a')?.getAttribute('rel'),
+          ),
       },
     };
   },
@@ -135,9 +151,9 @@ export const ButtonLink = Node.create({
       class: 'cms-button',
       href: safeLinkHref(node.attrs.href),
       'data-variant': node.attrs.variant,
-      ...(node.attrs.newTab && {
-        target: '_blank',
-        rel: 'noopener noreferrer',
+      ...linkHtmlAttributes({
+        newTab: node.attrs.newTab === true,
+        rel: linkRels(node.attrs.rel),
       }),
     },
     0,

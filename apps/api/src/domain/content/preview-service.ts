@@ -1,7 +1,7 @@
 import { publicContentSchema } from '@cms/sdk';
 import type { ContentDocument, PreviewToken, PublicContent } from '@cms/sdk';
 import { keywordParagraph } from '@cms/content/plain-text';
-import { toPublicEntrySeo } from '@cms/sdk';
+import { publicEntrySeoFields, toPublicEntrySeo } from '@cms/sdk';
 import type { Actor } from '#api/domain/auth/authorization';
 import type { ContentService } from '#api/domain/content/content-service';
 import type {
@@ -107,9 +107,12 @@ export class PreviewService {
       sticky: record.sticky,
       commentCount: record.commentCount,
       protected: false,
+      passwordProtected: record.passwordHash !== null,
       featuredImage: record.featuredImage,
       fields: await this.deps.fields.present(record.type, record.fields),
-      seo: toPublicEntrySeo(record.seo),
+      seo: toPublicEntrySeo(
+        publicEntrySeoFields(record.seo, record.passwordHash !== null, true),
+      ),
       metaDescription: text.excerpt
         ? ''
         : keywordParagraph(text.document, record.seo.focusKeyword),

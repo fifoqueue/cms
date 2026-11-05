@@ -19,7 +19,11 @@ export const SCHEMA_TYPES = [
   'auto',
   'Article',
   'BlogPosting',
+  'NewsArticle',
+  'TechArticle',
   'WebPage',
+  'AboutPage',
+  'ContactPage',
 ] as const satisfies readonly AdminEntrySeo['schemaType'][];
 
 /** What the SEO fieldset submitted, echoed back after a failed save. Only these keys. */

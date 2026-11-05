@@ -1,7 +1,14 @@
 // Regression guard: when the API selects another locale for the site, everything the public
 // layout shows follows it: the wrapper `lang`, dates, months, `og:locale` and JSON-LD.
 import { afterAll, expect, setSystemTime, test } from 'bun:test';
-import { SEO_SETTINGS_DEFAULTS } from '@cms/sdk';
+import {
+  SEO_SETTINGS_DEFAULTS,
+  DEFAULT_ENTRY_SEO,
+  toPublicEntrySeo,
+  parseBlocks,
+} from '@cms/sdk';
+import { contentView } from '#lib/server/public-view.js';
+import { HtmlBody, encodeHtml } from '#lib/theme/html-body.js';
 import { fileURLToPath } from 'node:url';
 import { compile, compileModule } from 'svelte/compiler';
 import { scanDocumentRoutes } from '#lib/server/route-kinds.js';
@@ -9,6 +16,14 @@ import { scanDocumentRoutes } from '#lib/server/route-kinds.js';
 Bun.plugin({
   name: 'sveltekit-ssr',
   setup(build) {
+    build.module('$app/forms', () => ({
+      exports: {
+        enhance: () => undefined,
+        applyAction: async () => undefined,
+        deserialize: JSON.parse,
+      },
+      loader: 'object',
+    }));
     build.module('$app/env/private', () => ({
       exports: {
         CMS_API_URL: 'http://cms.test',
@@ -85,6 +100,8 @@ const { load: loadUniversal } = await import('#web/routes/(site)/+layout.js');
 const { siteTranslation } = await import('#lib/i18n/overrides.server.js');
 const { default: SiteLayoutProbe } =
   await import('#web-test/fixtures/SiteLayoutProbe.svelte');
+const { default: ThemeProbe } =
+  await import('#web-test/fixtures/ThemeProbe.svelte');
 
 const theme = {
   id: 'paper',
@@ -198,11 +215,109 @@ test('an API-selected locale drives the wrapper lang, dates, og:locale and JSON-
   expect(body).toContain('<p data-probe="date">2026년 3월 1일</p>');
   expect(body).toContain('<p data-probe="month">2026년 3월</p>');
   expect(body).toContain('<p data-probe="language">ko</p>');
-  // `ko` names no region, so the head carries no `og:locale` rather than the site's `en_US`.
-  expect(og).toBeUndefined();
+  expect(og).toBe('ko_KR');
   expect(jsonLd['@graph'].flatMap((node) => node.inLanguage ?? [])).toEqual([
     'ko',
     'ko',
   ]);
   expect(head).not.toContain('en-US');
+});
+
+test('SSR entries expose article links and responsive images while body transport references rendered HTML', async () => {
+  const server = await loadServer({
+    fetch: answering('en') as typeof fetch,
+    cookies: { get: () => undefined, getAll: () => [] },
+    locals: { token: null },
+  } as never);
+  const data = await loadUniversal({ data: server } as never);
+  const entry = contentView({
+    id: 'entry',
+    type: 'post',
+    slug: 'entry',
+    path: '/entry',
+    title: 'Entry',
+    html: '<p>Unique rendered body</p>',
+    excerpt: '',
+    fields: {},
+    publishedAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+    categories: [],
+    tags: [],
+    extraTerms: [],
+    meta: {},
+    seo: toPublicEntrySeo({
+      ...DEFAULT_ENTRY_SEO,
+      imageUrl: 'https://example.test/media/hero.png',
+    }),
+  });
+  const payload = new HtmlBody(String(entry.html), 'entry:1');
+
+  entry.html = payload;
+  const { blocks } = parseBlocks([
+    {
+      name: 'group',
+      attrs: { tagName: 'article' },
+      children: [
+        { name: 'post-featured-image' },
+        { name: 'post-content' },
+        { name: 'image', attrs: { src: '/media/hero.png' } },
+        { name: 'cover', attrs: { src: '/media/hero.png' } },
+        { name: 'media-text', attrs: { src: '/media/hero.png' } },
+        { name: 'related-posts' },
+      ],
+    },
+  ]);
+  const { body } = render(ThemeProbe, {
+    props: {
+      data: data as never,
+      page: { kind: 'content', content: entry },
+      template: blocks,
+      images: {
+        'https://example.test/media/hero.png': {
+          url: '/media/hero.png',
+          alt: 'Library alternative',
+          width: 2000,
+          height: 1000,
+          sizes: [
+            { url: '/media/small.webp', width: 400 },
+            { url: '/media/hero.png', width: 2000 },
+          ],
+        },
+        '/media/hero.png': {
+          url: '/media/hero.png',
+          alt: 'Library alternative',
+          width: 2000,
+          height: 1000,
+          sizes: [
+            { url: '/media/small.webp', width: 400 },
+            { url: '/media/hero.png', width: 2000 },
+          ],
+        },
+      },
+    },
+  });
+
+  expect(body).toContain('<article');
+  expect(body).toContain('href="/related"');
+  expect(body.match(/Unique rendered body/g)).toHaveLength(1);
+  expect(encodeHtml(payload)).toEqual(['entry:1', null]);
+  const images = body.match(/<img\b[^>]*>/g)!;
+
+  expect(images).toHaveLength(4);
+
+  for (const image of images) {
+    expect(image).toContain('width="2000"');
+    expect(image).toContain('height="1000"');
+    expect(image).toContain(
+      'srcset="/media/small.webp 400w, /media/hero.png 2000w"',
+    );
+    expect(image).toContain('sizes=');
+  }
+
+  expect(
+    images.filter((image) => image.includes('fetchpriority="high"')),
+  ).toHaveLength(2);
+  expect(
+    images.filter((image) => image.includes('loading="lazy"')),
+  ).toHaveLength(2);
 });

@@ -15,6 +15,7 @@
   import Footnotes from '#lib/theme/content/Footnotes.svelte';
   import MediaLightbox from '#lib/theme/content/MediaLightbox.svelte';
   import { useCurrentPost, useScope } from '#lib/theme/scope.js';
+  import { htmlKey, renderHtml } from '#lib/theme/html-body.js';
 
   const current = useCurrentPost();
   const scope = useScope();
@@ -23,6 +24,7 @@
   const entry = $derived(current().entry);
   const post = $derived(current().post);
   const slots = $derived(scope().slots);
+  const html = $derived(renderHtml(entry?.html ?? ''));
   let prose = $state<HTMLElement>();
   const failure = $derived.by(() => {
     if (!page.form || !('message' in page.form)) return '';
@@ -68,6 +70,7 @@
     {:else}
       <div
         class="cms-prose prose max-w-none"
+        data-cms-html={entry ? htmlKey(entry.html) : undefined}
         use:codeCopy={{
           copy: m.contentCodeCopy,
           copied: m.contentCodeCopied,
@@ -77,14 +80,16 @@
         use:enhanceToc
         bind:this={prose}
       >
-        <!-- eslint-disable-next-line svelte/no-at-html-tags -- rendered by the API from a schema-validated document -->
-        {@html entry.html}
+        <!-- eslint-disable svelte/no-at-html-tags -- rendered by the API from a schema-validated document -->
+        <!-- svelte-ignore hydration_html_changed -->
+        {@html html}
+        <!-- eslint-enable svelte/no-at-html-tags -->
       </div>
-      <CalloutDismissal container={prose} html={entry.html} />
-      <EmbedResize container={prose} html={entry.html} />
-      <FloatingToc container={prose} html={entry.html} />
-      <Footnotes container={prose} html={entry.html} />
-      <MediaLightbox container={prose} html={entry.html} />
+      <CalloutDismissal container={prose} {html} />
+      <EmbedResize container={prose} {html} />
+      <FloatingToc container={prose} {html} />
+      <Footnotes container={prose} {html} />
+      <MediaLightbox container={prose} {html} />
       {#if entry.pages.total > 1}
         <!-- Parts of an entry split by page breaks. -->
         <nav

@@ -33,6 +33,7 @@
   import { untrack } from 'svelte';
 
   interface Source {
+    featuredImage?: { url: string; alt: string } | null;
     /** The title the site uses without a custom SEO title. */
     title: string;
     /** Excerpt (else the automatic summary) or term description: the fallback meta description. */
@@ -115,13 +116,19 @@
   const image = $derived(
     seo.imageUrl.trim()
       ? { url: seo.imageUrl.trim(), alt: seo.imageAlt.trim(), fallback: false }
-      : context.defaultImageUrl
+      : source.featuredImage?.url && context.siteUrl
         ? {
-            url: context.defaultImageUrl,
-            alt: context.defaultImageAlt,
+            url: new URL(source.featuredImage.url, context.siteUrl).href,
+            alt: source.featuredImage.alt,
             fallback: true,
           }
-        : null,
+        : context.defaultImageUrl
+          ? {
+              url: context.defaultImageUrl,
+              alt: context.defaultImageAlt,
+              fallback: true,
+            }
+          : null,
   );
   const host = $derived(context.siteUrl ? new URL(context.siteUrl).host : '');
   /** The address as Google prints it: host › path › segments. */
@@ -469,6 +476,51 @@
       class="space-y-5 p-4"
     >
       <div class="space-y-3">
+        <div class="flex items-center gap-3">
+          <Switch
+            id={id('noSnippet')}
+            name={seoField('noSnippet')}
+            bind:checked={seo.noSnippet}
+          />
+          <Label for={id('noSnippet')}>{m.seoNoSnippet}</Label>
+        </div>
+        <div class="grid gap-2">
+          <Label for={id('maxSnippet')}>{m.seoMaxSnippet}</Label>
+          <Input
+            id={id('maxSnippet')}
+            name={seoField('maxSnippet')}
+            type="number"
+            min={-1}
+            max={10000}
+            value={seo.maxSnippet ?? ''}
+            placeholder={m.seoInherit}
+            oninput={(event) =>
+              (seo.maxSnippet =
+                event.currentTarget.value === ''
+                  ? null
+                  : Number(event.currentTarget.value))}
+          />
+        </div>
+        <div class="grid gap-2">
+          <Label for={id('maxImagePreview')}>{m.seoImagePreviews}</Label>
+          <NativeSelect
+            id={id('maxImagePreview')}
+            name={seoField('maxImagePreview')}
+            value={seo.maxImagePreview ?? ''}
+            onchange={(event) =>
+              (seo.maxImagePreview = (event.currentTarget.value ||
+                null) as SeoFormValues['maxImagePreview'])}
+          >
+            <NativeSelectOption value="">{m.seoInherit}</NativeSelectOption>
+            <NativeSelectOption value="none">{m.noChoice}</NativeSelectOption>
+            <NativeSelectOption value="standard"
+              >{m.seoPreviewStandard}</NativeSelectOption
+            >
+            <NativeSelectOption value="large"
+              >{m.seoPreviewLarge}</NativeSelectOption
+            >
+          </NativeSelect>
+        </div>
         <div class="flex items-center gap-3">
           <Switch
             id={id('noIndex')}

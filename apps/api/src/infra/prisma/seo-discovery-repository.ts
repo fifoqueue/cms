@@ -1,4 +1,9 @@
-import { archivePath, taxonomyDefinitionSchema } from '@cms/sdk';
+import {
+  archivePath,
+  taxonomyDefinitionSchema,
+  MEDIA_PATH,
+  safeHttpUrlSchema,
+} from '@cms/sdk';
 import { readArchivePaths } from '#api/infra/prisma/archive-paths';
 import type {
   SeoDiscoveryCriteria,
@@ -9,7 +14,10 @@ import type { Database } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
 import { decodePath } from '#api/infra/prisma/permalink-repository';
 
-type ContentRow = Omit<SeoDiscoveryRecord, 'path'> & { path: Uint8Array };
+type ContentRow = Omit<SeoDiscoveryRecord, 'path'> & {
+  id: string;
+  path: Uint8Array;
+};
 
 /** Bounded, DB-filtered discovery; no documents, HTML, private keywords or author joins. */
 export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
@@ -18,7 +26,14 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
     private readonly activeTypes?: () => Promise<readonly string[]>,
   ) {}
 
-  async list({ kind, page, pageSize, siteUrl }: SeoDiscoveryCriteria) {
+  async list({
+    kind,
+    page,
+    pageSize,
+    siteUrl,
+    archiveTypes = [],
+    sort = 'stable',
+  }: SeoDiscoveryCriteria) {
     const skip = (page - 1) * pageSize;
     const types = await this.activeTypes?.();
     const visible = types
@@ -34,6 +49,7 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
         JOIN contents c ON c.id = p.content_id
         WHERE p.current_for IS NOT NULL
           AND c.status = 'published' AND c.trashed_at IS NULL
+          AND c.password_hash IS NULL
           ${visible}
           AND c.seo_no_index = false
           AND (
@@ -50,14 +66,43 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
 
         if (skip >= total) return { items: [], total };
         const rows = await tx.$queryRaw<ContentRow[]>(Prisma.sql`
-          SELECT p.path,
+          SELECT c.id, p.path,
             COALESCE(NULLIF(c.seo_title, ''), c.title) AS title,
             COALESCE(NULLIF(c.seo_description, ''), c.excerpt) AS description,
             c.updated_at AS updatedAt
           ${from}
-          ORDER BY p.current_for ASC
+          ORDER BY ${sort === 'modified' ? Prisma.sql`c.updated_at DESC, p.current_for DESC` : Prisma.sql`p.current_for ASC`}
           LIMIT ${pageSize} OFFSET ${skip}
         `);
+        const images = await tx.$queryRaw<
+          { contentId: string; url: string; title: string; caption: string }[]
+        >(Prisma.sql`
+          SELECT DISTINCT c.id AS contentId, COALESCE(m.public_url, CONCAT(${siteUrl + MEDIA_PATH}, m.storage_key)) AS url,
+            m.title, m.caption
+          FROM contents c JOIN media m ON m.id = c.featured_media_id
+            OR m.id IN (SELECT cm.media_id FROM content_media cm WHERE cm.content_id = c.id)
+          WHERE c.id IN (${Prisma.join(rows.map((row) => row.id))}) AND m.mime LIKE 'image/%' AND m.missing_at IS NULL
+          ORDER BY c.id, m.id
+        `);
+        const imagesById = new Map<
+          string,
+          NonNullable<SeoDiscoveryRecord['images']>
+        >();
+
+        for (const image of images) {
+          const parsed = safeHttpUrlSchema.safeParse(image.url);
+
+          if (!parsed.success) continue;
+          const list = imagesById.get(image.contentId) ?? [];
+
+          if (list.length < 1000)
+            list.push({
+              url: parsed.data,
+              title: image.title.slice(0, 1000),
+              caption: image.caption.slice(0, 2000),
+            });
+          imagesById.set(image.contentId, list);
+        }
 
         return {
           items: rows.map((row) => ({
@@ -65,10 +110,38 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
             title: row.title,
             description: row.description,
             updatedAt: row.updatedAt,
+            images: imagesById.get(row.id) ?? [],
           })),
           total,
         };
       });
+    }
+
+    if (kind === 'archive') {
+      if (!archiveTypes.length) return { items: [], total: 0 };
+      const rows = await this.db.$queryRaw<
+        { type: string; updatedAt: Date }[]
+      >(Prisma.sql`
+        SELECT c.type, MAX(c.updated_at) AS updatedAt FROM contents c
+        WHERE c.type IN (${Prisma.join(archiveTypes.map((type) => type.key))})
+          AND c.status = 'published' AND c.trashed_at IS NULL AND c.password_hash IS NULL
+          ${visible}
+        GROUP BY c.type ORDER BY c.type
+      `);
+
+      return {
+        total: rows.length,
+        items: rows.slice(skip, skip + pageSize).map((row) => {
+          const type = archiveTypes.find((type) => type.key === row.type)!;
+
+          return {
+            path: `/archive/${encodeURIComponent(row.type)}`,
+            title: type.pluralName,
+            description: type.description,
+            updatedAt: row.updatedAt,
+          };
+        }),
+      };
     }
 
     if (kind === 'author') {
@@ -141,15 +214,16 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
     const { bases } = await readArchivePaths(this.db);
     const scope = Prisma.sql`
       WITH RECURSIVE published_terms AS (
-        SELECT DISTINCT t.id, t.parent_id, t.taxonomy
+        SELECT DISTINCT t.id, t.parent_id, t.taxonomy, c.id AS content_id, c.updated_at
         FROM taxonomy_terms t
         JOIN content_terms ct ON ct.term_id = t.id
         JOIN contents c ON c.id = ct.content_id
         WHERE t.taxonomy IN (${Prisma.join(keys)}) AND c.status = 'published'
           AND c.trashed_at IS NULL
+          AND c.password_hash IS NULL
           ${visible}
         UNION DISTINCT
-        SELECT parent.id, parent.parent_id, parent.taxonomy
+        SELECT parent.id, parent.parent_id, parent.taxonomy, child.content_id, child.updated_at
         FROM taxonomy_terms parent
         JOIN published_terms child ON child.parent_id = parent.id
         WHERE parent.taxonomy = child.taxonomy AND parent.taxonomy IN (${Prisma.join(hierarchical)})
@@ -172,7 +246,7 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
         .map((term) => term.id);
       const from = Prisma.sql`
         FROM taxonomy_terms t
-        JOIN published_terms p ON p.id = t.id
+        JOIN (SELECT id, MAX(updated_at) AS updated_at, COUNT(DISTINCT content_id) AS content_count FROM published_terms GROUP BY id) p ON p.id = t.id
         WHERE t.taxonomy IN (${Prisma.join(keys)})
           AND t.seo_no_index = false
           AND (
@@ -196,9 +270,9 @@ export class PrismaSeoDiscoveryRepository implements SeoDiscoveryRepository {
         SELECT t.slug, t.taxonomy,
           COALESCE(NULLIF(t.seo_title, ''), t.name) AS title,
           COALESCE(NULLIF(t.seo_description, ''), t.description) AS description,
-          t.updated_at AS updatedAt
+          p.updated_at AS updatedAt
         ${from}
-        ORDER BY t.slug ASC, t.id ASC
+        ORDER BY ${sort === 'popular' ? Prisma.sql`p.content_count DESC,` : Prisma.empty} t.slug ASC, t.id ASC
         LIMIT ${pageSize} OFFSET ${skip}
       `);
 

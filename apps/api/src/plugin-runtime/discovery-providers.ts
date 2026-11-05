@@ -13,7 +13,10 @@ import type {
   ThemeContribution,
 } from '@cms/sdk/plugin';
 import type { SearchService } from '#api/domain/search/search-service';
-import type { SeoDiscoveryRepository } from '#api/domain/seo/seo-discovery-repository';
+import type {
+  SeoDiscoveryRepository,
+  SeoDiscoveryCriteria,
+} from '#api/domain/seo/seo-discovery-repository';
 import { ProviderRegistry } from '#api/plugin-runtime/provider-registry';
 import type { Logger } from '#api/shared/logger';
 
@@ -47,6 +50,9 @@ export const createSearchProviders = (
 export const createSitemapProviders = (
   repository: SeoDiscoveryRepository,
   options: Options,
+  archiveTypes?: () => Promise<
+    NonNullable<SeoDiscoveryCriteria['archiveTypes']>
+  >,
 ) => {
   const registry = new ProviderRegistry<SitemapRequest, SitemapPage>(
     sitemapPageSchema,
@@ -59,12 +65,17 @@ export const createSitemapProviders = (
     'tag',
     'author',
     'taxonomy',
+    'archive',
   ] as const)
     registry.register(
       'core',
       kind,
       async (query) => {
-        const result = await repository.list({ ...query, kind });
+        const result = await repository.list({
+          ...query,
+          kind,
+          archiveTypes: kind === 'archive' ? await archiveTypes?.() : undefined,
+        });
 
         return {
           total: result.total,
@@ -73,6 +84,7 @@ export const createSitemapProviders = (
             title: item.title,
             description: item.description,
             updatedAt: item.updatedAt.toISOString(),
+            ...(item.images && { images: item.images }),
           })),
         };
       },

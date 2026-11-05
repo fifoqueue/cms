@@ -391,11 +391,22 @@ export const publicContentSchema = z.strictObject({
   author: z.strictObject({ name: z.string(), slug: z.string() }).nullable(),
   /** The parent page (page hierarchy); null or absent for top-level entries. */
   parentId: z.string().nullable().optional(),
+  parents: z
+    .array(
+      z.strictObject({
+        id: z.string(),
+        title: z.string(),
+        path: permalinkPathSchema,
+      }),
+    )
+    .optional(),
   sticky: z.boolean(),
   /** Approved comments. */
   commentCount: z.number().int(),
   /** The body (`html`) and excerpt are empty until the visitor unlocks it with the password. */
   protected: z.boolean(),
+  /** Persistent password policy, including unlocked views and signed previews. */
+  passwordProtected: z.boolean().optional(),
   featuredImage: publicImageSchema.nullable(),
   /** Public custom fields by key (image fields as `PublicImage`). Empty while protected. */
   fields: z.record(z.string(), z.unknown()),

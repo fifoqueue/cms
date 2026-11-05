@@ -10,6 +10,7 @@ const STATUS: Record<ErrorCode, number> = {
   sign_in_expired: 410,
   forbidden: 403,
   not_found: 404,
+  gone: 410,
   conflict: 409,
   rate_limited: 429,
   payload_too_large: 413,

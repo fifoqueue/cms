@@ -6,6 +6,8 @@ import { loadSlots } from '#lib/server/slots.js';
 import { withTemplateData } from '#lib/server/theme-queries.js';
 import type { PageServerLoad } from './$types';
 
+export const trailingSlash = 'never';
+
 /** Posts published in a site-local year (`/date/2026`) or month (`/date/2026/03`). */
 export const load: PageServerLoad = async (event) => {
   const { fetch, url, params, parent } = event;

@@ -1,4 +1,3 @@
-import { loadErrorData } from '#lib/server/theme-queries.js';
 import { themeLinks } from '#lib/server/theme-links.js';
 import { authApi, contentApi } from '#lib/server/api.js';
 import { loadAdminBar } from '#lib/server/admin-ui.js';
@@ -41,11 +40,9 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
   const { primary, footer } = menus;
 
   locals.lang = site.locale;
-  const [pages, blocks, linkRoutes, translation] = await Promise.all([
+  const [pages, linkRoutes, translation] = await Promise.all([
     // Without a primary menu, navigation falls back to the published pages.
     primary ? null : api.list({ type: 'page', pageSize: 20 }),
-    // Errors have no load: both templates share their data, fetched in parallel.
-    loadErrorData(api, theme, reading.timeZone),
     themeLinks(layout.theme),
     siteTranslation(fetch, site.locale),
   ]);
@@ -60,7 +57,6 @@ export const load: LayoutServerLoad = async ({ fetch, cookies, locals }) => {
     linkRoutes,
     privacy: layout.privacy,
     archives: layout.archives,
-    ...blocks,
     site: siteView(site),
     seo: seoSettingsView(seo),
     cssHash: themeCss(theme.css).hash,

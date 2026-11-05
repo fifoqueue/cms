@@ -52,7 +52,10 @@ export class MemoryContentRepository implements ContentRepository {
   /** Approved comment counts, kept by `MemoryCommentRepository`. */
   readonly commentCounts = new Map<string, number>();
   readonly terms = new Map<string, TaxonomyTermRecord>();
-  readonly permalinks = new MemoryPermalinkRepository(() => this.rows.values());
+  readonly permalinks = new MemoryPermalinkRepository(
+    () => this.rows.values(),
+    (id) => this.trashed.has(id),
+  );
 
   async findById(id: string) {
     const row = this.rows.get(id);
@@ -105,6 +108,7 @@ export class MemoryContentRepository implements ContentRepository {
     if (row) Object.assign(row, origin);
     if (at) this.trashed.set(id, at);
     else this.trashed.delete(id);
+    if (at === null) this.permalinks.publish([id]);
   }
 
   /** Like the Prisma adapter: in the write queue, advancing each version. */
@@ -123,6 +127,8 @@ export class MemoryContentRepository implements ContentRepository {
         row.updatedAt =
           now > row.updatedAt ? now : new Date(row.updatedAt.getTime() + 1);
       }
+
+      this.permalinks.publish(due.map((row) => row.id));
 
       return due.map((row) => row.id);
     });
@@ -394,6 +400,7 @@ export class MemoryContentRepository implements ContentRepository {
     return this.exclusive(async () => {
       const rows = structuredClone([...this.rows]);
       const paths = structuredClone([...this.permalinks.paths]);
+      const deleted = [...this.permalinks.deleted];
       const savedAt = structuredClone([...this.textSavedAt]);
       const trashed = structuredClone([...this.trashed]);
       const revisions = structuredClone(this.revisions.rows);
@@ -405,6 +412,8 @@ export class MemoryContentRepository implements ContentRepository {
         for (const [id, row] of rows) this.rows.set(id, row);
         this.permalinks.paths.clear();
         for (const [id, path] of paths) this.permalinks.paths.set(id, path);
+        this.permalinks.deleted.clear();
+        for (const path of deleted) this.permalinks.deleted.add(path);
         this.textSavedAt.clear();
         for (const [id, at] of savedAt) this.textSavedAt.set(id, at);
         this.trashed.clear();
@@ -419,6 +428,7 @@ export class MemoryContentRepository implements ContentRepository {
   async erase(id: string) {
     const rows = structuredClone([...this.rows]);
     const paths = structuredClone([...this.permalinks.paths]);
+    const deleted = [...this.permalinks.deleted];
 
     try {
       this.permalinks.remove(id);
@@ -436,6 +446,8 @@ export class MemoryContentRepository implements ContentRepository {
       for (const [key, row] of rows) this.rows.set(key, row);
       this.permalinks.paths.clear();
       for (const [key, path] of paths) this.permalinks.paths.set(key, path);
+      this.permalinks.deleted.clear();
+      for (const path of deleted) this.permalinks.deleted.add(path);
       throw caught;
     }
   }

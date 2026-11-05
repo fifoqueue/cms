@@ -4,6 +4,12 @@ import type { DOMOutputSpec, Schema } from '@tiptap/pm/model';
 import { Fragment } from '@tiptap/pm/model';
 import { Errors } from '#content/errors';
 import { safeImageSrc, safeLinkHref } from '#content/urls';
+import {
+  linkHtmlAttributes,
+  linkRels,
+  linkRelValue,
+  opensNewTab,
+} from '#content/link';
 
 const imageOf = (element: HTMLElement) =>
   element.matches('img') ? element : element.querySelector('img');
@@ -32,7 +38,8 @@ export const imageAttributes = (element: HTMLElement) => {
     caption: captionOf(element),
     align: alignmentOf(element),
     href: safeLinkHref(link?.getAttribute('href')),
-    newTab: link?.getAttribute('target') === '_blank',
+    newTab: opensNewTab(link?.getAttribute('target')),
+    rel: linkRelValue(link?.getAttribute('rel')),
   };
 };
 
@@ -49,6 +56,7 @@ export const ContentImage = Image.extend({
       align: 'center',
       href: null,
       newTab: false,
+      rel: null,
     };
 
     return Object.fromEntries(
@@ -92,7 +100,10 @@ export const ContentImage = Image.extend({
           'a',
           {
             href,
-            ...(a.newTab && { target: '_blank', rel: 'noopener noreferrer' }),
+            ...linkHtmlAttributes({
+              newTab: a.newTab === true,
+              rel: linkRels(a.rel),
+            }),
           },
           image,
         ]

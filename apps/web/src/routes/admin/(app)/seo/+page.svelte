@@ -168,7 +168,7 @@
     { href: resolve('/llms.txt'), label: 'llms.txt' },
   ]);
 
-  const homeTitle = $derived(values.homeTitle.trim() || data.siteTitle);
+  const homeTitle = $derived(values.homeTitle.trim() || data.homeTitleFallback);
   const titleExample = $derived(
     formatSeoTitle(m.seoExampleTitle, data.siteTitle, values.titleTemplate),
   );
@@ -253,6 +253,29 @@
         <p class="text-xs text-muted-foreground">
           {m.seoSiteUrlHelp}
         </p>
+        {#if !values.siteUrl.trim()}
+          <p role="status" class="text-sm text-amber-700 dark:text-amber-400">
+            {m.seoOriginWarning}
+          </p>
+        {/if}
+      </div>
+      <div class="grid gap-2">
+        <Label for="alternateName">{m.seoAlternateName}</Label>
+        <Input
+          id="alternateName"
+          name="alternateName"
+          maxlength={191}
+          bind:value={values.alternateName}
+        />
+      </div>
+      <div class="grid gap-2">
+        <Label for="twitterCreator">{m.seoCreator}</Label>
+        <Input
+          id="twitterCreator"
+          name="twitterCreator"
+          maxlength={16}
+          bind:value={values.twitterCreator}
+        />
       </div>
       <div class="grid gap-2">
         <Label for="titleTemplate">{m.seoTitleTemplate}</Label>
@@ -274,16 +297,18 @@
             id="homeTitle"
             name="homeTitle"
             maxlength={200}
-            placeholder={data.siteTitle}
+            placeholder={data.homeTitleFallback}
             bind:value={values.homeTitle}
           />
           <p class="text-xs text-muted-foreground">{m.seoShownAs(homeTitle)}</p>
+          <p class="text-xs text-muted-foreground">{m.seoHomeHelp}</p>
         </div>
         <div class="grid gap-2">
           <Label for="homeDescription">{m.seoHomeDescription}</Label>
           <Textarea
             id="homeDescription"
             name="homeDescription"
+            placeholder={data.homeDescriptionFallback}
             maxlength={500}
             rows={2}
             bind:value={values.homeDescription}
@@ -306,6 +331,88 @@
             >
           </NativeSelect>
         </div>
+        <fieldset class="space-y-3 sm:col-span-2">
+          <legend class="font-medium">{m.seoArchiveOverrides}</legend>
+          <p class="text-xs text-muted-foreground">{m.seoArchiveHelp}</p>
+          {#each values.archiveOverrides as override, index (index)}
+            <div class="grid gap-3 rounded border p-3">
+              <Label for={`archive-kind-${index}`}
+                >{m.seoArchiveOverrides}</Label
+              >
+              <NativeSelect
+                id={`archive-kind-${index}`}
+                name="archive.kind"
+                bind:value={override.kind}
+              >
+                <NativeSelectOption value="author"
+                  >{m.themeWrittenBy}</NativeSelectOption
+                >
+                <NativeSelectOption value="archive"
+                  >{m.themeContentTypes}</NativeSelectOption
+                >
+              </NativeSelect>
+              <Label for={`archive-key-${index}`}>{m.seoArchiveKey}</Label>
+              <Input
+                id={`archive-key-${index}`}
+                name="archive.key"
+                required
+                maxlength={191}
+                bind:value={override.key}
+              />
+              <Label for={`archive-title-${index}`}>{m.seoTitle}</Label>
+              <Input
+                id={`archive-title-${index}`}
+                name="archive.title"
+                maxlength={200}
+                bind:value={override.title}
+              />
+              <Label for={`archive-description-${index}`}
+                >{m.seoHomeDescription}</Label
+              >
+              <Textarea
+                id={`archive-description-${index}`}
+                name="archive.description"
+                maxlength={500}
+                bind:value={override.description}
+              />
+              <Label for={`archive-image-${index}`}>{m.seoImageUrl}</Label>
+              <Input
+                id={`archive-image-${index}`}
+                name="archive.imageUrl"
+                type="url"
+                maxlength={2048}
+                bind:value={override.imageUrl}
+              />
+              <div class="flex items-center gap-3">
+                <Switch
+                  id={`archive-noindex-${index}`}
+                  name={`archive.noIndex.${index}`}
+                  bind:checked={override.noIndex}
+                />
+                <Label for={`archive-noindex-${index}`}>{m.seoNoIndex}</Label>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onclick={() => values.archiveOverrides.splice(index, 1)}
+                >{m.remove}</Button
+              >
+            </div>
+          {/each}
+          <Button
+            type="button"
+            variant="outline"
+            onclick={() =>
+              values.archiveOverrides.push({
+                kind: 'author',
+                key: '',
+                title: '',
+                description: '',
+                imageUrl: '',
+                noIndex: false,
+              })}>{m.add}</Button
+          >
+        </fieldset>
         <div class="grid gap-2">
           <Label for="entityName">{m.name}</Label>
           <Input
@@ -492,6 +599,37 @@
         m.seoAllowAiTrainingHelp,
       )}
       {@render toggle('llmsTxtEnabled', m.seoLlmsToggle, m.seoLlmsToggleHelp)}
+      {@render toggle('feedsEnabled', m.seoFeedsEnabled)}
+      {@render toggle('indexNowEnabled', m.seoIndexNow)}
+      <div class="grid gap-2">
+        <Label for="aiBotOverrides">{m.seoBotOverrides}</Label>
+        <Textarea
+          id="aiBotOverrides"
+          name="aiBotOverrides"
+          maxlength={10000}
+          rows={4}
+          bind:value={values.aiBotOverrides}
+        />
+      </div>
+      <div class="grid gap-2">
+        <Label for="extraRobotsRules">{m.seoExtraRobots}</Label>
+        <Textarea
+          id="extraRobotsRules"
+          name="extraRobotsRules"
+          maxlength={20000}
+          rows={4}
+          bind:value={values.extraRobotsRules}
+        />
+      </div>
+      <div class="grid gap-2">
+        <Label for="webSubHub">{m.seoWebSubHub}</Label>
+        <Input
+          id="webSubHub"
+          name="webSubHub"
+          type="url"
+          bind:value={values.webSubHub}
+        />
+      </div>
       <div class="grid gap-2">
         <Label for="llmsIntro">{m.seoLlmsIntro}</Label>
         <Textarea

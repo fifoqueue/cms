@@ -2,9 +2,15 @@ import { termTarget } from '#lib/theme/pagination.js';
 // The single metadata set of every public page: title, meta, links and JSON-LD, built from
 // explicitly projected page data only. Pure, so SSR and client navigation render the same tags.
 // Absolute URLs come only from the configured site origin, never from the request host.
-import type { TaxonomyType } from '@cms/sdk';
+import type {
+  ArchiveBases,
+  Block,
+  PublicEntrySeo,
+  TaxonomyType,
+} from '@cms/sdk';
 // Not the `@cms/sdk` root: its schema modules would ship Zod to every public page.
 import { formatSeoTitle } from '@cms/sdk/format';
+import { walkBlocks } from '@cms/sdk/block-tree';
 import type {
   ContentView,
   PostList,
@@ -16,12 +22,15 @@ import type { SiteMessages } from '#lib/i18n/site.js';
 import { jsonLdScript } from '#lib/seo/json-ld.js';
 import {
   FEED_PATH,
+  JSON_FEED_PATH,
   LLMS_TXT_PATH,
   SITEMAP_PATH,
   crumbPath,
+  datePath,
   feedPath,
   listingPath,
   markdownPath,
+  markdownDiscoverable,
   oembedPath,
 } from '#lib/seo/paths.js';
 import type { CrumbTarget, FeedTarget } from '#lib/seo/paths.js';
@@ -37,6 +46,12 @@ export type SitePage =
       posts: PostList;
       path?: string;
       title?: string;
+      explicitType?: boolean;
+      seo?: PublicEntrySeo;
+      description?: string;
+      passwordProtected?: boolean;
+      protected?: boolean;
+      featuredImage?: ContentView['featuredImage'];
     }
   | {
       kind: 'date';
@@ -53,6 +68,7 @@ export type SitePage =
       posts: PostList;
     }
   | { kind: 'login' }
+  | { kind: 'error'; status: number }
   /** Turning off comment notifications from an emailed link: never indexed. */
   | { kind: 'unsubscribe' }
   /** Unpublished changes: described like content, never indexed or canonical. */
@@ -63,6 +79,7 @@ export interface AuthorView {
   name: string;
   slug: string;
   bio: string;
+  avatarUrl?: string | null;
 }
 
 const KINDS: readonly unknown[] = [
@@ -76,6 +93,7 @@ const KINDS: readonly unknown[] = [
   'preview',
   'login',
   'unsubscribe',
+  'error',
 ];
 
 /** The page part of merged page data, or `null` when the page describes nothing. */
@@ -95,7 +113,10 @@ export const schemaType = ({ type, seo }: Entry) =>
         : 'BlogPosting';
 
 /** Articles show a byline and dates, and only they are marked up as Article/BlogPosting. */
-export const isArticle = (entry: Entry) => schemaType(entry) !== 'WebPage';
+export const isArticle = (entry: Entry) =>
+  ['Article', 'BlogPosting', 'NewsArticle', 'TechArticle'].includes(
+    schemaType(entry),
+  );
 
 export const termLabel = (taxonomy: TaxonomyType, m: SiteMessages) =>
   taxonomy === 'category'
@@ -112,10 +133,57 @@ export interface Crumb {
 /** The visible breadcrumb trail; the JSON-LD BreadcrumbList uses the same list. */
 export const crumbs = (page: SitePage | null, m: SiteMessages): Crumb[] => {
   const home: Crumb = { name: m.themeHome, target: { kind: 'home' } };
+  const step = (name: string, path: string): Crumb => ({
+    name,
+    target: { kind: 'content', path },
+  });
+
+  if (page?.kind === 'author')
+    return [
+      home,
+      step(
+        page.author.name,
+        listingPath({ kind: 'author', slug: page.author.slug }),
+      ),
+    ];
+  if (page?.kind === 'archive')
+    return [
+      home,
+      step(
+        page.archive.name,
+        listingPath({ kind: 'archive', slug: page.archive.key }),
+      ),
+    ];
+
+  if (page?.kind === 'date') {
+    const { year, month, day } = page.date;
+
+    return [
+      home,
+      step(String(year), datePath(year, null)),
+      ...(month
+        ? [step(String(month).padStart(2, '0'), datePath(year, month))]
+        : []),
+      ...(day
+        ? [step(String(day).padStart(2, '0'), datePath(year, month, day))]
+        : []),
+    ];
+  }
 
   if (page?.kind === 'term')
     return [
       home,
+      ...(page.term.parents ?? []).map((parent): Crumb => ({
+        name: parent.name,
+        target:
+          page.term.taxonomy === 'category' || page.term.taxonomy === 'tag'
+            ? { kind: page.term.taxonomy, slug: parent.slug }
+            : {
+                kind: 'taxonomy',
+                taxonomy: page.term.taxonomy,
+                slug: parent.slug,
+              },
+      })),
       {
         name: page.term.name,
         target: page.term.path
@@ -131,10 +199,21 @@ export const crumbs = (page: SitePage | null, m: SiteMessages): Crumb[] => {
     ];
   if (page?.kind !== 'content') return [];
   const { content } = page;
+
+  if (content.path === '/') return [home];
   const category = isArticle(content) ? content.categories[0] : undefined;
 
   return [
     home,
+    ...content.parents
+      .filter((parent) => parent.path !== '/')
+      .map((parent) => step(parent.title, parent.path)),
+    ...(category
+      ? content.categoryParents.map((parent): Crumb => ({
+          name: parent.name,
+          target: { kind: 'category', slug: parent.slug },
+        }))
+      : []),
     ...(category
       ? [
           {
@@ -146,6 +225,15 @@ export const crumbs = (page: SitePage | null, m: SiteMessages): Crumb[] => {
     { name: content.title, target: { kind: 'content', path: content.path } },
   ];
 };
+
+/** Only the selected template and its included parts can publish a visible trail. */
+export const hasBreadcrumbs = (
+  template: readonly Block[] = [],
+  parts: readonly { blocks: Block[] }[] = [],
+) =>
+  [...walkBlocks([...template, ...parts.flatMap((part) => part.blocks)])].some(
+    (block) => block.name === 'breadcrumbs',
+  );
 
 export interface HeadMeta {
   name?: string;
@@ -171,6 +259,9 @@ export interface Head {
 interface Image {
   url: string;
   alt: string;
+  width?: number;
+  height?: number;
+  type?: string;
 }
 
 /** Per-page facts before site-wide settings apply. Paths are root-relative. */
@@ -186,7 +277,13 @@ interface Facts {
   canonical: string;
   index: boolean;
   follow: boolean;
-  type: 'WebPage' | 'CollectionPage' | 'SearchResultsPage' | 'ProfilePage';
+  type:
+    | 'WebPage'
+    | 'CollectionPage'
+    | 'SearchResultsPage'
+    | 'ProfilePage'
+    | 'AboutPage'
+    | 'ContactPage';
   /** Sharing image chosen for this page. */
   image: Image | null;
   /** Image shown on the page itself (the only one JSON-LD may claim). */
@@ -212,6 +309,45 @@ const pagination = (target: ListingTarget, posts: PostList) => {
   };
 };
 
+/** Responsive sizes preserve the original aspect ratio. */
+export const sharingImage = (
+  image: ContentView['featuredImage'] | undefined,
+  siteUrl: string,
+): Image | null => {
+  if (!image || !siteUrl) return null;
+  const candidates = [
+    ...image.sizes,
+    ...(image.width ? [{ url: image.url, width: image.width }] : []),
+  ].sort((a, b) => Math.abs(a.width - 1200) - Math.abs(b.width - 1200));
+  const chosen = candidates[0];
+  const url = chosen?.url ?? image.url;
+  const width = chosen?.width ?? image.width ?? undefined;
+  const height =
+    image.width && image.height && width
+      ? Math.round((image.height * width) / image.width)
+      : undefined;
+  const extension = new URL(url, siteUrl).pathname
+    .split('.')
+    .pop()
+    ?.toLowerCase();
+  const types: Record<string, string> = {
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    webp: 'image/webp',
+    avif: 'image/avif',
+    gif: 'image/gif',
+  };
+
+  return {
+    url: new URL(url, siteUrl).href,
+    alt: image.alt,
+    width,
+    height,
+    type: types[extension ?? ''],
+  };
+};
+
 const describe = (
   site: SiteView,
   settings: SeoSettingsView,
@@ -226,19 +362,36 @@ const describe = (
 
   switch (page?.kind) {
     case 'home': {
+      const seo = page.seo;
+      const locked = page.protected ?? page.passwordProtected;
       const list = pagination(
-        { kind: 'home', type: page.type, path: page.path },
+        {
+          kind: 'home',
+          type: page.explicitType === false ? 'post' : page.type,
+          path: page.path,
+        },
         page.posts,
       );
-      const front = page.type === 'post' && page.posts.page === 1 && !page.path;
-      const social = front
-        ? settings.homeTitle || site.title
-        : paged(
-            page.title ??
+      const front =
+        !page.path && (page.explicitType === false || page.type === 'post');
+      const social = paged(
+        front
+          ? settings.homeTitle || site.title
+          : seo?.title ||
+              page.title ||
               (page.type === 'article' ? m.themeArticles : m.themePosts),
+        page.posts.page,
+      );
+      const description = locked
+        ? ''
+        : paged(
+            front
+              ? settings.homeDescription || site.description
+              : seo?.description ||
+                  page.description ||
+                  `${page.title || (page.type === 'article' ? m.themeArticles : m.themePosts)} · ${site.title}`,
             page.posts.page,
           );
-      const description = settings.homeDescription || site.description;
 
       return {
         ...listing,
@@ -248,10 +401,22 @@ const describe = (
           page.title ??
           (page.type === 'article' ? m.themeArticles : site.title),
         description,
-        socialTitle: social,
-        socialDescription: description,
-        canonical: absolute(list.path),
-        index: list.inRange,
+        socialTitle: seo?.socialTitle
+          ? paged(seo.socialTitle, page.posts.page)
+          : social,
+        socialDescription: locked
+          ? ''
+          : seo?.socialDescription
+            ? paged(seo.socialDescription, page.posts.page)
+            : description,
+        canonical:
+          (page.posts.page === 1 && seo?.canonicalUrl) || absolute(list.path),
+        index:
+          list.inRange && !seo?.noIndex && !page.passwordProtected && !locked,
+        follow: !seo?.noFollow,
+        image: seo?.imageUrl
+          ? { url: seo.imageUrl, alt: seo.imageAlt }
+          : sharingImage(page.featuredImage, settings.siteUrl),
         type: 'CollectionPage',
       };
     }
@@ -291,8 +456,12 @@ const describe = (
         term.seo.title || `${termLabel(term.taxonomy, m)}: ${term.name}`,
         posts.page,
       );
-      const description =
-        term.seo.description || term.description || site.description;
+      const description = paged(
+        term.seo.description ||
+          term.description ||
+          `${termLabel(term.taxonomy, m)}: ${term.name} · ${site.title}`,
+        posts.page,
+      );
       const indexed =
         term.taxonomy === 'category'
           ? settings.indexCategories
@@ -303,8 +472,12 @@ const describe = (
         title: format(base),
         name: term.name,
         description,
-        socialTitle: term.seo.socialTitle || base,
-        socialDescription: term.seo.socialDescription || description,
+        socialTitle: term.seo.socialTitle
+          ? paged(term.seo.socialTitle, posts.page)
+          : base,
+        socialDescription: term.seo.socialDescription
+          ? paged(term.seo.socialDescription, posts.page)
+          : description,
         canonical:
           (posts.page === 1 && term.seo.canonicalUrl) || absolute(list.path),
         index: indexed && !term.seo.noIndex && posts.total > 0 && list.inRange,
@@ -319,9 +492,17 @@ const describe = (
 
     case 'author': {
       const { author, posts } = page;
+      const seo = settings.archiveOverrides.find(
+        (value) => value.kind === 'author' && value.key === author.slug,
+      );
       const list = pagination({ kind: 'author', slug: author.slug }, posts);
-      const base = paged(author.name, posts.page);
-      const description = author.bio || site.description;
+      const base = paged(seo?.title || author.name, posts.page);
+      const description = paged(
+        seo?.description ||
+          author.bio ||
+          `${m.authorArchive(author.name)} · ${site.title}`,
+        posts.page,
+      );
 
       return {
         ...listing,
@@ -332,16 +513,25 @@ const describe = (
         socialTitle: base,
         socialDescription: description,
         canonical: absolute(list.path),
-        index: posts.total > 0 && list.inRange,
+        index: !seo?.noIndex && posts.total > 0 && list.inRange,
+        image: seo?.imageUrl ? { url: seo.imageUrl, alt: author.name } : null,
         type: 'ProfilePage',
       };
     }
 
     case 'archive': {
       const { archive, posts } = page;
+      const seo = settings.archiveOverrides.find(
+        (value) => value.kind === 'archive' && value.key === archive.key,
+      );
       const list = pagination({ kind: 'archive', slug: archive.key }, posts);
-      const base = paged(archive.name, posts.page);
-      const description = archive.description || site.description;
+      const base = paged(seo?.title || archive.name, posts.page);
+      const description = paged(
+        seo?.description ||
+          archive.description ||
+          `${archive.name} · ${site.title}`,
+        posts.page,
+      );
 
       return {
         ...listing,
@@ -352,7 +542,8 @@ const describe = (
         socialTitle: base,
         socialDescription: description,
         canonical: absolute(list.path),
-        index: posts.total > 0 && list.inRange,
+        index: !seo?.noIndex && posts.total > 0 && list.inRange,
+        image: seo?.imageUrl ? { url: seo.imageUrl, alt: archive.name } : null,
         type: 'CollectionPage',
       };
     }
@@ -366,6 +557,10 @@ const describe = (
           ? `${date.year}-${String(date.month).padStart(2, '0')}`
           : String(date.year);
       const base = paged(name, posts.page);
+      const description = paged(
+        `${m.themePosts}: ${name} · ${site.title}`,
+        posts.page,
+      );
 
       // Date archives repeat what other listings show, so they are never indexed.
       return {
@@ -373,9 +568,9 @@ const describe = (
         ...list,
         title: format(base),
         name,
-        description: site.description,
+        description,
         socialTitle: base,
-        socialDescription: site.description,
+        socialDescription: description,
         canonical: absolute(list.path),
         index: false,
         type: 'CollectionPage',
@@ -395,10 +590,17 @@ const describe = (
         index: false,
         follow: false,
       };
+    case 'error':
     case 'login':
     case 'unsubscribe': {
       const name =
-        page.kind === 'login' ? m.signInTitle : m.commentUnsubscribeTitle;
+        page.kind === 'error'
+          ? page.status === 404 || page.status === 410
+            ? m.themeNotFound
+            : m.errorPageServer
+          : page.kind === 'login'
+            ? m.signInTitle
+            : m.commentUnsubscribeTitle;
 
       return {
         ...listing,
@@ -417,43 +619,55 @@ const describe = (
 
     case 'content': {
       const { content } = page;
+      const protectedEntry = content.passwordProtected || content.protected;
       // Every part of a split entry is canonical to itself.
       const { current, total } = content.pages;
       const partPath = (part: number) =>
         part > 1 ? `${content.path}?page=${part}` : content.path;
-      const base = paged(content.seo.title || content.title, current);
-      const description =
-        content.seo.description ||
-        content.metaDescription ||
-        content.excerpt ||
-        site.description;
+      const front = content.path === '/';
+      const base = paged(
+        (front && settings.homeTitle) || content.seo.title || content.title,
+        current,
+      );
+      const description = content.protected
+        ? ''
+        : paged(
+            (front && settings.homeDescription) ||
+              content.seo.description ||
+              content.metaDescription ||
+              content.excerpt ||
+              site.description,
+            current,
+          );
       // An explicit SEO image wins; otherwise the featured image, when the site has an address.
-      const featured =
-        content.featuredImage && absolute(content.featuredImage.url)
-          ? {
-              url: absolute(content.featuredImage.url),
-              alt: content.featuredImage.alt,
-            }
-          : null;
+      const featured = sharingImage(content.featuredImage, settings.siteUrl);
       const image = content.seo.imageUrl
         ? { url: content.seo.imageUrl, alt: content.seo.imageAlt }
         : featured;
 
       return {
-        title: format(base),
+        title: front ? base : format(base),
         name: content.title,
         description,
-        socialTitle: content.seo.socialTitle || base,
-        socialDescription: content.seo.socialDescription || description,
+        socialTitle: content.seo.socialTitle
+          ? paged(content.seo.socialTitle, current)
+          : base,
+        socialDescription: content.protected
+          ? ''
+          : content.seo.socialDescription
+            ? paged(content.seo.socialDescription, current)
+            : description,
         path: partPath(current),
         canonical:
           (current === 1 && content.seo.canonicalUrl) ||
           absolute(partPath(current)),
         prev: current > 1 ? partPath(current - 1) : undefined,
         next: current < total ? partPath(current + 1) : undefined,
-        index: !content.seo.noIndex,
+        index: !content.seo.noIndex && !protectedEntry,
         follow: !content.seo.noFollow,
-        type: 'WebPage',
+        type: isArticle(content)
+          ? 'WebPage'
+          : (schemaType(content) as Facts['type']),
         image,
         pageImage: image,
       };
@@ -475,21 +689,28 @@ const describe = (
   }
 };
 
-/** `language_TERRITORY` as Open Graph expects; empty when the locale names no region. */
+/** CLDR supplies the default region for language-only tags. */
 const ogLocale = (locale: string) => {
-  const match = /^([a-z]{2,3})[-_]([a-z]{2})$/i.exec(locale);
+  const tag = new Intl.Locale(locale.replaceAll('_', '-')).maximize();
 
-  return match ? `${match[1].toLowerCase()}_${match[2].toUpperCase()}` : '';
+  return tag.region ? `${tag.language}_${tag.region}` : '';
 };
 
-const robots = (settings: SeoSettingsView, index: boolean, follow: boolean) =>
+const robots = (
+  settings: SeoSettingsView,
+  index: boolean,
+  follow: boolean,
+  seo?: PublicEntrySeo,
+) =>
   [
     index ? 'index' : 'noindex',
     follow ? 'follow' : 'nofollow',
     ...(index
       ? [
-          `max-snippet:${settings.maxSnippet}`,
-          `max-image-preview:${settings.maxImagePreview}`,
+          ...(seo?.noSnippet
+            ? ['nosnippet']
+            : [`max-snippet:${seo?.maxSnippet ?? settings.maxSnippet}`]),
+          `max-image-preview:${seo?.maxImagePreview ?? settings.maxImagePreview}`,
           `max-video-preview:${settings.maxVideoPreview}`,
         ]
       : []),
@@ -514,18 +735,23 @@ export interface HeadInput {
   locale: string;
   settings: SeoSettingsView;
   page: SitePage | null;
+  archiveBases?: ArchiveBases;
+  breadcrumbsVisible?: boolean;
+  images?: Record<string, NonNullable<ContentView['featuredImage']>>;
 }
 
 /**
  * The `seo.meta` discovery filter value: presentation data plugins may adjust before the
- * head escapes it. `og` holds the first value of each `og:*` property; a page without a
+ * head escapes it. Repeated `og:*` properties retain all values; a page without a
  * canonical URL submits `/` (`NO_CANONICAL`), which keeps it without one.
  */
 export interface SeoMeta {
   title: string;
   description: string;
   canonicalUrl: string;
-  og: Record<string, string>;
+  og: Record<string, string | string[]>;
+  robots?: string;
+  links?: HeadLink[];
   jsonLd: unknown[];
 }
 
@@ -542,9 +768,17 @@ const isOg = (tag: HeadMeta) => tag.property?.startsWith('og:') ?? false;
 
 /** The filter value of a head. */
 const seoMetaOf = ({ title, meta, links, graph }: HeadParts): SeoMeta => {
-  const og: Record<string, string> = {};
+  const og: Record<string, string | string[]> = {};
 
-  for (const tag of meta) if (isOg(tag)) og[tag.property!] ??= tag.content;
+  for (const tag of meta) {
+    if (!isOg(tag)) continue;
+    const previous = og[tag.property!];
+
+    og[tag.property!] =
+      previous === undefined
+        ? tag.content
+        : [...(Array.isArray(previous) ? previous : [previous]), tag.content];
+  }
 
   return {
     title,
@@ -552,6 +786,8 @@ const seoMetaOf = ({ title, meta, links, graph }: HeadParts): SeoMeta => {
     canonicalUrl:
       links.find((link) => link.rel === 'canonical')?.href ?? NO_CANONICAL,
     og,
+    robots: meta.find((tag) => tag.name === 'robots')?.content ?? '',
+    links: links.filter((link) => link.rel !== 'canonical'),
     jsonLd: graph,
   };
 };
@@ -559,13 +795,65 @@ const seoMetaOf = ({ title, meta, links, graph }: HeadParts): SeoMeta => {
 /** The head with a filtered value applied; the head escapes it as usual. */
 const applyMeta = (parts: HeadParts, filtered: SeoMeta): HeadParts => {
   const original = seoMetaOf(parts);
+  const values = { ...filtered.og };
+  const list = (value: string | string[] | undefined) =>
+    value === undefined ? [] : Array.isArray(value) ? value : [value];
+  const changed = (key: string) =>
+    JSON.stringify(list(values[key])) !==
+    JSON.stringify(list(original.og[key]));
+
+  if (changed('og:image')) {
+    for (const key of Object.keys(values)) {
+      if (
+        key.startsWith('og:image:') &&
+        (!list(values['og:image']).length || !changed(key))
+      )
+        delete values[key];
+    }
+  }
+
+  if (
+    filtered.title !== original.title &&
+    values['og:title'] === original.og['og:title']
+  )
+    values['og:title'] = filtered.title;
+  if (
+    filtered.description !== original.description &&
+    values['og:description'] === original.og['og:description']
+  )
+    values['og:description'] = filtered.description;
   const description: HeadMeta[] = filtered.description
     ? [{ name: 'description', content: filtered.description }]
     : [];
-  const og = Object.entries(filtered.og)
+  const og = Object.entries(values)
     .filter(([key]) => key.startsWith('og:'))
-    .map(([property, content]) => ({ property, content }));
-  const rest = parts.meta.filter((tag) => tag.name !== 'description');
+    .flatMap(([property, value]) =>
+      (Array.isArray(value) ? value : [value]).map((content) => ({
+        property,
+        content,
+      })),
+    );
+  const first = (key: string) => {
+    const value = values[key];
+
+    return Array.isArray(value) ? (value[0] ?? '') : (value ?? '');
+  };
+  const mirrors: Record<string, string> = {
+    'twitter:title': first('og:title'),
+    'twitter:description': first('og:description'),
+    'twitter:image': first('og:image'),
+    'twitter:image:alt': first('og:image:alt'),
+    'twitter:card': first('og:image') ? 'summary_large_image' : 'summary',
+    robots: filtered.robots ?? original.robots ?? '',
+  };
+  const rest = [
+    ...parts.meta.filter(
+      (tag) => tag.name !== 'description' && !(tag.name && tag.name in mirrors),
+    ),
+    ...Object.entries(mirrors)
+      .filter(([, content]) => content)
+      .map(([name, content]) => ({ name, content })),
+  ];
   const at = rest.findIndex(isOg);
   const others = rest.filter((tag) => !isOg(tag));
   const ogAt = at < 0 ? others.length : at;
@@ -585,7 +873,9 @@ const applyMeta = (parts: HeadParts, filtered: SeoMeta): HeadParts => {
     ],
     links: [
       ...canonical,
-      ...parts.links.filter((link) => link.rel !== 'canonical'),
+      ...(filtered.links ?? parts.links).filter(
+        (link) => link.rel !== 'canonical',
+      ),
     ],
     graph: filtered.jsonLd,
   };
@@ -611,17 +901,37 @@ export const buildSiteHead = ({
   const { title, meta, links, graph } = filtered
     ? applyMeta(parts, filtered)
     : parts;
+  const protectedPolicy =
+    !input.settings.indexingEnabled ||
+    input.page?.kind === 'preview' ||
+    input.page?.kind === 'error' ||
+    (input.page?.kind === 'home' && input.page.passwordProtected) ||
+    (input.page?.kind === 'content' &&
+      (input.page.content.passwordProtected || input.page.content.protected));
 
   return {
     title,
-    meta,
+    meta: protectedPolicy
+      ? [
+          ...meta.filter((tag) => tag.name !== 'robots'),
+          ...parts.meta.filter((tag) => tag.name === 'robots'),
+        ]
+      : meta,
     links,
     jsonLd: jsonLdScript({ '@context': 'https://schema.org', '@graph': graph }),
   };
 };
 
 const headParts = (
-  { site, locale, settings, page }: HeadInput,
+  {
+    site,
+    locale,
+    settings,
+    page,
+    archiveBases,
+    breadcrumbsVisible = false,
+    images,
+  }: HeadInput,
   m: SiteMessages,
 ): HeadParts => {
   const absolute = (path: string) =>
@@ -633,11 +943,18 @@ const headParts = (
   const index = settings.indexingEnabled && facts.index;
   const follow = settings.indexingEnabled && facts.follow;
   const selfUrl = facts.path === null ? '' : absolute(facts.path);
-  const image =
+  const selectedImage: Image | null =
     facts.image ??
     (settings.defaultImageUrl
       ? { url: settings.defaultImageUrl, alt: settings.defaultImageAlt }
       : null);
+  const metadata = selectedImage ? images?.[selectedImage.url] : undefined;
+  const variant = metadata && sharingImage(metadata, settings.siteUrl);
+  const image =
+    variant && selectedImage
+      ? { ...variant, alt: selectedImage.alt || variant.alt }
+      : selectedImage;
+  const pageImage = facts.pageImage ? image : null;
   const imageAlt = image ? image.alt || facts.socialTitle : '';
 
   const meta: HeadMeta[] = [];
@@ -649,10 +966,21 @@ const headParts = (
   };
 
   name('description', facts.description);
-  name('robots', robots(settings, index, follow));
+  const entrySeo =
+    content?.seo ??
+    (page?.kind === 'term'
+      ? page.term.seo
+      : page?.kind === 'home'
+        ? page.seo
+        : undefined);
+
+  name('robots', robots(settings, index, follow, entrySeo));
   name('google-site-verification', settings.googleVerification);
   name('msvalidate.01', settings.bingVerification);
-  property('og:type', article ? 'article' : 'website');
+  property(
+    'og:type',
+    article ? 'article' : page?.kind === 'author' ? 'profile' : 'website',
+  );
   property('og:site_name', site.title);
   property('og:locale', ogLocale(locale));
   property('og:title', facts.socialTitle);
@@ -662,18 +990,30 @@ const headParts = (
   if (image) {
     property('og:image', image.url);
     property('og:image:alt', imageAlt);
+    property('og:image:width', image.width ? String(image.width) : '');
+    property('og:image:height', image.height ? String(image.height) : '');
+    property('og:image:type', image.type ?? '');
   }
 
   if (article) {
     property('article:published_time', article.publishedAt);
     property('article:modified_time', article.updatedAt);
-    property('article:author', article.seo.authorUrl);
+    property(
+      'article:author',
+      article.seo.authorUrl ||
+        (article.author
+          ? absolute(listingPath({ kind: 'author', slug: article.author.slug }))
+          : ''),
+    );
     property('article:section', article.categories[0]?.name ?? '');
     for (const tag of article.tags) property('article:tag', tag.name);
   }
 
+  if (content) property('og:updated_time', content.updatedAt);
+
   name('twitter:card', image ? 'summary_large_image' : 'summary');
   name('twitter:site', settings.twitterHandle);
+  name('twitter:creator', settings.twitterCreator || settings.twitterHandle);
   name('twitter:title', facts.socialTitle);
   name('twitter:description', facts.socialDescription);
 
@@ -698,28 +1038,50 @@ const headParts = (
     });
 
   // The feed route answers only while discoverable; narrowed feeds follow archives.
-  if (discoverable) {
+  if (settings.feedsEnabled && settings.siteUrl) {
     links.push({
       rel: 'alternate',
       type: 'application/rss+xml',
       title: site.title,
       href: href(FEED_PATH),
     });
+    links.push({
+      rel: 'alternate',
+      type: 'application/feed+json',
+      title: site.title,
+      href: href(JSON_FEED_PATH),
+    });
     const term = page?.kind === 'term' ? page.term : null;
     const followed: (FeedTarget & { name: string }) | null =
       page?.kind === 'author'
         ? { kind: 'author', slug: page.author.slug, name: page.author.name }
-        : term && (term.taxonomy === 'category' || term.taxonomy === 'tag')
-          ? { kind: term.taxonomy, slug: term.slug, name: term.name }
-          : null;
+        : term
+          ? {
+              kind:
+                term.taxonomy === 'category' || term.taxonomy === 'tag'
+                  ? term.taxonomy
+                  : 'taxonomy',
+              taxonomy: term.taxonomy,
+              slug: term.slug,
+              name: term.name,
+            }
+          : page?.kind === 'archive'
+            ? {
+                kind: 'archive',
+                slug: page.archive.key,
+                name: page.archive.name,
+              }
+            : null;
 
     if (followed)
-      links.push({
-        rel: 'alternate',
-        type: 'application/rss+xml',
-        title: m.themeFeedTitle(site.title, followed.name),
-        href: href(feedPath({ kind: followed.kind, slug: followed.slug })),
-      });
+      for (const format of ['rss', 'json'] as const)
+        links.push({
+          rel: 'alternate',
+          type:
+            format === 'rss' ? 'application/rss+xml' : 'application/feed+json',
+          title: m.themeFeedTitle(site.title, followed.name),
+          href: href(feedPath(followed, format)),
+        });
   }
 
   if (discoverable && settings.llmsTxtEnabled)
@@ -728,11 +1090,7 @@ const headParts = (
       type: 'text/plain',
       href: href(LLMS_TXT_PATH),
     });
-  if (
-    content &&
-    index &&
-    (!content.seo.canonicalUrl || content.seo.canonicalUrl === selfUrl)
-  )
+  if (content && markdownDiscoverable(content, settings.siteUrl, index))
     links.push({
       rel: 'alternate',
       type: 'text/markdown',
@@ -764,7 +1122,7 @@ const headParts = (
   const trail = crumbs(page, m);
   const breadcrumbId = id(facts.path ?? '/', 'breadcrumb');
   const breadcrumb =
-    settings.siteUrl && trail.length > 1
+    settings.siteUrl && breadcrumbsVisible && trail.length > 1
       ? {
           '@type': 'BreadcrumbList',
           '@id': breadcrumbId,
@@ -772,26 +1130,83 @@ const headParts = (
             '@type': 'ListItem',
             position: position + 1,
             name: crumb.name,
-            item: absolute(crumbPath(crumb.target)),
+            item: absolute(
+              position === trail.length - 1 && facts.path
+                ? facts.path
+                : crumbPath(crumb.target, archiveBases),
+            ),
           })),
         }
       : null;
 
+  const author = page?.kind === 'author' ? page.author : content?.author;
+  const authorPath = author
+    ? listingPath({ kind: 'author', slug: author.slug })
+    : '';
+  const authorEntity = author
+    ? compact({
+        '@type': 'Person',
+        '@id': id(authorPath, 'person'),
+        name: author.name,
+        url: absolute(authorPath),
+        description: 'bio' in author ? author.bio : undefined,
+        image:
+          'avatarUrl' in author &&
+          typeof author.avatarUrl === 'string' &&
+          author.avatarUrl &&
+          settings.siteUrl
+            ? new URL(author.avatarUrl, settings.siteUrl).href
+            : undefined,
+      })
+    : undefined;
+  const posts = page && 'posts' in page ? page.posts : null;
+  const itemList =
+    posts && settings.siteUrl
+      ? {
+          '@type': 'ItemList',
+          itemListElement: posts.items.map((post, position) => ({
+            '@type': 'ListItem',
+            position: position + 1,
+            url: absolute(post.path),
+            name: post.title,
+          })),
+        }
+      : undefined;
+  const imageObject = (image: Image) =>
+    compact({
+      '@type': 'ImageObject',
+      url: image.url,
+      width: image.width,
+      height: image.height,
+      caption: image.alt,
+    });
   const graph = [
     compact({
       '@type': 'WebSite',
       '@id': websiteId,
       url: absolute('/'),
       name: site.title,
+      alternateName: settings.alternateName,
       description: site.description,
       inLanguage: locale,
       publisher,
+      potentialAction: settings.siteUrl
+        ? {
+            '@type': 'SearchAction',
+            target: {
+              '@type': 'EntryPoint',
+              urlTemplate: `${absolute('/')}?q={search_term_string}`,
+            },
+            'query-input': 'required name=search_term_string',
+          }
+        : undefined,
     }),
     identityName
       ? compact({
           '@type': settings.entityType,
           '@id': identityId,
           name: identityName,
+          description: site.description,
           url: absolute('/'),
           [person ? 'image' : 'logo']: logoUrl
             ? { '@type': 'ImageObject', url: logoUrl }
@@ -808,10 +1223,16 @@ const headParts = (
           description: facts.description,
           isPartOf: ref(websiteId),
           inLanguage: locale,
+          datePublished: content?.publishedAt,
+          dateModified: content?.updatedAt,
+          mainEntity:
+            page.kind === 'author'
+              ? authorEntity
+              : facts.type === 'CollectionPage'
+                ? itemList
+                : undefined,
           breadcrumb: breadcrumb ? ref(breadcrumbId) : undefined,
-          primaryImageOfPage: facts.pageImage
-            ? { '@type': 'ImageObject', url: facts.pageImage.url }
-            : undefined,
+          primaryImageOfPage: pageImage ? imageObject(pageImage) : undefined,
         })
       : null,
     article
@@ -828,9 +1249,9 @@ const headParts = (
                 name: article.seo.authorName,
                 url: article.seo.authorUrl,
               })
-            : undefined,
+            : authorEntity,
           publisher,
-          image: article.seo.imageUrl ? [article.seo.imageUrl] : undefined,
+          image: pageImage ? [imageObject(pageImage)] : undefined,
           mainEntityOfPage: ref(pageId),
           articleSection: article.categories[0]?.name,
           keywords: article.tags.map((tag) => tag.name),

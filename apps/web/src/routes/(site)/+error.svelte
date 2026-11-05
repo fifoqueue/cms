@@ -8,7 +8,7 @@
 </script>
 
 <TemplateView
-  data={page.status === 404 ? data : { ...data, ...data.errorFallback }}
+  data={{ ...data, ...page.error?.themeError }}
   page={{
     kind: 'error',
     status: page.status,

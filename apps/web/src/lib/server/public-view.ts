@@ -24,6 +24,7 @@ import {
   publicSeoSettingsFields,
 } from '@cms/sdk';
 import type { HomeListType } from '#lib/theme/pagination.js';
+import type { HtmlBody } from '#lib/theme/html-body.js';
 
 /** A public image with its responsive sizes. */
 export const imageView = (image: PublicImage) => ({
@@ -61,7 +62,11 @@ export const seoSettingsView = (settings: PublicSeoSettings) => {
 };
 
 /** Published per-entry metadata of content and terms. */
-export const entrySeoView = (seo: PublicEntrySeo) => publicEntrySeoFields(seo);
+export const entrySeoView = (
+  seo: PublicEntrySeo,
+  passwordProtected = false,
+  unlocked = false,
+) => publicEntrySeoFields(seo, passwordProtected, unlocked);
 
 /** The theme as the site renders it: the validated public DTO, field by field. */
 export const themeView = ({
@@ -148,21 +153,33 @@ export const summaryView = (content: PublicContentSummary) => ({
   sticky: content.sticky,
   commentCount: content.commentCount,
   protected: content.protected,
+  passwordProtected: Boolean(content.passwordProtected || content.protected),
   featuredImage: content.featuredImage && imageView(content.featuredImage),
 });
 
 /** A single published entry with its API-rendered body. */
 export const contentView = (content: PublicContent) => ({
   ...summaryView(content),
+  parentId: content.parentId ?? null,
+  parents: (content.parents ?? []).map(({ id, title, path }) => ({
+    id,
+    title,
+    path,
+  })),
+  categoryParents: [] as { name: string; slug: string }[],
   /** Public custom fields; image fields are public images. */
   fields: structuredClone(content.fields),
-  html: content.html,
+  html: content.html as string | HtmlBody,
   /** Page breaks split a single entry; `entryPage` sets these. */
   pages: { current: 1, total: 1 },
   updatedAt: content.updatedAt,
-  seo: entrySeoView(content.seo),
+  seo: entrySeoView(
+    content.seo,
+    content.passwordProtected || content.protected,
+    !content.protected,
+  ),
   /** The automatic meta description; never shown on the page itself. */
-  metaDescription: content.metaDescription,
+  metaDescription: content.protected ? '' : content.metaDescription,
 });
 
 export const listView = ({
@@ -182,6 +199,7 @@ export type SeoSettingsView = ReturnType<typeof seoSettingsView>;
 export type EntrySeoView = ReturnType<typeof entrySeoView>;
 export type TermArchiveView = ReturnType<typeof termArchiveView> & {
   path?: string;
+  parents?: { name: string; slug: string }[];
 };
 export type ContentView = ReturnType<typeof contentView>;
 export type PostSummary = ReturnType<typeof summaryView>;
@@ -217,14 +235,16 @@ export interface MenuItemView {
   label: string;
   url: string;
   newTab: boolean;
+  rel: string;
   children: MenuItemView[];
 }
 
 export const menuView = (items: readonly PublicMenuItem[]): MenuItemView[] =>
-  items.map(({ label, url, newTab, children }) => ({
+  items.map(({ label, url, newTab, rel, children }) => ({
     label,
     url,
     newTab,
+    rel,
     children: menuView(children),
   }));
 

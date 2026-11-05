@@ -154,6 +154,9 @@ export type {
   PublicSettingsSection,
 } from '#sdk/hooks/settings';
 import type { SeoActionHooks, SeoFilterHooks } from '#sdk/hooks/seo';
+import type { SeoFilterArgs } from '#sdk/hooks/seo';
+
+export type { DiscoveryContext } from '#sdk/hooks/seo';
 import type { UserActionHooks, UserFilterHooks } from '#sdk/hooks/users';
 import type { MediaActionHooks, MediaFilterHooks } from '#sdk/hooks/media';
 import type { MediaFilterArgs } from '#sdk/hooks/media';
@@ -344,17 +347,19 @@ export type ActionHandler<K extends string> = (
 ) => Awaitable<void>;
 export type FilterHandler<K extends string> = (
   value: K extends FilterName ? FilterHookMap[K] : unknown,
-  ...args: K extends keyof MediaFilterArgs
-    ? MediaFilterArgs[K]
-    : K extends keyof ContentFilterArgs
-      ? ContentFilterArgs[K]
-      : K extends keyof TaxonomyFilterArgs
-        ? TaxonomyFilterArgs[K]
-        : K extends keyof PlatformFilterArgs
-          ? PlatformFilterArgs[K]
-          : K extends keyof AppearanceFilterArgs
-            ? AppearanceFilterArgs[K]
-            : readonly unknown[]
+  ...args: K extends keyof SeoFilterArgs
+    ? SeoFilterArgs[K]
+    : K extends keyof MediaFilterArgs
+      ? MediaFilterArgs[K]
+      : K extends keyof ContentFilterArgs
+        ? ContentFilterArgs[K]
+        : K extends keyof TaxonomyFilterArgs
+          ? TaxonomyFilterArgs[K]
+          : K extends keyof PlatformFilterArgs
+            ? PlatformFilterArgs[K]
+            : K extends keyof AppearanceFilterArgs
+              ? AppearanceFilterArgs[K]
+              : readonly unknown[]
 ) => Awaitable<K extends FilterName ? FilterHookMap[K] : unknown>;
 
 export interface CustomHookDefinition {

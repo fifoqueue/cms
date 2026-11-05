@@ -43,6 +43,12 @@ export class ResponsiveImages {
           ` src="${escapeAttribute(image.url)}"`,
         );
         attrs = attrs.replace(/\ssrcset="[^"]*"/, '');
+        attrs = attrs.replace(/\ssizes="[^"]*"/, '');
+
+        if (!/\salt="[^"]+"/.test(attrs)) {
+          attrs = attrs.replace(/\salt="[^"]*"/, '');
+          attrs += ` alt="${escapeAttribute(image.alt)}"`;
+        }
       }
 
       const extra: string[] = [];
@@ -52,11 +58,13 @@ export class ResponsiveImages {
           `srcset="${image.sizes.map(({ url, width }) => `${escapeAttribute(url)} ${width}w`).join(', ')}"`,
           `sizes="${SIZES}"`,
         );
-      if (image?.width && image.height && !/\s(?:width|height)=/.test(attrs))
-        extra.push(`width="${image.width}" height="${image.height}"`);
+      if (image?.width && !/\swidth=/.test(attrs))
+        extra.push(`width="${image.width}"`);
+      if (image?.height && !/\sheight=/.test(attrs))
+        extra.push(`height="${image.height}"`);
       if (index++ > 0 && !/\sloading=/.test(attrs))
         extra.push('loading="lazy"');
-      extra.push('decoding="async"');
+      if (!/\sdecoding=/.test(attrs)) extra.push('decoding="async"');
 
       return `<img${attrs} ${extra.join(' ')}>`;
     });

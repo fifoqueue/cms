@@ -23,6 +23,9 @@ const RESERVED = new Set([
   'sitemap.xml',
   'feed.xml',
   'llms.txt',
+  'llms-full.txt',
+  'indexnow-key.txt',
+  'feed.json',
 ]);
 
 const baseSchema = z

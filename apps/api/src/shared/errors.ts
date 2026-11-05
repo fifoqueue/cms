@@ -8,6 +8,7 @@ export type ErrorCode =
   | 'sign_in_expired'
   | 'forbidden'
   | 'not_found'
+  | 'gone'
   | 'conflict'
   | 'rate_limited'
   | 'payload_too_large'
@@ -32,6 +33,8 @@ export class DomainError extends Error {
  * a job's `JobFailed`), so they may carry details and need no reader translation.
  */
 export const ServerErrors = {
+  DiscoveryPushFailed: (status: number) =>
+    `Discovery notification failed (${status})`,
   JobKindUnknown: (kind: string) => `No handler for job kind "${kind}"`,
   JobPayloadInvalid: 'The queued job payload is not valid',
   JobPayloadUnreadable:
@@ -303,6 +306,7 @@ export const expiredSignIn = () =>
   new DomainError('sign_in_expired', Errors.SignInExpired);
 export const notFound = (message: string) =>
   new DomainError('not_found', message);
+export const gone = (message: string) => new DomainError('gone', message);
 export const conflict = (message: string, issues?: unknown) =>
   new DomainError('conflict', message, issues);
 export const forbidden = (message: string = Errors.Forbidden) =>

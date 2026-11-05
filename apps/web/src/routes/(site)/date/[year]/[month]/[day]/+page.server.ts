@@ -6,6 +6,8 @@ import { loadSlots } from '#lib/server/slots.js';
 import { withTemplateData } from '#lib/server/theme-queries.js';
 import type { PageServerLoad } from './$types';
 
+export const trailingSlash = 'never';
+
 export const load: PageServerLoad = async (event) => {
   const { fetch, params, url, parent } = event;
   const year = Number(params.year),

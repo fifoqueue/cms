@@ -114,3 +114,14 @@ test('an orphan list item is kept as escaped content, not a definition', () => {
 test('superscripts that are not footnote references keep their text', () => {
   expect(htmlToMarkdown('<p>x<sup>2</sup></p>', BASE)).toBe('x2');
 });
+
+test('tables, task lists and embedded sources survive the Markdown alternate', () => {
+  const html =
+    '<table><tr><th>Name</th><th>Value</th></tr><tr><td>A</td><td>1</td></tr></table><ul data-type="taskList"><li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked></label><div><p>Done</p></div></li></ul><video><source src="/movie.mp4"></video><iframe src="https://video.example/watch"></iframe>';
+  const result = htmlToMarkdown(html, BASE);
+
+  expect(result).toContain('| Name | Value |\n| --- | --- |\n| A | 1 |');
+  expect(result).toContain('- [x] Done');
+  expect(result).toContain('[video](https://example.com/movie.mp4)');
+  expect(result).toContain('[iframe](https://video.example/watch)');
+});

@@ -1,13 +1,14 @@
 <script lang="ts">
   import favicon from '#lib/assets/favicon.svg';
   import SiteFonts from '#lib/theme/SiteFonts.svelte';
+  import { page } from '$app/state';
   import type { LayoutProps } from './$types';
 
   let { data, children }: LayoutProps = $props();
 </script>
 
 <!-- Every screen reads in the site's body font (Appearance → Editor → Styles): `font-sans`. -->
-{#if data.uiFont}
+{#if data.uiFont && !page.route.id?.startsWith('/(site)')}
   <SiteFonts fonts={data.uiFont.fonts} />
 {/if}
 

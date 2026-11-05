@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { linkHtmlAttributes, linkRels } from '@cms/sdk';
   import type { MenuItemView } from '#lib/server/public-view.js';
   import { hrefOptions } from '#lib/route-link.js';
   import MenuList from '#lib/theme/MenuList.svelte';
@@ -23,8 +24,10 @@
       <a
         href={item.url}
         {...hrefOptions(item.url)}
-        target={item.newTab ? '_blank' : undefined}
-        rel={item.newTab ? 'noopener' : undefined}
+        {...linkHtmlAttributes({
+          newTab: item.newTab,
+          rel: linkRels(item.rel),
+        })}
         class="hover:text-foreground hover:underline">{item.label}</a
       >
       <!-- eslint-enable svelte/no-navigation-without-resolve -->

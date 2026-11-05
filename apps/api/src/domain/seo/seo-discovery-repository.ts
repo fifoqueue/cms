@@ -1,5 +1,11 @@
 export interface SeoDiscoveryCriteria {
-  kind: 'content' | 'category' | 'tag' | 'author' | 'taxonomy';
+  sort?: 'stable' | 'modified' | 'popular';
+  kind: 'content' | 'category' | 'tag' | 'author' | 'taxonomy' | 'archive';
+  archiveTypes?: readonly {
+    key: string;
+    pluralName: string;
+    description: string;
+  }[];
   page: number;
   pageSize: number;
   /** Normalized public origin, used to recognize an explicit self-canonical URL. */
@@ -12,13 +18,14 @@ export interface SeoDiscoveryRecord {
   title: string;
   description: string;
   updatedAt: Date;
+  images?: { url: string; title?: string; caption?: string }[];
 }
 
 export interface SeoDiscoveryRepository {
   /**
    * Published content, excluding noIndex and canonicals pointing elsewhere. Archives must themselves
    * be indexable and contain published content (including category descendants).
-   * Filter before stable pagination: content in id order (index order, no sort of every path),
+   * Filter before stable pagination: content in UUIDv7 id order (time-ordered, append-only inserts),
    * archives in path order. Total uses exactly the same criteria.
    */
   list(criteria: SeoDiscoveryCriteria): Promise<{

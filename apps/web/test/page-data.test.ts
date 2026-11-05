@@ -6,6 +6,8 @@ import { defineFunctions } from '@cms/sdk/functions';
 import { WebHookBus } from '#lib/server/web-hooks.js';
 import { renderRequest } from '#lib/server/render-request.js';
 import { filterPageData } from '#lib/server/page-data.js';
+import { createContentClient } from '@cms/sdk/client';
+import { renderHtml } from '#lib/theme/html-body.js';
 import {
   DEFAULT_ENTRY_SEO,
   SEO_SETTINGS_DEFAULTS,
@@ -50,12 +52,16 @@ mock.module('#lib/server/frontend-secret.js', () => ({
 
 const { load: loadSiteLayout } =
   await import('#web/routes/(site)/+layout.server.js');
-const { handle: handleRequest } = await import('#web/hooks.server.js');
+const { loadBlockData } = await import('#lib/server/theme-queries.js');
+const { handle: handleRequest, handleError: handlePageError } =
+  await import('#web/hooks.server.js');
 const { load: loadHome } = await import('#web/routes/(site)/+page.server.js');
 const { load: loadPreview } =
   await import('#web/routes/(site)/preview/[token]/+page.server.js');
 const { load: loadEntry } =
   await import('#web/routes/(site)/[slug]/+page.server.js');
+const { GET: markdownDocument } =
+  await import('#web/routes/[slug].md/+server.js');
 const { load: loadCategory } =
   await import('#web/routes/(site)/category/[slug]/+page.server.js');
 const { removeApiSecrets } = await import('#web-env');
@@ -131,6 +137,7 @@ const reading = {
   dateFormat: 'long',
   timeZone: 'UTC',
   cacheSeconds: 0,
+  canonicalOrigin: false,
   frontPagePath: null,
   postsPagePath: null,
 };
@@ -138,6 +145,7 @@ const reading = {
 /** The reading settings the layout API answers with; a test may switch to a static front page. */
 let layoutReading:
   typeof reading | (typeof reading & { frontPagePath: string }) = reading;
+let layoutSeo = SEO_SETTINGS_DEFAULTS;
 
 interface Call {
   method: string;
@@ -214,14 +222,14 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     case '/api/v1/layout':
       return json({
         site: { title: 'Site', description: '', locale: 'en' },
-        seo: SEO_SETTINGS_DEFAULTS,
+        seo: layoutSeo,
         theme,
         reading: layoutReading,
         menus: { primary: null, footer: null },
         widgets: { sidebar: [], footer: [] },
       });
     case '/api/v1/seo':
-      return json(SEO_SETTINGS_DEFAULTS);
+      return json(layoutSeo);
 
     case '/api/v1/resolve': {
       const path = call.url.searchParams.get('path');
@@ -241,7 +249,7 @@ const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     case '/api/v1/theme':
       return json(theme);
     case '/api/v1/reading':
-      return json(reading);
+      return json(layoutReading);
     case '/api/v1/menus/primary':
     case '/api/v1/menus/footer':
       return json(null);
@@ -403,6 +411,8 @@ const publicEvent = (
 beforeEach(() => {
   calls = [];
   override = undefined;
+  layoutReading = reading;
+  layoutSeo = SEO_SETTINGS_DEFAULTS;
 });
 
 describe('public page data', () => {
@@ -441,10 +451,19 @@ describe('public page data', () => {
 
     await functions.web!(scope.context);
     scope.commit();
-    const entry = () =>
-      renderRequest.run({ bus }, () =>
+
+    const entry = async () => {
+      const data = await renderRequest.run({ bus }, () =>
         loadEntry(publicEvent('/hello', { slug: 'hello' })),
       );
+
+      if (data.kind !== 'content') throw new Error('Expected entry');
+
+      return {
+        ...data,
+        content: { ...data.content, html: renderHtml(data.content.html) },
+      };
+    };
 
     expect(await entry()).toMatchObject({
       content: {
@@ -550,7 +569,6 @@ describe('public page data', () => {
       await loadEntry(publicEvent('/search', { slug: 'search' })),
     ];
 
-    expect(pages[0]).toMatchObject({ errorFallback: null });
     // Each page requests its presentation once; the layout requests none.
     expect(
       calls
@@ -995,25 +1013,416 @@ const handleSignedOut = (
     method = 'GET',
     status,
     headers,
+    requestHeaders,
+    cookieNames = [],
+    body = null,
+    renderEntry = false,
+    conditional = false,
   }: {
     route?: string;
     method?: string;
     status: number;
     headers?: Record<string, string>;
+    requestHeaders?: Record<string, string>;
+    cookieNames?: string[];
+    body?: string | null;
+    renderEntry?: boolean;
+    conditional?: boolean;
   },
 ) => {
   const event = Object.assign(publicEvent(path, {}, route), {
-    request: new Request(`http://web.test${path}`, { method }),
+    request: new Request(`http://web.test${path}`, {
+      method,
+      headers: requestHeaders,
+    }),
+    cookies: {
+      getAll: () => cookieNames.map((name) => ({ name, value: 'visitor' })),
+      get: (name: string) =>
+        cookieNames.includes(name) ? 'visitor' : undefined,
+    },
     locals: { token: null, user: null },
   });
 
   return with_request_store({ event, state: {} as never }, () =>
     handleRequest({
       event,
-      resolve: async () => new Response(null, { status, headers }),
+      resolve: async (resolvedEvent) => {
+        if (renderEntry) await loadEntry(resolvedEvent as never);
+        const unchanged =
+          conditional &&
+          (resolvedEvent.request.headers.has('if-none-match') ||
+            resolvedEvent.request.headers.has('if-modified-since'));
+
+        return new Response(unchanged ? null : body, {
+          status: unchanged ? 304 : status,
+          headers,
+        });
+      },
     }),
   );
 };
+
+test('entry negotiation reuses Markdown output and validators, varies caches, and advertises the alternate', async () => {
+  layoutSeo = { ...SEO_SETTINGS_DEFAULTS, siteUrl: 'https://public.test' };
+  override = ({ url }) =>
+    url.pathname === '/api/v1/install/status'
+      ? json({ databaseConfigured: true, setupRequired: false })
+      : undefined;
+  const options = {
+    route: '/(site)/[slug]',
+    status: 200,
+    renderEntry: true,
+    headers: { 'content-type': 'text/html', vary: 'Accept-Encoding' },
+    body: '<article>Rendered entry</article>',
+  };
+  const html = await handleSignedOut('/hello', {
+    ...options,
+    requestHeaders: { accept: 'text/markdown;q=0.4, text/html;q=0.8' },
+  });
+
+  expect(html.headers.get('content-type')).toBe('text/html');
+  expect(html.headers.get('vary')).toBe('Accept-Encoding, Accept');
+  expect(html.headers.get('link')).toContain(
+    '<https://public.test/hello.md>; rel="alternate"; type="text/markdown"',
+  );
+  const alias = await markdownDocument({
+    ...(publicEvent('/hello.md', { slug: 'hello' }) as object),
+    request: new Request('http://web.test/hello.md'),
+  } as never);
+  const expected = await alias.text();
+  const negotiated = await handleSignedOut('/hello', {
+    ...options,
+    requestHeaders: { accept: 'text/html;q=0.2, text/markdown;q=0.9' },
+  });
+
+  expect(await negotiated.text()).toBe(expected);
+  expect(negotiated.headers.get('etag')).toBe(alias.headers.get('etag'));
+  expect(negotiated.headers.get('cache-control')).toBe(
+    alias.headers.get('cache-control'),
+  );
+  expect(negotiated.headers.get('vary')).toBe('Accept');
+  const cached = await handleSignedOut('/hello', {
+    ...options,
+    requestHeaders: {
+      accept: 'text/markdown',
+      'if-none-match': alias.headers.get('etag')!,
+    },
+  });
+
+  expect(cached.status).toBe(304);
+  expect(await cached.text()).toBe('');
+  expect(cached.headers.get('vary')).toBe('Accept');
+  const crossVariant = await handleSignedOut('/hello', {
+    ...options,
+    requestHeaders: {
+      accept: 'text/markdown',
+      'if-none-match': html.headers.get('etag')!,
+    },
+  });
+
+  expect(crossVariant.status).toBe(200);
+  expect(await crossVariant.text()).toBe(expected);
+  const cachedHtml = await handleSignedOut('/hello', {
+    ...options,
+    requestHeaders: {
+      accept: 'text/html',
+      'if-none-match': html.headers.get('etag')!,
+    },
+  });
+
+  expect(cachedHtml.status).toBe(304);
+  expect(cachedHtml.headers.get('vary')).toContain('Accept');
+  expect(cachedHtml.headers.get('link')).toContain('/hello.md');
+
+  for (const [accept, type] of [
+    ['text/markdown;q=0, */*;q=1', 'text/html'],
+    ['text/html;q=0, text/*;q=0.8', 'text/markdown'],
+    ['text/markdown;q=1, text/html;q=1', 'text/html'],
+  ]) {
+    const response = await handleSignedOut('/hello', {
+      ...options,
+      requestHeaders: { accept: accept! },
+    });
+
+    expect(response.headers.get('content-type')).toStartWith(type!);
+  }
+});
+
+test('private, noindex and externally canonicalized entries never expose a Markdown alternate', async () => {
+  layoutSeo = { ...SEO_SETTINGS_DEFAULTS, siteUrl: 'https://public.test' };
+
+  for (const entry of [
+    { ...content('hello'), protected: true, html: '' },
+    { ...content('hello'), seo: { ...publicSeo, noIndex: true } },
+    {
+      ...content('hello'),
+      seo: { ...publicSeo, canonicalUrl: 'https://elsewhere.test/hello' },
+    },
+  ]) {
+    override = ({ url }) => {
+      if (url.pathname === '/api/v1/install/status')
+        return json({ databaseConfigured: true, setupRequired: false });
+      if (url.pathname === '/api/v1/resolve')
+        return json({ content: entry, redirect: false });
+      if (url.pathname === '/api/v1/content/hello') return json(entry);
+
+      return undefined;
+    };
+
+    const options = {
+      route: '/(site)/[slug]',
+      status: 200,
+      renderEntry: true,
+      headers: { 'content-type': 'text/html' },
+      body: '<article>Entry</article>',
+    };
+    const html = await handleSignedOut('/hello', options);
+
+    expect(html.headers.get('link')).toBeNull();
+    const markdown = await handleSignedOut('/hello', {
+      ...options,
+      cookieNames: ['cms_session', 'cms_unlock_entry'],
+      requestHeaders: { accept: 'text/markdown' },
+    });
+
+    expect(markdown.status).toBe(200);
+    expect(markdown.headers.get('content-type')).toBe('text/html');
+    expect(await markdown.text()).toBe('<article>Entry</article>');
+    expect(markdown.headers.get('link')).toBeNull();
+    expect(markdown.headers.get('vary')).toContain('Accept');
+  }
+});
+
+test('unlock credentials make page data and negotiated responses private regardless of content type', async () => {
+  override = ({ url }) =>
+    url.pathname === '/api/v1/install/status'
+      ? json({ databaseConfigured: true, setupRequired: false })
+      : undefined;
+
+  for (const type of ['application/json', 'text/html', 'text/markdown']) {
+    const response = await handleSignedOut('/hello/__data.json', {
+      status: 200,
+      headers: {
+        'content-type': type,
+        'cache-control': 'public, max-age=600',
+        vary: 'Accept',
+        etag: '"inner"',
+        'last-modified': 'Wed, 01 Jan 2025 00:00:00 GMT',
+      },
+      conditional: true,
+      requestHeaders: {
+        'if-none-match': '"inner"',
+        'if-modified-since': 'Wed, 01 Jan 2025 00:00:00 GMT',
+      },
+      cookieNames: ['cms_unlock_00000000-0000-7000-8000-000000000001'],
+      body: 'UNLOCKED-BODY-SENTINEL',
+    });
+
+    expect(await response.text()).toBe('UNLOCKED-BODY-SENTINEL');
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(response.headers.get('vary')).toContain('Cookie');
+    expect(response.headers.get('vary')).toContain('Accept');
+    expect(response.headers.has('etag')).toBe(false);
+    expect(response.headers.has('last-modified')).toBe(false);
+  }
+
+  const invalid = await handleSignedOut('/hello/__data.json', {
+    status: 304,
+    headers: {
+      etag: '"inner"',
+      'last-modified': 'Wed, 01 Jan 2025 00:00:00 GMT',
+    },
+    cookieNames: ['cms_unlock_00000000-0000-7000-8000-000000000001'],
+  });
+
+  expect(invalid.status).toBe(500);
+  expect(invalid.headers.get('cache-control')).toBe('private, no-store');
+  expect(invalid.headers.has('etag')).toBe(false);
+  expect(invalid.headers.has('last-modified')).toBe(false);
+  const headerProof = await handleSignedOut('/hello/__data.json', {
+    status: 200,
+    headers: {
+      'content-type': 'application/json',
+      'cache-control': 'public, max-age=600',
+    },
+    requestHeaders: { 'x-cms-unlock': 'entry.proof' },
+    body: 'UNLOCKED-BODY-SENTINEL',
+  });
+
+  expect(headerProof.headers.get('cache-control')).toBe('private, no-store');
+  expect(headerProof.headers.get('vary')).toContain('x-cms-unlock');
+  const anonymous = await handleSignedOut('/hello/__data.json', {
+    status: 200,
+    headers: {
+      'content-type': 'application/json',
+      'cache-control': 'public, max-age=600',
+    },
+    body: 'LOCKED',
+  });
+
+  expect(anonymous.headers.get('cache-control')).toBe('private, no-store');
+  expect(anonymous.headers.get('vary')).toContain('Cookie');
+});
+
+test('HTML validators revalidate changed pages without caching personalized visitors or discovery documents', async () => {
+  override = ({ url }) =>
+    url.pathname === '/api/v1/install/status'
+      ? json({ databaseConfigured: true, setupRequired: false })
+      : undefined;
+  const options = {
+    status: 200,
+    headers: { 'content-type': 'text/html' },
+    body: '<article>Published</article>',
+  };
+  const first = await handleSignedOut('/validators', options);
+  const etag = first.headers.get('etag')!;
+
+  expect(etag).toMatch(/^W\/"[a-f0-9]+"$/);
+  expect(first.headers.get('last-modified')).toBeTruthy();
+  expect(first.headers.get('cache-control')).toContain('must-revalidate');
+  expect(first.headers.get('vary') ?? '').not.toMatch(/cookie/i);
+  const cached = await handleSignedOut('/validators', {
+    ...options,
+    cookieNames: ['_ga'],
+    requestHeaders: { 'if-none-match': etag },
+  });
+
+  expect(cached.status).toBe(304);
+  expect(await cached.text()).toBe('');
+  const changed = await handleSignedOut('/validators', {
+    ...options,
+    body: '<article>Updated</article>',
+    requestHeaders: { 'if-none-match': etag },
+  });
+
+  expect(changed.status).toBe(200);
+  expect(await changed.text()).toContain('Updated');
+
+  for (const cookie of [
+    'cms_session',
+    '__Host-cms_session',
+    'cms_unlock_entry',
+    'cms_commenter',
+    'cms_commenter_proof',
+  ]) {
+    const personal = await handleSignedOut('/validators', {
+      ...options,
+      cookieNames: [cookie],
+      requestHeaders: { 'if-none-match': etag },
+    });
+
+    expect(personal.status).toBe(200);
+    expect(personal.headers.get('cache-control')).toBe('private, no-store');
+    expect(personal.headers.has('etag')).toBe(false);
+  }
+
+  const data = await handleSignedOut('/hello/__data.json', {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+
+  expect(data.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  expect(data.headers.has('etag')).toBe(false);
+});
+
+test('canonical origin redirects safe public requests only and ignores untrusted forwarding headers', async () => {
+  layoutReading = { ...reading, canonicalOrigin: true };
+  layoutSeo = { ...SEO_SETTINGS_DEFAULTS, siteUrl: 'https://public.test' };
+  const options = { status: 200, headers: { 'content-type': 'text/html' } };
+
+  for (const method of ['GET', 'HEAD']) {
+    const response = await handleSignedOut('/Hello?q=a%20b', {
+      ...options,
+      method,
+      requestHeaders: {
+        'x-forwarded-host': 'public.test',
+        'x-forwarded-proto': 'https',
+      },
+    });
+
+    expect(response.status).toBe(301);
+    expect(response.headers.get('location')).toBe(
+      'https://public.test/Hello?q=a%20b',
+    );
+  }
+
+  for (const path of ['/login', '/health', '/healthz', '/preview/token']) {
+    const response = await handleSignedOut(path, options);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.has('location')).toBe(false);
+  }
+
+  layoutReading = reading;
+  expect((await handleSignedOut('/Hello', options)).status).toBe(200);
+});
+
+test('related blocks request shared terms, exclude the entry and project unique unlocked links', async () => {
+  override = ({ url }) => {
+    if (url.pathname !== '/api/v1/content') return undefined;
+    const shared = content('shared');
+    const locked = { ...content('locked'), protected: true };
+    const items = [shared, locked].map(
+      ({ html: _html, fields: _fields, ...item }) => item,
+    );
+
+    return json({ items, total: 2, page: 1, pageSize: 3 });
+  };
+
+  const data = await loadBlockData(
+    createContentClient({ baseUrl: 'http://cms.test', fetch: fakeFetch }),
+    [
+      {
+        name: 'related-posts',
+        attrs: { taxonomy: 'category', count: 3 },
+        children: [],
+      },
+    ],
+    {
+      entry: {
+        id: 'id-current',
+        author: null,
+        type: 'post',
+        categories: [{ slug: 'news' }, { slug: 'guides' }],
+      },
+      month: null,
+      authors: [],
+    },
+  );
+
+  expect(data.related['category:3']).toEqual([
+    { title: 'Title shared', path: '/shared' },
+  ]);
+  expect(calls.map(({ url }) => url.searchParams.get('category'))).toEqual([
+    'news',
+    'guides',
+  ]);
+  expect(
+    calls.every(({ url }) => url.searchParams.get('exclude') === 'id-current'),
+  ).toBe(true);
+});
+
+test('removed entries retain HTTP 410 and error template data is loaded only for failed pages', async () => {
+  const success = await loadEntry(publicEvent('/hello', { slug: 'hello' }));
+
+  expect(success.kind).toBe('content');
+  override = ({ url }) =>
+    url.pathname === '/api/v1/resolve'
+      ? json({ error: { code: 'gone', message: 'Content not found' } }, 410)
+      : undefined;
+  await expect(
+    loadEntry(publicEvent('/removed', { slug: 'removed' })),
+  ).rejects.toMatchObject({
+    status: 410,
+  });
+  expect(
+    await handlePageError({
+      event: publicEvent('/removed'),
+      kind: 'app',
+      error: { status: 410, message: 'Not found' },
+    }),
+  ).toMatchObject({ status: 410, themeError: { template: [], parts: [] } });
+});
 
 test('pages are framed only by the site, admin never, and keep their own opener group', async () => {
   override = ({ url }) =>
@@ -1046,6 +1455,21 @@ test('pages are framed only by the site, admin never, and keep their own opener 
   });
 
   expect(feed.headers.has('x-frame-options')).toBe(false);
+  expect(feed.headers.get('x-robots-tag')).toBe('noindex, follow');
+  const jsonFeed = await handleSignedOut('/feed.json', {
+    route: '/feed.json',
+    status: 200,
+    headers: { 'content-type': 'application/feed+json; charset=utf-8' },
+  });
+
+  expect(jsonFeed.headers.get('x-robots-tag')).toBe('noindex, follow');
+  const image = await handleSignedOut('/media/image.png', {
+    route: '/media/[...key]',
+    status: 200,
+    headers: { 'content-type': 'image/png' },
+  });
+
+  expect(image.headers.has('x-robots-tag')).toBe(false);
 });
 
 test('hidden login masks protected admin screens while visible login uses the configured path', async () => {

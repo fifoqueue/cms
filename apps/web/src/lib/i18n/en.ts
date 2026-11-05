@@ -112,6 +112,7 @@ export const apiErrors: ApiErrorCatalog = {
     'Templates for posts, articles and pages are required',
   MenuLinkInvalid: 'Use a web address (https://…) or a path on this site (/…)',
   MenuTargetMissing: 'Choose what the menu item links to',
+  LinkRelInvalid: 'Link rel may only hold nofollow, sponsored and ugc',
   LoginPathInvalid:
     'Use an available site path such as /login, without a query or reserved route',
   FieldOptionsRequired: 'Add at least one choice',
@@ -436,10 +437,13 @@ export const apiErrors: ApiErrorCatalog = {
 
 /** Text for every web server error, by its `Errors` key in `#lib/errors.js`. */
 export const webErrors: WebErrorCatalog = {
+  HtmlPayloadMissing: 'The page could not be restored. Please reload it.',
   NotFound: 'Not found',
   Forbidden: 'You do not have permission to view this page',
   InvalidContentPath: 'Invalid content path',
   SitemapIndexTooLarge: 'The sitemap index would exceed the sitemap limit',
+  SitemapEntryTooLarge:
+    'A sitemap entry exceeds the uncompressed sitemap size limit',
   FormInvalid: 'Please fix the fields below',
   PermalinkPatternsInvalid: 'Please fix the permalink patterns',
   PasswordMismatch: 'Passwords do not match.',
@@ -969,7 +973,6 @@ export const en = {
   menuDelete: 'Delete menu',
   menuLabel: 'Navigation label',
   menuUrl: 'URL',
-  menuNewTab: 'New tab',
   menuIndent: 'Make sub-item',
   menuOutdent: 'Move out of sub-items',
   menuEmpty: 'This menu has no items yet.',
@@ -1339,6 +1342,18 @@ export const en = {
   seoTitleTemplateHelp: (example: string) =>
     `Use {title} (required) and {site}. Example: “${example}”`,
   seoHomeTitle: 'Home page title',
+  seoHomeHelp:
+    'Applies to /, including a static front page. The title is shown without the title template. The posts page uses its own entry SEO.',
+  seoAlternateName: 'Alternative site name',
+  seoCreator: 'Default author X (Twitter) handle',
+  seoNoSnippet: 'Hide search snippets',
+  seoInherit: 'Use site setting',
+  seoArchiveOverrides: 'Archive SEO overrides',
+  seoArchiveKey: 'Author slug or content type key',
+  seoArchiveHelp:
+    'Choose an author or content-type archive and enter its slug or key. Empty fields use the archive defaults.',
+  seoOriginWarning:
+    'Set the site URL to publish canonical links, og:url and featured sharing images. Without it, only explicitly configured sharing image URLs are used.',
   seoShownAs: (title: string) => `Shown as “${title}”.`,
   seoHomeDescription: 'Home page description',
   seoEntityType: 'The site represents',
@@ -1379,6 +1394,11 @@ export const en = {
   seoLlmsToggle: 'Publish llms.txt',
   seoLlmsToggleHelp: 'A plain-text guide to the site for AI tools.',
   seoLlmsIntro: 'llms.txt introduction',
+  seoBotOverrides: 'Bot overrides (one Bot: allow or Bot: disallow per line)',
+  seoExtraRobots: 'Extra robots.txt rules',
+  seoFeedsEnabled: 'Publish feeds independently of search indexing',
+  seoIndexNow: 'Notify search engines with IndexNow',
+  seoWebSubHub: 'WebSub hub URL',
   seoSave: 'Save SEO settings',
   permalinksTitle: 'Permalinks',
   permalinksHelp:
@@ -1536,6 +1556,9 @@ export const en = {
 
   // Settings: page caching and single sign-on
   readingCacheSeconds: 'Page caching (seconds)',
+  readingCanonicalOrigin: 'Redirect to the site address',
+  readingCanonicalOriginHelp:
+    'Send public visits to the website address configured in SEO settings.',
   readingCacheHelp:
     'How long a CDN or proxy may serve public pages to visitors who are not signed in. 0 turns it off.',
   settingsSso: 'Single sign-on',
@@ -1578,6 +1601,7 @@ export const en = {
   themeSchemeDark: 'Switch to dark mode',
   themeSearchPanel: 'What are you looking for?',
   themeSearchClose: 'Close search',
+  themeRelatedPosts: 'Related posts',
   themeNotFoundHelp:
     'The page you are looking for does not exist or has moved. Try searching instead.',
   adminBar: 'Toolbar',
@@ -1623,6 +1647,7 @@ export const en = {
         copyright: 'Copyright',
         'site-logo': 'Site logo',
         'post-navigation': 'Previous and next',
+        'related-posts': 'Related posts',
         buttons: 'Buttons',
         button: 'Button',
         'social-links': 'Social links',
@@ -1920,6 +1945,15 @@ export const en = {
     count === 1 ? 'Uploading 1 file…' : `Uploading ${count} files…`,
   linkUrl: 'Link address',
   linkRemove: 'Remove link',
+  linkRel: 'Link relationship',
+  linkRelName: (rel: string) =>
+    (
+      ({
+        nofollow: 'Don’t follow (nofollow)',
+        sponsored: 'Sponsored (sponsored)',
+        ugc: 'User-generated (ugc)',
+      }) as Record<string, string>
+    )[rel] ?? rel,
   imageSize: 'Size',
   sizeThumbnail: 'Thumbnail',
   sizeMedium: 'Medium',

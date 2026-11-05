@@ -1,7 +1,7 @@
 <script lang="ts">
   import { saveSnapshot } from '#lib/admin/save-snapshot.js';
   import { deserialize, enhance } from '$app/forms';
-  import { MENU_LOCATIONS } from '@cms/sdk';
+  import { MENU_LOCATIONS, linkRels } from '@cms/sdk';
   import type { MenuItem } from '@cms/sdk';
   import { default as ArrowDown } from '@lucide/svelte/icons/arrow-down';
   import { default as ArrowLeft } from '@lucide/svelte/icons/arrow-left';
@@ -11,6 +11,7 @@
   import { default as Search } from '@lucide/svelte/icons/search';
   import { default as Trash2 } from '@lucide/svelte/icons/trash-2';
   import FormMessage from '#lib/admin/FormMessage.svelte';
+  import LinkOptions from '#lib/admin/LinkOptions.svelte';
   import { confirmLeave } from '#lib/admin/unsaved.js';
   import {
     indent,
@@ -249,6 +250,7 @@
       label: label.trim(),
       kind,
       newTab: false,
+      rel: '',
       depth: 0,
       ...(kind === 'custom' && { url: url.trim() }),
       ...(kind === 'content' && { contentId }),
@@ -394,10 +396,15 @@
                     >{target(row)}</span
                   >
                 {/if}
-                <label class="flex items-center gap-1 text-xs">
-                  <input type="checkbox" bind:checked={row.newTab} />
-                  {m.menuNewTab}
-                </label>
+                <LinkOptions
+                  class="text-xs"
+                  newTab={row.newTab}
+                  rel={linkRels(row.rel)}
+                  onchange={({ newTab, rel }) => {
+                    row.newTab = newTab;
+                    row.rel = rel.join(' ');
+                  }}
+                />
                 <span class="ml-auto flex gap-1">
                   <Button
                     type="button"

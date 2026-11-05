@@ -1,5 +1,5 @@
 // Public HTML to readable Markdown for the `/<slug>.md` alternate. Only the published HTML is
-// read; scripts, styles, embeds and unsafe link schemes are dropped, and every piece of text is
+// read; scripts, styles and unsafe link schemes are dropped, and every piece of text is
 // escaped so content cannot inject Markdown links, raw HTML or block markup.
 import { parseFragment } from 'parse5';
 import type { DefaultTreeAdapterTypes } from 'parse5';
@@ -14,14 +14,9 @@ const SKIPPED = new Set([
   'style',
   'template',
   'noscript',
-  'iframe',
-  'object',
-  'embed',
   'svg',
   'math',
   'canvas',
-  'audio',
-  'video',
   'head',
   'title',
   'meta',
@@ -237,6 +232,31 @@ const inlineNode = (node: Node, context: Context): string => {
   const children = () => inline(node.childNodes, context);
 
   switch (node.tagName) {
+    case 'iframe':
+    case 'object':
+    case 'embed':
+    case 'audio':
+    case 'video': {
+      const sources = [
+        attr(node, node.tagName === 'object' ? 'data' : 'src'),
+        ...node.childNodes
+          .filter(isElement)
+          .filter((child) => child.tagName === 'source')
+          .map((child) => attr(child, 'src')),
+      ];
+      const urls = [
+        ...new Set(
+          sources.map(context.url).filter((url): url is string => Boolean(url)),
+        ),
+      ];
+
+      return urls
+        .map(
+          (url) =>
+            `[${markdownInline(attr(node, 'title') || node.tagName)}](${url})`,
+        )
+        .join(' ');
+    }
     case 'br':
       return '\n';
     case 'strong':
@@ -319,6 +339,14 @@ const list = (element: Element, context: Context) => {
     .filter((child) => child.tagName === 'li')
     .map((item) => {
       const marker = ordered ? `${number++}. ` : '- ';
+      const checkbox = descendants(item).find(
+        (child) =>
+          child.tagName === 'input' && attr(child, 'type') === 'checkbox',
+      );
+      const task = attr(item, 'data-type') === 'taskItem' || checkbox;
+      const checked =
+        attr(item, 'data-checked') === 'true' ||
+        (checkbox && attr(checkbox, 'checked') !== undefined);
       const indent = ' '.repeat(marker.length);
       const body = blocks(item.childNodes, context)
         .join('\n')
@@ -326,9 +354,45 @@ const list = (element: Element, context: Context) => {
         .map((line, index) => (index === 0 || !line ? line : indent + line))
         .join('\n');
 
-      return `${marker}${body}`.trimEnd();
+      return `${marker}${task ? (checked ? '[x] ' : '[ ] ') : ''}${body}`.trimEnd();
     })
     .join('\n');
+};
+
+const descendants = (element: Element): Element[] =>
+  element.childNodes
+    .filter(isElement)
+    .flatMap((child) => [child, ...descendants(child)]);
+
+const table = (element: Element, context: Context) => {
+  const rows = descendants(element)
+    .filter((child) => child.tagName === 'tr')
+    .map((row) =>
+      row.childNodes
+        .filter(isElement)
+        .filter((cell) => cell.tagName === 'th' || cell.tagName === 'td')
+        .map((cell) =>
+          singleLine(inline(cell.childNodes, context)).replace(
+            /(?<!\\)\|/g,
+            '\\|',
+          ),
+        ),
+    );
+
+  if (!rows.length) return '';
+  const width = Math.max(...rows.map((row) => row.length));
+  const line = (cells: string[]) =>
+    `| ${Array.from({ length: width }, (_, i) => cells[i] ?? '').join(' | ')} |`;
+  const header = descendants(element)
+    .find((child) => child.tagName === 'tr')
+    ?.childNodes.some((child) => isElement(child) && child.tagName === 'th');
+  const heading = header ? rows.shift()! : [];
+
+  return [
+    line(heading),
+    line(Array<string>(width).fill('---')),
+    ...rows.map(line),
+  ].join('\n');
 };
 
 const block = (element: Element, context: Context): string => {
@@ -344,6 +408,8 @@ const block = (element: Element, context: Context): string => {
   }
 
   switch (element.tagName) {
+    case 'table':
+      return table(element, context);
     case 'ul':
     case 'ol':
       return list(element, context);
@@ -421,12 +487,17 @@ export const htmlToMarkdown = (html: string, base: string) => {
  * URL, publication and update dates, public byline) and the converted body. No editor
  * document, plugin meta or admin data is read. `origin` is the configured site origin or ''.
  */
-export const contentMarkdown = (content: PublicContent, origin: string) => {
+export const contentMarkdown = (
+  content: PublicContent,
+  origin: string,
+  lang = 'und',
+) => {
   const base = `${origin || LOCAL_ORIGIN}${content.path}`;
-  const canonical = markdownUrl(content.path, base) ?? content.path;
+  const canonical =
+    markdownUrl(content.seo.canonicalUrl || content.path, base) ?? content.path;
   const author = content.seo.authorName
     ? markdownInline(content.seo.authorName)
-    : '';
+    : markdownInline(content.author?.name ?? '');
   const authorUrl = markdownUrl(content.seo.authorUrl, base);
   const facts = [
     `- Canonical: [${markdownInline(canonical)}](${canonical})`,
@@ -435,8 +506,25 @@ export const contentMarkdown = (content: PublicContent, origin: string) => {
     author && `- Author: ${authorUrl ? `[${author}](${authorUrl})` : author}`,
   ];
   const summary = singleLine(content.excerpt);
+  // JSON quoted scalars and arrays are valid YAML and cannot inject mapping keys.
+  const metadata = {
+    title: content.title,
+    canonical,
+    published: content.publishedAt,
+    updated: content.updatedAt,
+    author: content.seo.authorName || content.author?.name || '',
+    categories: content.categories.map((term) => term.name),
+    tags: content.tags.map((term) => term.name),
+    type: content.type,
+    lang,
+    description: content.seo.description || content.excerpt,
+  };
+  const frontmatter = `---\n${Object.entries(metadata)
+    .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+    .join('\n')}\n---`;
 
   return `${[
+    frontmatter,
     `# ${markdownInline(content.title).trim()}`,
     summary && `> ${markdownInline(summary)}`,
     facts.filter(Boolean).join('\n'),

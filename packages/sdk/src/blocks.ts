@@ -6,10 +6,18 @@
  * editor share one definition. Pure and browser-safe.
  */
 import { Errors } from '#sdk/errors';
+import { LINK_REL, linkRelSchema } from '#sdk/links';
 import { CONTENT_SLUG } from '#sdk/slugs';
 
 export type BlockAttr =
-  | { type: 'text'; max: number; default: string; pattern?: RegExp }
+  | {
+      type: 'text';
+      max: number;
+      default: string;
+      pattern?: RegExp;
+      /** Stored form of a valid value. */
+      normalize?: (value: string) => string;
+    }
   | { type: 'number'; min: number; max: number; default: number }
   | { type: 'boolean'; default: boolean }
   | { type: 'enum'; options: readonly string[]; default: string }
@@ -79,7 +87,16 @@ export const BLOCKS = {
   group: {
     attrs: {
       tagName: choice(
-        ['div', 'header', 'main', 'footer', 'section', 'aside', 'nav'],
+        [
+          'div',
+          'header',
+          'main',
+          'footer',
+          'section',
+          'article',
+          'aside',
+          'nav',
+        ],
         'div',
       ),
       /** constrained: centred at `width`; flex: a row; grid: equal columns; stack: a column. */
@@ -198,6 +215,12 @@ export const BLOCKS = {
   comments: { attrs: {} },
   /** Links to the previous and next entry of the same type. */
   'post-navigation': { attrs: { showTitle: flag(true) } },
+  'related-posts': {
+    attrs: {
+      taxonomy: choice(['category', 'tag'], 'category'),
+      count: { type: 'number', min: 1, max: 12, default: 3 },
+    },
+  },
   breadcrumbs: { attrs: {} },
   query: {
     attrs: {
@@ -253,6 +276,14 @@ export const BLOCKS = {
       url: link,
       style: choice(['fill', 'outline'], 'fill'),
       newTab: flag(false),
+      /** Chosen `rel` tokens (`LINK_RELS`); a new tab adds `noopener noreferrer` when rendered. */
+      rel: {
+        type: 'text',
+        max: 64,
+        default: '',
+        pattern: LINK_REL,
+        normalize: (value) => linkRelSchema.parse(value),
+      },
     },
     parent: ['buttons'],
   },
@@ -525,7 +556,10 @@ export const parseBlocks = (
         const problem = attrIssue(attr, value);
 
         if (problem) issues.push({ path: `${at}.attrs.${key}`, ...problem });
-        attrs[key] = value;
+        attrs[key] =
+          !problem && attr.type === 'text' && attr.normalize
+            ? attr.normalize(value as string)
+            : value;
       }
 
       if (name === 'template-part' && !attrs.slug)

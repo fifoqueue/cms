@@ -6,16 +6,24 @@ import type {
 } from '#sdk/seo';
 
 /** Published entry metadata, field by field; editorial keywords are not public. */
-export const publicEntrySeoFields = (seo: PublicEntrySeo): PublicEntrySeo => ({
+export const publicEntrySeoFields = (
+  seo: PublicEntrySeo,
+  passwordProtected = false,
+  unlocked = false,
+): PublicEntrySeo => ({
   title: seo.title,
-  description: seo.description,
+  description: passwordProtected && !unlocked ? '' : seo.description,
   canonicalUrl: seo.canonicalUrl,
-  noIndex: seo.noIndex,
+  noIndex: passwordProtected || seo.noIndex,
   noFollow: seo.noFollow,
+  noSnippet: seo.noSnippet,
+  maxSnippet: seo.maxSnippet,
+  maxImagePreview: seo.maxImagePreview,
   imageUrl: seo.imageUrl,
   imageAlt: seo.imageAlt,
   socialTitle: seo.socialTitle,
-  socialDescription: seo.socialDescription,
+  socialDescription:
+    passwordProtected && !unlocked ? '' : seo.socialDescription,
   schemaType: seo.schemaType,
   authorName: seo.authorName,
   authorUrl: seo.authorUrl,
@@ -32,6 +40,18 @@ export const publicSeoSettingsFields = (
   settings: PublicSeoSettings,
 ): PublicSeoSettings => ({
   siteUrl: settings.siteUrl,
+  alternateName: settings.alternateName,
+  twitterCreator: settings.twitterCreator,
+  archiveOverrides: settings.archiveOverrides.map(
+    ({ kind, key, title, description, imageUrl, noIndex }) => ({
+      kind,
+      key,
+      title,
+      description,
+      imageUrl,
+      noIndex,
+    }),
+  ),
   titleTemplate: settings.titleTemplate,
   homeTitle: settings.homeTitle,
   homeDescription: settings.homeDescription,
@@ -47,6 +67,12 @@ export const publicSeoSettingsFields = (
   indexTags: settings.indexTags,
   allowAiSearch: settings.allowAiSearch,
   allowAiTraining: settings.allowAiTraining,
+  aiBotOverrides: settings.aiBotOverrides,
+  extraRobotsRules: settings.extraRobotsRules,
+  feedsEnabled: settings.feedsEnabled,
+  indexNowEnabled: settings.indexNowEnabled,
+  indexNowKey: settings.indexNowKey,
+  webSubHub: settings.webSubHub,
   llmsTxtEnabled: settings.llmsTxtEnabled,
   llmsIntro: settings.llmsIntro,
   googleVerification: settings.googleVerification,

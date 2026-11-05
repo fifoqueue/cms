@@ -555,6 +555,7 @@
                 REPLY_FORM,
               )}
               data-reply
+              rel="nofollow"
               aria-controls={REPLY_FORM}
               aria-expanded={reply?.host === comment.id}
               class={buttonVariants({

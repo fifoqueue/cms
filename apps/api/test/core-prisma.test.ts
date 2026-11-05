@@ -41,6 +41,7 @@ import { PrismaPublishedContentRepository } from '#api/infra/prisma/published-co
 import { PrismaRateLimitStore } from '#api/infra/prisma/rate-limit-store';
 import { PrismaRevisionRepository } from '#api/infra/prisma/revision-repository';
 import { PrismaSearchSource } from '#api/infra/prisma/search-source';
+import { PrismaSeoDiscoveryRepository } from '#api/infra/prisma/seo-discovery-repository';
 import { PrismaSettingsRepository } from '#api/infra/prisma/settings-repository';
 import { PrismaSiteSettingsWriter } from '#api/infra/prisma/site-settings';
 import { PrismaTaskLeases } from '#api/infra/prisma/task-leases';
@@ -79,6 +80,71 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
   }, SLOW);
 
   afterAll(() => drop(), SLOW);
+
+  test('sitemap SQL excludes password-only content and terms, then derives term lastmod from public content', async () => {
+    const { content } = services();
+    const entry = await content.create(
+      {
+        type: 'post',
+        title: 'Private discovery',
+        slug: 'private-discovery',
+        status: 'published',
+        password: 'locked',
+        document: textDocument('Hidden'),
+      },
+      ADMIN,
+    );
+    const id = crypto.randomUUID();
+    const term = await db.taxonomyTerm.create({
+      data: {
+        id,
+        taxonomy: 'category',
+        slug: `discovery-${id}`,
+        name: 'Discovery',
+        description: '',
+        createdAt: new Date('2025-01-01'),
+        updatedAt: new Date('2025-01-01'),
+      },
+    });
+
+    await db.contentTerm.create({
+      data: { contentId: entry.id, termId: term.id },
+    });
+    const repository = new PrismaSeoDiscoveryRepository(db);
+    const query = { page: 1, pageSize: 1000, siteUrl: 'https://example.test' };
+
+    expect(
+      (await repository.list({ ...query, kind: 'content' })).items.some(
+        (item) => item.path === entry.path,
+      ),
+    ).toBe(false);
+    expect(
+      (
+        await repository.list({
+          ...query,
+          kind: 'category',
+          sort: 'popular',
+          pageSize: 10,
+        })
+      ).items.some((item) => item.title === 'Discovery'),
+    ).toBe(false);
+    const updatedAt = new Date('2026-10-10T10:00:00.000Z');
+
+    await db.content.update({
+      where: { id: entry.id },
+      data: { passwordHash: null, updatedAt },
+    });
+    const terms = await repository.list({ ...query, kind: 'category' });
+
+    expect(
+      terms.items.find((item) => item.title === 'Discovery')?.updatedAt,
+    ).toEqual(updatedAt);
+    expect(
+      (await repository.list({ ...query, kind: 'content' })).items.some(
+        (item) => item.path === entry.path,
+      ),
+    ).toBe(true);
+  });
 
   test(
     'database cleanup retains revisions and watermarks, removes trash paths and enqueues search deletion',
@@ -985,6 +1051,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         path: child.path,
         parentId: null,
         html: '<p>Visible child</p>',
+        parents: [],
         fields: {},
         featuredImage: { alt: 'Alt "<&한글>', width: 1200 },
       });
@@ -1026,6 +1093,7 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         data: { status: 'published', passwordHash: 'protected' },
       });
       expect((await reader.getById(child.id))?.parentId).toBeNull();
+      expect((await reader.getById(child.id))?.parents).toEqual([]);
       await db.content.update({
         where: { id: parent.id },
         data: { passwordHash: null, trashedAt: systemClock.now() },
@@ -1038,6 +1106,9 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
         data: { trashedAt: null },
       });
       expect((await reader.getById(child.id))?.parentId).toBe(parent.id);
+      expect((await reader.getById(child.id))?.parents).toEqual([
+        { id: parent.id, title: parent.title, path: parent.path },
+      ]);
       await db.content.update({
         where: { id: parent.id },
         data: { status: 'private', trashedAt: systemClock.now() },
@@ -1455,6 +1526,56 @@ describe.skipIf(!serverUrl)('core Prisma adapters on MariaDB', () => {
       expect((await content.get(child.id, ADMIN)).path).toBe(
         '/tree-destination/tree-renamed/tree-leaf',
       );
+      expect(
+        await resolver.resolve({
+          path: '/TREE-DESTINATION/TREE-RENAMED/TREE-LEAF',
+        }),
+      ).toMatchObject({ content: { id: child.id }, redirect: true });
+      await db.$executeRaw`INSERT INTO content_paths (path_hash, path, content_id)
+        VALUES (UNHEX(SHA2('/legacy-path-write', 256)), '/legacy-path-write', ${child.id})`;
+      await content.update(
+        child.id,
+        inputOf(await content.get(child.id, ADMIN)),
+        ADMIN,
+      );
+      expect(await paths.findCaseInsensitive('/LEGACY-PATH-WRITE')).toEqual({
+        contentId: child.id,
+        current: false,
+      });
+      const plan = await db.$queryRaw<{ key: string | null }[]>`
+        EXPLAIN SELECT content_id FROM content_paths
+        WHERE folded_hash = UNHEX(SHA2('/legacy-path-write', 256))`;
+
+      expect(plan[0]!.key).toBe('content_paths_folded_hash_idx');
+      await content.trash(child.id, ADMIN);
+      await expect(
+        resolver.resolve({ path: '/tree-parent/tree-leaf' }),
+      ).rejects.toMatchObject({ code: 'gone' });
+      await content.restore(child.id, ADMIN);
+      expect(
+        await resolver.resolve({ path: '/legacy-path-write' }),
+      ).toMatchObject({ content: { id: child.id } });
+      const privateChild = await content.update(
+        child.id,
+        {
+          ...inputOf(await content.get(child.id, ADMIN)),
+          status: 'draft',
+          slug: 'never-public-leaf',
+        },
+        ADMIN,
+      );
+
+      await content.trash(child.id, ADMIN);
+      await expect(
+        resolver.resolve({ path: privateChild.path }),
+      ).rejects.toMatchObject({ code: 'not_found' });
+      await content.remove(child.id, ADMIN);
+      await expect(
+        resolver.resolve({ path: privateChild.path }),
+      ).rejects.toMatchObject({ code: 'not_found' });
+      await expect(
+        resolver.resolve({ path: '/legacy-path-write' }),
+      ).rejects.toMatchObject({ code: 'gone' });
     } finally {
       await paths.saveSettings(settings);
     }
