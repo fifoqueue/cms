@@ -127,6 +127,24 @@
 
 <svelte:head><title>{m.settingsSso}</title></svelte:head>
 
+{#snippet registered(id: string, label: string, uri: string, copy: string)}
+  <div class="grid gap-2">
+    <Label for={id}>{label}</Label>
+    {#if uri}
+      <div class="flex flex-wrap items-center gap-2">
+        <code {id} class="rounded bg-muted p-2 text-sm break-all select-all"
+          >{uri}</code
+        >
+        <CopyButton text={uri} label={copy} />
+      </div>
+    {:else}
+      <p {id} class="text-sm text-destructive">
+        {m.ssoRedirectMissing}
+      </p>
+    {/if}
+  </div>
+{/snippet}
+
 {#snippet problem(item: Item, id: string, field: SsoProviderField)}
   {#if item.issues[field]}
     <p id="{id}-error" class="text-xs text-destructive">{item.issues[field]}</p>
@@ -155,23 +173,18 @@
       <!-- The default button: Enter in a field saves instead of removing the first provider. -->
       <button type="submit" class="sr-only" tabindex="-1" aria-hidden="true"
       ></button>
-      <div class="grid gap-2">
-        <Label for="redirectUri">{m.ssoRedirectUri}</Label>
-        {#if data.redirectUri}
-          <div class="flex flex-wrap items-center gap-2">
-            <code
-              id="redirectUri"
-              class="rounded bg-muted p-2 text-sm break-all select-all"
-              >{data.redirectUri}</code
-            >
-            <CopyButton text={data.redirectUri} label={m.ssoCopyRedirectUri} />
-          </div>
-        {:else}
-          <p id="redirectUri" class="text-sm text-destructive">
-            {m.ssoRedirectMissing}
-          </p>
-        {/if}
-      </div>
+      {@render registered(
+        'redirectUri',
+        m.ssoRedirectUri,
+        data.redirectUri,
+        m.ssoCopyRedirectUri,
+      )}
+      {@render registered(
+        'backchannelLogoutUri',
+        m.ssoBackchannelLogoutUri,
+        data.backchannelLogoutUri,
+        m.ssoCopyBackchannelLogoutUri,
+      )}
 
       {#if !items.length}
         <p class="text-sm text-muted-foreground">{m.ssoProvidersEmpty}</p>

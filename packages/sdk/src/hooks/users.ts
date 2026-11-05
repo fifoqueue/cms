@@ -13,7 +13,9 @@ export interface UserActionHooks {
   'user.passwordChanged': { user: UserProfile };
   'user.signedOut': {
     user: UserProfile;
-    scope: 'session' | 'other' | 'all';
+    /** `provider`: the identity provider ended these sessions via back-channel logout. */
+    scope: 'session' | 'other' | 'all' | 'provider';
+    /** For `provider`, the affected user's own id; no local actor exists. */
     actorId: string;
   };
   'user.created': AdminUserSummary;

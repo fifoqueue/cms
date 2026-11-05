@@ -18,6 +18,32 @@ import type {
 import { conflict, unauthorized } from '#api/shared/errors';
 import { takenSlugs } from '#test/support/memory-rows';
 import { MemoryPasswordTokens } from '#test/support/memory-security';
+import type {
+  SsoLogoutSessions,
+  VerifiedLogout,
+} from '#api/domain/auth/sso-logout-ports';
+
+export class MemorySsoLogoutSessions implements SsoLogoutSessions {
+  constructor(private readonly sessions: MemorySessions) {}
+
+  async deleteMatching(logout: VerifiedLogout, cutoff: Date) {
+    const users = new Set<string>();
+
+    for (const [key, row] of this.sessions.rows) {
+      if (
+        row.oidc?.issuer !== logout.issuer ||
+        (logout.sid !== undefined && row.oidc.sid !== logout.sid) ||
+        (logout.subject !== undefined && row.oidc.subject !== logout.subject) ||
+        row.createdAt > cutoff
+      )
+        continue;
+      this.sessions.rows.delete(key);
+      users.add(row.userId);
+    }
+
+    return [...users];
+  }
+}
 
 export class MemorySsoAccessTransactions implements SsoAccessTransactions {
   private tail: Promise<unknown> = Promise.resolve();

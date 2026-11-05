@@ -54,6 +54,30 @@ page-render 조회와 웹 표현 훅을 실행하지 않으며 모든 슬롯을 
 로그인 화면으로 클라이언트 이동할 때도 이전 공개 페이지의 슬롯을 재사용하지 않습니다.
 오류 페이지에는 기존과 같이 슬롯이 없습니다.
 
+## 교차 사이트 폼 검사(CSRF)
+
+교차 사이트 폼 검사는 `hooks.server.ts` sequence의 첫 핸들 `csrf`(`#lib/server/csrf.js`)
+한 곳에서 합니다. SvelteKit 자체 폼 검사는 `vite.config.ts`의 `csrf.trustedOrigins: ['*']`로
+꺼져 있으므로 검사를 다른 곳으로 옮기거나 이 핸들보다 앞에 세션·쿠키를 읽는 핸들을 두지 마세요.
+검사는 SvelteKit과 같습니다. 개발 서버(`$app/env`의 `dev`)에서는 하지 않고, 운영 서버에서 POST·PUT·PATCH·DELETE
+요청의 content-type이 없거나 폼 형식(`application/x-www-form-urlencoded`, `multipart/form-data`,
+`text/plain`, `application/x-sveltekit-formdata`, 매개변수·대소문자 무시)이며 `Origin`이 없거나
+요청 URL의 origin과 다르면 403으로 거부합니다. 본문은 `Errors.CrossSiteForm` 텍스트이고
+`Accept`가 정확히 `application/json`이면 `{ message }` JSON입니다. 자기 origin은 요청 URL에서
+나오며 `paths.origin`은 설정하지 않습니다(설정한다면 이 핸들도 같은 값을 써야 합니다). 원격 함수
+요청은 이 핸들이 아니라 SvelteKit의 동일 출처 검사를 받으며 `trustedOrigins`는 그 검사를 완화하지
+않습니다. 신뢰 origin 목록이나 경로별 예외는 두지 않습니다.
+
+**자격 증명 없는 엔드포인트**만 이 검사를 받지 않습니다. 다른 서버가 쿠키와 `Origin` 없이
+호출하고 요청 본문의 서명된 토큰만으로 인증하는(서명은 API가 검증) `+server` 엔드포인트입니다.
+`#lib/server/credential-less.js`에 `RouteId`를 선언하는 것만으로 이 범주에 들어가며 정책 코드는
+바꾸지 않습니다. 선언된 라우트는 교차 사이트 폼 검사를 받지 않고, `guardAdmin`이 세션 쿠키를
+읽거나 로그인을 요구하지 않으며(`locals.token`·`locals.user`는 `null`), 로그인 후 돌아갈
+주소(`returnPath`)가 되지 않습니다. 원격 함수 요청은 이 범주에 속하지 않습니다. 핸들러는
+쿠키·`locals.token`·`locals.user`를 읽거나 쓰지 않고 세션 토큰 없이 SDK로 토큰을 전달합니다.
+요청 크기 제한(`requestSize`)은 그대로 적용됩니다. 현재 구성원은 OIDC Back-Channel Logout
+`/admin/sso/backchannel-logout`입니다([SSO](../../docs/auth/sso.md#openid-connect-back-channel-logout-10)).
+
 ## 공개·관리자 DTO 경계
 
 - 공개 레이아웃의 `theme`은 템플릿/파트를 직렬화하지 않습니다. 페이지는 요청별 `siteLayout` 캐시에서 템플릿을 선택하고 `template`과 전이적으로 참조하는 `parts`만 반환합니다. 별도 load가 없는 오류 페이지를 위해 레이아웃에는 오류 템플릿과 블록 데이터를 유지합니다. 사이트 편집기는 자체 전체 테마와 `previewBlocks`를 사용합니다.

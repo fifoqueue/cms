@@ -16,6 +16,7 @@ import { toProfile } from '#api/domain/users/user-mapper';
 import { slugify } from '#api/domain/content/slug';
 import type { Clock, IdGenerator, HookDispatcher } from '#api/domain/ports';
 import type { ApiTokenService } from '#api/domain/auth/api-tokens';
+import type { OidcSessionBinding } from '#api/domain/auth/sso-ports';
 import type {
   PasswordHasher,
   SessionRepository,
@@ -204,6 +205,7 @@ export class AuthService {
   async startSession(
     user: UserRecord,
     identityId: string | null = null,
+    oidc: OidcSessionBinding | null = null,
   ): Promise<SessionGrant> {
     const token = this.deps.tokens.issue();
     const now = this.deps.clock.now();
@@ -234,6 +236,7 @@ export class AuthService {
       tokenHash: this.deps.tokens.digest(token),
       userId: user.id,
       identityId,
+      oidc,
       createdAt: now,
       expiresAt,
     });

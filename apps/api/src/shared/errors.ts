@@ -272,6 +272,7 @@ export const Errors = {
   SsoAccountNotLinked: SdkErrors.SsoAccountNotLinked,
   SsoAccountUnlinked: SdkErrors.SsoAccountUnlinked,
   SsoFailed: SdkErrors.SsoFailed,
+  SsoLogoutInvalid: 'The single sign-on logout token is invalid.',
   SsoAccountLinkedElsewhere: SdkErrors.SsoAccountLinkedElsewhere,
   EmailDisabled: SdkErrors.EmailDisabled,
   EmailSecretRequired: SdkErrors.EmailSecretRequired,

@@ -57,6 +57,7 @@ const KEY = 'sso';
 
 /** Where providers send users back; the web app serves it. */
 export const SSO_CALLBACK_PATH = '/admin/sso/callback';
+export const SSO_BACKCHANNEL_LOGOUT_PATH = '/admin/sso/backchannel-logout';
 
 interface Stored {
   settings: SsoSettings;
@@ -114,6 +115,11 @@ export class SsoSettingsService {
       redirectUri:
         this.deps.environmentRedirectUri ??
         (siteUrl ? `${siteUrl}${SSO_CALLBACK_PATH}` : ''),
+      backchannelLogoutUri: this.deps.environmentRedirectUri
+        ? `${new URL(this.deps.environmentRedirectUri).origin}${SSO_BACKCHANNEL_LOGOUT_PATH}`
+        : siteUrl
+          ? `${siteUrl}${SSO_BACKCHANNEL_LOGOUT_PATH}`
+          : '',
       environmentProvider: this.deps.environment
         ? { id: SSO_ENVIRONMENT_PROVIDER, name: this.deps.environment.name }
         : null,

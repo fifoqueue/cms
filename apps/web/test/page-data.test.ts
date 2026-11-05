@@ -35,6 +35,10 @@ Bun.plugin({
       exports: { resolve: (path: string) => path, match: async () => null },
       loader: 'object',
     }));
+    build.module('$app/env', () => ({
+      exports: { browser: false, dev: false, building: false, version: '' },
+      loader: 'object',
+    }));
   },
 });
 

@@ -10,6 +10,10 @@ import { guardUnique } from '#api/infra/prisma/client';
 import type { Database } from '#api/infra/prisma/client';
 import { Prisma } from '#api/infra/prisma/generated/client';
 import { takenSlugs } from '#api/infra/prisma/taken-slugs';
+import {
+  encodeOidcBinding,
+  decodeOidcBinding,
+} from '#api/infra/prisma/oidc-binding';
 import type {
   RecoveryCodeRecord,
   RecoveryCodeRepository,
@@ -88,7 +92,7 @@ export class PrismaSessionRepository implements SessionRepository {
   async insert(session: SessionRecord) {
     try {
       // No read-back: a session whose identity is deleted right after insert is cascaded away.
-      await this.db.session.createMany({ data: [session] });
+      await this.db.session.createMany({ data: [encodeOidcBinding(session)] });
     } catch (error) {
       // The foreign key refuses a session whose identity was unlinked in the meantime.
       if (
@@ -101,11 +105,13 @@ export class PrismaSessionRepository implements SessionRepository {
     }
   }
 
-  find(tokenHash: string) {
-    return this.db.session.findUnique({
+  async find(tokenHash: string) {
+    const row = await this.db.session.findUnique({
       where: { tokenHash },
       include: { user: true },
     });
+
+    return row && decodeOidcBinding(row);
   }
 
   async delete(tokenHash: string) {
@@ -127,11 +133,13 @@ export class PrismaSessionRepository implements SessionRepository {
     }
   }
 
-  listForUser(userId: string, now: Date) {
-    return this.db.session.findMany({
+  async listForUser(userId: string, now: Date) {
+    const rows = await this.db.session.findMany({
       where: { userId, expiresAt: { gt: now } },
       orderBy: [{ createdAt: 'desc' }, { tokenHash: 'asc' }],
       take: 100,
     });
+
+    return rows.map(decodeOidcBinding);
   }
 }

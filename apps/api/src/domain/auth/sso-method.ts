@@ -9,6 +9,7 @@ import type { Clock, IdGenerator, RateLimiter } from '#api/domain/ports';
 import type {
   ExternalIdentityRepository,
   VerifiedIdentity,
+  OidcSessionBinding,
 } from '#api/domain/auth/sso-ports';
 import type { SignInTarget, SsoSetup } from '#api/domain/auth/sso-service';
 import { storableIdentity } from '#api/domain/auth/sso-service';
@@ -78,7 +79,7 @@ export const createSsoMethod = (deps: {
 
     if (!provider || !sameIssuer(provider.issuer, state.issuer))
       return { kind: 'failed' };
-    let identity: VerifiedIdentity;
+    let identity: OidcSessionBinding;
 
     try {
       identity = await provider.provider.verify(step.query, {
@@ -95,7 +96,8 @@ export const createSsoMethod = (deps: {
     if (
       !sameIssuer(identity.issuer, provider.issuer) ||
       !storableIdentity(identity.issuer) ||
-      !storableIdentity(identity.subject)
+      !storableIdentity(identity.subject) ||
+      (identity.sid !== undefined && !storableIdentity(identity.sid))
     )
       return { kind: 'failed' };
 
@@ -104,7 +106,8 @@ export const createSsoMethod = (deps: {
       const link = {
         id: deps.ids.next(),
         userId: user.id,
-        ...identity,
+        issuer: identity.issuer,
+        subject: identity.subject,
         createdAt: deps.clock.now(),
       };
 
@@ -112,6 +115,7 @@ export const createSsoMethod = (deps: {
         kind: 'user',
         userId: user.id,
         identityId: link.id,
+        oidc: identity,
         commitSetup: (tokenHash, now) =>
           deps.identities.claim(link, tokenHash, now),
       };
@@ -120,7 +124,12 @@ export const createSsoMethod = (deps: {
     const target = await deps.resolve(identity, provider.subjects);
 
     return target
-      ? { kind: 'user', userId: target.user.id, identityId: target.identityId }
+      ? {
+          kind: 'user',
+          userId: target.user.id,
+          identityId: target.identityId,
+          oidc: identity,
+        }
       : { kind: 'failed' };
   };
 

@@ -465,6 +465,7 @@ export const webErrors: WebErrorCatalog = {
   PasswordOrInvite: '비밀번호를 입력하거나 초대 메일을 보내세요.',
   ModerationInvalid: '올바르지 않은 댓글 작업입니다.',
   UploadNetwork: '파일을 보내지 못했습니다. 네트워크 연결을 확인하세요.',
+  CrossSiteForm: '다른 사이트에서 보낸 폼은 받지 않습니다.',
 };
 
 export const ko: Messages = {
@@ -1524,6 +1525,7 @@ export const ko: Messages = {
   ssoScopes: '스코프',
   ssoRedirectUri: '제공자에 등록할 리디렉션 URI',
   ssoRedirectMissing: '먼저 SEO 설정에서 공개 사이트 주소를 입력하세요.',
+  ssoBackchannelLogoutUri: '제공자에 등록할 백채널 로그아웃 URI',
   ssoAllowedSubjects: '연결 없이 로그인할 계정 (한 줄에 “subject = 이메일”)',
 
   // Admin menu and color mode
@@ -2509,6 +2511,7 @@ export const ko: Messages = {
   ssoProvidersHelp:
     '켜 둔 제공자마다 로그인 버튼이 하나씩 생깁니다. 아래 리디렉션 URI를 모든 제공자에 등록하세요.',
   ssoCopyRedirectUri: '리디렉션 URI 복사',
+  ssoCopyBackchannelLogoutUri: '백채널 로그아웃 URI 복사',
   ssoProvidersEmpty: '아직 제공자가 없습니다.',
   ssoNewProvider: '새 제공자',
   ssoNotSaved: '저장 안 됨',

@@ -57,6 +57,7 @@ import type {
   SessionInfo,
   SetupStatus,
   LoginInput,
+  BackchannelLogoutInput,
   RecoveryCodesStatus,
   RecoveryLoginInput,
   SsoCallbackInput,
@@ -394,6 +395,10 @@ export const createAuthClient = (options: ClientOptions, token?: string) => {
     ...credentialsClient(request),
     ...signInClient(request),
     logout: () => request<void>('POST', '/api/v1/auth/logout'),
+    backchannelLogout: (input: BackchannelLogoutInput) =>
+      request<void>('POST', '/api/v1/auth/sso/backchannel-logout', {
+        json: input,
+      }),
     me: () =>
       request<UserProfile>('GET', '/api/v1/auth/me', {
         response: adminUserSchema,

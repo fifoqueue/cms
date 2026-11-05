@@ -464,6 +464,7 @@ export const webErrors: WebErrorCatalog = {
   PasswordOrInvite: 'Enter a password or send an invitation.',
   ModerationInvalid: 'This comment action is not valid.',
   UploadNetwork: 'The file could not be sent. Check your connection.',
+  CrossSiteForm: 'Forms sent from another site are refused.',
 };
 
 export const en = {
@@ -1547,6 +1548,8 @@ export const en = {
   ssoScopes: 'Scopes',
   ssoRedirectUri: 'Redirect URI to register at the provider',
   ssoRedirectMissing: 'Set the public site address in SEO settings first.',
+  ssoBackchannelLogoutUri:
+    'Back-channel logout URI to register at the provider',
   ssoAllowedSubjects:
     'Accounts allowed without linking (one “subject = email” per line)',
 
@@ -2564,6 +2567,7 @@ export const en = {
   ssoProvidersHelp:
     'Each enabled provider gets its own sign-in button. Register the redirect URI below at every provider.',
   ssoCopyRedirectUri: 'Copy redirect URI',
+  ssoCopyBackchannelLogoutUri: 'Copy back-channel logout URI',
   ssoProvidersEmpty: 'No providers yet.',
   ssoNewProvider: 'New provider',
   ssoNotSaved: 'Not saved',

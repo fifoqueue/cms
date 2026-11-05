@@ -60,6 +60,7 @@ const fixture = async () => {
     name: id,
     subjects: new Map<string, string>(),
     provider: {
+      verifyLogout: async () => null,
       authorize: async () => ({
         url: `https://${id}.example/authorize`,
         state: `state-${id}`,
@@ -70,7 +71,11 @@ const fixture = async () => {
         checked.push({ id, checks });
         if (!query.startsWith('?code=')) throw unauthorized('Bad callback');
 
-        return { issuer: `https://${id}.example/`, subject: query.slice(6) };
+        return {
+          issuer: `https://${id}.example/`,
+          subject: query.slice(6),
+          sid: 'provider-session',
+        };
       },
     },
   }));
@@ -135,8 +140,12 @@ const fixture = async () => {
     limits: { total: 20, perClient: 20 },
     protection: { check: async () => {} },
     siteUrl: async () => 'https://site.example',
-    session: async (user, identityId) =>
-      auth.startSession((await users.findById(user.id))!, identityId ?? null),
+    session: async (user, identityId, oidc) =>
+      auth.startSession(
+        (await users.findById(user.id))!,
+        identityId ?? null,
+        oidc,
+      ),
   });
   const link = () =>
     identities.link({
@@ -159,6 +168,7 @@ const fixture = async () => {
     transactions,
     tokens,
     checked,
+    providers,
     start,
     finish,
     link,
@@ -184,6 +194,11 @@ test('SSO engine binds verified identities through the factor step to sessions',
   expect(choice.kind).toBe('secondFactor');
   expect(f.sessions.rows.size).toBe(0);
   expect([...f.transactions.rows.values()][0]!.identityId).toBe('identity');
+  expect([...f.transactions.rows.values()][0]!.oidc).toEqual({
+    issuer: 'https://a.example/',
+    subject: 'subject',
+    sid: 'provider-session',
+  });
   expect(f.checked[0]).toEqual({
     id: 'a',
     checks: { state: 'state-a', nonce: 'nonce-a', codeVerifier: 'pkce-a' },
@@ -201,6 +216,33 @@ test('SSO engine binds verified identities through the factor step to sessions',
   expect(
     f.sessions.rows.get(f.tokens.digest(result.session.token))!.identityId,
   ).toBe('identity');
+  expect(
+    f.sessions.rows.get(f.tokens.digest(result.session.token))!.oidc,
+  ).toEqual({
+    issuer: 'https://a.example/',
+    subject: 'subject',
+    sid: 'provider-session',
+  });
   await f.identities.unlink(f.owner.id, 'identity');
   expect(await f.auth.authenticate(result.session.token)).toBeNull();
+});
+
+test('allowlisted OIDC subjects bind provider sessions without creating identity links', async () => {
+  const f = await fixture();
+
+  f.providers[0]!.subjects.set('subject', f.owner.email);
+  const result = await f.finish(await f.start());
+
+  if (result.kind !== 'session') throw new Error('Expected session');
+  expect(
+    f.sessions.rows.get(f.tokens.digest(result.session.token)),
+  ).toMatchObject({
+    identityId: null,
+    oidc: {
+      issuer: 'https://a.example/',
+      subject: 'subject',
+      sid: 'provider-session',
+    },
+  });
+  expect(await f.identities.findByUser(f.owner.id)).toEqual([]);
 });

@@ -133,6 +133,9 @@ model SignInTransaction {
   userId         String?  @map("user_id") @db.Char(36)
   setupTokenHash String?  @map("setup_token_hash") @db.Char(64)
   identityId     String?  @map("identity_id") @db.Char(36)
+  oidcIssuer     Bytes?   @map("oidc_issuer") @db.VarBinary(255)
+  oidcSubject    Bytes?   @map("oidc_subject") @db.VarBinary(255)
+  oidcSid        Bytes?   @map("oidc_sid") @db.VarBinary(255)
   identity       UserIdentity? @relation(fields: [identityId], references: [id], onDelete: Cascade)
   inProgress     Boolean  @default(false) @map("in_progress")
   state          String   @db.Text
@@ -163,6 +166,9 @@ model Session {
   userId     String        @map("user_id") @db.Char(36)
   /// Set when issued through a linked identity; unlinking or replacing it deletes the session.
   identityId String?       @map("identity_id") @db.Char(36)
+  oidcIssuer Bytes?        @map("oidc_issuer") @db.VarBinary(255)
+  oidcSubject Bytes?       @map("oidc_subject") @db.VarBinary(255)
+  oidcSid Bytes?           @map("oidc_sid") @db.VarBinary(255)
   createdAt  DateTime      @default(now()) @map("created_at") @db.DateTime(3)
   expiresAt  DateTime      @map("expires_at") @db.DateTime(3)
   user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -172,6 +178,8 @@ model Session {
   @@index([identityId])
   @@index([expiresAt])
   @@map("sessions")
+  @@index([oidcIssuer, oidcSubject])
+  @@index([oidcIssuer, oidcSid])
 }
 
 model Content {

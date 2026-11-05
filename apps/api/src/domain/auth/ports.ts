@@ -1,3 +1,5 @@
+import type { OidcSessionBinding } from '#api/domain/auth/sso-ports';
+
 export interface UserRecord {
   id: string;
   email: string;
@@ -41,6 +43,8 @@ export interface SessionRecord {
   userId: string;
   /** The linked identity the session was issued through; `null` for every other sign-in. */
   identityId: string | null;
+  /** Exact verified OIDC claims; absent for non-OIDC and pre-migration sessions. */
+  oidc?: OidcSessionBinding | null;
   /** When it was issued (sessions from before this column carry the migration time). */
   createdAt: Date;
   expiresAt: Date;

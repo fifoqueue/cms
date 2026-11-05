@@ -113,6 +113,9 @@ export default defineConfig(({ mode }) => {
         // The reverse proxy compresses responses; .br/.gz copies would triple every asset.
         adapter: adapter({ precompress: false }),
         env: { dir: envDir },
+        // Cross-site form posts are checked by the `csrf` handle (`#lib/server/csrf.js`), which
+        // exempts credential-less endpoints. Remote function calls keep SvelteKit's own check.
+        csrf: { trustedOrigins: ['*'] },
         // The push worker is registered only when a visitor or editor turns notifications on
         // (`#lib/push-client.js`), never on every page load.
         serviceWorker: { register: false },

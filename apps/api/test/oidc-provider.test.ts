@@ -3,6 +3,20 @@ import type { CustomFetch } from 'openid-client';
 import { OpenIdClientProvider } from '#api/infra/oidc/openid-client-provider';
 import type { OidcClientSettings } from '#api/infra/oidc/openid-client-provider';
 import { recordingLogger } from '#test/support/memory';
+import { fixedClock, sequentialIds, userRecord } from '#test/support/memory';
+import { createAuthClient } from '@cms/sdk/client';
+import { AuthService } from '#api/domain/auth/auth-service';
+import { SsoLogoutService } from '#api/domain/auth/sso-logout';
+import type { OidcSessionBinding } from '#api/domain/auth/sso-ports';
+import { createApiApp } from '#api/http/app';
+import type { ApiServices } from '#api/http/services';
+import { HookBus } from '#api/plugin-runtime/hook-bus';
+import {
+  MemoryUsers,
+  MemorySsoLogoutSessions,
+  createMemoryAuthStore,
+  plainHasher,
+} from '#test/support/sso-memory';
 
 const ISSUER = 'https://op.test';
 const CLIENT_ID = 'cms';
@@ -26,8 +40,12 @@ const generateKey = () =>
     ['sign', 'verify'],
   );
 
-const sign = async (key: CryptoKey, claims: Record<string, unknown>) => {
-  const input = `${encode({ alg: 'RS256', kid: 'k1', typ: 'JWT' })}.${encode(claims)}`;
+const sign = async (
+  key: CryptoKey,
+  claims: Record<string, unknown>,
+  header = { alg: 'RS256', kid: 'k1', typ: 'JWT' },
+) => {
+  const input = `${encode(header)}.${encode(claims)}`;
   const signature = await crypto.subtle.sign(
     'RSASSA-PKCS1-v1_5',
     key,
@@ -182,6 +200,216 @@ const relyingParty = (
 
   return { provider, lines };
 };
+
+const logoutFixture = async () => {
+  const op = createProvider({
+    tamper: (claims) => ({ ...claims, sid: 'Sid ' }),
+  });
+  const { provider } = relyingParty(op);
+  const request = await provider.authorize();
+  const binding = await provider.verify(op.approve(request.url), request);
+  const users = new MemoryUsers();
+  const owner = userRecord({ id: 'logout-owner' });
+
+  await users.insert(owner);
+  const { sessions } = createMemoryAuthStore(users);
+  const issuedAt = Math.floor(Date.now() / 1000) - 30;
+  const clock = fixedClock(new Date((issuedAt - 1) * 1000).toISOString());
+  const { logger } = recordingLogger();
+  const hooks = new HookBus({ logger, timeoutMs: 100 });
+  let sequence = 0;
+  let lookups = 0;
+  const auth = new AuthService({
+    users,
+    sessions,
+    hasher: plainHasher,
+    ids: sequentialIds(),
+    tokens: { issue: () => `logout-session-${++sequence}`, digest: (s) => s },
+    clock,
+    sessionTtlMs: 3600000,
+  });
+  const ssoLogout = new SsoLogoutService({
+    setup: async () => ({
+      providers: [
+        {
+          id: 'op',
+          issuer: ISSUER,
+          name: 'OP',
+          provider,
+          subjects: new Map(),
+        },
+      ],
+    }),
+    sessions: new MemorySsoLogoutSessions(sessions),
+    users: {
+      findById: async (id) => {
+        lookups++;
+
+        return users.findById(id);
+      },
+    },
+    hooks,
+  });
+  const app = await createApiApp({
+    services: { ssoLogout } as unknown as ApiServices,
+    logger,
+  });
+  const client = createAuthClient({
+    baseUrl: 'http://localhost',
+    fetch: (async (input: string | URL | Request, init?: RequestInit) => {
+      const response = await app.fetch(new Request(input, init));
+
+      if (response.ok) {
+        expect(response.status).toBe(204);
+        expect(await response.clone().text()).toBe('');
+      }
+
+      return response;
+    }) as typeof fetch,
+  });
+  const claims = {
+    iss: ISSUER,
+    aud: CLIENT_ID,
+    sub: binding.subject,
+    sid: binding.sid,
+    iat: issuedAt,
+    exp: issuedAt + 300,
+    jti: 'logout-1',
+    events: { 'http://schemas.openid.net/event/backchannel-logout': {} },
+  };
+  const session = (oidc: OidcSessionBinding | null = binding) =>
+    auth.startSession(owner, null, oidc);
+
+  return {
+    client,
+    session,
+    sessions,
+    clock,
+    claims,
+    hooks,
+    binding,
+    lookups: () => lookups,
+  };
+};
+
+test('back-channel logout deletes only matching sessions, emits provider scope once, and cannot revoke newer sessions on replay', async () => {
+  const f = await logoutFixture();
+  const first = await f.session();
+  const second = await f.session();
+  const otherSid = await f.session({ ...f.binding, sid: 'sid ' });
+  const otherSubject = await f.session({ ...f.binding, subject: 'Subject-1' });
+  const otherIssuer = await f.session({ ...f.binding, issuer: `${ISSUER}/` });
+  const noSid = await f.session({ issuer: ISSUER, subject: f.binding.subject });
+  const local = await f.session(null);
+  const events: unknown[] = [];
+  const unsubscribe = f.hooks
+    .registrar('observer')
+    .on('user.signedOut', (event) => {
+      expect(f.sessions.rows.has(first.token)).toBe(false);
+      expect(f.sessions.rows.has(second.token)).toBe(false);
+      events.push(event);
+    });
+
+  f.clock.set(new Date((f.claims.iat + 6) * 1000).toISOString());
+  const newer = await f.session();
+  const logoutToken = await sign(signingKey.privateKey, f.claims, {
+    alg: 'RS256',
+    kid: 'k1',
+    typ: 'logout+jwt',
+  });
+
+  await f.client.backchannelLogout({ logoutToken });
+  await f.client.backchannelLogout({ logoutToken });
+  expect([...f.sessions.rows.keys()]).toEqual([
+    otherSid.token,
+    otherSubject.token,
+    otherIssuer.token,
+    noSid.token,
+    local.token,
+    newer.token,
+  ]);
+  expect(events).toEqual([
+    {
+      user: first.user,
+      scope: 'provider',
+      actorId: first.user.id,
+    },
+  ]);
+  expect(f.lookups()).toBe(1);
+  unsubscribe();
+
+  await f.client.backchannelLogout({
+    logoutToken: await sign(signingKey.privateKey, {
+      ...f.claims,
+      sid: undefined,
+    }),
+  });
+  expect([...f.sessions.rows.keys()]).toEqual([
+    otherSubject.token,
+    otherIssuer.token,
+    local.token,
+    newer.token,
+  ]);
+  expect(f.lookups()).toBe(1);
+
+  await f.client.backchannelLogout({
+    logoutToken: await sign(signingKey.privateKey, {
+      ...f.claims,
+      sub: undefined,
+    }),
+  });
+  expect([...f.sessions.rows.keys()]).toEqual([
+    otherIssuer.token,
+    local.token,
+    newer.token,
+  ]);
+});
+
+test('invalid logout tokens cannot delete sessions through the public API', async () => {
+  const f = await logoutFixture();
+  const session = await f.session();
+  const invalid = [
+    await sign(foreignKey.privateKey, f.claims),
+    ...(await Promise.all(
+      [
+        { ...f.claims, aud: 'another-client' },
+        { ...f.claims, events: {} },
+        { ...f.claims, nonce: 'not-allowed' },
+        { ...f.claims, sub: undefined, sid: undefined },
+        { ...f.claims, sid: 'x'.repeat(256) },
+        { ...f.claims, iat: undefined },
+        { ...f.claims, jti: undefined },
+        { ...f.claims, exp: undefined },
+        { ...f.claims, iat: f.claims.iat - 600 },
+        { ...f.claims, iat: f.claims.iat + 3600 },
+        { ...f.claims, exp: f.claims.iat - 10 },
+      ].map((claims) => sign(signingKey.privateKey, claims)),
+    )),
+    await sign(signingKey.privateKey, f.claims, {
+      alg: 'RS256',
+      kid: 'k1',
+      typ: 'id+jwt',
+    }),
+    await sign(signingKey.privateKey, f.claims, {
+      alg: 'HS256',
+      kid: 'k1',
+      typ: 'JWT',
+    }),
+    'x'.repeat(16_385),
+  ];
+
+  for (const logoutToken of invalid) {
+    await expect(
+      f.client.backchannelLogout({ logoutToken }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: 'invalid_input',
+    });
+    expect([...f.sessions.rows.keys()]).toEqual([session.token]);
+  }
+
+  expect(f.lookups()).toBe(0);
+});
 
 describe('OpenIdClientProvider', () => {
   test('authorization code flow with PKCE S256, state and nonce yields the verified subject', async () => {

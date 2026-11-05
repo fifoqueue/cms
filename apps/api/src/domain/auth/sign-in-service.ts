@@ -36,7 +36,10 @@ import type {
   SignInTransaction,
   SignInTransactions,
 } from '#api/domain/auth/sign-in-transactions';
-import type { AdmissionLimits } from '#api/domain/auth/sso-ports';
+import type {
+  AdmissionLimits,
+  OidcSessionBinding,
+} from '#api/domain/auth/sso-ports';
 import type {
   Attempt,
   ProtectionService,
@@ -96,6 +99,7 @@ export class SignInService {
       session: (
         user: UserProfile,
         identityId?: string | null,
+        oidc?: OidcSessionBinding | null,
       ) => Promise<SessionGrant>;
     },
   ) {}
@@ -593,6 +597,7 @@ export class SignInService {
 
       if ('identityId' in outcome)
         row = { ...row, identityId: outcome.identityId ?? null };
+      if ('oidc' in outcome) row = { ...row, oidc: outcome.oidc ?? null };
       const user = await this.deps.users.findById(outcome.userId);
 
       if (!user) return this.fail(row.methodId, account);
@@ -690,7 +695,11 @@ export class SignInService {
         !(await this.deps.settings.effective()).methods.includes(row.methodId)
       )
         return this.fail(row.methodId, account);
-      const session = await this.deps.session(user, row.identityId ?? null);
+      const session = await this.deps.session(
+        user,
+        row.identityId ?? null,
+        row.oidc ?? null,
+      );
 
       void this.deps.hooks.emit('user.signedIn', {
         user,

@@ -115,6 +115,13 @@ export const ssoCallbackSchema = z.object({
 export type SsoStartInput = z.input<typeof ssoStartSchema>;
 export type SsoCallbackInput = z.input<typeof ssoCallbackSchema>;
 
+/** Signed logout JWT forwarded by the web server; it is never a browser session token. */
+export const backchannelLogoutSchema = z.object({
+  logoutToken: z.string().min(1).max(16_384),
+});
+
+export type BackchannelLogoutInput = z.input<typeof backchannelLogoutSchema>;
+
 export interface SsoInfo {
   /** Enabled providers in display order; empty when single sign-on is off. */
   providers: { id: string; name: string }[];

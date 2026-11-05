@@ -292,6 +292,7 @@ export const createContainer = async (
     auth: users.auth,
     recovery: users.recovery,
     sso: signIn.sso,
+    ssoLogout: signIn.ssoLogout,
     ssoSettings: signIn.ssoSettings,
     signInSettings: signIn.signInSettings,
     signIn: signIn.signIn,

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { signInStateSchema } from '#api/domain/auth/sign-in-state';
 import { signInDisplaySchema, signInFieldSchema } from '@cms/sdk';
 import type { CoreSignInOutcome } from '#api/domain/auth/core-sign-in';
+import { storableIdentity } from '#api/domain/auth/sso-service';
 
 /** Plugin state is persisted, never exposed as part of a public step. */
 const state = signInStateSchema.optional();
@@ -60,6 +61,14 @@ export const coreSignInOutcomeSchema = z
     const extra = z
       .object({
         identityId: z.string().min(1).max(36).nullable().optional(),
+        oidc: z
+          .object({
+            issuer: z.string().refine(storableIdentity),
+            subject: z.string().refine(storableIdentity),
+            sid: z.string().refine(storableIdentity).optional(),
+          })
+          .nullable()
+          .optional(),
         commitSetup: z
           .custom<(tokenHash: string, now: Date) => Promise<boolean>>(
             (candidate) => typeof candidate === 'function',

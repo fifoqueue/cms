@@ -11,6 +11,7 @@ test('secrets never enter administrator SSO DTOs', () => {
       clientSecretConfigured: true,
     })),
     redirectUri: '',
+    backchannelLogoutUri: '',
     environmentProvider: null,
     passwordLoginForced: false,
     secrets: { company: 'sealed-secret' },

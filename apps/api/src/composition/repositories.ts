@@ -1,4 +1,5 @@
 import type { createPersistence } from '#api/composition/persistence';
+import { PrismaSsoLogoutSessions } from '#api/infra/prisma/sso-logout';
 import { PrismaContentRepository } from '#api/infra/prisma/content-repository';
 import { PrismaSettingsRepository } from '#api/infra/prisma/settings-repository';
 import { PrismaSettingsTransactions } from '#api/infra/prisma/settings-transactions';
@@ -163,6 +164,7 @@ export const createRepositories = async ({
   const ssoAccess = new PrismaSsoAccessTransactions(db);
   const ssoIdentities = new PrismaIdentityRepository(db);
   const ssoTransactions = new PrismaSsoTransactionRepository(db);
+  const ssoLogoutSessions = new PrismaSsoLogoutSessions(db);
   const recoveryCodes = new PrismaRecoveryCodeRepository(db);
   const pluginData = new PrismaPluginDataRepository(db);
   const signInSettingsTransactions = wrap(new PrismaSettingsTransactions(db), [
@@ -223,6 +225,7 @@ export const createRepositories = async ({
     ssoAccess,
     ssoIdentities,
     ssoTransactions,
+    ssoLogoutSessions,
     recoveryCodes,
     pluginData,
     signInSettingsTransactions,

@@ -117,6 +117,8 @@ export const adminSsoSettingsSchema = z.object({
   ),
   /** The address to register at every provider; empty until the site address is set. */
   redirectUri: z.string(),
+  /** The web endpoint to register for OpenID Connect Back-Channel Logout. */
+  backchannelLogoutUri: z.string(),
   /**
    * The provider set by the server environment (`OIDC_*`), shown read-only. While it is set,
    * the providers stored here are kept but unused.

@@ -557,7 +557,12 @@ id, ownerId?, status? }`이며 식별 문맥은 고정입니다. 핸들러는 �
 
 `user.signedOut` 액션은 세션 삭제가 완료된 후 `{ user, scope, actorId }`를
 전달합니다. `user`는 비밀 값이 없는 `UserProfile`이며 `scope`는 현재 세션
-로그아웃의 `session`, 지정 세션 철회의 `other`, 전체 세션 철회의 `all`입니다.
+로그아웃의 `session`, 지정 세션 철회의 `other`, 전체 세션 철회의 `all`,
+IdP가 Back-Channel Logout으로 세션을 종료한 경우의 `provider`입니다.
+Back-Channel Logout은 실제 세션이 삭제된 사용자마다 한 번 발생합니다.
+`provider`에는 로컬 행위자가 없으므로 `actorId`는 영향받은 사용자 자신의 id입니다.
+재전송으로 삭제된 세션이 없으면 발생하지 않습니다. payload는 기존과 같은
+`{ user: UserProfile, scope, actorId: string }`이며 필드가 추가되지 않습니다.
 토큰과 토큰 해시는 전달하지 않으며 핸들러가 없으면 추가 사용자 조회를 하지 않습니다.
 
 캡차 제공자는 `label`, `verify`와 함께 `widget: { script, render, origins, attributes, responseField }`를 선언할 수 있습니다. 코어 Turnstile/hCaptcha/reCAPTCHA 등록도 같은 디스크립터를 사용합니다. `script`는 자격 증명이 없는 HTTPS URL이어야 하고(최대 2048자, 프래그먼트 없음), `attributes`는 `data-*` 이름 최대 20개(이름 최대 80자)와 문자열 값(최대 1024자)을 허용하며, `responseField`는 `[A-Za-z][A-Za-z0-9_-]*`(최대 100자)와 일치해야 합니다. 공개 DTO에는 파생된 `scriptOrigin`이 추가됩니다. 이 스크립트는 플러그인이 등록하는 신뢰된 스크립트이며 샌드박스 코드가 아닙니다. 속성에 비밀 값을 넣으면 안 됩니다. 비활성화하면 위젯도 검증기와 함께 철회되며, 덮어쓴 등록이 이전 등록의 위젯을 실수로 물려받는 일은 없습니다.

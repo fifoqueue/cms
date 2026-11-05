@@ -1,4 +1,5 @@
 import type { Awaitable, UserProfile, SignInField } from '@cms/sdk';
+import type { OidcSessionBinding } from '#api/domain/auth/sso-ports';
 import type {
   SignInMethodDefinition,
   SignInOutcome,
@@ -13,6 +14,7 @@ export type CoreSignInOutcome =
       kind: 'user';
       userId: string;
       identityId?: string | null;
+      oidc?: OidcSessionBinding | null;
       commitSetup?(tokenHash: string, now: Date): Promise<boolean>;
     };
 

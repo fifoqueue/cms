@@ -8,6 +8,7 @@ import type { createSite } from '#api/composition/site';
 import { SignInSettingsService } from '#api/domain/auth/sign-in-settings';
 import { SsoSettingsService } from '#api/domain/auth/sso-settings';
 import { SsoService } from '#api/domain/auth/sso-service';
+import { SsoLogoutService } from '#api/domain/auth/sso-logout';
 import { SignInService } from '#api/domain/auth/sign-in-service';
 import { createSignInUsers } from '#api/domain/auth/sign-in-users';
 import { createSsoMethod } from '#api/domain/auth/sso-method';
@@ -40,6 +41,7 @@ type Input = Pick<
   | 'users'
   | 'ssoIdentities'
   | 'ssoTransactions'
+  | 'ssoLogoutSessions'
   | 'signInSettingsTransactions'
   | 'methodIdentities'
   | 'passkeys'
@@ -79,6 +81,7 @@ export const createSignIn = ({
   users,
   ssoIdentities,
   ssoTransactions,
+  ssoLogoutSessions,
   signInSettingsTransactions,
   methodIdentities,
   passkeys,
@@ -160,6 +163,12 @@ export const createSignIn = ({
     logger,
   });
   const authUsers = createSignInUsers(users, roles);
+  const ssoLogout = new SsoLogoutService({
+    setup: () => ssoSettings.setup(),
+    sessions: ssoLogoutSessions,
+    users,
+    hooks,
+  });
   const coreAuth = authentication.core(authUsers);
 
   coreAuth.signInMethod(
@@ -225,14 +234,14 @@ export const createSignIn = ({
     protection,
     hooks,
     siteUrl: async () => (await seo.getPublic()).siteUrl,
-    session: async (profile, identityId) => {
+    session: async (profile, identityId, oidc) => {
       const user = await users.findById(profile.id);
 
       if (!user) throw invalidInput(Errors.InvalidCredentials);
 
-      return auth.startSession(user, identityId ?? null);
+      return auth.startSession(user, identityId ?? null, oidc ?? null);
     },
   });
 
-  return { ssoSettings, sso, signInSettings, authUsers, signIn };
+  return { ssoSettings, sso, ssoLogout, signInSettings, authUsers, signIn };
 };

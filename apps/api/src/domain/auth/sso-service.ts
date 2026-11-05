@@ -31,6 +31,7 @@ import type {
   AdmissionLimits,
   ExternalIdentityRepository,
   OidcProvider,
+  OidcSessionBinding,
   SsoTransactionRepository,
   VerifiedIdentity,
   SsoAccessTransactions,
@@ -43,6 +44,7 @@ export interface SessionStarter {
   startSession(
     user: UserRecord,
     identityId: string | null,
+    oidc?: OidcSessionBinding | null,
   ): Promise<SessionGrant>;
 }
 
@@ -214,7 +216,8 @@ export class SsoService {
     if (
       !sameIssuer(identity.issuer, issuer) ||
       !storableIdentity(identity.issuer) ||
-      !storableIdentity(identity.subject)
+      !storableIdentity(identity.subject) ||
+      (identity.sid !== undefined && !storableIdentity(identity.sid))
     )
       throw unauthorized(Errors.SsoAccountUnusable);
 
@@ -241,7 +244,11 @@ export class SsoService {
 
         return {
           kind: 'session',
-          session: await this.deps.sessions.startSession(owner, link.id),
+          session: await this.deps.sessions.startSession(
+            owner,
+            link.id,
+            identity,
+          ),
         };
       }
 
@@ -260,6 +267,7 @@ export class SsoService {
       session: await this.deps.sessions.startSession(
         target.user,
         target.identityId,
+        identity,
       ),
     };
   }

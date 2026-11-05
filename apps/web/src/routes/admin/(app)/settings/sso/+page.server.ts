@@ -21,6 +21,7 @@ export const load: PageServerLoad = async (event) => {
       .filter((provider) => provider.clientSecretConfigured)
       .map((provider) => provider.id),
     redirectUri: sso.redirectUri,
+    backchannelLogoutUri: sso.backchannelLogoutUri,
     environmentProvider: sso.environmentProvider && {
       id: sso.environmentProvider.id,
       name: sso.environmentProvider.name,

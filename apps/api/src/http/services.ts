@@ -14,6 +14,7 @@ import { Elysia } from 'elysia';
 import type { AuthService } from '#api/domain/auth/auth-service';
 import type { RecoveryService } from '#api/domain/auth/recovery-service';
 import type { SsoService } from '#api/domain/auth/sso-service';
+import type { SsoLogoutService } from '#api/domain/auth/sso-logout';
 import type { ContentService } from '#api/domain/content/content-service';
 import type { ReadingService } from '#api/domain/site/reading-service';
 import type { WritingService } from '#api/domain/site/writing-service';
@@ -82,6 +83,7 @@ export type ApiServices = {
   auth: AuthService;
   recovery: RecoveryService;
   sso: SsoService;
+  ssoLogout: SsoLogoutService;
   clients: ClientResolver;
   site: SiteService;
   seo: SeoSettingsService;

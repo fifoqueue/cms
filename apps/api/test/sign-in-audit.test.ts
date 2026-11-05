@@ -26,6 +26,7 @@ test('SSO start admission uses the proved network key, grouping IPv6 /64 and unp
           issuer: 'https://id.example',
           subjects: new Map(),
           provider: {
+            verifyLogout: async () => null,
             authorize: async () => ({
               url: 'https://id.example/auth',
               state: 'state',

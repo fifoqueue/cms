@@ -10,6 +10,8 @@ import {
   installationApi,
 } from '#lib/server/api.js';
 import { frontendSecret, pairFrontend } from '#lib/server/frontend-secret.js';
+import { isCredentialLess } from '#lib/server/credential-less.js';
+import { csrf } from '#lib/server/csrf.js';
 import { RETURN_PARAM } from '#lib/server/return-path.js';
 import { endSession, sessionToken } from '#lib/server/session-cookie.js';
 import { clearPending } from '#lib/server/sso-cookie.js';
@@ -247,8 +249,10 @@ const cacheSeconds = async (fetch: typeof globalThis.fetch) => {
 /**
  * Lets a CDN or reverse proxy keep public pages briefly (Settings → Reading). Only plain
  * anonymous GETs qualify: no visitor cookies, no cookies set, and no caching rules of their own.
+ * Credential-less endpoints are never cached and never have their cookies read.
  */
 const publicCache: Handle = async ({ event, resolve }) => {
+  if (isCredentialLess(event)) return resolve(event);
   const response = await resolve(event);
 
   if (event.cookies.getAll().some(({ name }) => PERSONAL_COOKIE.test(name))) {
@@ -293,10 +297,16 @@ const publicCache: Handle = async ({ event, resolve }) => {
 /** Setup cannot become required again once completed (reinstalling is blocked), so stop asking. */
 let installed = false;
 
-/** Resolves the session once per admin request and keeps signed-out users out of the admin area. */
+/**
+ * Resolves the session once per admin request and keeps signed-out users out of the admin area.
+ * Credential-less endpoints get no session and no sign-in requirement; their cookies are not read.
+ */
 const guardAdmin: Handle = async ({ event, resolve }) => {
-  event.locals.token = sessionToken(event.cookies, event.url);
+  event.locals.token = null;
   event.locals.user = null;
+
+  if (isCredentialLess(event)) return resolve(event);
+  event.locals.token = sessionToken(event.cookies, event.url);
 
   // Public catch-alls can match unknown `/admin/*` paths; none may become an auth redirect.
   if (isUnknownAdmin(event)) return privately(await resolve(event));
@@ -404,6 +414,7 @@ const documentLanguage: Handle = ({ event, resolve }) =>
   });
 
 export const handle = sequence(
+  csrf,
   requestSize,
   publicCache,
   responseSecurity,

@@ -8,6 +8,10 @@ import type { AdmissionLimits } from '#api/domain/auth/sso-ports';
 import type { Database } from '#api/infra/prisma/client';
 import { lockSetting } from '#api/infra/prisma/client';
 import { signInStateSchema } from '#api/domain/auth/sign-in-state';
+import {
+  encodeOidcBinding,
+  decodeOidcBinding,
+} from '#api/infra/prisma/oidc-binding';
 
 export class PrismaSignInTransactions implements SignInTransactions {
   constructor(private readonly db: Database) {}
@@ -35,7 +39,7 @@ export class PrismaSignInTransactions implements SignInTransactions {
       )
         return false;
       await tx.signInTransaction.create({
-        data: { ...record, state },
+        data: { ...encodeOidcBinding(record), state },
       });
 
       return true;
@@ -76,6 +80,7 @@ export class PrismaSignInTransactions implements SignInTransactions {
       userId: row.userId,
       setupTokenHash: row.setupTokenHash,
       identityId: row.identityId,
+      oidc: decodeOidcBinding(row).oidc,
       clientKey: row.clientKey,
       expiresAt: row.expiresAt,
       state: signInStateSchema.parse(JSON.parse(row.state)),
@@ -107,7 +112,11 @@ export class PrismaSignInTransactions implements SignInTransactions {
       if (count !== 1) return false;
       if (next)
         await tx.signInTransaction.create({
-          data: { ...next, state: state!, inProgress: false },
+          data: {
+            ...encodeOidcBinding(next),
+            state: state!,
+            inProgress: false,
+          },
         });
 
       return true;

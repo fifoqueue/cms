@@ -13,15 +13,48 @@ import {
   randomState,
 } from 'openid-client';
 import type { ClientAuth, Configuration, CustomFetch } from 'openid-client';
+import { z } from 'zod';
+import {
+  createRemoteJWKSet,
+  customFetch as joseFetch,
+  decodeJwt,
+  jwtVerify,
+} from 'jose';
+import {
+  LOGOUT_CLOCK_TOLERANCE,
+  LOGOUT_MAX_AGE,
+} from '#api/domain/auth/sso-logout-ports';
+import type { VerifiedLogout } from '#api/domain/auth/sso-logout-ports';
 import type {
   OidcAuthorizationRequest,
   OidcChecks,
   OidcProvider,
-  VerifiedIdentity,
+  OidcSessionBinding,
 } from '#api/domain/auth/sso-ports';
 import { messageOf, unauthorized, Errors } from '#api/shared/errors';
 import type { Logger } from '#api/shared/logger';
 import { publicFetch } from '#api/infra/egress-policy';
+import { storableIdentity } from '#api/domain/auth/sso-service';
+
+const identityClaims = z.object({
+  iss: z.string().refine(storableIdentity),
+  sub: z.string().refine(storableIdentity),
+  sid: z.string().refine(storableIdentity).optional(),
+});
+
+const logoutClaims = z
+  .object({
+    iss: z.string().refine(storableIdentity),
+    sub: z.string().refine(storableIdentity).optional(),
+    sid: z.string().refine(storableIdentity).optional(),
+    iat: z.number(),
+    exp: z.number(),
+    jti: z.string().min(1),
+    events: z.object({
+      'http://schemas.openid.net/event/backchannel-logout': z.object({}),
+    }),
+  })
+  .refine((claims) => claims.sub !== undefined || claims.sid !== undefined);
 
 export type OidcClientAuthMethod =
   'client_secret_basic' | 'client_secret_post' | 'none';
@@ -35,7 +68,7 @@ export interface OidcClientSettings {
   /** Registered redirect URI without query or fragment. */
   redirectUri: string;
   scope: string;
-  /** Outbound HTTP; the global fetch when omitted. */
+  /** Outbound HTTP; the public egress policy when omitted. */
   fetch?: CustomFetch;
 }
 
@@ -56,6 +89,8 @@ const clientAuth = ({
 /** OpenID Connect relying party on `openid-client` (certified implementation). */
 export class OpenIdClientProvider implements OidcProvider {
   private configuration: Promise<Configuration> | undefined;
+  private logoutKeys: ReturnType<typeof createRemoteJWKSet> | undefined;
+  private issuer: string | undefined;
 
   constructor(
     private readonly settings: OidcClientSettings,
@@ -80,7 +115,7 @@ export class OpenIdClientProvider implements OidcProvider {
     return { url: url.href, state, nonce, codeVerifier };
   }
 
-  async verify(query: string, checks: OidcChecks): Promise<VerifiedIdentity> {
+  async verify(query: string, checks: OidcChecks): Promise<OidcSessionBinding> {
     const config = await this.discover();
 
     // The token request's redirect_uri is derived from this URL, so it is always the configured one.
@@ -95,9 +130,13 @@ export class OpenIdClientProvider implements OidcProvider {
         expectedNonce: checks.nonce,
         idTokenExpected: true,
       });
-      const claims = tokens.claims()!;
+      const claims = identityClaims.parse(tokens.claims());
 
-      return { issuer: claims.iss, subject: claims.sub };
+      return {
+        issuer: claims.iss,
+        subject: claims.sub,
+        ...(claims.sid !== undefined ? { sid: claims.sid } : {}),
+      };
     } catch (error) {
       const cause =
         error instanceof Error && error.cause instanceof Error
@@ -109,15 +148,86 @@ export class OpenIdClientProvider implements OidcProvider {
     }
   }
 
+  async verifyLogout(token: string): Promise<VerifiedLogout | null> {
+    try {
+      // Unverified claims select a provider only; they never authorize a deletion.
+      if (decodeJwt(token).iss !== (this.issuer ?? this.settings.issuer))
+        return null;
+      const config = await this.discover();
+      const metadata = config.serverMetadata();
+
+      if (decodeJwt(token).iss !== metadata.issuer) return null;
+      if (!metadata.jwks_uri) throw new Error(Errors.SsoLogoutInvalid);
+      this.logoutKeys ??= createRemoteJWKSet(new URL(metadata.jwks_uri), {
+        [joseFetch]: (url, options) =>
+          this.fetch(url, {
+            ...options,
+            body: undefined,
+            headers: Object.fromEntries(options.headers),
+          }),
+      });
+      const { payload, protectedHeader } = await jwtVerify(
+        token,
+        this.logoutKeys,
+        {
+          issuer: metadata.issuer,
+          audience: this.settings.clientId,
+          algorithms: [
+            'RS256',
+            'RS384',
+            'RS512',
+            'PS256',
+            'PS384',
+            'PS512',
+            'ES256',
+            'ES384',
+            'ES512',
+            'EdDSA',
+            'Ed25519',
+          ],
+          requiredClaims: ['iss', 'aud', 'iat', 'exp', 'jti'],
+          maxTokenAge: LOGOUT_MAX_AGE,
+          clockTolerance: LOGOUT_CLOCK_TOLERANCE,
+        },
+      );
+
+      if (
+        Object.hasOwn(payload, 'nonce') ||
+        (protectedHeader.typ !== undefined &&
+          !['logout+jwt', 'application/logout+jwt', 'JWT'].includes(
+            protectedHeader.typ,
+          ))
+      )
+        throw new Error(Errors.SsoLogoutInvalid);
+      const claims = logoutClaims.parse(payload);
+
+      return {
+        issuer: claims.iss,
+        issuedAt: claims.iat,
+        ...(claims.sid !== undefined
+          ? {
+              sid: claims.sid,
+              ...(claims.sub !== undefined ? { subject: claims.sub } : {}),
+            }
+          : { subject: claims.sub! }),
+      };
+    } catch (error) {
+      this.logger.warn(`Single sign-on logout rejected: ${messageOf(error)}`);
+
+      return null;
+    }
+  }
+
+  private readonly fetch: CustomFetch = (url, options) =>
+    this.settings.fetch
+      ? this.settings.fetch(url, options)
+      : publicFetch(url, options as unknown as RequestInit);
+
   /**
    * Discovers once; a failed discovery is retried on the next request. The reason (such as an
    * issuer that differs from the discovered one) stays in the server log.
    */
   private discover() {
-    const fetcher: CustomFetch =
-      this.settings.fetch ??
-      ((url, options) => publicFetch(url, options as unknown as RequestInit));
-
     this.configuration ??= discovery(
       new URL(this.settings.issuer),
       this.settings.clientId,
@@ -125,15 +235,21 @@ export class OpenIdClientProvider implements OidcProvider {
       clientAuth(this.settings),
       {
         execute: [enableNonRepudiationChecks],
-        [customFetch]: fetcher,
+        [customFetch]: this.fetch,
       },
-    ).catch((error: unknown) => {
-      this.configuration = undefined;
-      this.logger.warn(
-        `Single sign-on discovery failed for ${this.settings.issuer}: ${messageOf(error)}`,
-      );
-      throw unauthorized(Errors.SsoFailed);
-    });
+    )
+      .then((config) => {
+        this.issuer = config.serverMetadata().issuer;
+
+        return config;
+      })
+      .catch((error: unknown) => {
+        this.configuration = undefined;
+        this.logger.warn(
+          `Single sign-on discovery failed for ${this.settings.issuer}: ${messageOf(error)}`,
+        );
+        throw unauthorized(Errors.SsoFailed);
+      });
 
     return this.configuration;
   }

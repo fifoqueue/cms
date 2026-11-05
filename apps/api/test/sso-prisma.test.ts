@@ -9,6 +9,7 @@ import { createDatabase } from '#api/infra/prisma/client';
 import { userRecord } from '#test/support/memory';
 import { PrismaCredentialRepository } from '#api/infra/prisma/credentials';
 import { PrismaSignInTransactions } from '#api/infra/prisma/sign-in-transactions';
+import { PrismaSsoLogoutSessions } from '#api/infra/prisma/sso-logout';
 import type { Database } from '#api/infra/prisma/client';
 import {
   PrismaIdentityRepository,
@@ -258,6 +259,7 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
           factorId: null,
           userId: 'rev-1',
           identityId: 'rev-i1',
+          oidc: { issuer: ISSUER, subject: 'rev-subject-1', sid: 'Sid ' },
           setupTokenHash: null,
           state: null,
           clientKey: hash('client'),
@@ -268,9 +270,11 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
       ),
     ).toBe(true);
     expect(
-      (await pending.acquire(hash('bound-step'), hash('client'), now))
-        ?.identityId,
-    ).toBe('rev-i1');
+      await pending.acquire(hash('bound-step'), hash('client'), now),
+    ).toMatchObject({
+      identityId: 'rev-i1',
+      oidc: { issuer: ISSUER, subject: 'rev-subject-1', sid: 'Sid ' },
+    });
     await pending.release(hash('bound-step'), now);
     await sessions.insert({
       tokenHash: hash('rev-sso'),
@@ -325,6 +329,60 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
         id: 'rev-i3',
       },
     ]);
+  });
+
+  test('back-channel deletion is byte-exact, time-bounded and reports each affected user once under concurrency', async () => {
+    await users('logout-user');
+    const sessions = new PrismaSessionRepository(db);
+    const logout = new PrismaSsoLogoutSessions(db);
+    const createdAt = new Date('2026-01-01T00:00:00.000Z');
+    const binding = { issuer: ISSUER, subject: 'Subject ', sid: 'Sid ' };
+    const entries = [
+      { name: 'logout-match', oidc: binding, createdAt },
+      { name: 'logout-case', oidc: { ...binding, sid: 'sid ' }, createdAt },
+      {
+        name: 'logout-space',
+        oidc: { ...binding, subject: 'Subject' },
+        createdAt,
+      },
+      {
+        name: 'logout-issuer',
+        oidc: { ...binding, issuer: `${ISSUER}/` },
+        createdAt,
+      },
+      { name: 'logout-local', oidc: null, createdAt },
+      {
+        name: 'logout-new',
+        oidc: binding,
+        createdAt: new Date(createdAt.getTime() + 1),
+      },
+    ];
+
+    for (const entry of entries)
+      await sessions.insert({
+        tokenHash: hash(entry.name),
+        userId: 'logout-user',
+        identityId: null,
+        oidc: entry.oidc,
+        createdAt: entry.createdAt,
+        expiresAt: new Date('2027-01-01T00:00:00.000Z'),
+      });
+    expect((await sessions.find(hash('logout-match')))?.oidc).toEqual(binding);
+    const outcomes = await Promise.all([
+      logout.deleteMatching(
+        { ...binding, issuedAt: createdAt.getTime() / 1000 },
+        createdAt,
+      ),
+      logout.deleteMatching(
+        { ...binding, issuedAt: createdAt.getTime() / 1000 },
+        createdAt,
+      ),
+    ]);
+
+    expect(outcomes.flat()).toEqual(['logout-user']);
+    expect(await sessions.find(hash('logout-match'))).toBeNull();
+    for (const entry of entries.slice(1))
+      expect(await sessions.find(hash(entry.name))).not.toBeNull();
   });
 
   test(

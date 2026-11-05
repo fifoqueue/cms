@@ -36,4 +36,6 @@ export const Errors = {
   ModerationInvalid: 'This comment action is not valid.',
   /** An upload that never reached the server. */
   UploadNetwork: 'Network error',
+  /** A form post from another origin (`#lib/server/csrf.js`). */
+  CrossSiteForm: 'Cross-site form submissions are forbidden',
 } as const;

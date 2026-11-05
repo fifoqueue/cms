@@ -40,6 +40,10 @@ class FixtureSso extends SsoService {
 class FakeProvider implements OidcProvider {
   issued = 0;
 
+  async verifyLogout() {
+    return null;
+  }
+
   async authorize() {
     this.issued++;
 

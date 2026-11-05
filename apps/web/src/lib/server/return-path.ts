@@ -1,4 +1,5 @@
 import { canonicalPermalinkPath } from '@cms/sdk';
+import { isCredentialLessPath } from '#lib/server/credential-less.js';
 
 /** Query parameter carrying the same-site address to open after signing in. */
 export const RETURN_PARAM = 'redirect_to';
@@ -8,7 +9,8 @@ const MAX_RETURN_LENGTH = 2000;
 
 /**
  * A same-origin canonical path to open after sign-in, else the Dashboard. Authentication routes
- * and anything that can leave the site (`//host`, `/\\host`, schemes) are refused.
+ * (credential-less endpoints included) and anything that can leave the site (`//host`,
+ * `/\\host`, schemes) are refused.
  */
 export const returnPath = (
   value: string | null | undefined,
@@ -32,18 +34,20 @@ export const returnPath = (
     return '/admin';
   }
 
-  const blocked = [
-    loginPath,
-    '/admin/logout',
-    '/admin/setup',
-    '/admin/sso/callback',
-    '/admin/sign-in',
-    '/admin/forgot-password',
-    '/admin/password',
-    '/admin/register',
-  ].some(
-    (route) => url.pathname === route || url.pathname.startsWith(`${route}/`),
-  );
+  const blocked =
+    isCredentialLessPath(url.pathname) ||
+    [
+      loginPath,
+      '/admin/logout',
+      '/admin/setup',
+      '/admin/sso/callback',
+      '/admin/sign-in',
+      '/admin/forgot-password',
+      '/admin/password',
+      '/admin/register',
+    ].some(
+      (route) => url.pathname === route || url.pathname.startsWith(`${route}/`),
+    );
 
   return url.origin === BASE && !blocked
     ? `${url.pathname}${url.search}`

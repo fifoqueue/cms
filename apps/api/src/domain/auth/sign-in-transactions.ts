@@ -1,4 +1,7 @@
-import type { AdmissionLimits } from '#api/domain/auth/sso-ports';
+import type {
+  AdmissionLimits,
+  OidcSessionBinding,
+} from '#api/domain/auth/sso-ports';
 
 export const SIGN_IN_TTL_MS = 10 * 60 * 1000;
 export const SIGN_IN_STAGES = [
@@ -18,6 +21,8 @@ export interface SignInTransaction {
   setupTokenHash: string | null;
   /** Core-only SSO session binding; pending requests cascade when the identity is unlinked. */
   identityId?: string | null;
+  /** Core-only verified OIDC claims preserved across factor and enrollment stages. */
+  oidc?: OidcSessionBinding | null;
   /** JSON validated at the extension boundary; at most 8 KB UTF-8. */
   state: unknown;
   clientKey: string;

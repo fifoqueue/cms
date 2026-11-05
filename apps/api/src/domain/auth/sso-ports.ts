@@ -1,4 +1,5 @@
 import type { SettingsRepository } from '#api/domain/site/site-service';
+import type { VerifiedLogout } from '#api/domain/auth/sso-logout-ports';
 
 export interface SsoAccessContext {
   settings: SettingsRepository;
@@ -29,6 +30,11 @@ export interface VerifiedIdentity {
   subject: string;
 }
 
+/** Verified ID token claims bound only to the RP session, never to an identity link. */
+export interface OidcSessionBinding extends VerifiedIdentity {
+  sid?: string;
+}
+
 /** Standards-based OpenID Connect relying party (Authorization Code flow with PKCE S256). */
 export interface OidcProvider {
   authorize(): Promise<OidcAuthorizationRequest>;
@@ -38,7 +44,10 @@ export interface OidcProvider {
    * PKCE verifier and verifies the ID token (signature, issuer, audience, expiry, nonce).
    * Throws `unauthorized` when anything does not match.
    */
-  verify(query: string, checks: OidcChecks): Promise<VerifiedIdentity>;
+  verify(query: string, checks: OidcChecks): Promise<OidcSessionBinding>;
+
+  /** Verifies a signed, fresh logout token for this issuer/client; null on mismatch or rejection. */
+  verifyLogout(token: string): Promise<VerifiedLogout | null>;
 }
 
 /** Longest issuer or subject, in UTF-8 bytes, that identities can be stored with. */

@@ -100,6 +100,7 @@ const app = await createApiApp({
     } as ApiServices['privacy'],
     auth,
     recovery: {} as ApiServices['recovery'],
+    ssoLogout: {} as ApiServices['ssoLogout'],
     sso: {
       info: () => ({ enabled: false }),
       unlink: record('sso.unlink'),
