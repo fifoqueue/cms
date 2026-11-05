@@ -28,6 +28,8 @@ const { ownsPending, pendingEnrollment } =
   await import('#lib/server/sign-in.js');
 const { signInCallback } = await import('#lib/server/sign-in-callback.js');
 const { POST: logout } = await import('#web/routes/admin/logout/+server.js');
+const { GET: signedOut } =
+  await import('#web/routes/admin/sso/signed-out/+server.js');
 
 const cookies = (initial: Record<string, string> = {}) => {
   const values = new Map(Object.entries(initial));
@@ -77,6 +79,68 @@ const locationOf = async (run: () => Promise<unknown>) => {
 
   return null;
 };
+
+test('logout follows only secure provider URLs after clearing credentials and pending work', async () => {
+  for (const [endSessionUrl, expected] of [
+    [
+      'https://id.example/logout?id_token_hint=token',
+      'https://id.example/logout?id_token_hint=token',
+    ],
+    ['http://127.0.0.2:8080/logout', 'http://127.0.0.2:8080/logout'],
+    ['http://[::1]:8080/logout', 'http://[::1]:8080/logout'],
+    ['http://localhost:8080/logout', 'http://localhost:8080/logout'],
+    ['http://id.example/logout', '/login'],
+    ['http://localhost.evil/logout', '/login'],
+    ['https://user:password@id.example/logout', '/login'],
+    ['javascript:alert(1)', '/login'],
+    ['//id.example/logout', '/login'],
+    [null, '/login'],
+  ]) {
+    const state = cookies({
+      '__Host-cms_session': 'session',
+      '__Host-cms_sso': 'pending',
+    });
+    const location = await locationOf(() =>
+      logout({
+        fetch: (async (input) =>
+          String(input).includes('/site')
+            ? Response.json({ title: 'Site', description: '', locale: 'en' })
+            : Response.json({ endSessionUrl })) as typeof fetch,
+        locals: { token: 'session' },
+        cookies: state.api,
+        url: secure,
+        request: new Request('https://cms.example/admin/logout', {
+          method: 'POST',
+          body: new URLSearchParams(),
+        }),
+      } as never),
+    );
+
+    expect(location).toBe(expected);
+    expect(state.values.has('__Host-cms_session')).toBe(false);
+    expect(state.values.has('__Host-cms_sso')).toBe(false);
+    expect(state.values.get('__Host-cms_signed_out')).toBe('1');
+  }
+});
+
+test('the provider return uses the public login path or home when links are hidden', async () => {
+  for (const showLogin of [true, false]) {
+    const location = await locationOf(() =>
+      signedOut({
+        fetch: (async () =>
+          Response.json({
+            title: 'Site',
+            description: '',
+            locale: 'en',
+            loginPath: '/members/sign-in',
+            showLogin,
+          })) as typeof fetch,
+      } as never),
+    );
+
+    expect(location).toBe(showLogin ? '/members/sign-in' : '/');
+  }
+});
 
 test('sign-in callbacks honor filtered destinations while preserving the no-hook return path', async () => {
   for (const redirectTo of ['/welcome?from=login', undefined]) {

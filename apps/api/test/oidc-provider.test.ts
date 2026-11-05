@@ -7,6 +7,8 @@ import { fixedClock, sequentialIds, userRecord } from '#test/support/memory';
 import { createAuthClient } from '@cms/sdk/client';
 import { AuthService } from '#api/domain/auth/auth-service';
 import { SsoLogoutService } from '#api/domain/auth/sso-logout';
+import { SsoEndSession } from '#api/domain/auth/sso-end-session';
+import { aesSecretBox } from '#api/infra/secret-box';
 import type { OidcSessionBinding } from '#api/domain/auth/sso-ports';
 import { createApiApp } from '#api/http/app';
 import type { ApiServices } from '#api/http/services';
@@ -22,6 +24,7 @@ const ISSUER = 'https://op.test';
 const CLIENT_ID = 'cms';
 const CLIENT_SECRET = 'client-secret';
 const REDIRECT_URI = 'https://cms.test/admin/sso/callback';
+const POST_LOGOUT_URI = 'https://cms.test/admin/sso/signed-out';
 
 const encode = (value: unknown) =>
   Buffer.from(
@@ -80,6 +83,7 @@ beforeAll(async () => {
 const createProvider = ({
   tamper = (claims: Claims) => claims,
   key = () => signingKey.privateKey,
+  endSessionEndpoint = `${ISSUER}/logout` as string | null,
 } = {}) => {
   const grants = new Map<string, Grant>();
   const tokenRequests: {
@@ -95,6 +99,7 @@ const createProvider = ({
         issuer: ISSUER,
         authorization_endpoint: `${ISSUER}/authorize`,
         token_endpoint: `${ISSUER}/token`,
+        ...(endSessionEndpoint && { end_session_endpoint: endSessionEndpoint }),
         jwks_uri: `${ISSUER}/jwks`,
         response_types_supported: ['code'],
         subject_types_supported: ['public'],
@@ -191,6 +196,7 @@ const relyingParty = (
       clientSecret: CLIENT_SECRET,
       authMethod: 'client_secret_basic',
       redirectUri: REDIRECT_URI,
+      postLogoutRedirectUri: POST_LOGOUT_URI,
       scope: 'openid',
       fetch: op.fetch,
       ...overrides,
@@ -207,7 +213,12 @@ const logoutFixture = async () => {
   });
   const { provider } = relyingParty(op);
   const request = await provider.authorize();
-  const binding = await provider.verify(op.approve(request.url), request);
+  const identity = await provider.verify(op.approve(request.url), request);
+  const binding = {
+    issuer: identity.issuer,
+    subject: identity.subject,
+    sid: identity.sid,
+  };
   const users = new MemoryUsers();
   const owner = userRecord({ id: 'logout-owner' });
 
@@ -411,6 +422,145 @@ test('invalid logout tokens cannot delete sessions through the public API', asyn
   expect(f.lookups()).toBe(0);
 });
 
+test('RP logout commits locally before returning validated provider navigation, with safe degradation', async () => {
+  const op = createProvider();
+  const { provider } = relyingParty(op);
+  const request = await provider.authorize();
+  const identity = await provider.verify(op.approve(request.url), request);
+  const secrets = aesSecretBox('logout-test-key');
+  const binding: OidcSessionBinding = {
+    issuer: identity.issuer,
+    subject: identity.subject,
+    logout: {
+      providerId: 'op',
+      clientId: CLIENT_ID,
+      sealedIdToken: secrets.seal(identity.idToken),
+    },
+  };
+  const users = new MemoryUsers();
+  const owner = userRecord({ id: 'rp-logout-owner' });
+
+  await users.insert(owner);
+  const { sessions } = createMemoryAuthStore(users);
+  const { logger, lines } = recordingLogger();
+  const hooks = new HookBus({ logger, timeoutMs: 100 });
+  const events: unknown[] = [];
+  let current = provider;
+  let enabled = true;
+  let issued = 0;
+  const endSession = new SsoEndSession({
+    secrets,
+    logger,
+    setup: async () => {
+      expect(sessions.rows.size).toBe(0);
+      expect(events).toHaveLength(issued);
+
+      return {
+        providers: enabled
+          ? [
+              {
+                id: 'op',
+                issuer: ISSUER,
+                name: 'OP',
+                provider: current,
+                subjects: new Map(),
+              },
+            ]
+          : [],
+      };
+    },
+  });
+  const auth = new AuthService({
+    users,
+    sessions,
+    hooks,
+    endSession,
+    hasher: plainHasher,
+    ids: sequentialIds(),
+    tokens: { issue: () => `rp-session-${++issued}`, digest: (s) => s },
+    clock: fixedClock(),
+    sessionTtlMs: 600000,
+  });
+
+  hooks.registrar('observer').on('user.signedOut', (event) => {
+    expect(sessions.rows.size).toBe(0);
+    events.push(event);
+  });
+  const app = await createApiApp({
+    services: { auth } as unknown as ApiServices,
+    logger,
+  });
+  const client = (token?: string) =>
+    createAuthClient(
+      {
+        baseUrl: 'http://localhost',
+        fetch: (async (input, init) =>
+          app.fetch(new Request(input, init))) as typeof fetch,
+      },
+      token,
+    );
+  const logout = async (oidc: OidcSessionBinding | null = binding) => {
+    const session = await auth.startSession(owner, null, oidc);
+
+    expect(JSON.stringify([...sessions.rows.values()])).not.toContain(
+      identity.idToken,
+    );
+    expect(JSON.stringify(session)).not.toContain(identity.idToken);
+    expect(
+      JSON.stringify(await auth.sessions(owner, session.token)),
+    ).not.toContain(identity.idToken);
+
+    return client(session.token).logout();
+  };
+  const result = await logout();
+  const url = new URL(result.endSessionUrl!);
+
+  expect(`${url.origin}${url.pathname}`).toBe(`${ISSUER}/logout`);
+  expect(Object.fromEntries(url.searchParams)).toEqual({
+    id_token_hint: identity.idToken,
+    client_id: CLIENT_ID,
+    post_logout_redirect_uri: POST_LOGOUT_URI,
+  });
+  expect(events[0]).toMatchObject({ scope: 'session', actorId: owner.id });
+  expect(JSON.stringify(events)).not.toContain(identity.idToken);
+  expect(await logout(null)).toEqual({ endSessionUrl: null });
+  expect(await client().logout()).toEqual({ endSessionUrl: null });
+  expect(await client('missing-session').logout()).toEqual({
+    endSessionUrl: null,
+  });
+  const rotated = await logout({
+    ...binding,
+    logout: {
+      providerId: 'op',
+      clientId: CLIENT_ID,
+      sealedIdToken: aesSecretBox('old-key').seal(identity.idToken),
+    },
+  });
+
+  expect(
+    Object.fromEntries(new URL(rotated.endSessionUrl!).searchParams),
+  ).toEqual({
+    client_id: CLIENT_ID,
+    post_logout_redirect_uri: POST_LOGOUT_URI,
+  });
+  current = relyingParty(op, { clientId: 'replacement-client' }).provider;
+  expect(await logout()).toEqual({ endSessionUrl: null });
+  current = provider;
+  enabled = false;
+  expect(await logout()).toEqual({ endSessionUrl: null });
+  enabled = true;
+  current = relyingParty(createProvider({ endSessionEndpoint: null })).provider;
+  expect(await logout()).toEqual({ endSessionUrl: null });
+  current = relyingParty(op, {
+    fetch: async () => {
+      throw new Error('discovery offline');
+    },
+  }).provider;
+  expect(await logout()).toEqual({ endSessionUrl: null });
+  expect(lines).toContain('warn Single sign-on end-session URL unavailable');
+  expect(JSON.stringify(lines)).not.toContain(identity.idToken);
+});
+
 describe('OpenIdClientProvider', () => {
   test('authorization code flow with PKCE S256, state and nonce yields the verified subject', async () => {
     const op = createProvider();
@@ -435,6 +585,8 @@ describe('OpenIdClientProvider', () => {
     expect(await provider.verify(op.approve(request.url), request)).toEqual({
       issuer: ISSUER,
       subject: 'subject-1',
+      idToken: expect.any(String),
+      clientId: CLIENT_ID,
     });
 
     const [token] = op.tokenRequests;

@@ -33,11 +33,15 @@ const account = () => resolve('/admin/(app)/account');
 /** The account page's two-step section, where enrollment steps are shown. */
 export const ENROLL_ANCHOR = 'two-step';
 
-export const loginPathOf = (fetch: typeof globalThis.fetch) =>
+/** Public navigation can honor hidden login links without changing authentication flow returns. */
+export const loginPathOf = (
+  fetch: typeof globalThis.fetch,
+  visibleOnly = false,
+) =>
   contentApi(fetch)
     .site()
-    .then((site) => site.loginPath)
-    .catch(() => '/login');
+    .then((site) => (visibleOnly && !site.showLogin ? '/' : site.loginPath))
+    .catch(() => (visibleOnly ? '/' : '/login'));
 
 /**
  * Whether password sign-in is allowed (public resets accepted, emailed links set a password).

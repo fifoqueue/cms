@@ -66,6 +66,13 @@ export const coreSignInOutcomeSchema = z
             issuer: z.string().refine(storableIdentity),
             subject: z.string().refine(storableIdentity),
             sid: z.string().refine(storableIdentity).optional(),
+            logout: z
+              .object({
+                providerId: z.string().min(1).max(32),
+                clientId: z.string().min(1),
+                sealedIdToken: z.string().min(1),
+              })
+              .optional(),
           })
           .nullable()
           .optional(),

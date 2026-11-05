@@ -1086,5 +1086,13 @@ test('hidden login masks protected admin screens while visible login uses the co
     );
     // A hidden admin screen looks exactly like any other missing page.
     if (!showLogin) expect(await response.text()).toBe('<p>site 404</p>');
+    const returned = await handleSignedOut('/admin/sso/signed-out', {
+      route: '/admin/sso/signed-out',
+      status: 303,
+      headers: { location: showLogin ? '/members/sign-in' : '/' },
+    });
+
+    expect(returned.status).toBe(303);
+    expect(returned.headers.get('cache-control')).toBe('private, no-store');
   }
 });

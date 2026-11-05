@@ -4,6 +4,7 @@ import {
   None,
   authorizationCodeGrant,
   buildAuthorizationUrl,
+  buildEndSessionUrl,
   calculatePKCECodeChallenge,
   customFetch,
   discovery,
@@ -29,7 +30,7 @@ import type {
   OidcAuthorizationRequest,
   OidcChecks,
   OidcProvider,
-  OidcSessionBinding,
+  VerifiedOidcIdentity,
 } from '#api/domain/auth/sso-ports';
 import { messageOf, unauthorized, Errors } from '#api/shared/errors';
 import type { Logger } from '#api/shared/logger';
@@ -67,6 +68,7 @@ export interface OidcClientSettings {
   authMethod: OidcClientAuthMethod;
   /** Registered redirect URI without query or fragment. */
   redirectUri: string;
+  postLogoutRedirectUri: string;
   scope: string;
   /** Outbound HTTP; the public egress policy when omitted. */
   fetch?: CustomFetch;
@@ -115,7 +117,10 @@ export class OpenIdClientProvider implements OidcProvider {
     return { url: url.href, state, nonce, codeVerifier };
   }
 
-  async verify(query: string, checks: OidcChecks): Promise<OidcSessionBinding> {
+  async verify(
+    query: string,
+    checks: OidcChecks,
+  ): Promise<VerifiedOidcIdentity> {
     const config = await this.discover();
 
     // The token request's redirect_uri is derived from this URL, so it is always the configured one.
@@ -135,6 +140,8 @@ export class OpenIdClientProvider implements OidcProvider {
       return {
         issuer: claims.iss,
         subject: claims.sub,
+        clientId: this.settings.clientId,
+        idToken: tokens.id_token!,
         ...(claims.sid !== undefined ? { sid: claims.sid } : {}),
       };
     } catch (error) {
@@ -222,6 +229,22 @@ export class OpenIdClientProvider implements OidcProvider {
     this.settings.fetch
       ? this.settings.fetch(url, options)
       : publicFetch(url, options as unknown as RequestInit);
+
+  async endSession(
+    clientId: string,
+    idTokenHint?: string,
+  ): Promise<string | null> {
+    if (clientId !== this.settings.clientId) return null;
+    const config = await this.discover();
+
+    if (!config.serverMetadata().end_session_endpoint) return null;
+
+    return buildEndSessionUrl(config, {
+      client_id: this.settings.clientId,
+      post_logout_redirect_uri: this.settings.postLogoutRedirectUri,
+      ...(idTokenHint ? { id_token_hint: idTokenHint } : {}),
+    }).href;
+  }
 
   /**
    * Discovers once; a failed discovery is retried on the next request. The reason (such as an

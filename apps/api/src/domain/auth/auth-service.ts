@@ -6,6 +6,7 @@ import type {
   SessionGrant,
   SetupStatus,
   UserProfile,
+  LogoutResult,
 } from '@cms/sdk';
 import { conflict, notFound, Errors } from '#api/shared/errors';
 import type { Actor } from '#api/domain/auth/authorization';
@@ -37,6 +38,8 @@ export interface AuthServiceDeps {
   sessionTtlMs: number;
   /** Application passwords accepted as bearer tokens besides sessions. */
   apiTokens?: Pick<ApiTokenService, 'authenticate'>;
+  /** Best-effort provider navigation, called only after local deletion and signedOut emission. */
+  endSession?: { url(binding: OidcSessionBinding): Promise<string | null> };
 }
 
 export class AuthService {
@@ -75,19 +78,23 @@ export class AuthService {
     return this.startSession(user);
   }
 
-  async logout(token: string): Promise<void> {
+  async logout(token: string): Promise<LogoutResult> {
     const hash = this.deps.tokens.digest(token);
-    const session = this.deps.hooks?.has('user.signedOut')
-      ? await this.deps.sessions.find(hash)
-      : null;
+    const session = await this.deps.sessions.find(hash);
 
     await this.deps.sessions.delete(hash);
-    if (session)
-      await this.deps.hooks!.emit('user.signedOut', {
+    if (session && this.deps.hooks?.has('user.signedOut'))
+      await this.deps.hooks.emit('user.signedOut', {
         user: toProfile(session.user),
         scope: 'session',
         actorId: session.user.id,
       });
+
+    return {
+      endSessionUrl: session?.oidc
+        ? ((await this.deps.endSession?.url(session.oidc)) ?? null)
+        : null,
+    };
   }
 
   /** The opaque id a session is listed under: derived from its digest, never the digest itself. */

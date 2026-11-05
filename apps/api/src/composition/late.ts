@@ -7,6 +7,7 @@ import type { SignInSettingsService } from '#api/domain/auth/sign-in-settings';
 import type { MediaService } from '#api/domain/media/media-service';
 import type { CommentService } from '#api/domain/comments/comment-service';
 import type { ContentService } from '#api/domain/content/content-service';
+import type { SsoEndSession } from '#api/domain/auth/sso-end-session';
 
 export interface Late<T> {
   get(): T;
@@ -40,6 +41,7 @@ export const createLatePorts = () => {
     createLate<Pick<CommentService, 'avatar' | 'discussion' | 'remove'>>();
   const content = createLate<Pick<ContentService, 'remove'>>();
   const types = createLate<() => Promise<string[]>>();
+  const endSession = createLate<Pick<SsoEndSession, 'url'>>();
 
   return {
     scheduler,
@@ -51,6 +53,7 @@ export const createLatePorts = () => {
     comments,
     content,
     types,
+    endSession,
     repositories: {
       regeneratePermalinks: () =>
         void scheduler.get().runNow('core:permalink-regeneration'),
@@ -73,6 +76,10 @@ export const createLatePorts = () => {
     },
     reconcileFunctions: () => functions.get().reconcile(),
     users: {
+      endSession: {
+        url: (binding: Parameters<SsoEndSession['url']>[0]) =>
+          endSession.get().url(binding),
+      },
       passwordLogin: async () =>
         (await signIn.get().effective()).methods.includes('password'),
       avatar: (key: Parameters<CommentService['avatar']>[0]) =>

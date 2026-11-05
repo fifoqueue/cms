@@ -97,6 +97,7 @@ const OPEN_ADMIN_PATHS = [
   '/admin/register',
   '/admin/setup',
   '/admin/sso/callback',
+  '/admin/sso/signed-out',
   '/admin/sign-in',
   '/admin/sign-in/callback',
   '/admin/forgot-password',

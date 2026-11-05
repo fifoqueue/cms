@@ -2568,6 +2568,9 @@ export const en = {
     'Each enabled provider gets its own sign-in button. Register the redirect URI below at every provider.',
   ssoCopyRedirectUri: 'Copy redirect URI',
   ssoCopyBackchannelLogoutUri: 'Copy back-channel logout URI',
+  ssoPostLogoutRedirectUri:
+    'Post-logout redirect URI to register at the provider',
+  ssoCopyPostLogoutRedirectUri: 'Copy post-logout redirect URI',
   ssoProvidersEmpty: 'No providers yet.',
   ssoNewProvider: 'New provider',
   ssoNotSaved: 'Not saved',

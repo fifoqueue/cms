@@ -7,6 +7,9 @@ interface BindingRow {
   oidcIssuer: Uint8Array | null;
   oidcSubject: Uint8Array | null;
   oidcSid: Uint8Array | null;
+  oidcProviderId: string | null;
+  oidcClientId: string | null;
+  oidcIdToken: string | null;
 }
 
 export const encodeOidcBinding = <
@@ -19,12 +22,18 @@ export const encodeOidcBinding = <
   oidcIssuer: oidc ? encoder.encode(oidc.issuer) : null,
   oidcSubject: oidc ? encoder.encode(oidc.subject) : null,
   oidcSid: oidc?.sid !== undefined ? encoder.encode(oidc.sid) : null,
+  oidcProviderId: oidc?.logout?.providerId ?? null,
+  oidcClientId: oidc?.logout?.clientId ?? null,
+  oidcIdToken: oidc?.logout?.sealedIdToken ?? null,
 });
 
 export const decodeOidcBinding = <T extends BindingRow>({
   oidcIssuer,
   oidcSubject,
   oidcSid,
+  oidcProviderId,
+  oidcClientId,
+  oidcIdToken,
   ...row
 }: T) => ({
   ...row,
@@ -34,6 +43,17 @@ export const decodeOidcBinding = <T extends BindingRow>({
           issuer: decoder.decode(oidcIssuer),
           subject: decoder.decode(oidcSubject),
           ...(oidcSid !== null ? { sid: decoder.decode(oidcSid) } : {}),
+          ...(oidcProviderId !== null &&
+          oidcClientId !== null &&
+          oidcIdToken !== null
+            ? {
+                logout: {
+                  providerId: oidcProviderId,
+                  clientId: oidcClientId,
+                  sealedIdToken: oidcIdToken,
+                },
+              }
+            : {}),
         }
       : null,
 });

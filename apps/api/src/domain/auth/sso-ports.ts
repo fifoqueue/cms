@@ -33,6 +33,18 @@ export interface VerifiedIdentity {
 /** Verified ID token claims bound only to the RP session, never to an identity link. */
 export interface OidcSessionBinding extends VerifiedIdentity {
   sid?: string;
+  /** Raw verification results are not assignable to stored session bindings. */
+  idToken?: never;
+  /** Server-only logout material; absent on sessions issued before RP-Initiated Logout. */
+  logout?: { providerId: string; clientId: string; sealedIdToken: string };
+}
+
+/** Verified token response, used only to seal the ID token before entering the flow engine. */
+export interface VerifiedOidcIdentity extends VerifiedIdentity {
+  sid?: string;
+  /** The RP client whose audience was verified, not an arbitrary token audience. */
+  clientId: string;
+  idToken: string;
 }
 
 /** Standards-based OpenID Connect relying party (Authorization Code flow with PKCE S256). */
@@ -44,7 +56,10 @@ export interface OidcProvider {
    * PKCE verifier and verifies the ID token (signature, issuer, audience, expiry, nonce).
    * Throws `unauthorized` when anything does not match.
    */
-  verify(query: string, checks: OidcChecks): Promise<OidcSessionBinding>;
+  verify(query: string, checks: OidcChecks): Promise<VerifiedOidcIdentity>;
+
+  /** Null if the issuing client differs from the current client or discovery has no endpoint. */
+  endSession(clientId: string, idTokenHint?: string): Promise<string | null>;
 
   /** Verifies a signed, fresh logout token for this issuer/client; null on mismatch or rejection. */
   verifyLogout(token: string): Promise<VerifiedLogout | null>;

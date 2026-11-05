@@ -136,6 +136,9 @@ model SignInTransaction {
   oidcIssuer     Bytes?   @map("oidc_issuer") @db.VarBinary(255)
   oidcSubject    Bytes?   @map("oidc_subject") @db.VarBinary(255)
   oidcSid        Bytes?   @map("oidc_sid") @db.VarBinary(255)
+  oidcProviderId String?  @map("oidc_provider_id") @db.VarChar(32)
+  oidcClientId   String?  @map("oidc_client_id") @db.Text
+  oidcIdToken    String?  @map("oidc_id_token") @db.Text
   identity       UserIdentity? @relation(fields: [identityId], references: [id], onDelete: Cascade)
   inProgress     Boolean  @default(false) @map("in_progress")
   state          String   @db.Text
@@ -169,6 +172,9 @@ model Session {
   oidcIssuer Bytes?        @map("oidc_issuer") @db.VarBinary(255)
   oidcSubject Bytes?       @map("oidc_subject") @db.VarBinary(255)
   oidcSid Bytes?           @map("oidc_sid") @db.VarBinary(255)
+  oidcProviderId String?   @map("oidc_provider_id") @db.VarChar(32)
+  oidcClientId String?     @map("oidc_client_id") @db.Text
+  oidcIdToken String?      @map("oidc_id_token") @db.Text
   createdAt  DateTime      @default(now()) @map("created_at") @db.DateTime(3)
   expiresAt  DateTime      @map("expires_at") @db.DateTime(3)
   user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)

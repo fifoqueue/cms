@@ -5,15 +5,21 @@ import type {
   CoreSignInMethod,
   CoreSignInOutcome,
 } from '#api/domain/auth/core-sign-in';
-import type { Clock, IdGenerator, RateLimiter } from '#api/domain/ports';
+import type {
+  Clock,
+  IdGenerator,
+  RateLimiter,
+  SecretBox,
+} from '#api/domain/ports';
 import type {
   ExternalIdentityRepository,
   VerifiedIdentity,
-  OidcSessionBinding,
+  VerifiedOidcIdentity,
 } from '#api/domain/auth/sso-ports';
 import type { SignInTarget, SsoSetup } from '#api/domain/auth/sso-service';
 import { storableIdentity } from '#api/domain/auth/sso-service';
 import { sameIssuer } from '#api/domain/auth/sso-issuer';
+import { sealOidcSession } from '#api/domain/auth/sso-session';
 import { DomainError, Errors, rateLimited } from '#api/shared/errors';
 
 const pending = z.object({
@@ -35,6 +41,7 @@ export const createSsoMethod = (deps: {
   ids: IdGenerator;
   clock: Clock;
   starts: RateLimiter;
+  secrets: SecretBox;
 }): CoreSignInMethod => {
   const begin = async (
     request: SignInRequest,
@@ -79,7 +86,7 @@ export const createSsoMethod = (deps: {
 
     if (!provider || !sameIssuer(provider.issuer, state.issuer))
       return { kind: 'failed' };
-    let identity: OidcSessionBinding;
+    let identity: VerifiedOidcIdentity;
 
     try {
       identity = await provider.provider.verify(step.query, {
@@ -100,6 +107,7 @@ export const createSsoMethod = (deps: {
       (identity.sid !== undefined && !storableIdentity(identity.sid))
     )
       return { kind: 'failed' };
+    const oidc = sealOidcSession(identity, provider.id, deps.secrets);
 
     if (user) {
       if (provider.subjects.has(identity.subject)) return { kind: 'failed' };
@@ -115,7 +123,7 @@ export const createSsoMethod = (deps: {
         kind: 'user',
         userId: user.id,
         identityId: link.id,
-        oidc: identity,
+        oidc,
         commitSetup: (tokenHash, now) =>
           deps.identities.claim(link, tokenHash, now),
       };
@@ -128,7 +136,7 @@ export const createSsoMethod = (deps: {
           kind: 'user',
           userId: target.user.id,
           identityId: target.identityId,
-          oidc: identity,
+          oidc,
         }
       : { kind: 'failed' };
   };

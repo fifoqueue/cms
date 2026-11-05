@@ -4,9 +4,10 @@ import { SsoService } from '#api/domain/auth/sso-service';
 import type {
   OidcChecks,
   OidcProvider,
-  VerifiedIdentity,
+  VerifiedOidcIdentity,
 } from '#api/domain/auth/sso-ports';
 import { unauthorized } from '#api/shared/errors';
+import { aesSecretBox } from '#api/infra/secret-box';
 import {
   fixedClock,
   profile,
@@ -44,6 +45,10 @@ class FakeProvider implements OidcProvider {
     return null;
   }
 
+  async endSession() {
+    return null;
+  }
+
   async authorize() {
     this.issued++;
 
@@ -55,13 +60,21 @@ class FakeProvider implements OidcProvider {
     };
   }
 
-  async verify(query: string, checks: OidcChecks): Promise<VerifiedIdentity> {
+  async verify(
+    query: string,
+    checks: OidcChecks,
+  ): Promise<VerifiedOidcIdentity> {
     const params = new URLSearchParams(query);
 
     if (params.get('state') !== checks.state || !params.get('code'))
       throw unauthorized('Single sign-on failed. Please try again.');
 
-    return { issuer: ISSUER, subject: params.get('code')! };
+    return {
+      issuer: ISSUER,
+      subject: params.get('code')!,
+      clientId: 'cms',
+      idToken: 'verified-id-token',
+    };
   }
 }
 
@@ -73,6 +86,7 @@ const tokens = {
 
 const fixture = async () => {
   const clock = fixedClock();
+  const secrets = aesSecretBox('sso-service-test-key');
   const users = new MemoryUsers();
   const { sessions, identities } = createMemoryAuthStore(users);
   const provider = new FakeProvider();
@@ -89,6 +103,7 @@ const fixture = async () => {
   });
 
   const sso = new FixtureSso({
+    secrets,
     policy: async () => ({ otherMethod: true, providers: [] }),
     access: new MemorySsoAccessTransactions({
       settings: {
@@ -143,7 +158,7 @@ const fixture = async () => {
     );
   };
 
-  return { identities, sso, admin, other, signIn };
+  return { identities, sso, admin, other, signIn, sessions, secrets, clock };
 };
 
 const callback = (transaction: string, state: string, subject: string) => ({
@@ -152,6 +167,49 @@ const callback = (transaction: string, state: string, subject: string) => ({
 });
 
 describe('SsoService', () => {
+  test('login and claim sessions store only sealed OIDC logout material', async () => {
+    for (const intent of ['login', 'claim'] as const) {
+      const { sso, identities, admin, sessions, secrets, clock } =
+        await fixture();
+
+      if (intent === 'claim')
+        await identities.tokens.insert({
+          tokenHash: tokens.digest('claim-proof'),
+          userId: admin.id,
+          purpose: 'invite',
+          expiresAt: new Date(clock.now().getTime() + TTL),
+        });
+      else
+        await identities.link({
+          id: 'linked-identity',
+          userId: admin.id,
+          issuer: ISSUER,
+          subject: 'subject',
+          createdAt: clock.now(),
+        });
+      const start = await sso.start(
+        { intent, ...(intent === 'claim' ? { token: 'claim-proof' } : {}) },
+        null,
+        CLIENT,
+      );
+      const result = await sso.complete(
+        callback(start.transaction, 'state-1', 'subject'),
+        null,
+      );
+
+      if (result.kind !== 'session') throw new Error('Expected session');
+      const stored = sessions.rows.get(tokens.digest(result.session.token))!;
+
+      expect(JSON.stringify(stored)).not.toContain('verified-id-token');
+      expect(JSON.stringify(result)).not.toContain('verified-id-token');
+      expect(stored.oidc?.logout?.providerId).toBe('default');
+      expect(stored.oidc?.logout?.clientId).toBe('cms');
+      expect(secrets.open(stored.oidc?.logout?.sealedIdToken ?? '')).toBe(
+        'verified-id-token',
+      );
+    }
+  });
+
   test('never links by email: an unlinked subject is rejected even if it claims an admin email', async () => {
     const { signIn } = await fixture();
 

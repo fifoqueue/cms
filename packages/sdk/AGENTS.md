@@ -7,4 +7,5 @@
 - **공유 스키마**: 신뢰 경계의 검증 스키마는 여기에 둡니다. 공개/관리자 DTO는 분리하며 허용 필드를 명시합니다([apps/web/AGENTS.md](../../apps/web/AGENTS.md#공개관리자-dto-경계)).
 - **오류 카탈로그**: 메시지는 `#sdk/errors`의 `Errors`에서 가져옵니다([루트 코드 스타일](../../AGENTS.md#43-코드-스타일)).
 - **클라이언트**: `createContentClient`(공개)·`createAuthClient`·`createAdminClient`로 분리하고, 응답 DTO를 런타임에 검증합니다.
+- **인증 프로토콜 응답**: `logout()`은 검증된 `{ endSessionUrl: string | null }`을 반환합니다. 세션 부여·진행 핸들·탐색 URL은 서버 전용 프로토콜 데이터이며 화면 DTO가 아닙니다. 자격 증명이 포함될 수 있으므로 페이지 데이터·훅·로그에 넣지 않고 쿠키/HTTP 리디렉션 처리에만 사용합니다.
 - **플러그인 API**: `@cms/sdk/plugin`. 새 훅은 `packages/sdk/src/hooks/<분야>.ts`에 정의합니다. 문서: [작성](../../docs/plugins/authoring.md), [확장 지점](../../docs/plugins/extension-points.md), [수명주기·격리](../../docs/plugins/lifecycle-and-isolation.md).

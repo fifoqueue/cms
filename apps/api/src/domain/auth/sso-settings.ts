@@ -58,6 +58,7 @@ const KEY = 'sso';
 /** Where providers send users back; the web app serves it. */
 export const SSO_CALLBACK_PATH = '/admin/sso/callback';
 export const SSO_BACKCHANNEL_LOGOUT_PATH = '/admin/sso/backchannel-logout';
+export const SSO_SIGNED_OUT_PATH = '/admin/sso/signed-out';
 
 interface Stored {
   settings: SsoSettings;
@@ -71,6 +72,7 @@ export interface OidcClient {
   clientSecret?: string;
   authMethod: SsoProvider['authMethod'];
   redirectUri: string;
+  postLogoutRedirectUri: string;
   scope: string;
 }
 
@@ -119,6 +121,11 @@ export class SsoSettingsService {
         ? `${new URL(this.deps.environmentRedirectUri).origin}${SSO_BACKCHANNEL_LOGOUT_PATH}`
         : siteUrl
           ? `${siteUrl}${SSO_BACKCHANNEL_LOGOUT_PATH}`
+          : '',
+      postLogoutRedirectUri: this.deps.environmentRedirectUri
+        ? `${new URL(this.deps.environmentRedirectUri).origin}${SSO_SIGNED_OUT_PATH}`
+        : siteUrl
+          ? `${siteUrl}${SSO_SIGNED_OUT_PATH}`
           : '',
       environmentProvider: this.deps.environment
         ? { id: SSO_ENVIRONMENT_PROVIDER, name: this.deps.environment.name }
@@ -245,6 +252,7 @@ export class SsoSettingsService {
           : undefined,
         authMethod: settings.authMethod,
         redirectUri: `${siteUrl}${SSO_CALLBACK_PATH}`,
+        postLogoutRedirectUri: `${siteUrl}${SSO_SIGNED_OUT_PATH}`,
         scope: settings.scopes,
       };
       const key = JSON.stringify(client);

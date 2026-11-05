@@ -41,6 +41,7 @@ export const returnPath = (
       '/admin/logout',
       '/admin/setup',
       '/admin/sso/callback',
+      '/admin/sso/signed-out',
       '/admin/sign-in',
       '/admin/forgot-password',
       '/admin/password',

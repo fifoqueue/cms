@@ -10,6 +10,7 @@ import { userRecord } from '#test/support/memory';
 import { PrismaCredentialRepository } from '#api/infra/prisma/credentials';
 import { PrismaSignInTransactions } from '#api/infra/prisma/sign-in-transactions';
 import { PrismaSsoLogoutSessions } from '#api/infra/prisma/sso-logout';
+import { aesSecretBox } from '#api/infra/secret-box';
 import type { Database } from '#api/infra/prisma/client';
 import {
   PrismaIdentityRepository,
@@ -249,6 +250,12 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
     await linkAs('rev-i1', 'rev-1', 'rev-subject-1');
     const pending = new PrismaSignInTransactions(db);
     const now = new Date();
+    const secrets = aesSecretBox('prisma-logout-test-key');
+    const logout = {
+      providerId: 'default',
+      clientId: 'cms',
+      sealedIdToken: secrets.seal('raw-id-token-sentinel'),
+    };
 
     expect(
       await pending.admit(
@@ -259,7 +266,12 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
           factorId: null,
           userId: 'rev-1',
           identityId: 'rev-i1',
-          oidc: { issuer: ISSUER, subject: 'rev-subject-1', sid: 'Sid ' },
+          oidc: {
+            issuer: ISSUER,
+            subject: 'rev-subject-1',
+            sid: 'Sid ',
+            logout,
+          },
           setupTokenHash: null,
           state: null,
           clientKey: hash('client'),
@@ -273,16 +285,26 @@ describe.skipIf(!serverUrl)('SSO Prisma adapters on MariaDB', () => {
       await pending.acquire(hash('bound-step'), hash('client'), now),
     ).toMatchObject({
       identityId: 'rev-i1',
-      oidc: { issuer: ISSUER, subject: 'rev-subject-1', sid: 'Sid ' },
+      oidc: { issuer: ISSUER, subject: 'rev-subject-1', sid: 'Sid ', logout },
     });
     await pending.release(hash('bound-step'), now);
     await sessions.insert({
       tokenHash: hash('rev-sso'),
       userId: 'rev-1',
       identityId: 'rev-i1',
+      oidc: { issuer: ISSUER, subject: 'rev-subject-1', sid: 'Sid ', logout },
       createdAt: new Date(),
       expiresAt,
     });
+    const stored = await db.session.findUniqueOrThrow({
+      where: { tokenHash: hash('rev-sso') },
+    });
+
+    expect(JSON.stringify(stored)).not.toContain('raw-id-token-sentinel');
+    expect(secrets.open(stored.oidcIdToken!)).toBe('raw-id-token-sentinel');
+    expect((await sessions.find(hash('rev-sso')))?.oidc?.logout).toEqual(
+      logout,
+    );
     await sessions.insert({
       tokenHash: hash('rev-password'),
       userId: 'rev-1',

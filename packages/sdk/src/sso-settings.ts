@@ -119,6 +119,8 @@ export const adminSsoSettingsSchema = z.object({
   redirectUri: z.string(),
   /** The web endpoint to register for OpenID Connect Back-Channel Logout. */
   backchannelLogoutUri: z.string(),
+  /** Registered return address for OpenID Connect RP-Initiated Logout. */
+  postLogoutRedirectUri: z.string(),
   /**
    * The provider set by the server environment (`OIDC_*`), shown read-only. While it is set,
    * the providers stored here are kept but unused.

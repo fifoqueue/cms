@@ -8,6 +8,7 @@ import type {
   UserProfile,
 } from '@cms/sdk';
 import { sameIssuer } from '#api/domain/auth/sso-issuer';
+import { sealOidcSession } from '#api/domain/auth/sso-session';
 import { toProfile } from '#api/domain/users/user-mapper';
 import { Errors as SignInErrors } from '@cms/sdk/errors';
 import {
@@ -20,7 +21,12 @@ import {
   invalidInput,
 } from '#api/shared/errors';
 import { parseInput } from '#api/shared/validation';
-import type { Clock, IdGenerator, RateLimiter } from '#api/domain/ports';
+import type {
+  Clock,
+  IdGenerator,
+  RateLimiter,
+  SecretBox,
+} from '#api/domain/ports';
 import type {
   TokenIssuer,
   UserRecord,
@@ -83,6 +89,7 @@ export interface SsoServiceDeps {
   identities: ExternalIdentityRepository;
   transactions: SsoTransactionRepository;
   sessions: SessionStarter;
+  secrets: SecretBox;
   tokens: TokenIssuer;
   ids: IdGenerator;
   clock: Clock;
@@ -247,7 +254,7 @@ export class SsoService {
           session: await this.deps.sessions.startSession(
             owner,
             link.id,
-            identity,
+            sealOidcSession(identity, pending.providerId, this.deps.secrets),
           ),
         };
       }
@@ -267,7 +274,7 @@ export class SsoService {
       session: await this.deps.sessions.startSession(
         target.user,
         target.identityId,
-        identity,
+        sealOidcSession(identity, pending.providerId, this.deps.secrets),
       ),
     };
   }

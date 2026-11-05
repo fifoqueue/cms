@@ -44,6 +44,19 @@
 
 ## 공개 렌더링과 인증 예외
 
+인증 프로토콜 응답(세션 부여, 진행 핸들, 자격 증명이 포함될 수 있는 탐색 URL)은
+화면 DTO와 구분하며 서버의 SDK 호출·쿠키/HTTP 리디렉션 처리에만 사용합니다.
+페이지 load/action 데이터와 훅·로그에 포함하지 않습니다. 로그아웃의 `endSessionUrl`은
+`id_token_hint`를 포함할 수 있으므로 절대 HTTPS 또는 루프백 HTTP(`localhost`,
+`127.0.0.0/8`, `::1`)이고 사용자 정보가 없는 주소만 Location으로 사용합니다.
+API 실패·URL 거부도 쿠키와 진행 중 로그인 정리·로그아웃 표식을 막지 않습니다.
+
+공개 인증 경로는 `hooks.server.ts`의 `OPEN_ADMIN_PATHS`와
+`#lib/server/return-path.js`의 복귀 금지 경로에 함께 등록합니다.
+`/admin/sso/signed-out`은 IdP가 브라우저를 돌려보내는 공개 GET이며 자격 증명 없는
+서버 간 POST 범주가 아닙니다. `loginPathOf(fetch, true)`는 공개 탐색에서 숨긴 로그인
+링크를 존중하여 홈으로 보내고, 일반 인증 흐름은 기존 로그인 경로를 유지합니다.
+
 공개 페이지와 콘텐츠 미리보기는 요청마다 `GET /api/v1/page-render` 한 번으로 표현
 데이터를 받아 웹 훅을 적용합니다. 모든 공개 테마의 공통 레이아웃은 `body.open`을
 본문 셸 앞에, `body.close`를 본문 셸 뒤에 출력합니다. 미리보기는 슬롯을 포함하되

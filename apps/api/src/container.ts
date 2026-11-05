@@ -180,6 +180,7 @@ export const createContainer = async (
   });
 
   late.signIn.set(signIn.signInSettings);
+  late.endSession.set(signIn.endSession);
   const plugins = createPlugins({
     ...registries,
     ...repositories,

@@ -11,12 +11,16 @@ import {
   uuidV7,
 } from '#api/infra/system';
 import type { Logger } from '#api/shared/logger';
+import { SSO_SIGNED_OUT_PATH } from '#api/domain/auth/sso-settings';
 
 export const createAuth = (
   users: UserRepository,
   sessions: SessionRepository,
   config: Pick<AppConfig, 'SESSION_TTL_HOURS'>,
-  extras: Pick<AuthServiceDeps, 'apiTokens' | 'roles' | 'hooks'> = {},
+  extras: Pick<
+    AuthServiceDeps,
+    'apiTokens' | 'roles' | 'hooks' | 'endSession'
+  > = {},
 ) =>
   new AuthService({
     users,
@@ -58,6 +62,7 @@ export const createOidcProvider = (
         config.OIDC_CLIENT_AUTH_METHOD ??
         (OIDC_CLIENT_SECRET ? 'client_secret_basic' : 'none'),
       redirectUri: OIDC_REDIRECT_URI,
+      postLogoutRedirectUri: `${new URL(OIDC_REDIRECT_URI).origin}${SSO_SIGNED_OUT_PATH}`,
       scope: config.OIDC_SCOPES,
       fetch: fetcher,
     },

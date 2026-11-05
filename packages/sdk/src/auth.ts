@@ -33,6 +33,13 @@ export const setupSchema = z.object({
 export type LoginInput = z.input<typeof loginSchema>;
 export type SetupInput = z.input<typeof setupSchema>;
 
+/** Server-side protocol navigation only; never serialize this URL into page data or logs. */
+export const logoutResultSchema = z.object({
+  endSessionUrl: z.url().nullable(),
+});
+
+export type LogoutResult = z.output<typeof logoutResultSchema>;
+
 /** Authenticated profile only. Never include this DTO in public page data. */
 export const adminUserSchema = z.object({
   id: z.string(),

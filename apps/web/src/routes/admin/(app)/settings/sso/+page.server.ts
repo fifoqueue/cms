@@ -22,6 +22,7 @@ export const load: PageServerLoad = async (event) => {
       .map((provider) => provider.id),
     redirectUri: sso.redirectUri,
     backchannelLogoutUri: sso.backchannelLogoutUri,
+    postLogoutRedirectUri: sso.postLogoutRedirectUri,
     environmentProvider: sso.environmentProvider && {
       id: sso.environmentProvider.id,
       name: sso.environmentProvider.name,

@@ -1,4 +1,5 @@
 import { createAuth } from '#api/composition/auth';
+import type { AuthServiceDeps } from '#api/domain/auth/auth-service';
 import type { createRepositories } from '#api/composition/repositories';
 import type { createRegistries } from '#api/composition/registries';
 import type { createJobs } from '#api/composition/jobs';
@@ -49,6 +50,7 @@ type Input = Pick<
     email: Awaited<ReturnType<typeof createEmail>>['email'];
     sealedJobs: Jobs['sealedJobs'];
     passwordLogin: () => Promise<boolean>;
+    endSession: NonNullable<AuthServiceDeps['endSession']>;
     avatar: ConstructorParameters<typeof UserService>[0]['avatar'];
     site: Pick<SiteService, 'get'>;
     seo: Pick<SeoSettingsService, 'getPublic'>;
@@ -76,6 +78,7 @@ export const createUsers = ({
   email,
   sealedJobs,
   passwordLogin,
+  endSession,
   avatar,
   site,
   seo,
@@ -97,6 +100,7 @@ export const createUsers = ({
     roleDefaults,
   );
   const auth = createAuth(users, sessions, config, {
+    endSession,
     hooks,
     apiTokens,
     roles,

@@ -2512,6 +2512,8 @@ export const ko: Messages = {
     '켜 둔 제공자마다 로그인 버튼이 하나씩 생깁니다. 아래 리디렉션 URI를 모든 제공자에 등록하세요.',
   ssoCopyRedirectUri: '리디렉션 URI 복사',
   ssoCopyBackchannelLogoutUri: '백채널 로그아웃 URI 복사',
+  ssoPostLogoutRedirectUri: '제공자에 등록할 로그아웃 후 리디렉션 URI',
+  ssoCopyPostLogoutRedirectUri: '로그아웃 후 리디렉션 URI 복사',
   ssoProvidersEmpty: '아직 제공자가 없습니다.',
   ssoNewProvider: '새 제공자',
   ssoNotSaved: '저장 안 됨',

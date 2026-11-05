@@ -185,6 +185,12 @@
         data.backchannelLogoutUri,
         m.ssoCopyBackchannelLogoutUri,
       )}
+      {@render registered(
+        'postLogoutRedirectUri',
+        m.ssoPostLogoutRedirectUri,
+        data.postLogoutRedirectUri,
+        m.ssoCopyPostLogoutRedirectUri,
+      )}
 
       {#if !items.length}
         <p class="text-sm text-muted-foreground">{m.ssoProvidersEmpty}</p>

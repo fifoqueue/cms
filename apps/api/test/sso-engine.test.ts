@@ -23,6 +23,7 @@ import {
   recordingLogger,
 } from '#test/support/memory';
 import { unauthorized } from '#api/shared/errors';
+import { aesSecretBox } from '#api/infra/secret-box';
 
 const visitor = { client: 'client', address: null, captchaToken: null };
 const handle = (step: SignInStep) => {
@@ -31,6 +32,7 @@ const handle = (step: SignInStep) => {
   return step.transaction;
 };
 const fixture = async () => {
+  const secrets = aesSecretBox('sso-engine-test-key');
   const users = new MemoryUsers();
   const owner = userRecord({ id: 'owner', email: 'owner@example.com' });
 
@@ -61,6 +63,7 @@ const fixture = async () => {
     subjects: new Map<string, string>(),
     provider: {
       verifyLogout: async () => null,
+      endSession: async () => null,
       authorize: async () => ({
         url: `https://${id}.example/authorize`,
         state: `state-${id}`,
@@ -75,12 +78,15 @@ const fixture = async () => {
           issuer: `https://${id}.example/`,
           subject: query.slice(6),
           sid: 'provider-session',
+          clientId: 'cms',
+          idToken: 'raw-id-token-sentinel',
         };
       },
     },
   }));
   const setup = async () => ({ providers });
   const sso = new SsoService({
+    secrets,
     setup,
     users,
     identities,
@@ -102,6 +108,7 @@ const fixture = async () => {
   registry.core(directory).signInMethod(
     'sso',
     createSsoMethod({
+      secrets,
       setup,
       identities,
       resolve: (identity, subjects) => sso.resolve(identity, subjects),
@@ -160,6 +167,7 @@ const fixture = async () => {
     engine.continue({ transaction: handle(step), query }, visitor);
 
   return {
+    secrets,
     engine,
     owner,
     auth,
@@ -194,10 +202,19 @@ test('SSO engine binds verified identities through the factor step to sessions',
   expect(choice.kind).toBe('secondFactor');
   expect(f.sessions.rows.size).toBe(0);
   expect([...f.transactions.rows.values()][0]!.identityId).toBe('identity');
-  expect([...f.transactions.rows.values()][0]!.oidc).toEqual({
+  const binding = [...f.transactions.rows.values()][0]!.oidc;
+
+  expect(JSON.stringify([...f.transactions.rows.values()])).not.toContain(
+    'raw-id-token-sentinel',
+  );
+  expect(f.secrets.open(binding?.logout?.sealedIdToken ?? '')).toBe(
+    'raw-id-token-sentinel',
+  );
+  expect(binding).toMatchObject({
     issuer: 'https://a.example/',
     subject: 'subject',
     sid: 'provider-session',
+    logout: { providerId: 'a', clientId: 'cms' },
   });
   expect(f.checked[0]).toEqual({
     id: 'a',
@@ -213,16 +230,16 @@ test('SSO engine binds verified identities through the factor step to sessions',
   );
 
   if (result.kind !== 'session') throw new Error('Expected session');
+  expect(JSON.stringify(result)).not.toContain('raw-id-token-sentinel');
+  expect(JSON.stringify([...f.sessions.rows.values()])).not.toContain(
+    'raw-id-token-sentinel',
+  );
   expect(
     f.sessions.rows.get(f.tokens.digest(result.session.token))!.identityId,
   ).toBe('identity');
   expect(
     f.sessions.rows.get(f.tokens.digest(result.session.token))!.oidc,
-  ).toEqual({
-    issuer: 'https://a.example/',
-    subject: 'subject',
-    sid: 'provider-session',
-  });
+  ).toEqual(binding);
   await f.identities.unlink(f.owner.id, 'identity');
   expect(await f.auth.authenticate(result.session.token)).toBeNull();
 });

@@ -23,13 +23,19 @@ test('admin settings never return the client secret, which reaches only the prov
 
       return {
         verifyLogout: async () => null,
+        endSession: async () => null,
         authorize: async () => ({
           url: 'https://id.example.com/authorize',
           state: 'state',
           nonce: 'nonce',
           codeVerifier: 'verifier',
         }),
-        verify: async () => ({ issuer: client.issuer, subject: 'subject' }),
+        verify: async () => ({
+          issuer: client.issuer,
+          subject: 'subject',
+          idToken: 'verified-id-token',
+          clientId: client.clientId,
+        }),
       };
     },
     environment: null,
@@ -54,6 +60,7 @@ test('admin settings never return the client secret, which reaches only the prov
   expect(saved).toMatchObject({
     providers: [{ clientSecretConfigured: true }],
     backchannelLogoutUri: 'https://site.example/admin/sso/backchannel-logout',
+    postLogoutRedirectUri: 'https://site.example/admin/sso/signed-out',
   });
   expect(JSON.stringify(await service.getAdmin())).not.toContain('top-secret');
   await service.setup();

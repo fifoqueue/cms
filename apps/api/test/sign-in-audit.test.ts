@@ -4,6 +4,7 @@ import { ClientResolver } from '#api/http/client-identity';
 import { MemoryRateLimiter } from '#api/infra/memory-rate-limiter';
 import { fixedClock } from '#test/support/memory';
 import { createMemoryAuthStore } from '#test/support/sso-memory';
+import { plainSecretBox } from '#test/support/memory-security';
 
 test('SSO start admission uses the proved network key, grouping IPv6 /64 and unproved clients', async () => {
   const secret = 'frontend-secret';
@@ -18,6 +19,7 @@ test('SSO start admission uses the proved network key, grouping IPv6 /64 and unp
   const { identities } = createMemoryAuthStore();
   const keys: string[] = [];
   const method = createSsoMethod({
+    secrets: plainSecretBox,
     setup: async () => ({
       providers: [
         {
@@ -27,6 +29,7 @@ test('SSO start admission uses the proved network key, grouping IPv6 /64 and unp
           subjects: new Map(),
           provider: {
             verifyLogout: async () => null,
+            endSession: async () => null,
             authorize: async () => ({
               url: 'https://id.example/auth',
               state: 'state',
@@ -36,6 +39,8 @@ test('SSO start admission uses the proved network key, grouping IPv6 /64 and unp
             verify: async () => ({
               issuer: 'https://id.example',
               subject: 'subject',
+              idToken: 'verified-id-token',
+              clientId: 'cms',
             }),
           },
         },

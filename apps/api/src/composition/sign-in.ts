@@ -9,6 +9,7 @@ import { SignInSettingsService } from '#api/domain/auth/sign-in-settings';
 import { SsoSettingsService } from '#api/domain/auth/sso-settings';
 import { SsoService } from '#api/domain/auth/sso-service';
 import { SsoLogoutService } from '#api/domain/auth/sso-logout';
+import { SsoEndSession } from '#api/domain/auth/sso-end-session';
 import { SignInService } from '#api/domain/auth/sign-in-service';
 import { createSignInUsers } from '#api/domain/auth/sign-in-users';
 import { createSsoMethod } from '#api/domain/auth/sso-method';
@@ -134,6 +135,7 @@ export const createSignIn = ({
     windowMs: 60_000,
   });
   const sso = new SsoService({
+    secrets,
     policy: async (store, user) => ({
       ...(await ssoSettings.policy(store)),
       otherMethod: await otherMethod(user, store),
@@ -170,10 +172,16 @@ export const createSignIn = ({
     hooks,
   });
   const coreAuth = authentication.core(authUsers);
+  const endSession = new SsoEndSession({
+    setup: () => ssoSettings.setup(),
+    secrets,
+    logger,
+  });
 
   coreAuth.signInMethod(
     'sso',
     createSsoMethod({
+      secrets,
       setup: () => ssoSettings.setup(),
       identities: methodIdentities,
       resolve: (identity, subjects) => sso.resolve(identity, subjects),
@@ -243,5 +251,13 @@ export const createSignIn = ({
     },
   });
 
-  return { ssoSettings, sso, ssoLogout, signInSettings, authUsers, signIn };
+  return {
+    ssoSettings,
+    sso,
+    ssoLogout,
+    endSession,
+    signInSettings,
+    authUsers,
+    signIn,
+  };
 };
