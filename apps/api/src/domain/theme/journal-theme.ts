@@ -531,6 +531,13 @@ ${LG} { .theme-journal-entry .cms-block-widget-area { position: sticky; top: cal
 .cms-block-post-navigation a span:last-child { ${heading}; color: var(--foreground); font-size: 1.25rem; font-weight: 600; letter-spacing: -0.03em; line-height: 1.3; text-decoration: none; transition: color 0.25s; }
 .cms-block-post-navigation a:hover span:last-child { color: var(--cms-color-title-hover); text-decoration: none; }
 
+/* Related entries: same divider, label and title styles as the navigation above */
+.cms-block-related-posts { margin-top: 3.5rem; padding-top: 2rem; border-top: 1px solid var(--border); font-size: 1rem; }
+.cms-block-related-posts > h2 { ${heading}; color: var(--cms-color-muted); font-size: 0.875rem; font-weight: 600; letter-spacing: -0.03em; line-height: 1.5; }
+.cms-block-related-posts li + li { margin-top: 0.75rem; }
+.cms-block-related-posts a { ${heading}; color: var(--foreground); font-size: 1.25rem; font-weight: 600; letter-spacing: -0.03em; line-height: 1.3; text-decoration: none; transition: color 0.25s; }
+.cms-block-related-posts a:hover { color: var(--cms-color-title-hover); text-decoration: none; }
+
 /* Comments: a rounded box on the layout color */
 .cms-block-comments { margin-top: 2rem; }
 ${MD} { .cms-block-comments { margin-top: 4rem; } }
