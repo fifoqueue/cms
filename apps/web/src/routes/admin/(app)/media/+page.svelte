@@ -123,7 +123,8 @@
         uploads[index]!.progress = fraction;
       });
 
-      if ('media' in result) notifySuccess(m.mediaUploadedFile(file.name));
+      if ('media' in result)
+        notifySuccess(m.mediaUploadedFile(result.media.filename));
       // Known refusals (a busy storage) read in the user's language.
       else
         notifyFailure(

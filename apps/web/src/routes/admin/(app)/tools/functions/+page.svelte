@@ -1,6 +1,7 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
+  import CodeArea from '#lib/admin/CodeArea.svelte';
   import FormMessage from '#lib/admin/FormMessage.svelte';
   import { errorMessage, issueLines } from '#lib/admin/form-errors.js';
   import { confirmLeave } from '#lib/admin/unsaved.js';
@@ -40,14 +41,12 @@
   // svelte-ignore state_referenced_locally
   let saved = $state(data.source ?? '');
   let busy = $state(false);
-  let gutter = $state<HTMLElement>();
 
   confirmLeave(
     () => data.status.editorEnabled && source !== saved,
     () => m.unsavedLeave,
   );
 
-  const lines = $derived(source.split('\n').length);
   const status = $derived(data.status);
   /** The status the latest save returned: the reload result of that save. */
   const saveStatus = $derived(form && 'status' in form ? form.status : null);
@@ -171,34 +170,13 @@
           };
         }}
       >
-        <div
-          class="flex max-h-[70vh] min-h-80 overflow-hidden rounded-md border font-mono text-xs leading-5"
-        >
-          <div
-            bind:this={gutter}
-            aria-hidden="true"
-            class="shrink-0 overflow-hidden border-r bg-muted/50 px-2 py-2 text-right text-muted-foreground select-none"
-          >
-            {#each { length: lines }, index (index)}
-              <div>{index + 1}</div>
-            {/each}
-          </div>
-          <textarea
-            name="source"
-            aria-label="site.ts"
-            aria-invalid={failure ? 'true' : undefined}
-            aria-describedby={failure ? 'functions-issues' : undefined}
-            spellcheck="false"
-            autocomplete="off"
-            autocapitalize="off"
-            wrap="off"
-            bind:value={source}
-            onscroll={(event) => {
-              if (gutter) gutter.scrollTop = event.currentTarget.scrollTop;
-            }}
-            class="min-w-0 flex-1 resize-none overflow-auto bg-transparent px-3 py-2 outline-none"
-          ></textarea>
-        </div>
+        <CodeArea
+          name="source"
+          label="site.ts"
+          invalid={Boolean(failure)}
+          describedby={failure ? 'functions-issues' : undefined}
+          bind:value={source}
+        />
         {#if failure}
           <Alert id="functions-issues" variant="destructive">
             <AlertTitle>{failure.title}</AlertTitle>
