@@ -2,7 +2,7 @@
 
 ## 공개 페이지 렌더링
 
-- 같은 HTTP 요청 객체와 정규화된 쿼리의 렌더링은 진행 중인 작업까지 공유합니다.
+- 같은 HTTP 요청 객체와 정규화된 쿼리로 하는 렌더링은 진행 중인 작업까지 공유하지만
   다른 요청에는 결과를 재사용하지 않습니다. 슬롯 출력은 콘텐츠 HTML 정책으로
   정제하며 인라인 스크립트·이벤트 속성을 허용하지 않습니다. 자산은 등록 API로
   제공합니다.
@@ -11,142 +11,143 @@
 
 - `redirects.register(key, { resolve(path) })`는 `{ to, status }` 또는 `null`을
   반환합니다. 상태는 `301`, `302`, `307`, `308`만 허용합니다. 등록은 스코프와
-  함께 해제되며 콜백 오류·시간 초과·잘못된 목적지는 무시합니다.
-- 기본 정책은 `/`로 시작하는 같은 출처 경로만 허용합니다. 프로토콜 상대 URL,
+  함께 해제됩니다. 콜백 오류·시간 초과·잘못된 목적지는 무시합니다.
+- 기본 정책은 `/`로 시작하는 같은 출처 경로만 허용하고 프로토콜 상대 URL,
   역슬래시, 제어 문자, 사용자 정보, 위험한 중첩 인코딩은 거부합니다. 코어가
-  `RedirectRegistry`에 HTTPS 출처 허용 목록을 전달하면 해당 출처의 절대 HTTPS
+  `RedirectRegistry`에 HTTPS 출처 허용 목록을 전달하면 그 출처의 절대 HTTPS
   주소도 허용됩니다. 플러그인은 이 목록을 변경할 수 없습니다.
 - 등록 리디렉션은 콘텐츠 경로 조회보다 먼저 적용합니다.
-  `GET /api/v1/resolve`와 SDK `resolvePath()`의 추가 응답 형태는
-  `{ content: null, redirect: true, destination: { to, status } }`입니다.
-  프런트엔드는 `content`를 읽기 전에 `destination`을 처리해야 합니다.
+  `GET /api/v1/resolve`와 SDK `resolvePath()`에는
+  `{ content: null, redirect: true, destination: { to, status } }` 응답 형태가
+  추가됩니다. 프런트엔드는 `content`를 읽기 전에 `destination`을 처리해야 합니다.
   기존 콘텐츠·이전 고유주소 응답 형태는 유지합니다.
-- 리디렉션도 콘텐츠도 없을 때 `request.notFound { path }`를 보내고 404를 반환합니다.
+- 리디렉션도 콘텐츠도 없으면 `request.notFound { path }`를 보내고 404를 반환합니다.
 
 ### API 요청과 응답
 
 - `api.requestAllowed`는 `{ method, path, userId, client, allowed }`를 받습니다.
-  신원이 확인되지 않으면 식별자는 `null`입니다. `allowed`만 변경할 수 있고
-  후속 핸들러는 앞선 거부를 다시 허용할 수 있습니다. 허용 후에도 각 라우트의
-  인증·권한 검사를 그대로 수행합니다.
+  신원이 확인되지 않으면 식별자는 `null`입니다. `allowed`만 변경할 수 있으며
+  뒤에 오는 핸들러가 앞선 거부를 다시 허용할 수 있습니다. 허용된 뒤에도 각 라우트의
+  인증·권한 검사는 그대로 수행합니다.
 - `api.responseHeaders`는 `{ method, path, status, headers }`를 받습니다.
-  문맥은 고정이며 기존 헤더는 제거·교체할 수 없습니다. 공개 응답과 같은
-  보안 헤더 잠금을 적용하며 비공개 응답의 캐시 정책도 변경할 수 없습니다.
+  문맥은 고정이며 기존 헤더는 제거·교체할 수 없습니다. 보안 헤더 잠금은 공개 응답과
+  똑같이 적용합니다. 비공개 응답의 캐시 정책도 변경할 수 없습니다.
 - 설치·인증·로그인·SSO·상태 확인 경로는 두 API 필터에서 제외합니다.
   핸들러가 없으면 사용자 조회와 헤더 변환을 하지 않습니다.
 
 - `GET /api/v1/page-render?path=/&kind=home&type=&slug=&status=200&contentId=`:
-  공개 페이지의 렌더링 데이터를 반환합니다. `path` 기본값은 `/`, `kind` 기본값은
-  `content`입니다. `type`, `slug`, `status`, `contentId`는 선택 입력입니다.
+  공개 페이지의 렌더링 데이터를 반환합니다. 기본값은 `path`가 `/`, `kind`가
+  `content`이고 `type`, `slug`, `status`, `contentId`는 선택 입력입니다.
 - 응답은 `200 { slots, bodyClasses, assets, headers, templateCandidates }`입니다.
-  `slots`는 모든 슬롯 이름을 키로 가지며 각 값은 등록 순서로 합친 HTML 문자열입니다.
+  `slots`에는 모든 슬롯 이름이 키로 들어가며 각 값은 등록 순서대로 합친 HTML 문자열입니다.
   핸들러가 없으면 `bodyClasses`, `assets`, `templateCandidates`는 빈 배열이고
   `headers`는 빈 객체입니다.
 - SDK 메서드는 `createContentClient(...).pageRender(query)`입니다.
-  `@cms/sdk`에서 `PageRenderQuery`, `PageRender`, `pageRenderSchema`를 제공합니다.
-- 기존 `GET /api/v1/slots`는 계속 슬롯별 문자열 배열을 반환합니다.
+  `PageRenderQuery`, `PageRender`, `pageRenderSchema`는 `@cms/sdk`가 제공합니다.
+- 기존 `GET /api/v1/slots`는 슬롯별 문자열 배열을 그대로 반환합니다.
   두 경로 모두 `body.open`, `body.close` 슬롯을 포함합니다.
 
 ### 페이지 자산
 
 - `assets.register(key, { kind, src, placement, attrs, when? })`로 외부 자산을
   등록합니다. `kind`는 `script` 또는 `style`, `placement`는 `head` 또는
-  `footer`입니다. 같은 키의 활성 자산은 마지막 등록이 선택됩니다.
-- `src`는 자격 증명이 없는 절대 HTTPS URL 또는 `/api/plugins/` 아래의
+  `footer`입니다. 같은 키에 활성 자산이 여럿이면 마지막 등록을 선택합니다.
+- `src`는 자격 증명이 없는 절대 HTTPS URL이거나 `/api/plugins/` 아래의
   같은 출처 경로입니다. 프로토콜 상대 주소, 경로 이탈, 제어 문자와 HTML
   구분자는 거부합니다.
 - `attrs`는 `defer`, `async`, `module`, `integrity`, `crossorigin`만 허용합니다.
-  무결성 해시는 SHA-256/384/512의 SRI 형식이어야 합니다. 인라인 코드와 이벤트
+  무결성 해시는 SHA-256/384/512 SRI 형식이어야 합니다. 인라인 코드와 이벤트
   속성은 지원하지 않습니다.
-- `when(page)`가 있으면 격리하여 실행하며 정확히 `true`를 반환한 자산만
-  포함합니다. 오류·시간 초과는 해당 자산을 제외합니다. 반환된 해제 함수를
-  호출하거나 플러그인·함수 스코프를 해제하면 등록이 제거됩니다.
-- 플러그인과 사이트·테마 함수의 공통 컨텍스트에서 사용할 수 있으며
-  `pageRender(query).assets`로 전달됩니다. 등록이 없으면 조건 실행을 하지 않습니다.
+- `when(page)`가 있으면 격리해 실행하고 정확히 `true`를 반환한 자산만
+  포함합니다. 오류가 나거나 시간이 초과되면 그 자산은 제외합니다. 반환된 해제
+  함수를 호출하거나 플러그인·함수 스코프를 해제하면 등록이 제거됩니다.
+- 플러그인과 사이트·테마 함수의 공통 컨텍스트에서 사용할 수 있고
+  `pageRender(query).assets`로 전달됩니다. 등록이 없으면 조건을 실행하지 않습니다.
 
 ### 공개 응답 헤더
 
 - `response.headers`는 `{ page, status, headers }`를 받습니다. 페이지 문맥과
-  상태는 고정이며 일반 헤더만 추가할 수 있습니다. 앞선 핸들러가 추가한 값을
-  제거하거나 교체할 수 없습니다. 대소문자가 다른 같은 헤더도 중복으로 봅니다.
-- CSP, 프레임·HSTS·쿠키·CORS·권한·교차 출처 정책과 전송 헤더는 코어 소유입니다.
-  `Location`, `Refresh`도 허용하지 않습니다. 자산 출처는 헤더 필터가 아니라
+  상태는 고정이며 일반 헤더만 추가할 수 있습니다. 앞선 핸들러가 추가한 값은
+  제거하거나 교체할 수 없습니다. 대소문자만 다른 헤더도 중복으로 봅니다.
+- CSP, 프레임·HSTS·쿠키·CORS·권한·교차 출처 정책과 전송 헤더는 코어가 소유합니다.
+  `Location`, `Refresh`도 허용하지 않습니다. 자산 출처는 헤더 필터 대신
   자산 등록 계약으로 전달합니다.
-- 헤더 이름·값은 길이가 제한되며 개행·제어 문자를 거부합니다. 잘못된 결과는
-  이전 값을 유지합니다. 결과는 `pageRender(query).headers`에 포함됩니다.
-- 공유 헤더 검증기는 비공개 응답의 캐시 제어 헤더 추가도 거부합니다.
+- 헤더 이름과 값은 길이가 제한되고 개행·제어 문자는 거부합니다. 결과가 잘못되면
+  이전 값을 유지합니다. 결과는 `pageRender(query).headers`에 담깁니다.
+- 공유 헤더 검증기는 비공개 응답에 캐시 제어 헤더를 추가하는 것도 거부합니다.
 
 ### 클래스와 템플릿 필터
 
 - `page.bodyClasses`: `{ page: { kind, type?, slug?, status? }, classes }`를
-  받아 클래스 목록을 추가·교체·제거합니다. 최대 128개이며 각 토큰은 128자 이하,
-  첫 글자는 영문 또는 `_`, 나머지는 영문·숫자·`_`·`-`만 허용합니다.
-- `template.candidates`: `{ page, candidates }`의 템플릿 후보 순서를 변경합니다.
-  최대 64개이며 활성 테마의 템플릿 이름만 허용합니다. 빈 목록도 유효합니다.
-  핸들러가 없으면 템플릿 검증을 위한 테마 조회를 하지 않습니다.
-- 두 필터 모두 `page`의 문맥을 바꿀 수 없습니다. 잘못된 반환값은 무시하고
-  이전 유효 값을 유지합니다. 반환된 클래스와 템플릿 목록은 페이지 렌더링 응답에
-  포함되며 기존 슬롯 API의 형식은 바꾸지 않습니다.
+  받아 클래스 목록을 추가·교체·제거합니다. 클래스는 최대 128개, 각 토큰은 128자
+  이하입니다. 첫 글자는 영문 또는 `_`, 나머지는 영문·숫자·`_`·`-`만 허용합니다.
+- `template.candidates`: `{ page, candidates }`를 받아 템플릿 후보의 순서를
+  바꿉니다. 후보는 최대 64개이고 활성 테마의 템플릿 이름만 허용합니다. 빈 목록도
+  유효합니다. 핸들러가 없으면 템플릿 검증에 쓰는 테마 조회를 하지 않습니다.
+- 두 필터 모두 `page` 문맥은 바꿀 수 없습니다. 잘못된 반환값은 무시하고 이전
+  유효 값을 유지합니다. 반환된 클래스와 템플릿 목록은 페이지 렌더링 응답에
+  담기며 기존 슬롯 API의 형식은 바꾸지 않습니다.
 
-## Database cleanup
+## 데이터베이스 정리
 
-- `GET /api/v1/admin/database-cleanup?keepLatest=N`: `tools.manage`; read-only
-  preview `{ counts, tables, options: { keepLatest } }`. Omitted retention is 0.
-- `POST /api/v1/admin/database-cleanup`: `tools.manage`; body
-  `{ categories, options?: { keepLatest?: number } }`. Categories are
+- `GET /api/v1/admin/database-cleanup?keepLatest=N`: `tools.manage` 권한이 필요합니다.
+  읽기 전용 미리보기 `{ counts, tables, options: { keepLatest } }`를 반환합니다.
+  보존 수를 생략하면 0입니다.
+- `POST /api/v1/admin/database-cleanup`: `tools.manage` 권한이 필요합니다. 본문은
+  `{ categories, options?: { keepLatest?: number } }`입니다. 범주는
   `revisions`, `autosaves`, `trashedContent`, `spamComments`, `trashedComments`,
-  `expired`, `optimize`; select each at most once. Retention is a nonnegative integer.
-- Result: `{ deleted, optimization: null | { before, after } }`.
-  Counts have all seven category keys. Unselected categories and `deleted.optimize`
-  are zero; preview `counts.optimize` is the number of CMS tables.
-  Tables are `{ table, dataBytes, indexBytes, freeBytes }`.
-- SDK: `admin.databaseCleanup.preview({ keepLatest? })` and
-  `admin.databaseCleanup.run(input)`. Schemas/types are exported by `@cms/sdk`
-  from `packages/sdk/src/database-cleanup.ts`.
-- Concurrent runs return 409 `conflict`. Operations are synchronous and not an
-  all-or-nothing transaction: completed batches remain committed if a later batch
-  fails. Refresh the preview before retrying.
+  `expired`, `optimize`이며 각각 한 번만 선택할 수 있습니다. 보존 수는 0 이상의 정수입니다.
+- 결과: `{ deleted, optimization: null | { before, after } }`.
+  개수에는 일곱 범주의 키가 모두 들어갑니다. 선택하지 않은 범주와 `deleted.optimize`는
+  0이고, 미리보기의 `counts.optimize`는 CMS 테이블 수입니다.
+  테이블 항목은 `{ table, dataBytes, indexBytes, freeBytes }`입니다.
+- SDK: `admin.databaseCleanup.preview({ keepLatest? })`,
+  `admin.databaseCleanup.run(input)`. 스키마와 타입은 `@cms/sdk`가
+  `packages/sdk/src/database-cleanup.ts`에서 내보냅니다.
+- 동시에 실행하면 409 `conflict`를 반환합니다. 작업은 동기적으로 실행되며 전부
+  적용되거나 전부 취소되는 트랜잭션이 아닙니다. 뒤 배치가 실패해도 이미 끝난 배치는
+  커밋된 채 남습니다. 다시 시도하기 전에 미리보기를 새로 고칩니다.
 
 ## 임베드 제공자
 
-- `GET /api/v1/admin/embeds`, `PUT /api/v1/admin/embeds`: `settings.manage` 권한이 필요합니다. `{ providers: [{ id, label, enabled, urlPattern, src, title, allow, sizing }] }`를 조회·저장합니다. `sizing`은 `{ kind: 'ratio', ratio }` 또는 `{ kind: 'height', height, heightMessagePath?, maxWidth? }`입니다. `maxWidth`(px)는 게시물 카드의 본래 너비로, 프레임은 가운데 정렬되고 그보다 좁은 본문에서만 줄어듭니다. `null`은 너비 제한 없음이며, 저장할 때 비운 값은 `null`로 저장됩니다. 이 값이 생기기 전에 저장된 기본 제공자(같은 `id`·`src`)는 기본 너비를 이어받습니다.
+- `GET /api/v1/admin/embeds`, `PUT /api/v1/admin/embeds`: `settings.manage` 권한이 필요합니다. `{ providers: [{ id, label, enabled, urlPattern, src, title, allow, sizing }] }`를 조회·저장합니다. `sizing`은 `{ kind: 'ratio', ratio }` 또는 `{ kind: 'height', height, heightMessagePath?, maxWidth? }`입니다. `maxWidth`(px)는 게시물 카드의 본래 너비입니다. 프레임은 가운데 정렬되고 그보다 좁은 본문에서만 줄어듭니다. `null`은 너비 제한 없음이며 저장할 때 비운 값은 `null`로 저장됩니다. 이 값이 생기기 전에 저장된 기본 제공자(같은 `id`·`src`)는 기본 너비를 이어받습니다.
 - `GET /api/v1/embeds/providers`: 활성 제공자의 `[{ id, label, urlPattern }]`만 공개하며 iframe 템플릿은 노출하지 않습니다.
 - 웹 `GET /admin/content/embed-providers`: 로그인한 편집자(`content.create`)에게 같은 공개 목록을 JSON으로 반환합니다.
 - SDK: `admin.embeds.get()`, `admin.embeds.update(input)`, `content.embedProviders()`.
-- 최대 50개이며 ID는 고유한 슬러그입니다. URL 패턴은 전체 href를 대상으로 하며 반드시 `^`로 시작하는 RE2 문법이어야 합니다. SDK의 공통 RE2JS 컴파일러가 저장 검증·서버 렌더링·편집기 붙여넣기에 사용됩니다. 입력 길이에 선형 시간으로 실행하며 역참조와 전후방 탐색은 지원하지 않습니다. 이름 있는 그룹은 `(?<name>…)`과 `(?P<name>…)`를 지원합니다. 서버와 편집기는 검사 전에 URL을 2048자로 제한합니다.
+- 최대 50개이며 ID는 고유한 슬러그입니다. URL 패턴은 전체 href를 대상으로 하며 반드시 `^`로 시작하는 RE2 문법이어야 합니다. 저장 검증·서버 렌더링·편집기 붙여넣기는 SDK의 공통 RE2JS 컴파일러를 씁니다. 이 컴파일러는 입력 길이에 선형 시간으로 실행하며 역참조와 전후방 탐색은 지원하지 않습니다. 이름 있는 그룹은 `(?<name>…)`과 `(?P<name>…)`를 지원합니다. 서버와 편집기는 검사 전에 URL을 2048자로 제한합니다.
 - `allow`는 세미콜론으로 구분한 `accelerometer`, `autoplay`, `clipboard-write`, `encrypted-media`, `fullscreen`, `gyroscope`, `picture-in-picture`, `web-share` 이름만 허용합니다. 출처 목록은 금지하고 렌더링 시에도 각 지시문 전체를 다시 필터링합니다.
 - 저장 시 정규식, 고정 HTTPS 출처, 이름 있는 캡처와 템플릿 자리표시자의 일치 여부를 검사하고 `settings.updated`(`section: 'embeds'`)를 보냅니다. 본문 확장 호출마다 설정을 한 번 읽어 제공자를 구성하므로 다른 프로세스의 변경도 재시작 없이 반영됩니다.
 
-콘텐츠 관리자의 생성·수정, 휴지통·복원, 리비전 복원, 자동 저장은 댓글과 같은
-프런트엔드 비밀 기반 브라우저 증명을 사용합니다. 제출한 JSON으로는 origin을 설정할 수 없습니다.
-`AdminContent.origin`은 `content.editOthers` 권한이 있는 사용자에게는 null을 허용하는 `ip`와
-`userAgent`를 가진 `created`·`modified` 객체를 담고, 그 외에는 null입니다. 관리자
-리비전 DTO에는 null을 허용하는 `ip`와 `userAgent`가 있으며, 해당 권한이 없으면 둘 다 null입니다.
+콘텐츠 관리자의 생성·수정, 휴지통·복원, 리비전 복원, 자동 저장은 댓글과 마찬가지로
+프런트엔드 비밀에 기반한 브라우저 증명을 사용합니다. 제출한 JSON으로는 origin을 설정할 수 없습니다.
+`AdminContent.origin`은 `content.editOthers` 권한이 있는 사용자에게는 `created`·`modified` 객체를 담고
+그 외에는 null입니다. 두 객체에는 null을 허용하는 `ip`와 `userAgent`가 있습니다. 관리자
+리비전 DTO에는 null을 허용하는 `ip`와 `userAgent`가 있으며 해당 권한이 없으면 둘 다 null입니다.
 
 ## 미디어 저장소
 
 `POST /api/v1/media/images`는 공개 이미지 URL 목록 `{ urls: string[] }`(최대 32개)를
 받아 URL별 `PublicImage`를 반환합니다. 로컬 `/media/…` 키와 저장된 원본 공개 URL을
-조회할 뿐 외부 파일을 가져오지 않습니다. 누락된 파일·비이미지는 생략하며 업로더,
-사용 횟수, 저장소 자격 증명과 관리자 필드는 반환하지 않습니다.
+조회할 뿐 외부 파일을 가져오지 않습니다. 누락된 파일과 이미지가 아닌 파일은 생략합니다.
+업로더, 사용 횟수, 저장소 자격 증명, 관리자 필드는 반환하지 않습니다.
 SDK의 공개 클라이언트 `images(urls)`가 응답을 엄격히 검증합니다.
 
-재동기화 응답에는 `cleanupNeedsAttention: number`(자동 디스패치 횟수를 모두 소진한 정리용 삭제 표시 수)도 들어갑니다.
-연결 테스트는 작은 `<prefix>/.cms-probe` 객체 하나를 덮어쓴 뒤 연결 테스트가 끝나기 전에 동기적으로 삭제합니다. 정리용 삭제 표시를 만들지 않고, 후보 자격 증명도 보관하지 않습니다. 삭제에 실패하면 400 `invalid_input`을 고정 SDK 문구 `Errors.MediaStorageProbeCleanup`(`"The connection test file could not be removed."`)과 `issues: [{ path: "probe", message: Errors.MediaStorageProbeCleanup, params: { bucket, key } }]`와 함께 반환합니다. `key`에는 설정된 접두사가 포함되고, 플러그인 probe는 `bucket`에 드라이버 id를 씁니다. SDK 오류 파싱은 `probe` 이슈에서 이 두 개의 길이 제한 문자열만 허용하고 그 밖의 임의 필드는 제거합니다.
+재동기화 응답에는 `cleanupNeedsAttention: number`(자동 디스패치 횟수를 다 쓴 정리용 삭제 표시의 수)도 들어갑니다.
+연결 테스트는 작은 `<prefix>/.cms-probe` 객체 하나를 덮어쓴 뒤 테스트가 끝나기 전에 동기적으로 삭제합니다. 정리용 삭제 표시를 만들지 않고 후보 자격 증명도 보관하지 않습니다. 삭제에 실패하면 400 `invalid_input`을 반환합니다. 이때 SDK 고정 문구 `Errors.MediaStorageProbeCleanup`(`"The connection test file could not be removed."`)과 `issues: [{ path: "probe", message: Errors.MediaStorageProbeCleanup, params: { bucket, key } }]`가 함께 담깁니다. `key`에는 설정된 접두사가 포함됩니다. 플러그인 probe는 `bucket`에 드라이버 id를 씁니다. SDK 오류 파싱은 `probe` 이슈에서 길이가 제한된 이 두 문자열만 허용하고 그 밖의 임의 필드는 제거합니다.
 
 관리자 미디어 행에는 `missingAt: string | null`(원본이 없을 때의 ISO 타임스탬프)이 있습니다. `GET /api/v1/admin/media?missing=true`와 SDK `media.list({ missing: 'true' })`가 이 행을 필터링합니다.
-probe·저장 실패는 SDK에 등록된 안전한 사유 분류(`MediaStorageProbeAuth`, `MediaStorageProbeBucket`, `MediaStorageProbeNetwork`, `MediaStorageProbeTls`, `MediaStorageProbeRejected`)와 함께 400 `invalid_input`으로 반환하며, 제공자 응답 본문이나 자격 증명은 포함하지 않습니다. 이그레스 정책 거부는 403 상태를 유지합니다. 필수 플러그인 필드가 없으면 `pluginSettings.<key>` 경로에 `MediaStorageFieldRequired` 이슈를 반환합니다.
+probe·저장 실패는 400 `invalid_input`으로 반환하고 SDK에 등록된 안전한 사유 분류(`MediaStorageProbeAuth`, `MediaStorageProbeBucket`, `MediaStorageProbeNetwork`, `MediaStorageProbeTls`, `MediaStorageProbeRejected`)를 함께 붙입니다. 제공자 응답 본문이나 자격 증명은 포함하지 않습니다. 이그레스 정책 거부는 403 상태를 유지합니다. 필수 플러그인 필드가 없으면 `pluginSettings.<key>` 경로에 `MediaStorageFieldRequired` 이슈를 반환합니다.
 
 - `GET /api/v1/admin/media/storage`: `settings.manage`, `MediaStorageSettings`를 반환합니다.
 - `PUT /api/v1/admin/media/storage`: `settings.manage`, `MediaStorageInput`을 받아 저장 전에 테스트하고 설정을 반환합니다.
-- `POST /api/v1/admin/media/storage/test`: `settings.manage`, 같은 입력, 서명된 probe PUT/삭제(목록 조회 없음) 뒤 204를 반환합니다.
+- `POST /api/v1/admin/media/storage/test`: `settings.manage`, 같은 입력, 서명된 probe를 PUT/삭제한 뒤(목록 조회 없음) 204를 반환합니다.
 - `POST /api/v1/admin/media/storage/resync`: `media.manage`, 본문 없음, `MediaResync`와 함께 202를 반환합니다. 반복 호출하면 진행 중인 작업을 반환합니다.
 - `GET /api/v1/admin/media/storage/resync`: `media.manage`, 최신 `MediaResync` 또는 null을 반환합니다.
 
 SDK: `createAdminClient(...).media.storage.{get(), update(input), test(input), resync(), resyncStatus()}`.
 설정 DTO: `{ driver: 'local' | 's3' | 'plugin:<owner>:<key>', s3: null | { endpoint, region, bucket, accessKeyId, secretAccessKeyConfigured, publicBaseUrl?, forcePathStyle, prefix }, availableDrivers: [{ id, label, fields: [{ key, label, type, required }] }], pluginSettings?, pluginSecretsConfigured? }`.
-플러그인 필드는 `text | number | boolean | secret`을 씁니다. 입력은 `pluginSettings`의 스칼라 값을 받으며, 생략한 비밀 값 필드는 봉인된 값을 유지하고 빈 문자열은 선택적 비밀 값을 지웁니다. 출력에는 비밀 값이 없고 `pluginSecretsConfigured`에 키만 나열합니다. 다른 드라이버를 선택해도 각 드라이버는 자신의 설정을 유지하며, 사용할 수 없는 플러그인 드라이버가 로컬 저장소로 대체되는 일은 없습니다.
-입력은 `secretAccessKeyConfigured` 대신 선택적 `secretAccessKey`를 받습니다. 생략하면 유지하고, 비어 있지 않은 값을 주면 교체합니다. 액세스 키 ID를 바꾸면 그 비밀 값도 필요합니다.
+플러그인 필드는 `text | number | boolean | secret`을 씁니다. 입력은 `pluginSettings`의 스칼라 값을 받습니다. 생략한 비밀 값 필드는 봉인된 값을 유지하고 빈 문자열은 선택적 비밀 값을 지웁니다. 출력에는 비밀 값이 없고 `pluginSecretsConfigured`에 키만 나열합니다. 다른 드라이버를 선택해도 각 드라이버는 자기 설정을 유지합니다. 사용할 수 없는 플러그인 드라이버도 로컬 저장소로 대체되지 않습니다.
+입력은 `secretAccessKeyConfigured` 대신 선택적 `secretAccessKey`를 받습니다. 생략하면 유지하고 비어 있지 않은 값을 주면 교체합니다. 액세스 키 ID를 바꾸면 그 비밀 값도 필요합니다.
 재동기화 DTO: `{ id, status: 'queued' | 'running' | 'completed' | 'failed', driver, startedAt, finishedAt: string | null, scanned, refreshed, missing, untracked, error: string | null }`.
 
 상위 문서: [AGENTS.md](../../AGENTS.md)
@@ -155,45 +156,45 @@ SDK: `createAdminClient(...).media.storage.{get(), update(input), test(input), r
 
 모든 오류 응답: `{ "error": { "code", "message", "issues?" } }`.
 
-- `message`와 `issues[].message`는 SDK `Errors`의 고정 문구입니다. 값이 들어가는 문구도 문구 자체는 바뀌지 않고, 값은 `issues[].params`로 따로 옵니다. 클라이언트는 문구를 키로 번역하고 `params`로 값을 채웁니다.
-- `issues[]`: `{ path: string, message: string, params?: Record<string, string | number> }`. `path`는 필드 경로(`seo.title`)이고, `""`는 거절 자체(최상위 `message`)의 값을 담는 항목입니다. 예: `{ "message": Errors.MediaTooLarge, "issues": [{ "path": "", "message": Errors.MediaTooLarge, "params": { "maxBytes": 10485760 } }] }`.
-- `params` 한도(SDK `ISSUE_PARAMS_LIMITS`, `issueParamsSchema`): 키 최대 8개, 키 40자 이하, 문자열 값 500자 이하, 숫자는 유한한 값. 서버는 보내기 전에 같은 한도로 자르고(`issueParams`), 한도를 넘는 응답은 SDK 파싱에서 `issues`가 버려집니다. 어떤 키가 오는지는 SDK `Errors`의 각 항목 주석에 있습니다.
+- `message`와 `issues[].message`는 SDK `Errors`의 고정 문구입니다. 값이 들어가는 문구도 문구 자체는 바뀌지 않으며 값은 `issues[].params`로 따로 옵니다. 클라이언트는 문구를 키로 번역하고 `params`로 값을 채웁니다.
+- `issues[]`: `{ path: string, message: string, params?: Record<string, string | number> }`. `path`는 필드 경로(`seo.title`)입니다. `""`는 거절 자체(최상위 `message`)의 값을 담는 항목입니다. 예: `{ "message": Errors.MediaTooLarge, "issues": [{ "path": "", "message": Errors.MediaTooLarge, "params": { "maxBytes": 10485760 } }] }`.
+- `params` 한도(SDK `ISSUE_PARAMS_LIMITS`, `issueParamsSchema`): 키 최대 8개, 키 40자 이하, 문자열 값 500자 이하, 숫자는 유한한 값. 서버는 보내기 전에 같은 한도로 자릅니다(`issueParams`). 한도를 넘는 응답이 오면 SDK 파싱에서 `issues`가 버려집니다. 어떤 키가 오는지는 SDK `Errors`의 각 항목 주석에 있습니다.
 - `params`에는 비밀값, 자격 증명, 외부 서버(메일·검색·웹훅 수신자)의 응답 원문이 들어가지 않습니다. 실패 원인은 범주로만 옵니다. 예: 테스트 메일 `EmailSendFailed`의 `reason`(`auth`·`timeout`·`tls`·`network`·`rejected`, SDK `EMAIL_FAILURE_REASONS`)과 HTTP 제공자의 `status`. 원문은 서버 로그에만 남습니다.
 - 같은 형태의 값은 오류 응답 밖의 상태 필드에도 씁니다: WXR 가져오기 `skipped[].params`, 플러그인 `errorParams`, 검색 상태 `lastErrorParams`, 사이트 상태 `detail[]`의 `{ message, params }` 항목.
 
-- `GET/PUT /api/v1/admin/users/:id/fields`: 인증된 본인 또는 `users.manage`; private/no-store. GET은 `{ fields, values }`를 반환하고, PUT은 네임스페이스가 붙은 스칼라 값 패치를 받아 활성 선언을 검증한 뒤 같은 DTO를 반환합니다.
+- `GET/PUT /api/v1/admin/users/:id/fields`: 인증된 본인 또는 `users.manage`; private/no-store. GET은 `{ fields, values }`를 반환합니다. PUT은 네임스페이스가 붙은 스칼라 값 패치를 받아 활성 선언을 검증한 뒤 같은 DTO를 반환합니다.
 - `GET /api/v1/admin/captcha-providers`: `settings.manage`; 등록된 캡차 제공자 ID와 라벨이며 secret은 없습니다.
-- `POST /api/v1/admin/privacy/requests/:id/erase`: 이제 빈 응답 대신 `{ results, failed }`를 반환합니다. 코어 삭제는 계속 트랜잭션으로 처리되며, `failed`는 후속 조치가 필요한 확장 삭제기를 나열합니다.
 
 `POST /api/v1/auth/recovery-codes`는 `settings.manage`와 10분 안에 발급된 대화형 세션이 필요하며 API 토큰은 거부합니다. 401 메시지는 `Sign in again before generating recovery codes.`입니다. 알림 전송에 실패해도 성공한 생성·복구 응답은 달라지지 않습니다.
 
 `POST /api/v1/auth/factors/:factor/enroll`과 `intent: link`인 SSO `/start`도 마찬가지로 최근의 대화형 세션이 필요하며 API 토큰은 쓸 수 없습니다. 최근성 검사에 걸리면 401과 `Sign in again before adding credentials to your account.`를 반환합니다.
 
-탐색 및 모양 확장 엔드포인트:
+탐색·모양 확장 엔드포인트:
 
 - `GET /api/v1/admin/menus/types`: `appearance.manage`; `{ key, label, source, searchable }[]`.
 - `GET /api/v1/admin/menus/objects?type=&search=&page=&pageSize=`:
   `appearance.manage`; `{ items: [{ id, label }], total }`; 페이지 크기 1–100,
   검색어는 최대 200자. 실패했거나 비활성화된 제공자는 빈 페이지를 반환합니다.
 - 테마 편집기의 템플릿·파트 항목에는 `source`(`theme`, `admin`, 플러그인 id)와
-  `readOnly`가 있습니다. 플러그인 기본값은 읽기 전용이며, 저장하면 플러그인 데이터를
+  `readOnly`가 있습니다. 플러그인 기본값은 읽기 전용입니다. 저장하면 플러그인 데이터를
   고치지 않고 관리자 커스터마이징을 새로 만듭니다.
 
 - `GET /api/v1/seo/providers`: 공개, 등록된 사이트맵 제공자 키.
 - `GET /api/v1/seo/sitemap?kind=&page=&pageSize=`: 공개 제공자 페이지.
-  제공자를 실행하기 전에 코어 크롤러 정책을 확인하고, 이어서
+  `kind=author|taxonomy`는 작성자·사용자 지정 분류를 탐색합니다.
+  제공자를 실행하기 전에 코어 크롤러 정책을 확인하고 이어서
   `sitemap.entries`를 실행합니다.
-- `POST /api/v1/seo/filter`: 프런트엔드 전용 `{ kind, value }` 표시용 RPC이며,
-  이런 입력 1–7개의 배열도 받아 입력 순서대로 결과를 반환합니다.
+- `POST /api/v1/seo/filter`: 프런트엔드 전용 `{ kind, value }` 표시용 RPC입니다.
+  이런 입력 1–7개를 담은 배열도 받아 입력 순서대로 결과를 반환합니다.
   `SSO_FRONTEND_SECRET_HEADER`와 유효한
-  `SSO_CLIENT_ADDRESS_HEADER`가 필요합니다. 증명은 상수 시간으로 검사하고, 스트리밍 본문은 512 KiB로 제한하며,
-  증명된 네트워크당 분당 6,000건, 프로세스 전체 60,000건으로 제한합니다.
+  `SSO_CLIENT_ADDRESS_HEADER`가 필요합니다. 증명은 상수 시간으로 검사합니다. 스트리밍 본문은 512 KiB로 제한하고
+  요청은 증명된 네트워크당 분당 6,000건, 프로세스 전체 60,000건으로 제한합니다.
   종류: `sitemap.entries`, `feed.items`, `feed.channel`, `robots.txt`, `llms.txt`,
   `seo.markdown`, `seo.meta`. 증명이 유효하지 않으면 403, 한도를 소진하면 429,
   입력이 너무 크면 413을 반환합니다.
 - `GET /api/v1/admin/patterns/contributions`: 인증된 `content.create`;
   활성 플러그인 패턴 그룹의 `{ key, source, patterns }[]`를 반환합니다(`source`는 플러그인 id). 패턴을 삽입하면
-  편집기 문서가 복사되며, 저장된 동기화 패턴을 참조하지는 않습니다.
+  편집기 문서가 복사되고 저장된 동기화 패턴은 참조하지 않습니다.
 
 | 메서드              | 경로                                                                                | 인증            | 설명                                                                                                                                         |
 | ------------------- | ----------------------------------------------------------------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -218,7 +219,7 @@ SDK: `createAdminClient(...).media.storage.{get(), update(input), test(input), r
 | GET                 | `/api/v1/auth/sso`                                                                  |                 | 활성화된 제공자만 포함. 로그인 정책은 별도                                                                                                   |
 | POST                | `/api/v1/auth/sso/start`                                                            | ✔               | 계정 연결 시작. 로그인·claim은 로그인 엔진 사용                                                                                              |
 | POST                | `/api/v1/auth/sso/callback`                                                         | ✔               | 시작한 사용자의 계정 연결 완료                                                                                                               |
-| POST                | `/api/v1/auth/sso/backchannel-logout`                                               |                 | JSON `{ logoutToken }` 검증 후 일치 OIDC 세션 삭제. 성공 204, 유효하지 않은 토큰 400                                                         |
+| POST                | `/api/v1/auth/sso/backchannel-logout`                                               |                 | JSON `{ logoutToken }` 검증 후 일치하는 OIDC 세션 삭제. 성공 204, 유효하지 않은 토큰 400                                                     |
 | GET                 | `/api/v1/auth/sso/identity`                                                         | ✔               | 현재 사용자의 SSO 연결·운영자 할당 상태                                                                                                      |
 | DELETE              | `/api/v1/auth/sso/identity/:id`                                                     | ✔               | 이 사용자의 연결 해제. SSO만 남은 마지막 접근 수단 보호                                                                                      |
 | POST                | `/api/v1/auth/recovery`                                                             |                 | 1회용 관리자 복구 코드. 로그인 보호 적용                                                                                                     |
@@ -239,59 +240,57 @@ SDK: `createAdminClient(...).media.storage.{get(), update(input), test(input), r
 | GET         | `/api/v1/taxonomies/:taxonomy/:slug`     | 공개 | 공개 아카이브 용어                           |
 | GET, POST   | `/api/v1/admin/taxonomies/:taxonomy`     | 세션 | 용어 목록 조회/생성                          |
 | PUT, DELETE | `/api/v1/admin/taxonomies/:taxonomy/:id` | 세션 | 용어 수정/삭제                               |
-| GET         | `/api/v1/theme`                          | 공개 | 활성 테마 표시 매니페스트                    |
 | GET, POST   | `/api/v1/admin/themes`                   | 세션 | 테마 목록 조회/설치 (`application/zip` 본문) |
 | POST        | `/api/v1/admin/themes/:id/activate`      | 세션 | 테마 활성화                                  |
 | DELETE      | `/api/v1/admin/themes/:id`               | 세션 | 비활성 사용자 지정 테마 제거                 |
 
-| 메서드                 | 경로                                                                                           | 인증                                    | 설명                                                                                                                                                                                                            |
-| ---------------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET                    | `/api/v1/theme?preview=`                                                                       | 공개                                    | 활성 테마 또는 유효한 미리보기 토큰이 가리키는 테마                                                                                                                                                             |
-| POST                   | `/api/v1/admin/themes/:id/preview`                                                             | appearance.manage                       | 서명된 30분짜리 미리보기 토큰                                                                                                                                                                                   |
-| GET                    | `/api/v1/reading · /menus/:location · /widgets`                                                | 공개                                    | 읽기 설정(프런트/글 페이지 경로 포함), 해석된 메뉴, 두 위젯 영역 모두                                                                                                                                           |
-| GET, PUT               | `/api/v1/admin/reading · /menus · /widgets`                                                    | settings / appearance                   | 읽기 설정, 메뉴와 위치, 위젯 영역 (`GET …/widgets/types`는 플러그인 위젯을 나열)                                                                                                                                |
-| GET, PUT               | `/api/v1/admin/writing`                                                                        | content.create / settings.manage        | 새 항목의 쓰기 기본값 (기본 카테고리, 기본 초안 상태)                                                                                                                                                           |
-| GET, POST, PUT, DELETE | `/api/v1/admin/patterns[/:id]`                                                                 | content.create (+ publish / editOthers) | 페이지로 나뉜 패턴 요약 (`page`, `pageSize`, `search`); 권한이 있는 단일 문서                                                                                                                                   |
-| GET, POST              | `/api/v1/comments?contentId=&page=`                                                            | 공개 (POST는 속도 제한·캡차)            | 승인된 스레드 (`notifications: { email, push }`); 작성 (`{ status, comment, page, pendingProof, commenterProof, pushToken }`); 주소와 `CLIENT_USER_AGENT_HEADER`는 프런트엔드 비밀이 있을 때만 저장             |
-| POST                   | `/api/v1/comments/push`                                                                        | 공개 (속도 제한)                        | `{ token, subscription }` → `{ ok: true }`: `pushToken`이 가리키는 댓글의 푸시 답글을 받을 방문자 브라우저                                                                                                      |
-| POST                   | `/api/v1/comments/unsubscribe`                                                                 | 공개 (속도 제한)                        | `{ token }` → `{ channel: 'email' \| 'push' }`; 유효하지 않거나 만료 → 400 `CommentUnsubscribeInvalid`                                                                                                          |
-| POST                   | `/api/v1/push/renew`                                                                           | 공개 (속도 제한)                        | `{ old: { endpoint, auth }, subscription }` → `{ ok: true }`: 저장된 인증 비밀 값(`auth`)이 `old.auth`와 같은 `old.endpoint`의 활성 등록을 옮김. 일치하지 않아도 같은 응답 (`pushsubscriptionchange`, 재동기화) |
-| GET, PUT, DELETE       | `/api/v1/admin/push-subscription`                                                              | content.create (쓰기는 속도 제한)       | `{ publicKey }` (푸시가 꺼져 있으면 null); 현재 사용자의 브라우저 등록 `{ subscription }` / 제거 `{ endpoint }`                                                                                                 |
-| GET                    | `/api/v1/admin/comments · /comments/counts`                                                    | comments.moderate                       | 검토 목록 (`status`, `contentId`, `ids` = 쉼표로 구분한 최대 100개 id, 이름·이메일·IP·본문 대상 `search`; 항목에 `authorIp`, `authorUserAgent` 포함)과 상태별 개수                                              |
-| PUT, DELETE, POST      | `/api/v1/admin/comments/:id · /:id/reply · /bulk`                                              | comments.moderate                       | 수정/삭제 (IP와 사용자 에이전트는 수정할 수 없음), 모더레이터로서 답글 작성 (증명된 IP/사용자 에이전트 저장), 일괄 승인/승인 취소/스팸/휴지통/삭제                                                              |
-| GET, PUT               | `/api/v1/admin/discussion`                                                                     | settings.manage                         | 토론 설정                                                                                                                                                                                                       |
-| GET                    | `/api/v1/content-types · /authors/:slug`                                                       | 공개                                    | 공개 콘텐츠 타입과 필드; 공개 작성자 아카이브                                                                                                                                                                   |
-| *                      | `/api/v1/admin/content-types[/:key] · /fields[/:key]`                                          | content.create / fields.manage          | 콘텐츠 모델                                                                                                                                                                                                     |
-| POST, GET, PUT, DELETE | `/api/v1/admin/content/:id/{trash,restore,preview,autosave,revisions[/:revisionId[/restore]]}` | 세션                                    | 콘텐츠 워크플로                                                                                                                                                                                                 |
-| GET                    | `/api/v1/preview/:token · POST /api/v1/unlock/:id`                                             | 공개                                    | 서명된 미리보기; 비밀번호 잠금 해제 증명                                                                                                                                                                        |
-| *                      | `/api/v1/admin/media[/:id] · GET /api/v1/media/files/*`                                        | media.upload / 공개                     | 미디어 라이브러리; Range를 지원하는 파일                                                                                                                                                                        |
-| GET                    | `/api/v1/admin/media?month=YYYY-MM&unattached=true · /admin/media/:id/context`                 | media.upload                            | 라이브러리 필터; 더 새로운/오래된 이웃 항목과 파일을 표시하는 항목                                                                                                                                              |
-| POST                   | `/api/v1/admin/media/:id/derivative?name=`                                                     | media.upload; 소유자 또는 media.manage  | 활성 등록된 크기만 허용; private, no-store WebP이며 저장하지 않음. 서비스당 동시 변환 2개, 초과 시 429 반환                                                                                                     |
-| *                      | `/api/v1/admin/users[/:id] · /users/authors`                                                   | users.manage / content.create           | 사용자와 작성자 선택지                                                                                                                                                                                          |
-| *                      | `/api/v1/auth/password{,/forgot,/reset} · /auth/tokens[/:id] · PUT /auth/me`                   | 세션 또는 공개                          | 비밀번호 변경/재설정, API 토큰, 본인 프로필                                                                                                                                                                     |
-| GET, PUT               | `/api/v1/admin/security · /email (POST /email/test) · GET /security/captcha`                   | settings.manage / 공개                  | 속도 제한과 캡차, 이메일, 공개 캡차 설정                                                                                                                                                                        |
-| GET                    | `/api/v1/admin/capabilities`                                                                   | users.manage                            | 역할 할당용으로 등록된 권한(코어 및 플러그인)                                                                                                                                                                   |
-| GET, PUT, POST         | `/api/v1/admin/search · /search/status · /search/test · /search/reindex`                       | settings.manage                         | Meilisearch 연결, 상태, 연결 테스트, 재구축                                                                                                                                                                     |
-| GET, POST              | `/api/v1/admin/plugin-pages · /:pluginId/:key · /:pluginId/:key/:action`                       | 페이지 권한                             | 플러그인 관리자 페이지(블록)와 폼 동작                                                                                                                                                                          |
-| GET                    | `/api/v1/admin/plugin-blocks`                                                                  | content.create                          | 편집기용으로, 활성 플러그인의 블록과 속성 필드                                                                                                                                                                  |
-| GET                    | `/api/v1/admin/plugins/:id/update`                                                             | plugins.manage                          | 플러그인 `updateUrl`의 최신 버전                                                                                                                                                                                |
-| *                      | `/api/v1/admin/webhooks[/:id] · /:id/ping · /:id/rotate`                                       | tools.manage                            | 웹훅, 테스트 전송, 새 비밀 값                                                                                                                                                                                   |
-| GET, POST              | `/api/v1/admin/export · /admin/import`                                                         | tools.manage                            | WXR 내보내기(XML 다운로드)와 가져오기(XML 본문)                                                                                                                                                                 |
-| GET                    | `/api/v1/admin/health`                                                                         | tools.manage                            | 사이트 상태 점검과 시스템 정보                                                                                                                                                                                  |
-| GET                    | `/api/v1/admin/themes/:id/editor`                                                              | appearance.manage                       | 사이트 편집기: 템플릿, 파트, 변경 내용이 반영된 스타일                                                                                                                                                          |
-| PUT, DELETE            | `/api/v1/admin/themes/:id/templates/:name · /parts/:slug · /styles`                            | appearance.manage                       | 템플릿, 파트 또는 전역 스타일 저장·초기화                                                                                                                                                                       |
-| GET, PUT               | `/api/v1/admin/fonts`                                                                          | appearance.manage                       | 모든 테마 스타일에서 쓸 수 있는 사이트 글꼴 (`{ fonts }`)                                                                                                                                                       |
-| GET, PUT               | `/api/v1/admin/sso`                                                                            | settings.manage                         | 싱글 사인온 설정 (클라이언트 비밀은 반환하지 않음; 리디렉션 URI 표시)                                                                                                                                           |
-| GET                    | `/api/v1/admin/frontend-secret`                                                                | settings.manage                         | 웹 서버의 방문자 증명 비밀 (서버 간 전용, 브라우저로는 보내지 않음)                                                                                                                                             |
+| 메서드                 | 경로                                                                                           | 인증                                    | 설명                                                                                                                                                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET                    | `/api/v1/theme?preview=`                                                                       | 공개                                    | 활성 테마 또는 유효한 미리보기 토큰이 가리키는 테마의 표시 매니페스트                                                                                                                                             |
+| POST                   | `/api/v1/admin/themes/:id/preview`                                                             | appearance.manage                       | 서명된 30분짜리 미리보기 토큰                                                                                                                                                                                     |
+| GET                    | `/api/v1/reading · /menus/:location · /widgets`                                                | 공개                                    | 읽기 설정(프런트/글 페이지 경로 포함), 해석된 메뉴, 두 위젯 영역 모두                                                                                                                                             |
+| GET, PUT               | `/api/v1/admin/reading · /menus · /widgets`                                                    | settings / appearance                   | 읽기 설정, 메뉴와 위치, 위젯 영역 (`GET …/widgets/types`는 플러그인 위젯을 나열)                                                                                                                                  |
+| GET, PUT               | `/api/v1/admin/writing`                                                                        | content.create / settings.manage        | 새 항목의 쓰기 기본값 (기본 카테고리, 기본 초안 상태)                                                                                                                                                             |
+| GET, POST, PUT, DELETE | `/api/v1/admin/patterns[/:id]`                                                                 | content.create (+ publish / editOthers) | 페이지로 나뉜 패턴 요약 (`page`, `pageSize`, `search`); 권한이 있는 단일 문서                                                                                                                                     |
+| GET, POST              | `/api/v1/comments?contentId=&page=`                                                            | 공개 (POST는 속도 제한·캡차)            | 승인된 스레드 (`notifications: { email, push }`); 작성 (`{ status, comment, page, pendingProof, commenterProof, pushToken }`); 주소와 `CLIENT_USER_AGENT_HEADER`는 프런트엔드 비밀이 있을 때만 저장               |
+| POST                   | `/api/v1/comments/push`                                                                        | 공개 (속도 제한)                        | `{ token, subscription }` → `{ ok: true }`: `pushToken`이 가리키는 댓글의 푸시 답글을 받을 방문자 브라우저                                                                                                        |
+| POST                   | `/api/v1/comments/unsubscribe`                                                                 | 공개 (속도 제한)                        | `{ token }` → `{ channel: 'email' \| 'push' }`; 유효하지 않거나 만료 → 400 `CommentUnsubscribeInvalid`                                                                                                            |
+| POST                   | `/api/v1/push/renew`                                                                           | 공개 (속도 제한)                        | `{ old: { endpoint, auth }, subscription }` → `{ ok: true }`: 저장된 인증 비밀 값(`auth`)이 `old.auth`와 같으면 `old.endpoint`의 활성 등록을 옮김. 일치하지 않아도 같은 응답 (`pushsubscriptionchange`, 재동기화) |
+| GET, PUT, DELETE       | `/api/v1/admin/push-subscription`                                                              | content.create (쓰기는 속도 제한)       | `{ publicKey }` (푸시가 꺼져 있으면 null); 현재 사용자의 브라우저 등록 `{ subscription }` / 제거 `{ endpoint }`                                                                                                   |
+| GET                    | `/api/v1/admin/comments · /comments/counts`                                                    | comments.moderate                       | 검토 목록 (`status`, `contentId`, `ids` = 쉼표로 구분한 최대 100개 id, 이름·이메일·IP·본문을 찾는 `search`; 항목에 `authorIp`, `authorUserAgent` 포함)과 상태별 개수                                              |
+| PUT, DELETE, POST      | `/api/v1/admin/comments/:id · /:id/reply · /bulk`                                              | comments.moderate                       | 수정/삭제 (IP와 사용자 에이전트는 수정할 수 없음), 모더레이터로서 답글 작성 (증명된 IP/사용자 에이전트 저장), 일괄 승인/승인 취소/스팸/휴지통/삭제                                                                |
+| GET, PUT               | `/api/v1/admin/discussion`                                                                     | settings.manage                         | 토론 설정                                                                                                                                                                                                         |
+| GET                    | `/api/v1/content-types · /authors/:slug`                                                       | 공개                                    | 공개 콘텐츠 타입과 필드; 공개 작성자 아카이브                                                                                                                                                                     |
+| *                      | `/api/v1/admin/content-types[/:key] · /fields[/:key]`                                          | content.create / fields.manage          | 콘텐츠 모델                                                                                                                                                                                                       |
+| POST, GET, PUT, DELETE | `/api/v1/admin/content/:id/{trash,restore,preview,autosave,revisions[/:revisionId[/restore]]}` | 세션                                    | 콘텐츠 워크플로                                                                                                                                                                                                   |
+| GET                    | `/api/v1/preview/:token · POST /api/v1/unlock/:id`                                             | 공개                                    | 서명된 미리보기; 비밀번호 잠금 해제 증명                                                                                                                                                                          |
+| *                      | `/api/v1/admin/media[/:id] · GET /api/v1/media/files/*`                                        | media.upload / 공개                     | 미디어 라이브러리; Range를 지원하는 파일                                                                                                                                                                          |
+| GET                    | `/api/v1/admin/media?month=YYYY-MM&unattached=true · /admin/media/:id/context`                 | media.upload                            | 라이브러리 필터; 더 새로운/오래된 이웃 항목과 파일을 표시하는 항목                                                                                                                                                |
+| POST                   | `/api/v1/admin/media/:id/derivative?name=`                                                     | media.upload; 소유자 또는 media.manage  | 활성 등록된 크기만 허용; private, no-store WebP이며 저장하지 않음. 서비스당 동시 변환 2개, 초과 시 429 반환                                                                                                       |
+| *                      | `/api/v1/admin/users[/:id] · /users/authors`                                                   | users.manage / content.create           | 사용자와 작성자 선택지                                                                                                                                                                                            |
+| *                      | `/api/v1/auth/password{,/forgot,/reset} · /auth/tokens[/:id] · PUT /auth/me`                   | 세션 또는 공개                          | 비밀번호 변경/재설정, API 토큰, 본인 프로필                                                                                                                                                                       |
+| GET, PUT               | `/api/v1/admin/security · /email (POST /email/test) · GET /security/captcha`                   | settings.manage / 공개                  | 속도 제한과 캡차, 이메일, 공개 캡차 설정                                                                                                                                                                          |
+| GET                    | `/api/v1/admin/capabilities`                                                                   | users.manage                            | 역할 할당용으로 등록된 권한(코어 및 플러그인)                                                                                                                                                                     |
+| GET, PUT, POST         | `/api/v1/admin/search · /search/status · /search/test · /search/reindex`                       | settings.manage                         | Meilisearch 연결, 상태, 연결 테스트, 재구축                                                                                                                                                                       |
+| GET, POST              | `/api/v1/admin/plugin-pages · /:pluginId/:key · /:pluginId/:key/:action`                       | 페이지 권한                             | 플러그인 관리자 페이지(블록)와 폼 동작                                                                                                                                                                            |
+| GET                    | `/api/v1/admin/plugin-blocks`                                                                  | content.create                          | 편집기에서 쓸 활성 플러그인 블록과 속성 필드                                                                                                                                                                      |
+| GET                    | `/api/v1/admin/plugins/:id/update`                                                             | plugins.manage                          | 플러그인 `updateUrl`의 최신 버전                                                                                                                                                                                  |
+| *                      | `/api/v1/admin/webhooks[/:id] · /:id/ping · /:id/rotate`                                       | tools.manage                            | 웹훅, 테스트 전송, 새 비밀 값                                                                                                                                                                                     |
+| GET, POST              | `/api/v1/admin/export · /admin/import`                                                         | tools.manage                            | WXR 내보내기(XML 다운로드)와 가져오기(XML 본문)                                                                                                                                                                   |
+| GET                    | `/api/v1/admin/health`                                                                         | tools.manage                            | 사이트 상태 점검과 시스템 정보                                                                                                                                                                                    |
+| GET                    | `/api/v1/admin/themes/:id/editor`                                                              | appearance.manage                       | 사이트 편집기: 템플릿, 파트, 변경 내용이 반영된 스타일                                                                                                                                                            |
+| PUT, DELETE            | `/api/v1/admin/themes/:id/templates/:name · /parts/:slug · /styles`                            | appearance.manage                       | 템플릿, 파트 또는 전역 스타일 저장·초기화                                                                                                                                                                         |
+| GET, PUT               | `/api/v1/admin/fonts`                                                                          | appearance.manage                       | 모든 테마 스타일에서 쓸 수 있는 사이트 글꼴 (`{ fonts }`)                                                                                                                                                         |
+| GET, PUT               | `/api/v1/admin/sso`                                                                            | settings.manage                         | 싱글 사인온 설정 (클라이언트 비밀은 반환하지 않음; 리디렉션 URI 표시)                                                                                                                                             |
+| GET                    | `/api/v1/admin/frontend-secret`                                                                | settings.manage                         | 웹 서버의 방문자 증명 비밀 (서버 간 전용, 브라우저로는 보내지 않음)                                                                                                                                               |
 
-| 메서드    | 경로                                        | 인증                        | 설명                                                  |
-| --------- | ------------------------------------------- | --------------------------- | ----------------------------------------------------- |
-| GET       | `/api/v1/privacy`                           | 공개                        | 게시된 정책 링크와 쿠키 동의 설정                     |
-| POST      | `/api/v1/privacy/confirm`                   | 서명된 토큰; 속도 제한/캡차 | 1회용 개인정보 확인                                   |
-| GET, PUT  | `/api/v1/admin/privacy/settings`            | settings.manage             | 개인정보 정책과 쿠키 설정                             |
-| GET, POST | `/api/v1/admin/privacy/requests`            | users.manage                | 페이지로 나뉜 요청 대기열 / 확인 이메일               |
-| POST      | `/api/v1/admin/privacy/requests/:id/export` | users.manage                | 확인된 대상의 스트리밍 JSON 다운로드                  |
-| POST      | `/api/v1/admin/privacy/requests/:id/erase`  | users.manage                | 확인된 대상의 트랜잭션 방식 익명화·개인정보 삭제 처리 |
-| GET       | `/api/v1/admin/content/counts?type=`        | content.create              | 상태·휴지통·전체별 그룹 개수                          |
-| GET       | `/api/v1/comments/feed?contentId=&limit=`   | 공개                        | 승인된 비보호 댓글 피드 DTO                           |
-| GET       | `/api/v1/seo/sitemap?kind=author\|taxonomy` | 공개                        | 작성자·사용자 지정 분류 탐색                          |
+| 메서드    | 경로                                        | 인증                        | 설명                                                                                                                                                       |
+| --------- | ------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET       | `/api/v1/privacy`                           | 공개                        | 게시된 정책 링크와 쿠키 동의 설정                                                                                                                          |
+| POST      | `/api/v1/privacy/confirm`                   | 서명된 토큰; 속도 제한/캡차 | 1회용 개인정보 확인                                                                                                                                        |
+| GET, PUT  | `/api/v1/admin/privacy/settings`            | settings.manage             | 개인정보 정책과 쿠키 설정                                                                                                                                  |
+| GET, POST | `/api/v1/admin/privacy/requests`            | users.manage                | 페이지로 나뉜 요청 대기열 / 확인 이메일                                                                                                                    |
+| POST      | `/api/v1/admin/privacy/requests/:id/export` | users.manage                | 확인된 대상의 스트리밍 JSON 다운로드                                                                                                                       |
+| POST      | `/api/v1/admin/privacy/requests/:id/erase`  | users.manage                | 확인된 대상의 익명화·개인정보 삭제. 코어 삭제는 트랜잭션으로 처리. 빈 응답 대신 `{ results, failed }` 반환(`failed`는 후속 조치가 필요한 확장 삭제기 목록) |
+| GET       | `/api/v1/admin/content/counts?type=`        | content.create              | 상태·휴지통·전체별 그룹 개수                                                                                                                               |
+| GET       | `/api/v1/comments/feed?contentId=&limit=`   | 공개                        | 승인된 비보호 댓글 피드 DTO                                                                                                                                |
