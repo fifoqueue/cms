@@ -40,6 +40,14 @@ test('API hooks reverse refusals but cannot bypass route authorization or securi
         : new Response('UNLOCKED-BODY');
     })
     .get('/not-modified', () => new Response(null, { status: 304 }))
+    .get(
+      '/private-not-modified',
+      () =>
+        new Response(null, {
+          status: 304,
+          headers: { 'cache-control': 'private, no-store', etag: '"v"' },
+        }),
+    )
     .get('/api/health', () => 'ok');
 
   registrar.filter('api.requestAllowed', (value) => ({
@@ -126,6 +134,10 @@ test('API hooks reverse refusals but cannot bypass route authorization or securi
   );
 
   expect(anonymous.status).toBe(304);
+  expect(
+    (await app.handle(new Request('http://localhost/private-not-modified')))
+      .status,
+  ).toBe(304);
   expect(
     (await app.handle(new Request('http://localhost/private'))).status,
   ).toBe(401);

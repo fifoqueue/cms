@@ -70,10 +70,12 @@ export const apiHooks = (services: ApiServices) =>
 
       for (const [key, value] of Object.entries(set.headers))
         if (value !== undefined) merged.set(key, String(value));
-      const privateResponse =
+      const credentialed =
         proof ||
         request.headers.has('authorization') ||
-        merged.has('set-cookie') ||
+        merged.has('set-cookie');
+      const privateResponse =
+        credentialed ||
         /\b(?:private|no-store)\b/i.test(merged.get('cache-control') ?? '');
 
       if (!hooks?.has('api.responseHeaders') && !privateResponse) return;
@@ -136,10 +138,12 @@ export const apiHooks = (services: ApiServices) =>
         merged.has('set-cookie') ||
         /\b(?:private|no-store)\b/i.test(merged.get('cache-control') ?? '')
       ) {
+        // A 304 is valid only when the route alone made the response private, not a credential.
         const invalid304 =
-          response.status === 304 ||
-          set.status === 304 ||
-          set.status === 'Not Modified';
+          (credentialed || merged.has('set-cookie')) &&
+          (response.status === 304 ||
+            set.status === 304 ||
+            set.status === 'Not Modified');
 
         merged.set('cache-control', 'private, no-store');
         merged.delete('etag');
